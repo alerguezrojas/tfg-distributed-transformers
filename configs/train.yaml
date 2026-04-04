@@ -1,0 +1,19 @@
+# Configuración de entrenamiento - BigEarthNet-S2
+
+data:
+  root: "/media/alejandro/Almacenamiento HDD/datasets/bigearthnet/BigEarthNet-S2"
+  num_workers: 4
+
+model:
+  name: "vit_base_patch16_224"
+  pretrained: true
+  num_classes: 19
+
+training:
+  epochs: 30
+  batch_size: 64
+  lr: 1e-4
+  weight_decay: 1e-4
+
+checkpoint:
+  dir: "checkpoints/single_gpu"

@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+import yaml
 import torch
 from torch.utils.data import DataLoader
 
@@ -16,53 +17,65 @@ from src.training.trainer import Trainer
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train ViT on BigEarthNet-S2 (single GPU)")
-    parser.add_argument("--data-root", type=str, required=True, help="Path to BigEarthNet-S2 root")
-    parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--batch-size", type=int, default=64)
-    parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--model-name", type=str, default="vit_base_patch16_224")
-    parser.add_argument("--checkpoint-dir", type=str, default="checkpoints/single_gpu")
-    parser.add_argument("--no-pretrained", action="store_true")
+    parser.add_argument("--config", type=str, default="configs/train.yaml", help="Path to YAML config")
+    parser.add_argument("--data-root", type=str, help="Override data.root from config")
+    parser.add_argument("--epochs", type=int, help="Override training.epochs from config")
+    parser.add_argument("--batch-size", type=int, help="Override training.batch_size from config")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    with open(args.config) as f:
+        cfg = yaml.safe_load(f)
+
+    # Allow CLI overrides
+    if args.data_root:
+        cfg["data"]["root"] = args.data_root
+    if args.epochs:
+        cfg["training"]["epochs"] = args.epochs
+    if args.batch_size:
+        cfg["training"]["batch_size"] = args.batch_size
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Usando dispositivo: {device}")
 
     # Datasets
-    train_dataset = BigEarthNetDataset(args.data_root, split="train", transform=get_transforms("train"))
-    val_dataset = BigEarthNetDataset(args.data_root, split="val", transform=get_transforms("val"))
+    train_dataset = BigEarthNetDataset(cfg["data"]["root"], split="train", transform=get_transforms("train"))
+    val_dataset = BigEarthNetDataset(cfg["data"]["root"], split="val", transform=get_transforms("val"))
     print(f"Train: {len(train_dataset)} patches | Val: {len(val_dataset)} patches")
 
     # DataLoaders
     train_loader = DataLoader(
         train_dataset,
-        batch_size=args.batch_size,
+        batch_size=cfg["training"]["batch_size"],
         shuffle=True,
-        num_workers=args.num_workers,
+        num_workers=cfg["data"]["num_workers"],
         pin_memory=True,
     )
     val_loader = DataLoader(
         val_dataset,
-        batch_size=args.batch_size,
+        batch_size=cfg["training"]["batch_size"],
         shuffle=False,
-        num_workers=args.num_workers,
+        num_workers=cfg["data"]["num_workers"],
         pin_memory=True,
     )
 
     # Model
     model = build_model(
-        model_name=args.model_name,
-        pretrained=not args.no_pretrained,
+        model_name=cfg["model"]["name"],
+        pretrained=cfg["model"]["pretrained"],
     )
-    print(f"Modelo: {args.model_name} | Parámetros: {sum(p.numel() for p in model.parameters()):,}")
+    print(f"Modelo: {cfg['model']['name']} | Parámetros: {sum(p.numel() for p in model.parameters()):,}")
 
     # Optimizer y scheduler
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=cfg["training"]["lr"],
+        weight_decay=cfg["training"]["weight_decay"],
+    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["training"]["epochs"])
 
     # Entrenamiento
     trainer = Trainer(
@@ -70,9 +83,9 @@ def main():
         optimizer=optimizer,
         scheduler=scheduler,
         device=device,
-        checkpoint_dir=args.checkpoint_dir,
+        checkpoint_dir=cfg["checkpoint"]["dir"],
     )
-    trainer.fit(train_loader, val_loader, epochs=args.epochs)
+    trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])
 
 
 if __name__ == "__main__":
