@@ -42,8 +42,18 @@ def main():
     print(f"Usando dispositivo: {device}")
 
     # Datasets
-    train_dataset = BigEarthNetDataset(cfg["data"]["root"], split="train", transform=get_transforms("train"))
-    val_dataset = BigEarthNetDataset(cfg["data"]["root"], split="val", transform=get_transforms("val"))
+    train_dataset = BigEarthNetDataset(
+        cfg["data"]["root"],
+        metadata_path=cfg["data"]["metadata"],
+        split="train",
+        transform=get_transforms("train"),
+    )
+    val_dataset = BigEarthNetDataset(
+        cfg["data"]["root"],
+        metadata_path=cfg["data"]["metadata"],
+        split="val",
+        transform=get_transforms("val"),
+    )
     print(f"Train: {len(train_dataset)} patches | Val: {len(val_dataset)} patches")
 
     # DataLoaders

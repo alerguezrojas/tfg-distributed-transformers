@@ -1,7 +1,8 @@
 # Configuración de entrenamiento - BigEarthNet-S2
 
 data:
-  root: "/media/alejandro/Almacenamiento HDD/datasets/bigearthnet/BigEarthNet-S2"
+  root: "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet"
   num_workers: 4
 
 model:
