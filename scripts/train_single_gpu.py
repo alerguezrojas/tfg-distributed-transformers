@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.data.dataset import BigEarthNetDataset, get_transforms
 from src.models.vit import build_model
 from src.training.trainer import Trainer
+from src.training.trainer_decorators import MetricsLoggerDecorator
 
 
 def parse_args():
@@ -88,12 +89,14 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg["training"]["epochs"])
 
     # Entrenamiento
-    trainer = Trainer(
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        device=device,
-        checkpoint_dir=cfg["checkpoint"]["dir"],
+    trainer = MetricsLoggerDecorator(
+        Trainer(
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+            checkpoint_dir=cfg["checkpoint"]["dir"],
+        )
     )
     trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])
 

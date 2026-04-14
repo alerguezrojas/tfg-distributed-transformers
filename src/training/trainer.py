@@ -5,9 +5,15 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from src.training.base_trainer import BaseTrainer
 
-class Trainer:
-    """Single-GPU trainer for BigEarthNet classification."""
+
+class Trainer(BaseTrainer):
+    """Single-GPU trainer for BigEarthNet classification.
+
+    Pure training logic — no logging or printing.
+    Wrap with MetricsLoggerDecorator to add console output.
+    """
 
     def __init__(
         self,
@@ -97,22 +103,13 @@ class Trainer:
             "optimizer_state_dict": self.optimizer.state_dict(),
             "metrics": metrics,
         }, path)
-        print(f"Checkpoint guardado: {path}")
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         best_f1 = 0.0
 
         for epoch in range(1, epochs + 1):
-            train_metrics = self.train_epoch(train_loader)
+            self.train_epoch(train_loader)
             val_metrics = self.eval_epoch(val_loader)
-
-            print(
-                f"Epoch {epoch:03d} | "
-                f"Train loss: {train_metrics['loss']:.4f} | "
-                f"Val loss: {val_metrics['loss']:.4f} | "
-                f"Val F1: {val_metrics['f1']:.4f} | "
-                f"Time: {train_metrics['time']:.1f}s"
-            )
 
             if val_metrics["f1"] > best_f1:
                 best_f1 = val_metrics["f1"]
