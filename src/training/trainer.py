@@ -5,9 +5,15 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from src.training.base_trainer import BaseTrainer
 
-class Trainer:
-    """Single-GPU trainer for BigEarthNet classification."""
+
+class Trainer(BaseTrainer):
+    """Single-GPU trainer for BigEarthNet classification.
+
+    Pure training logic — no logging or printing.
+    Wrap with a decorator to add console output or tracing.
+    """
 
     def __init__(
         self,
@@ -28,6 +34,8 @@ class Trainer:
     def train_epoch(self, loader: DataLoader) -> dict:
         self.model.train()
         total_loss = 0.0
+        all_preds: list[torch.Tensor] = []
+        all_labels: list[torch.Tensor] = []
         start = time.time()
 
         for images, labels in loader:
@@ -41,12 +49,21 @@ class Trainer:
             self.optimizer.step()
 
             total_loss += loss.item()
+            with torch.no_grad():
+                preds = torch.sigmoid(logits) > 0.5
+                all_preds.append(preds.cpu())
+                all_labels.append(labels.cpu())
 
         if self.scheduler:
             self.scheduler.step()
 
+        all_preds_t = torch.cat(all_preds)
+        all_labels_t = torch.cat(all_labels)
+
         return {
             "loss": total_loss / len(loader),
+            "f1": self._f1_score(all_preds_t, all_labels_t),
+            "accuracy": self._accuracy(all_preds_t, all_labels_t),
             "time": time.time() - start,
         }
 
@@ -54,8 +71,8 @@ class Trainer:
     def eval_epoch(self, loader: DataLoader) -> dict:
         self.model.eval()
         total_loss = 0.0
-        all_preds = []
-        all_labels = []
+        all_preds: list[torch.Tensor] = []
+        all_labels: list[torch.Tensor] = []
 
         for images, labels in loader:
             images = images.to(self.device)
@@ -69,25 +86,43 @@ class Trainer:
             all_preds.append(preds.cpu())
             all_labels.append(labels.cpu())
 
-        all_preds = torch.cat(all_preds)
-        all_labels = torch.cat(all_labels)
-        f1 = self._f1_score(all_preds, all_labels)
+        all_preds_t = torch.cat(all_preds)
+        all_labels_t = torch.cat(all_labels)
 
         return {
             "loss": total_loss / len(loader),
-            "f1": f1,
+            "f1": self._f1_score(all_preds_t, all_labels_t),
+            "accuracy": self._accuracy(all_preds_t, all_labels_t),
+            "precision": self._precision(all_preds_t, all_labels_t),
+            "recall": self._recall(all_preds_t, all_labels_t),
         }
 
     def _f1_score(self, preds: torch.Tensor, labels: torch.Tensor) -> float:
-        """Macro-averaged F1 score for multi-label classification."""
+        """Macro-averaged F1 for multi-label classification."""
         tp = (preds & labels.bool()).sum(dim=0).float()
         fp = (preds & ~labels.bool()).sum(dim=0).float()
         fn = (~preds & labels.bool()).sum(dim=0).float()
-
         precision = tp / (tp + fp + 1e-8)
         recall = tp / (tp + fn + 1e-8)
         f1 = 2 * precision * recall / (precision + recall + 1e-8)
         return f1.mean().item()
+
+    def _precision(self, preds: torch.Tensor, labels: torch.Tensor) -> float:
+        """Macro-averaged precision for multi-label classification."""
+        tp = (preds & labels.bool()).sum(dim=0).float()
+        fp = (preds & ~labels.bool()).sum(dim=0).float()
+        return (tp / (tp + fp + 1e-8)).mean().item()
+
+    def _recall(self, preds: torch.Tensor, labels: torch.Tensor) -> float:
+        """Macro-averaged recall for multi-label classification."""
+        tp = (preds & labels.bool()).sum(dim=0).float()
+        fn = (~preds & labels.bool()).sum(dim=0).float()
+        return (tp / (tp + fn + 1e-8)).mean().item()
+
+    def _accuracy(self, preds: torch.Tensor, labels: torch.Tensor) -> float:
+        """Sample-averaged accuracy for multi-label classification."""
+        correct = (preds == labels.bool()).float().mean(dim=1)
+        return correct.mean().item()
 
     def save_checkpoint(self, epoch: int, metrics: dict):
         path = self.checkpoint_dir / f"checkpoint_epoch_{epoch:03d}.pt"
@@ -97,23 +132,12 @@ class Trainer:
             "optimizer_state_dict": self.optimizer.state_dict(),
             "metrics": metrics,
         }, path)
-        print(f"Checkpoint guardado: {path}")
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         best_f1 = 0.0
-
         for epoch in range(1, epochs + 1):
-            train_metrics = self.train_epoch(train_loader)
+            self.train_epoch(train_loader)
             val_metrics = self.eval_epoch(val_loader)
-
-            print(
-                f"Epoch {epoch:03d} | "
-                f"Train loss: {train_metrics['loss']:.4f} | "
-                f"Val loss: {val_metrics['loss']:.4f} | "
-                f"Val F1: {val_metrics['f1']:.4f} | "
-                f"Time: {train_metrics['time']:.1f}s"
-            )
-
             if val_metrics["f1"] > best_f1:
                 best_f1 = val_metrics["f1"]
                 self.save_checkpoint(epoch, val_metrics)
