@@ -62,11 +62,11 @@ El patrón **Decorator OOP** se aplica al ciclo de entrenamiento. Todos los deco
 BaseTrainer (ABC)
 └── Trainer                      # lógica pura, sin prints
 └── TrainerDecorator             # base de todos los decoradores
-    ├── MetricsLoggerDecorator   # epoch-level, prints simples + ETA
-    ├── BatchMetricsDecorator    # tqdm por batch (white-box, solo didáctico)
-    ├── LayerHooksDecorator      # forward hooks en Linear layers (solo didáctico)
-    ├── TracingDecorator         # logging estructurado a fichero + ETA
-    └── DeepTracingDecorator     # trazado máximo (ver abajo)
+    ├── MetricsLoggerDecorator   # nivel 1: epoch-level, prints simples + ETA
+    ├── BatchMetricsDecorator    # nivel 2: tqdm por batch (solo didáctico)
+    ├── LayerHooksDecorator      # nivel 3: forward hooks en Linear layers (solo didáctico)
+    ├── TracingDecorator         # nivel 4: logging estructurado a fichero + ETA
+    └── DeepTracingDecorator     # nivel 5: trazado máximo (fichero aparte)
 ```
 
 **Nota:** `TensorBoardDecorator` fue eliminado. `BatchMetricsDecorator` y `LayerHooksDecorator` se mantienen solo por valor didáctico del TFG (muestran la progresión del patrón), no se usan en producción.
@@ -74,8 +74,8 @@ BaseTrainer (ABC)
 Ficheros:
 - `src/training/base_trainer.py` — contrato abstracto
 - `src/training/trainer.py` — implementación pura
-- `src/training/trainer_decorators.py` — decoradores nivel 1–4
-- `src/training/deep_tracing.py` — decorador de máxima profundidad
+- `src/training/trainer_decorators.py` — decoradores niveles 1–4
+- `src/training/deep_tracing.py` — decorador nivel 5 (máxima profundidad)
 - `src/training/logger_setup.py` — `setup_logger()` con formato timestamp
 - `src/training/python_decorators.py` — decoradores Python `@` (contraste didáctico)
 
@@ -164,17 +164,19 @@ model:
 
 training:
   epochs: 30
-  batch_size: 64
-  lr: 0.0001          # OJO: no usar notación 1e-4 en YAML, se parsea como string
+  batch_size: 32          # 64 OOM en RTX 3060 Ti (8 GB); no subir de 32
+  lr: 0.0001              # OJO: no usar 1e-4, se parsea como string en YAML
   weight_decay: 0.0001
-  log_batch_every: 50
-  log_top_n_layers: 10
+  log_batch_every: 50     # DeepTracingDecorator: tabla de capas cada N batches
 
 checkpoint:
   dir: "checkpoints/single_gpu"
 ```
 
-**Importante:** En YAML, `1e-4` se parsea como string. Usar siempre `0.0001`.
+**Notas:**
+- `1e-4` en YAML se parsea como string. Usar siempre `0.0001`.
+- `batch_size: 64` causa OOM en RTX 3060 Ti. El feasibility checker confirma que batch_size=32 usa ~4.95 GB.
+- `log_top_n_layers` ha sido eliminado — `DeepTracingDecorator` usa `_select_representative_layers()` con selección fija (patch_embed + 12 × attn.proj + head).
 
 ---
 
