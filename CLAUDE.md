@@ -36,7 +36,7 @@ El objetivo es demostrar la aplicación de principios SOLID y patrones de diseñ
 - **Escala:** reflectancia / 10 000, clipped [0, 1]
 - **Tarea:** clasificación multi-label, 19 clases CORINE Land Cover
 - **Pérdida:** `BCEWithLogitsLoss` (sin sigmoid en el modelo)
-- **Métricas:** macro F1 + sample-averaged accuracy
+- **Métricas:** macro F1 + sample-averaged accuracy + precision + recall
 
 ---
 
@@ -62,47 +62,90 @@ El patrón **Decorator OOP** se aplica al ciclo de entrenamiento. Todos los deco
 BaseTrainer (ABC)
 └── Trainer                      # lógica pura, sin prints
 └── TrainerDecorator             # base de todos los decoradores
-    ├── MetricsLoggerDecorator   # epoch-level, prints simples
-    ├── BatchMetricsDecorator    # tqdm por batch (white-box)
-    ├── LayerHooksDecorator      # forward hooks en Linear layers
-    ├── TensorBoardDecorator     # SummaryWriter por época
-    ├── TracingDecorator         # logging estructurado + grad norm
+    ├── MetricsLoggerDecorator   # epoch-level, prints simples + ETA
+    ├── BatchMetricsDecorator    # tqdm por batch (white-box, solo didáctico)
+    ├── LayerHooksDecorator      # forward hooks en Linear layers (solo didáctico)
+    ├── TracingDecorator         # logging estructurado a fichero + ETA
     └── DeepTracingDecorator     # trazado máximo (ver abajo)
 ```
+
+**Nota:** `TensorBoardDecorator` fue eliminado. `BatchMetricsDecorator` y `LayerHooksDecorator` se mantienen solo por valor didáctico del TFG (muestran la progresión del patrón), no se usan en producción.
 
 Ficheros:
 - `src/training/base_trainer.py` — contrato abstracto
 - `src/training/trainer.py` — implementación pura
-- `src/training/trainer_decorators.py` — decoradores nivel 1–5
+- `src/training/trainer_decorators.py` — decoradores nivel 1–4
 - `src/training/deep_tracing.py` — decorador de máxima profundidad
 - `src/training/logger_setup.py` — `setup_logger()` con formato timestamp
 - `src/training/python_decorators.py` — decoradores Python `@` (contraste didáctico)
 
+### Métricas disponibles
+
+`Trainer.train_epoch` devuelve: `loss`, `f1`, `accuracy`, `time`
+`Trainer.eval_epoch` devuelve: `loss`, `f1`, `accuracy`, `precision`, `recall`
+
 ### DeepTracingDecorator (nivel más profundo)
 
-El decorador activo en producción. Registra:
+Registra:
 - **Forward hooks** en todos los módulos hoja → `act_mean`, `act_std`, `act_max`, `dead_ratio`
 - **Backward hooks** (`register_full_backward_hook`) → `grad_norm`, `grad_max`, `vanishing`, `exploding`
 - **Parameter hooks** (`param.register_hook`) → `weight_norm`, `grad_norm`, `update_ratio`
 - **GPU memory** (`torch.cuda.memory_allocated`) por step
 - **Learning rate** por grupo del optimizer
-- **torchinfo** summary al inicio
-- **Alertas de anomalías**: neuronas muertas (dead_ratio > 0.5), gradiente explosivo (norm > 10), gradiente evanescente (norm < 1e-7), update ratio anómalo
+- **torchinfo** summary al inicio (ejecutado en CPU para no fragmentar VRAM)
+- **Tabla por bloque**: patch_embed + `attn.proj` de cada uno de los 12 bloques + head
+- **Alertas de anomalías**: neuronas muertas, gradiente explosivo/evanescente, update ratio anómalo
 
-Todos los tensores se mueven a CPU (`.detach().cpu().float()`) antes de calcular estadísticas para no saturar la VRAM.
+Todos los tensores se calculan en GPU con `.detach().float()` y solo se transfiere el escalar final con `.item()` para no saturar la VRAM.
 
-### Script de entrenamiento actual
+### Script de entrenamiento
 
-`scripts/train_single_gpu.py` usa:
+`scripts/train_single_gpu.py` — flag `--trace` con tres modos:
+
 ```python
+# --trace off   → MetricsLoggerDecorator  (sin hooks, máxima velocidad)
+# --trace simple → TracingDecorator        (timestamps + log a fichero)
+# --trace deep   → DeepTracingDecorator    (trazado completo por capa)
 trainer = DeepTracingDecorator(
     Trainer(model, optimizer, scheduler, device, checkpoint_dir),
     logger=logger,
     log_every=cfg["training"].get("log_batch_every", 100),
-    log_top_n_layers=cfg["training"].get("log_top_n_layers", 8),
 )
-trainer.fit(train_loader, val_loader, epochs=N)
 ```
+
+Log con timestamp: `logs/train_YYYYMMDD_HHMMSS.log`
+
+---
+
+## Feasibility Checker
+
+`scripts/check_feasibility.py` — análisis de viabilidad previo al entrenamiento.
+
+Usa datos sintéticos (sin tocar el dataset) para medir throughput real y estimar tiempos.
+
+Arquitectura (patrón Facade + SRP):
+- `ModelAnalyzer` — FLOPs, parámetros, memoria estática
+- `HardwareProbe` — VRAM disponible
+- `Benchmarker` — mide throughput real por (batch_size, trace_mode)
+- `TimeEstimator` — convierte tiempos en estimaciones
+- `ReportFormatter` — imprime el informe
+- `FeasibilityChecker` — Facade que coordina todo
+
+```bash
+# Config por defecto
+uv run python scripts/check_feasibility.py
+
+# Comparar batch sizes y epochs
+uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 --epochs 10 30
+
+# Solo algunos modos
+uv run python scripts/check_feasibility.py --batch-sizes 32 --trace-modes off deep
+```
+
+**Resultado conocido en RTX 3060 Ti:**
+- batch_size=32 óptimo: ~65 imgs/s, 4.95 GB VRAM
+- batch_size=64 OOM (necesita ~11.5 GB)
+- `--trace deep` añade ~22% overhead vs off
 
 ---
 
@@ -124,6 +167,8 @@ training:
   batch_size: 64
   lr: 0.0001          # OJO: no usar notación 1e-4 en YAML, se parsea como string
   weight_decay: 0.0001
+  log_batch_every: 50
+  log_top_n_layers: 10
 
 checkpoint:
   dir: "checkpoints/single_gpu"
@@ -140,7 +185,8 @@ checkpoint:
 uv sync
 
 # Ejecutar scripts
-uv run python scripts/train_single_gpu.py --config configs/train.yaml
+uv run python scripts/train_single_gpu.py --config configs/train.yaml --trace simple
+uv run python scripts/check_feasibility.py --batch-sizes 16 32 64
 
 # Añadir dependencia
 uv add <paquete>
@@ -158,11 +204,7 @@ main ← develop ← feature/xxx
 
 - Siempre crear feature branch desde `develop`
 - PRs: feature → develop → main
-- Branch actual de trabajo: `feature/design-patterns`
-- Commits anteriores relevantes:
-  - `f146072` feat: apply Decorator pattern for metrics logging
-  - `106850a` Merge PR #3 feature/training-single-gpu
-  - `504b701` Merge PR #1 feature/data-pipeline
+- Rama actual: `main` (todo mergeado)
 
 ---
 
@@ -172,17 +214,17 @@ main ← develop ← feature/xxx
 - [x] Pipeline de datos: `BigEarthNetDataset` con metadata.parquet
 - [x] Modelo: `BigEarthViT` (ViT + cabeza multi-label)
 - [x] Entrenamiento single-GPU: `Trainer` + `Scheduler` + checkpoints
-- [x] Patrón Decorator completo (niveles 1–5 en `trainer_decorators.py`)
+- [x] Patrón Decorator completo (niveles 1–4 en `trainer_decorators.py`)
 - [x] Decoradores Python `@` (`@timed`, `@log_call`, `@retry_on_cuda_oom`)
-- [x] `DeepTracingDecorator` con trazado a nivel neurona/capa
-- [x] `setup_logger` con salida a consola y fichero
-- [x] Script integrado con `DeepTracingDecorator`
+- [x] `DeepTracingDecorator` con trazado a nivel neurona/capa (14 puntos: patch_embed + 12 bloques + head)
+- [x] Métricas completas: train F1/acc, val F1/acc/precision/recall, best F1, ETA
+- [x] Flag `--trace off/simple/deep` en script de entrenamiento
+- [x] Log con timestamp a fichero
+- [x] `check_feasibility.py` con benchmark, estimaciones y análisis de memoria
 
 ### Pendiente
-- [ ] Test de `DeepTracingDecorator` (1 epoch para verificar output)
-- [ ] Commit de `deep_tracing.py` + `train_single_gpu.py` actualizados en `feature/design-patterns`
-- [ ] PR feature/design-patterns → develop → main
-- [ ] Entrenamiento completo 30 epochs
+- [ ] Entrenamiento completo 30 epochs (batch_size=32, --trace simple)
+- [ ] Proyección multi-GPU en feasibility checker
 - [ ] Visualización de attention maps
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP)
 - [ ] Solicitar recursos GPU universitarios
@@ -195,8 +237,9 @@ main ← develop ← feature/xxx
 |-------|-------|----------|
 | `lr '<=' not supported between float and str` | `1e-4` en YAML se parsea como string | Usar `0.0001` en el YAML |
 | `property 'model' has no setter` | Intentar poner `model` como `@property` abstracta en BaseTrainer | No declarar propiedades en BaseTrainer; usar `__getattr__` en TrainerDecorator |
-| `'BatchMetricsDecorator' has no attribute 'model'` | Decorator sin delegación | `TrainerDecorator.__getattr__` resuelve toda la cadena |
-| `CUDA out of memory` en hooks | `.float()` en GPU de tensores grandes con 280 hooks | Mover a CPU primero: `.detach().cpu().float()` |
+| `CUDA out of memory` con batch_size=64 | ViT-B necesita ~11.5 GB para activaciones con batch 64 | Usar batch_size=32 (4.95 GB) |
+| `CUDA out of memory` en hooks | `.float()` en GPU de tensores grandes | Calcular en GPU con `.detach().float()`, transferir solo el escalar con `.item()` |
+| Hooks muy lentos (6 GB/batch transferidos) | `.detach().cpu()` copia tensor entero a RAM | Usar `.detach().float().mean().item()` — solo transfiere 4 bytes |
 | nvidia driver no funciona con kernel 6.8 | Driver 470 incompatible | Actualizar a `nvidia-driver-580-open` |
 
 ---
@@ -204,17 +247,20 @@ main ← develop ← feature/xxx
 ## Comandos útiles
 
 ```bash
+# Análisis de viabilidad previo
+uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 --epochs 30
+
 # Entrenamiento rápido (test, 1 epoch)
-uv run python scripts/train_single_gpu.py --epochs 1 --batch-size 64
+uv run python scripts/train_single_gpu.py --epochs 1 --batch-size 32 --trace deep
 
 # Entrenamiento completo
-uv run python scripts/train_single_gpu.py --config configs/train.yaml
-
-# TensorBoard (si se usa TensorBoardDecorator)
-uv run tensorboard --logdir runs/
+uv run python scripts/train_single_gpu.py --config configs/train.yaml --batch-size 32 --trace simple
 
 # Ver logs en tiempo real
-tail -f logs/train.log
+tail -f logs/train_*.log
+
+# Limpiar caché Python si hay comportamientos raros
+find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
 
 # Estado del repo
 git log --oneline -10
