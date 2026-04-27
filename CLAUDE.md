@@ -12,26 +12,85 @@ Contexto completo del proyecto para continuar el trabajo en cualquier máquina.
 **Entrega:** junio/julio 2026
 **Repo:** https://github.com/alerguezrojas/tfg-distributed-transformers
 
-El objetivo es demostrar la aplicación de principios SOLID y patrones de diseño (especialmente Decorator) al ciclo de entrenamiento de un ViT sobre BigEarthNet-S2, y escalar más adelante a entrenamiento distribuido con PyTorch DDP.
+El objetivo es demostrar la aplicación de principios SOLID y patrones de diseño (especialmente Decorator) al ciclo de entrenamiento de un ViT sobre BigEarthNet-S2, y escalar a entrenamiento distribuido con PyTorch DDP.
 
 ---
 
 ## Hardware
 
-- **Local:** NVIDIA RTX 3060 Ti (8 GB VRAM), NVIDIA driver 580-open, kernel 6.8
+### Local (desarrollo)
+- **GPU:** NVIDIA RTX 3060 Ti (8 GB VRAM)
+- **Driver:** nvidia-driver-580-open, kernel 6.8
 - **Dataset:** SSD externo montado en `/media/alejandro/SSD/` (ext4, ~120 GB)
-- **Futuro:** VMs con GPU en la universidad para entrenamiento distribuido
+- **Gestión de paquetes:** `uv` (ver sección de dependencias)
+
+### Clúster VERODE (ULL) — entrenamiento
+- **Login:** `ssh alu0101317038@verode00.pcg.ull.es`
+- **Nodos de cómputo:** verode[16-21] (5 nodos)
+- **GPU:** Tesla V100-PCIE, **32 GB VRAM** por nodo
+- **CUDA:** 12.0, Driver 525.147.05
+- **CPUs por nodo:** 16
+- **RAM por nodo:** ~112 GB
+- **Sistema de colas:** Slurm 20.11.04
+- **Almacenamiento:** `/home/bejeque/alu0101317038/` (NFS, ~453 GB libres)
+
+#### Configuración del clúster (hacer en cada sesión SSH)
+```bash
+module add slurm/client/20.11.04   # o añadir al ~/.bashrc
+```
+
+#### Entorno en el clúster
+- **Miniconda:** instalado en `~/miniconda3`, `auto_activate_base=false`
+- **zstd:** instalado via `conda install -c conda-forge zstd`
+- **Python/PyTorch:** pendiente de instalar (ver sección siguiente)
+
+#### Problemas conocidos del clúster
+- `sbatch` falla con "I/O error writing script/environment to file" — bug de configuración del clúster
+- Alternativa: usar `nohup comando &` para jobs largos en el login node
+- `srun` funciona para jobs interactivos cortos
 
 ---
 
 ## Dataset: BigEarthNet-S2 v2.0
 
-- **Ruta local:** `/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2/`
+### En local (SSD)
+- **Dataset:** `/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2/`
 - **Metadata:** `/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet`
+
+### En el clúster VERODE
+- **Dataset:** `~/datasets/bigearthnet/BigEarthNet-S2/` *(extrayendo, ~7h)*
+- **Metadata:** `~/datasets/bigearthnet/metadata.parquet` ✓ descargado
+
+#### Descarga (Zenodo record 10891137)
+```bash
+# Dataset principal (~59 GB comprimido, ~120 GB extraído)
+nohup wget -c "https://zenodo.org/records/10891137/files/BigEarthNet-S2.tar.zst?download=1" \
+     -O ~/datasets/bigearthnet/BigEarthNet-S2.tar.zst >> ~/logs/download.log 2>&1 &
+
+# Metadata (3.4 MB, segundos)
+wget -c "https://zenodo.org/records/10891137/files/metadata.parquet?download=1" \
+     -O ~/datasets/bigearthnet/metadata.parquet
+```
+
+#### Extracción (ejecutar cuando termine la descarga)
+```bash
+tar --use-compress-program=zstd -xf ~/datasets/bigearthnet/BigEarthNet-S2.tar.zst \
+    -C ~/datasets/bigearthnet/
+# Resultado: ~/datasets/bigearthnet/BigEarthNet-S2/scene_id/patch_id/*.tif
+# Borrar el .tar.zst tras verificar:
+rm ~/datasets/bigearthnet/BigEarthNet-S2.tar.zst
+```
+
+#### Verificar descarga en curso
+```bash
+ps aux | grep wget
+tail ~/logs/download.log
+```
+
+### Estructura y descripción
 - **Estructura de directorios:** `root/scene_id/patch_id/*.tif`
   - `scene_id` = `patch_id` sin los dos últimos segmentos (`_row_col`)
-- **Tamaño:** 480 038 patches (splits: train / validation / test)
-  - Train: 237 871 | Val: 122 342 | Test: 119 825
+- **Tamaño:** 480 038 patches — Train: 237 871 | Val: 122 342 | Test: 119 825
 - **Bandas usadas:** B04, B03, B02 (proxy RGB de Sentinel-2)
 - **Escala:** reflectancia / 10 000, clipped [0, 1]
 - **Tarea:** clasificación multi-label, 19 clases CORINE Land Cover
@@ -69,7 +128,7 @@ BaseTrainer (ABC)
     └── DeepTracingDecorator     # nivel 5: trazado máximo (fichero aparte)
 ```
 
-**Nota:** `TensorBoardDecorator` fue eliminado. `BatchMetricsDecorator` y `LayerHooksDecorator` se mantienen solo por valor didáctico del TFG (muestran la progresión del patrón), no se usan en producción.
+**Nota:** `TensorBoardDecorator` fue eliminado. `BatchMetricsDecorator` y `LayerHooksDecorator` se mantienen solo por valor didáctico del TFG, no se usan en producción.
 
 Ficheros:
 - `src/training/base_trainer.py` — contrato abstracto
@@ -93,24 +152,19 @@ Registra:
 - **GPU memory** (`torch.cuda.memory_allocated`) por step
 - **Learning rate** por grupo del optimizer
 - **torchinfo** summary al inicio (ejecutado en CPU para no fragmentar VRAM)
-- **Tabla por bloque**: patch_embed + `attn.proj` de cada uno de los 12 bloques + head
+- **Tabla por bloque**: patch_embed + `attn.proj` de cada uno de los 12 bloques + head (14 puntos)
 - **Alertas de anomalías**: neuronas muertas, gradiente explosivo/evanescente, update ratio anómalo
 
-Todos los tensores se calculan en GPU con `.detach().float()` y solo se transfiere el escalar final con `.item()` para no saturar la VRAM.
+Todos los tensores se calculan en GPU con `.detach().float()` y solo se transfiere el escalar final con `.item()`.
 
 ### Script de entrenamiento
 
 `scripts/train_single_gpu.py` — flag `--trace` con tres modos:
 
-```python
+```bash
 # --trace off   → MetricsLoggerDecorator  (sin hooks, máxima velocidad)
 # --trace simple → TracingDecorator        (timestamps + log a fichero)
 # --trace deep   → DeepTracingDecorator    (trazado completo por capa)
-trainer = DeepTracingDecorator(
-    Trainer(model, optimizer, scheduler, device, checkpoint_dir),
-    logger=logger,
-    log_every=cfg["training"].get("log_batch_every", 100),
-)
 ```
 
 Log con timestamp: `logs/train_YYYYMMDD_HHMMSS.log`
@@ -136,16 +190,18 @@ Arquitectura (patrón Facade + SRP):
 uv run python scripts/check_feasibility.py
 
 # Comparar batch sizes y epochs
-uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 --epochs 10 30
+uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 128 --epochs 30
 
 # Solo algunos modos
-uv run python scripts/check_feasibility.py --batch-sizes 32 --trace-modes off deep
+uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off deep
 ```
 
-**Resultado conocido en RTX 3060 Ti:**
+**Resultado conocido en RTX 3060 Ti (local):**
 - batch_size=32 óptimo: ~65 imgs/s, 4.95 GB VRAM
 - batch_size=64 OOM (necesita ~11.5 GB)
 - `--trace deep` añade ~22% overhead vs off
+
+**En V100 32 GB (clúster):** pendiente de ejecutar — con 32 GB VRAM batch_size=64/128 deberían funcionar.
 
 ---
 
@@ -164,7 +220,7 @@ model:
 
 training:
   epochs: 30
-  batch_size: 32          # 64 OOM en RTX 3060 Ti (8 GB); no subir de 32
+  batch_size: 32          # 64 OOM en RTX 3060 Ti (8 GB); en V100 puede subirse
   lr: 0.0001              # OJO: no usar 1e-4, se parsea como string en YAML
   weight_decay: 0.0001
   log_batch_every: 50     # DeepTracingDecorator: tabla de capas cada N batches
@@ -173,25 +229,41 @@ checkpoint:
   dir: "checkpoints/single_gpu"
 ```
 
+**Para el clúster**, sobreescribir las rutas de datos:
+```bash
+python scripts/train_single_gpu.py \
+  --data-root ~/datasets/bigearthnet/BigEarthNet-S2 \
+  --config configs/train.yaml \
+  --trace simple
+```
+*(o crear `configs/train_cluster.yaml` con las rutas del clúster)*
+
 **Notas:**
 - `1e-4` en YAML se parsea como string. Usar siempre `0.0001`.
-- `batch_size: 64` causa OOM en RTX 3060 Ti. El feasibility checker confirma que batch_size=32 usa ~4.95 GB.
-- `log_top_n_layers` ha sido eliminado — `DeepTracingDecorator` usa `_select_representative_layers()` con selección fija (patch_embed + 12 × attn.proj + head).
+- En el clúster con V100 32 GB, ejecutar el feasibility checker para calibrar batch_size óptimo.
 
 ---
 
 ## Gestión de dependencias
 
+### Local (uv)
 ```bash
-# Instalar entorno
-uv sync
+uv sync                                          # instalar entorno
+uv run python scripts/train_single_gpu.py ...   # ejecutar
+uv add <paquete>                                 # añadir dependencia
+```
 
-# Ejecutar scripts
-uv run python scripts/train_single_gpu.py --config configs/train.yaml --trace simple
-uv run python scripts/check_feasibility.py --batch-sizes 16 32 64
+### Clúster (conda — pendiente de configurar)
+```bash
+# Crear entorno con Python 3.12 y PyTorch CUDA 12.0
+conda create -n tfg python=3.12 -y
+conda activate tfg
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install timm torchinfo tqdm pyyaml rasterio pandas pyarrow tensorboard
 
-# Añadir dependencia
-uv add <paquete>
+# Ejecutar
+conda activate tfg
+python scripts/train_single_gpu.py --data-root ~/datasets/bigearthnet/BigEarthNet-S2 --trace simple
 ```
 
 Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `tensorboard`, `rasterio`, `pandas`, `pyarrow`, `pyyaml`
@@ -207,6 +279,7 @@ main ← develop ← feature/xxx
 - Siempre crear feature branch desde `develop`
 - PRs: feature → develop → main
 - Rama actual: `main` (todo mergeado)
+- **No añadir Co-Authored-By en los commits**
 
 ---
 
@@ -223,13 +296,22 @@ main ← develop ← feature/xxx
 - [x] Flag `--trace off/simple/deep` en script de entrenamiento
 - [x] Log con timestamp a fichero
 - [x] `check_feasibility.py` con benchmark, estimaciones y análisis de memoria
+- [x] Acceso al clúster VERODE (ULL) con V100 32 GB
+- [x] Miniconda + zstd instalados en el clúster
+- [x] Dataset descargándose en el clúster (~7h, en curso)
+- [x] metadata.parquet descargado en el clúster
 
-### Pendiente
-- [ ] Entrenamiento completo 30 epochs (batch_size=32, --trace simple)
+### Pendiente inmediato (clúster)
+- [ ] Verificar extracción del dataset cuando termine la descarga
+- [ ] Crear entorno conda con PyTorch + CUDA 12.0 en el clúster
+- [ ] Ejecutar `check_feasibility.py` en el clúster para calibrar batch_size en V100
+- [ ] Adaptar `configs/train.yaml` o crear `configs/train_cluster.yaml` con rutas del clúster
+- [ ] Lanzar entrenamiento completo 30 epochs en el clúster
+
+### Pendiente futuro
+- [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
 - [ ] Proyección multi-GPU en feasibility checker
 - [ ] Visualización de attention maps
-- [ ] Implementar entrenamiento distribuido (PyTorch DDP)
-- [ ] Solicitar recursos GPU universitarios
 
 ---
 
@@ -239,15 +321,17 @@ main ← develop ← feature/xxx
 |-------|-------|----------|
 | `lr '<=' not supported between float and str` | `1e-4` en YAML se parsea como string | Usar `0.0001` en el YAML |
 | `property 'model' has no setter` | Intentar poner `model` como `@property` abstracta en BaseTrainer | No declarar propiedades en BaseTrainer; usar `__getattr__` en TrainerDecorator |
-| `CUDA out of memory` con batch_size=64 | ViT-B necesita ~11.5 GB para activaciones con batch 64 | Usar batch_size=32 (4.95 GB) |
+| `CUDA out of memory` con batch_size=64 (local) | ViT-B necesita ~11.5 GB para batch 64 | Usar batch_size=32 en local (4.95 GB) |
 | `CUDA out of memory` en hooks | `.float()` en GPU de tensores grandes | Calcular en GPU con `.detach().float()`, transferir solo el escalar con `.item()` |
 | Hooks muy lentos (6 GB/batch transferidos) | `.detach().cpu()` copia tensor entero a RAM | Usar `.detach().float().mean().item()` — solo transfiere 4 bytes |
-| nvidia driver no funciona con kernel 6.8 | Driver 470 incompatible | Actualizar a `nvidia-driver-580-open` |
+| `nvidia driver` no funciona con kernel 6.8 | Driver 470 incompatible | Actualizar a `nvidia-driver-580-open` |
+| `sbatch` falla en clúster VERODE | Bug de configuración de Slurm (I/O error spool) | Usar `nohup comando &` para background, `srun` para interactivo |
 
 ---
 
 ## Comandos útiles
 
+### Local
 ```bash
 # Análisis de viabilidad previo
 uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 --epochs 30
@@ -260,11 +344,38 @@ uv run python scripts/train_single_gpu.py --config configs/train.yaml --batch-si
 
 # Ver logs en tiempo real
 tail -f logs/train_*.log
+```
 
-# Limpiar caché Python si hay comportamientos raros
-find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null
+### Clúster VERODE
+```bash
+# Conectar
+ssh alu0101317038@verode00.pcg.ull.es
 
-# Estado del repo
-git log --oneline -10
-git status
+# Cargar Slurm (o añadir al ~/.bashrc)
+module add slurm/client/20.11.04
+
+# Ver estado del clúster
+sinfo -s
+squeue -u $USER
+
+# Verificar descarga en curso
+ps aux | grep wget
+tail ~/logs/download.log
+
+# Extracción del dataset (cuando termine la descarga)
+tar --use-compress-program=zstd -xf ~/datasets/bigearthnet/BigEarthNet-S2.tar.zst \
+    -C ~/datasets/bigearthnet/
+
+# Verificar estructura del dataset
+ls ~/datasets/bigearthnet/
+ls ~/datasets/bigearthnet/BigEarthNet-S2/ | head -5
+
+# Activar entorno conda (cuando esté creado)
+conda activate tfg
+
+# Lanzar entrenamiento en el clúster
+nohup python scripts/train_single_gpu.py \
+  --data-root ~/datasets/bigearthnet/BigEarthNet-S2 \
+  --config configs/train.yaml \
+  --trace simple >> ~/logs/train_cluster.log 2>&1 &
 ```
