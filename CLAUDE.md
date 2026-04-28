@@ -58,8 +58,9 @@ module add slurm/client/20.11.04   # o añadir al ~/.bashrc
 - **Metadata:** `/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet`
 
 ### En el clúster VERODE
-- **Dataset:** `~/datasets/bigearthnet/BigEarthNet-S2/` *(extrayendo, ~7h)*
+- **Dataset:** `~/datasets/bigearthnet/BigEarthNet-S2/` ✓ completo (549 488 patches verificados)
 - **Metadata:** `~/datasets/bigearthnet/metadata.parquet` ✓ descargado
+- **Archivo comprimido:** `~/datasets/bigearthnet/BigEarthNet-S2.tar.zst` ✓ guardado (63 GB)
 
 #### Descarga (Zenodo record 10891137)
 ```bash
@@ -72,19 +73,19 @@ wget -c "https://zenodo.org/records/10891137/files/metadata.parquet?download=1" 
      -O ~/datasets/bigearthnet/metadata.parquet
 ```
 
-#### Extracción (ejecutar cuando termine la descarga)
+#### Extracción
 ```bash
-tar --use-compress-program=zstd -xf ~/datasets/bigearthnet/BigEarthNet-S2.tar.zst \
-    -C ~/datasets/bigearthnet/
+# OJO: usar ruta absoluta a zstd — el PATH del login node no incluye conda
+nohup tar --use-compress-program=/home/bejeque/alu0101317038/miniconda3/bin/zstd \
+    -xf ~/datasets/bigearthnet/BigEarthNet-S2.tar.zst \
+    -C ~/datasets/bigearthnet/ >> ~/logs/extract.log 2>&1 &
 # Resultado: ~/datasets/bigearthnet/BigEarthNet-S2/scene_id/patch_id/*.tif
-# Borrar el .tar.zst tras verificar:
-rm ~/datasets/bigearthnet/BigEarthNet-S2.tar.zst
 ```
 
-#### Verificar descarga en curso
+#### Verificar dataset
 ```bash
-ps aux | grep wget
-tail ~/logs/download.log
+# Contar patches en disco (debe coincidir con local: 549 488)
+find ~/datasets/bigearthnet/BigEarthNet-S2/ -mindepth 2 -maxdepth 2 -type d | wc -l
 ```
 
 ### Estructura y descripción
@@ -298,11 +299,10 @@ main ← develop ← feature/xxx
 - [x] `check_feasibility.py` con benchmark, estimaciones y análisis de memoria
 - [x] Acceso al clúster VERODE (ULL) con V100 32 GB
 - [x] Miniconda + zstd instalados en el clúster
-- [x] Dataset descargándose en el clúster (~7h, en curso)
+- [x] Dataset descargado y extraído en el clúster (549 488 patches, verificado contra local)
 - [x] metadata.parquet descargado en el clúster
 
 ### Pendiente inmediato (clúster)
-- [ ] Verificar extracción del dataset cuando termine la descarga
 - [ ] Crear entorno conda con PyTorch + CUDA 12.0 en el clúster
 - [ ] Ejecutar `check_feasibility.py` en el clúster para calibrar batch_size en V100
 - [ ] Adaptar `configs/train.yaml` o crear `configs/train_cluster.yaml` con rutas del clúster
