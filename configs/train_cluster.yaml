@@ -1,0 +1,19 @@
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet"
+  num_workers: 4
+
+model:
+  name: "vit_base_patch16_224"
+  pretrained: true
+  num_classes: 19
+
+training:
+  epochs: 30
+  batch_size: 32
+  lr: 0.0001
+  weight_decay: 0.0001
+  log_batch_every: 50
+
+checkpoint:
+  dir: "checkpoints/single_gpu"
