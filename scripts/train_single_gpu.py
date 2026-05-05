@@ -1,14 +1,22 @@
 """Single-GPU training script for BigEarthNet-S2.
 
-Modos de traza OOP (--trace):
-  off    — MetricsLoggerDecorator: métricas por epoch, sin overhead
-  simple — TracingDecorator: timestamps + log a fichero
-  deep   — DeepTracingDecorator: trazado completo por capa y parámetro
+Flags
+-----
+--trace off|simple|deep
+    Elige el decorador controlador del bucle de training:
+      off    — TracingDecorator sin fichero (solo consola)
+      simple — TracingDecorator con log a fichero logs/train_FECHA.log
+      deep   — DeepTracingDecorator: trazado completo por capa y parámetro
 
-Decoradores @ activos siempre (--fn-decorators):
-  energy  — mide consumo energético por epoch (requiere pynvml)
-  plot    — guarda curvas de entrenamiento en plots/ tras cada epoch
-  timing  — imprime tiempo de ejecución de train_epoch y eval_epoch
+--layers [plot] [hooks]
+    Decoradores de aspecto apilables entre el Trainer y el controlador:
+      plot  — PlottingDecorator: guarda curvas PNG en plots/ tras cada epoch
+      hooks — LayerHooksDecorator: activa forward hooks cada 5 epochs
+
+--fn [timing] [energy]
+    Decoradores @ de Python aplicados a train_epoch y eval_epoch:
+      timing — imprime tiempo de ejecución de cada método
+      energy — mide consumo energético GPU por epoch (requiere nvidia-ml-py)
 """
 
 import argparse
@@ -26,16 +34,13 @@ from src.data.dataset import BigEarthNetDataset, get_transforms
 from src.models.vit import build_model
 from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
-from src.training.oop_decorators import (
-    MetricsLoggerDecorator,
+from src.training.decorators import (
     TracingDecorator,
     DeepTracingDecorator,
+    PlottingDecorator,
+    LayerHooksDecorator,
 )
-from src.training.fn_decorators import (
-    timed,
-    measure_energy,
-    PlotMetrics,
-)
+from src.training.fn_decorators import timed, measure_energy
 
 
 def parse_args():
@@ -45,17 +50,16 @@ def parse_args():
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
     parser.add_argument("--batch-size", type=int, help="Override training.batch_size")
     parser.add_argument(
-        "--trace",
-        choices=["off", "simple", "deep"],
-        default="simple",
-        help="Nivel de traza OOP: off=métricas, simple=timestamps+fichero, deep=por capa",
+        "--trace", choices=["off", "simple", "deep"], default="simple",
+        help="Controlador de logging: off=consola, simple=fichero, deep=trazado por capa",
     )
     parser.add_argument(
-        "--fn-decorators",
-        nargs="*",
-        choices=["energy", "plot", "timing"],
-        default=[],
-        help="Decoradores @ a activar: energy plot timing (combinables)",
+        "--layers", nargs="*", choices=["plot", "hooks"], default=[],
+        help="Decoradores de aspecto a apilar (combinables): plot hooks",
+    )
+    parser.add_argument(
+        "--fn", nargs="*", choices=["timing", "energy"], default=[],
+        help="Decoradores @ de Python a aplicar: timing energy",
     )
     return parser.parse_args()
 
@@ -74,93 +78,96 @@ def main():
         cfg["training"]["batch_size"] = args.batch_size
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Dispositivo: {device}  |  Modo traza: {args.trace}  |  Decoradores @: {args.fn_decorators or 'ninguno'}")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    train_dataset = BigEarthNetDataset(
-        cfg["data"]["root"],
-        metadata_path=cfg["data"]["metadata"],
-        split="train",
+    print(f"Dispositivo : {device}")
+    print(f"Traza       : {args.trace}")
+    print(f"Capas       : {args.layers or 'ninguna'}")
+    print(f"Decoradores@: {args.fn or 'ninguno'}")
+
+    # ── Datos ────────────────────────────────────────────────────────────────
+
+    train_ds = BigEarthNetDataset(
+        cfg["data"]["root"], cfg["data"]["metadata"], split="train",
         transform=get_transforms("train"),
     )
-    val_dataset = BigEarthNetDataset(
-        cfg["data"]["root"],
-        metadata_path=cfg["data"]["metadata"],
-        split="val",
+    val_ds = BigEarthNetDataset(
+        cfg["data"]["root"], cfg["data"]["metadata"], split="val",
         transform=get_transforms("val"),
     )
-    print(f"Train: {len(train_dataset)} patches | Val: {len(val_dataset)} patches")
+    print(f"Train: {len(train_ds)} patches | Val: {len(val_ds)} patches")
 
     train_loader = DataLoader(
-        train_dataset,
-        batch_size=cfg["training"]["batch_size"],
-        shuffle=True,
-        num_workers=cfg["data"]["num_workers"],
-        pin_memory=True,
+        train_ds, batch_size=cfg["training"]["batch_size"],
+        shuffle=True, num_workers=cfg["data"]["num_workers"], pin_memory=True,
     )
     val_loader = DataLoader(
-        val_dataset,
-        batch_size=cfg["training"]["batch_size"],
-        shuffle=False,
-        num_workers=cfg["data"]["num_workers"],
-        pin_memory=True,
+        val_ds, batch_size=cfg["training"]["batch_size"],
+        shuffle=False, num_workers=cfg["data"]["num_workers"], pin_memory=True,
     )
 
-    model = build_model(
-        model_name=cfg["model"]["name"],
-        pretrained=cfg["model"]["pretrained"],
-    )
+    # ── Modelo ───────────────────────────────────────────────────────────────
+
+    model = build_model(cfg["model"]["name"], pretrained=cfg["model"]["pretrained"])
     print(f"Modelo: {cfg['model']['name']} | Parámetros: {sum(p.numel() for p in model.parameters()):,}")
 
     optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=cfg["training"]["lr"],
+        model.parameters(), lr=cfg["training"]["lr"],
         weight_decay=cfg["training"]["weight_decay"],
     )
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=cfg["training"]["epochs"]
+        optimizer, T_max=cfg["training"]["epochs"],
     )
+
+    # ── Construcción del stack de decoradores ────────────────────────────────
+    #
+    #   OUTER (controlador)
+    #     └── aspecto N   ← --layers
+    #           └── aspecto 1
+    #                 └── Trainer  ← métodos decorados con @ si --fn activo
+    #
+    # Los decoradores @ se aplican primero (sobre los métodos del Trainer base).
+    # Los decoradores de aspecto (OOP) se apilan encima.
+    # El controlador (OOP) va siempre en el exterior.
 
     base = Trainer(
-        model=model,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        device=device,
-        checkpoint_dir=cfg["checkpoint"]["dir"],
+        model=model, optimizer=optimizer, scheduler=scheduler,
+        device=device, checkpoint_dir=cfg["checkpoint"]["dir"],
     )
 
-    # ── Python @ function decorators (applied to the base trainer methods) ──
-    fn_decs = args.fn_decorators or []
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    if "plot" in fn_decs:
-        plotter = PlotMetrics(output_path=f"plots/training_{timestamp}.png")
-        base.train_epoch = plotter.wrap(base.train_epoch, tag="train")
-        base.eval_epoch = plotter.wrap(base.eval_epoch, tag="val")
-        print(f"[plot] Curvas guardadas en plots/training_{timestamp}.png")
-
-    if "energy" in fn_decs:
+    # 1. Decoradores @ de Python (sobre métodos concretos del Trainer)
+    fn = args.fn or []
+    if "energy" in fn:
         base.train_epoch = measure_energy(base.train_epoch)
         base.eval_epoch = measure_energy(base.eval_epoch)
-
-    if "timing" in fn_decs:
+    if "timing" in fn:
         base.train_epoch = timed(base.train_epoch)
         base.eval_epoch = timed(base.eval_epoch)
 
-    # ── OOP Decorator (wraps the trainer object for structured logging) ──
+    # 2. Decoradores de aspecto OOP (se apilan sobre el Trainer)
+    inner = base
+    layers = args.layers or []
+    if "hooks" in layers:
+        inner = LayerHooksDecorator(inner)
+    if "plot" in layers:
+        inner = PlottingDecorator(inner, output_path=f"plots/training_{timestamp}.png")
+
+    # 3. Controlador OOP (siempre el más externo)
     if args.trace == "off":
-        trainer = MetricsLoggerDecorator(base)
+        trainer = TracingDecorator(inner)
 
     elif args.trace == "simple":
-        logger = setup_logger(name="trainer", log_file=f"logs/train_{timestamp}.log")
-        trainer = TracingDecorator(base, logger=logger)
+        logger = setup_logger("trainer", log_file=f"logs/train_{timestamp}.log")
+        trainer = TracingDecorator(inner, logger=logger)
 
     else:  # deep
-        logger = setup_logger(name="trainer", log_file=f"logs/train_deep_{timestamp}.log")
+        logger = setup_logger("trainer", log_file=f"logs/train_deep_{timestamp}.log")
         trainer = DeepTracingDecorator(
-            base,
-            logger=logger,
+            inner, logger=logger,
             log_every=cfg["training"].get("log_batch_every", 100),
         )
+
+    # ── Entrenamiento ────────────────────────────────────────────────────────
 
     trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])
 
