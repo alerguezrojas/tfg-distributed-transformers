@@ -111,6 +111,14 @@ def main():
     print(f"Decoradores@: {args.fn or 'ninguno'}")
     print(f"Métricas    : {metrics or 'ninguna (--trace deep las gestiona internamente)'}")
 
+    if args.trace == "deep":
+        if "hooks" in (args.layers or []):
+            print("  [aviso] --layers hooks ignorado con --trace deep "
+                  "(DeepTracingDecorator ya registra sus propios hooks)")
+        if args.fn:
+            print("  [aviso] --fn aplicado solo a eval_epoch con --trace deep "
+                  "(train_epoch es gestionado directamente por DeepTracingDecorator)")
+
     # ── Datos ────────────────────────────────────────────────────────────────
 
     train_ds = BigEarthNetDataset(

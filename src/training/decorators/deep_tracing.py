@@ -207,12 +207,27 @@ class DeepTracingDecorator(TracingDecorator):
 
         all_preds_t = torch.cat(all_preds)
         all_labels_t = torch.cat(all_labels)
-        return {
+        result = {
             "loss": total_loss / len(loader),
             "f1": f1_score(all_preds_t, all_labels_t),
             "accuracy": accuracy(all_preds_t, all_labels_t),
             "time": time.time() - start,
         }
+        self._propagate_train_result(result)
+        return result
+
+    def _propagate_train_result(self, result: dict):
+        """Notify inner decorators of train metrics.
+
+        DeepTracingDecorator owns the training loop directly (for per-batch tables),
+        bypassing inner decorators' train_epoch. This method propagates the final
+        result so that inner decorators like PlottingDecorator can still record it.
+        """
+        inner = self._trainer
+        while hasattr(inner, "_trainer"):
+            if hasattr(inner, "_record_train_result"):
+                inner._record_train_result(result)
+            inner = inner._trainer
 
     # ── Logging helpers ──────────────────────────────────────────────────────
 

@@ -128,11 +128,15 @@ Esto elimina la duplicación del bucle que tendría el Decorator puro.
 BaseTrainer (ABC)
 ├── Trainer                        # lógica pura, sin prints ni logging
 └── TrainerDecorator               # base OOP: delega todos los métodos al trainer envuelto
+    ├── LossReporter               # metric reporter: train_loss / val_loss
+    ├── F1Reporter                 # metric reporter: train_f1 / val_f1
+    ├── AccuracyReporter           # metric reporter: train_acc / val_acc
+    ├── PrecisionRecallReporter    # metric reporter: val_precision / val_recall
+    ├── PlottingDecorator          # aspecto: guarda curvas PNG tras cada epoch
+    ├── LayerHooksDecorator        # aspecto: forward hooks en capas Linear
     └── EpochController            # Template Method: define fit() con hooks _on_*
-        ├── TracingDecorator       # controlador: logging a consola y/o fichero
-        │   └── DeepTracingDecorator  # controlador: hereda TracingDecorator + trazado profundo
-        ├── PlottingDecorator      # aspecto: guarda curvas PNG tras cada epoch
-        └── LayerHooksDecorator    # aspecto: forward hooks en capas Linear
+        └── TracingDecorator       # controlador: logging a consola y/o fichero
+            └── DeepTracingDecorator  # controlador: hereda TracingDecorator + trazado profundo
 ```
 
 ### Ficheros
@@ -150,20 +154,26 @@ src/training/
     deep_tracing.py        # DeepTracingDecorator (hereda TracingDecorator)
     plotting.py            # PlottingDecorator (aspecto, guarda PNG)
     layer_hooks.py         # LayerHooksDecorator (aspecto, forward hooks)
+    metric_reporters.py    # LossReporter, F1Reporter, AccuracyReporter, PrecisionRecallReporter
     __init__.py
 ```
 
-### Dos tipos de decoradores
+### Tres tipos de decoradores
 
 **Decoradores OOP (Patrón Decorator GoF)** — `decorators/`
 
-Envuelven el objeto trainer completo. Hay dos subtipos:
+Envuelven el objeto trainer completo. Hay tres subtipos:
 - **Controladores** (`EpochController`): controlan el bucle; solo uno activo por ejecución
-  - `TracingDecorator` — logging a consola (`logger=None`) o a fichero (`logger=Logger`)
+  - `TracingDecorator` — logging a consola (`logger=None`) o a fichero (`logger=Logger`); imprime marcador de epoch y ETA
   - `DeepTracingDecorator` — extiende `TracingDecorator`; añade hooks en cada capa y tabla por bloque del ViT
 - **Aspecto** (`TrainerDecorator`): envuelven métodos concretos; combinables libremente
-  - `PlottingDecorator` — acumula métricas y guarda PNG tras cada eval epoch
+  - `PlottingDecorator` — acumula métricas y guarda PNG tras cada eval epoch; expone `_record_train_result()` para recibir métricas de train cuando `DeepTracingDecorator` gestiona el bucle directamente
   - `LayerHooksDecorator` — captura activaciones de capas Linear cada N epochs
+- **Metric reporters** (`TrainerDecorator`): cada uno imprime una métrica independiente; activables con `--metrics`
+  - `LossReporter` — cachea train_loss en train_epoch, imprime train+val loss tras eval_epoch
+  - `F1Reporter` — ídem para F1 macro
+  - `AccuracyReporter` — ídem para accuracy
+  - `PrecisionRecallReporter` — imprime val_precision y val_recall (sin equivalente en train)
 
 **Decoradores `@` de Python** — `fn_decorators.py`
 
@@ -177,11 +187,21 @@ Envuelven funciones individuales, no objetos. Se aplican a métodos del trainer 
 
 ```
 TracingDecorator / DeepTracingDecorator   ← controlador (--trace)
-  └── PlottingDecorator                   ← aspecto (--layers plot)
-        └── LayerHooksDecorator           ← aspecto (--layers hooks)
-              └── Trainer
-                    train_epoch = measure_energy(timed(train_epoch))  ← --fn
+  └── PrecisionRecallReporter             ← metric reporter (--metrics, solo off/simple)
+        └── AccuracyReporter
+              └── F1Reporter
+                    └── LossReporter
+                          └── PlottingDecorator       ← aspecto (--layers plot)
+                                └── LayerHooksDecorator  ← aspecto (--layers hooks)
+                                      └── Trainer
+                                            train_epoch = measure_energy(timed(fn))  ← --fn
 ```
+
+**Nota sobre `--trace deep`:** `DeepTracingDecorator.train_epoch` gestiona el bucle de entrenamiento directamente (necesario para las tablas por batch). Esto significa:
+- Los metric reporters y `--metrics` se ignoran (deep gestiona sus propias métricas en `_on_epoch_end`)
+- `LayerHooksDecorator` no activa (deep registra sus propios hooks más completos)
+- `@fn` en `train_epoch` no dispara; sí dispara en `eval_epoch`
+- `PlottingDecorator` recibe métricas de train vía `_propagate_train_result()` al final de cada epoch
 
 ### DeepTracingDecorator — detalle
 
@@ -214,10 +234,17 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
 --layers [plot] [hooks]    Decoradores de aspecto (combinables):
                              plot  → PlottingDecorator, PNG en plots/training_FECHA.png
                              hooks → LayerHooksDecorator, activaciones cada 5 epochs
+                                     (ignorado con --trace deep, que tiene sus propios hooks)
 
 --fn [timing] [energy]     Decoradores @ de Python (combinables):
                              timing → @timed en train_epoch y eval_epoch
                              energy → @measure_energy en train_epoch y eval_epoch
+                             (con --trace deep solo aplica a eval_epoch)
+
+--metrics [loss] [f1] [accuracy] [precision_recall]
+                           Metric reporters individuales (solo para --trace off/simple):
+                             sin args (--metrics) → desactiva todos
+                             por defecto → todos activos
 ```
 
 ### Ejemplos
@@ -229,11 +256,17 @@ uv run python scripts/train_single_gpu.py --trace off
 # Log a fichero + gráficas
 uv run python scripts/train_single_gpu.py --trace simple --layers plot
 
+# Solo F1 y loss en pantalla
+uv run python scripts/train_single_gpu.py --trace simple --metrics loss f1
+
 # Trazado profundo + medición de energía
 uv run python scripts/train_single_gpu.py --trace deep --fn energy
 
 # Todo junto
 uv run python scripts/train_single_gpu.py --trace deep --layers plot hooks --fn energy timing
+
+# Test rápido 1 epoch con todo activado
+uv run python scripts/train_single_gpu.py --epochs 1 --trace deep --layers plot hooks --fn energy timing
 
 # Con config del clúster
 uv run python scripts/train_single_gpu.py --config configs/train_cluster.yaml --trace simple
@@ -380,12 +413,14 @@ main ← feature/xxx
 - [x] Entrenamiento single-GPU: `Trainer` + scheduler cosine + checkpoints
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
+  - `decorators/metric_reporters.py`: `LossReporter`, `F1Reporter`, `AccuracyReporter`, `PrecisionRecallReporter`
   - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom`
 - [x] `metrics.py`: métricas extraídas en módulo propio (sin duplicación)
-- [x] Flags `--trace / --layers / --fn` en script de entrenamiento
+- [x] Flags `--trace / --layers / --fn / --metrics` en script de entrenamiento
 - [x] Log con timestamp a fichero + gráficas PNG por epoch
 - [x] `check_feasibility.py` con benchmark, estimaciones y análisis de memoria
 - [x] Entrenamiento local completado: 30 epochs, Val F1 = 0.6586
+- [x] Test completo con todo el stack activo: 1 epoch `--trace deep --layers plot hooks --fn energy timing` (06/05/26)
 - [x] Acceso al clúster VERODE (ULL) con V100 32 GB
 - [x] Dataset en el clúster: 549 488 patches verificados
 - [x] Entorno Python en el clúster: uv + PyTorch cu118 instalado

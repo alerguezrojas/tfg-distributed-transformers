@@ -30,10 +30,15 @@ class PlottingDecorator(TrainerDecorator):
 
     def train_epoch(self, loader: DataLoader) -> dict:
         result = self._trainer.train_epoch(loader)
+        self._record_train_result(result)
+        return result
+
+    def _record_train_result(self, result: dict):
+        """Record train metrics directly — called by DeepTracingDecorator when it
+        owns the training loop and bypasses this decorator's train_epoch."""
         for k, v in result.items():
             if isinstance(v, (int, float)):
                 self._history[f"train_{k}"].append(v)
-        return result
 
     def eval_epoch(self, loader: DataLoader) -> dict:
         result = self._trainer.eval_epoch(loader)
