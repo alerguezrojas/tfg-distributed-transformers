@@ -49,14 +49,12 @@ class TracingDecorator(EpochController):
         self._emit(f"Iniciando entrenamiento — {epochs} epochs")
 
     def _on_epoch_start(self, epoch: int, epochs: int):
-        self._emit(f"[Epoch {epoch:03d}/{epochs}] Entrenando...")
+        self._emit(f"\n── Epoch {epoch:03d}/{epochs:03d} " + "─" * 28)
 
-    def _on_epoch_end(self, epoch, epochs, train_m, val_m, best_f1, epoch_times):
+    def _on_epoch_end(self, epoch, epochs, train_m, _val_m, best_f1, epoch_times):
         self._emit(
-            f"[Epoch {epoch:03d}/{epochs}] "
-            f"train_loss={train_m['loss']:.4f}  train_f1={train_m['f1']:.4f}  train_acc={train_m['accuracy']:.4f} | "
-            f"val_loss={val_m['loss']:.4f}  val_f1={val_m['f1']:.4f}  best={best_f1:.4f}  val_acc={val_m['accuracy']:.4f} | "
-            f"time={train_m['time']:.0f}s  ETA={eta_str(epoch_times, epoch, epochs)}"
+            f"  ETA: {eta_str(epoch_times, epoch, epochs)}  "
+            f"({train_m['time']:.0f}s/epoch, best_f1={best_f1:.4f})"
         )
 
     def _on_fit_end(self, best_f1: float):

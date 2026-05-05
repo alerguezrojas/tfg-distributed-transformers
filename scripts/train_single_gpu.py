@@ -17,6 +17,15 @@ Flags
     Decoradores @ de Python aplicados a train_epoch y eval_epoch:
       timing — imprime tiempo de ejecución de cada método
       energy — mide consumo energético GPU por epoch (requiere nvidia-ml-py)
+
+--metrics [loss] [f1] [accuracy] [precision_recall]
+    Metric reporters individuales (solo para --trace off/simple):
+      loss             — LossReporter: train_loss / val_loss
+      f1               — F1Reporter: train_f1 / val_f1
+      accuracy         — AccuracyReporter: train_acc / val_acc
+      precision_recall — PrecisionRecallReporter: val_precision / val_recall
+    Sin args (--metrics sin valores) desactiva todos los reporters.
+    Con --trace deep este flag se ignora (DeepTracingDecorator los gestiona).
 """
 
 import argparse
@@ -39,6 +48,10 @@ from src.training.decorators import (
     DeepTracingDecorator,
     PlottingDecorator,
     LayerHooksDecorator,
+    LossReporter,
+    F1Reporter,
+    AccuracyReporter,
+    PrecisionRecallReporter,
 )
 from src.training.fn_decorators import timed, measure_energy
 
@@ -61,6 +74,16 @@ def parse_args():
         "--fn", nargs="*", choices=["timing", "energy"], default=[],
         help="Decoradores @ de Python a aplicar: timing energy",
     )
+    parser.add_argument(
+        "--metrics", nargs="*",
+        choices=["loss", "f1", "accuracy", "precision_recall"],
+        default=["loss", "f1", "accuracy", "precision_recall"],
+        help=(
+            "Metric reporters individuales (solo para --trace off/simple). "
+            "Sin args (--metrics) desactiva todos. "
+            "Choices: loss f1 accuracy precision_recall"
+        ),
+    )
     return parser.parse_args()
 
 
@@ -80,10 +103,13 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
+    metrics = args.metrics if args.metrics is not None else []
+
     print(f"Dispositivo : {device}")
     print(f"Traza       : {args.trace}")
     print(f"Capas       : {args.layers or 'ninguna'}")
     print(f"Decoradores@: {args.fn or 'ninguno'}")
+    print(f"Métricas    : {metrics or 'ninguna (--trace deep las gestiona internamente)'}")
 
     # ── Datos ────────────────────────────────────────────────────────────────
 
@@ -122,13 +148,17 @@ def main():
     # ── Construcción del stack de decoradores ────────────────────────────────
     #
     #   OUTER (controlador)
-    #     └── aspecto N   ← --layers
-    #           └── aspecto 1
-    #                 └── Trainer  ← métodos decorados con @ si --fn activo
+    #     └── metric reporter N   ← --metrics   (solo para --trace off/simple)
+    #           └── metric reporter 1
+    #                 └── aspecto N   ← --layers
+    #                       └── aspecto 1
+    #                             └── Trainer  ← métodos con @ si --fn activo
     #
-    # Los decoradores @ se aplican primero (sobre los métodos del Trainer base).
-    # Los decoradores de aspecto (OOP) se apilan encima.
-    # El controlador (OOP) va siempre en el exterior.
+    # Orden de construcción (de dentro hacia afuera):
+    #   1. Decoradores @  sobre métodos del Trainer base
+    #   2. Decoradores de aspecto OOP (hooks, plot)
+    #   3. Metric reporters OOP (loss, f1, accuracy, precision_recall)
+    #   4. Controlador OOP (el más externo)
 
     base = Trainer(
         model=model, optimizer=optimizer, scheduler=scheduler,
@@ -144,7 +174,7 @@ def main():
         base.train_epoch = timed(base.train_epoch)
         base.eval_epoch = timed(base.eval_epoch)
 
-    # 2. Decoradores de aspecto OOP (se apilan sobre el Trainer)
+    # 2. Decoradores de aspecto OOP
     inner = base
     layers = args.layers or []
     if "hooks" in layers:
@@ -152,16 +182,35 @@ def main():
     if "plot" in layers:
         inner = PlottingDecorator(inner, output_path=f"plots/training_{timestamp}.png")
 
-    # 3. Controlador OOP (siempre el más externo)
+    # 3. Logger (necesario antes de crear reporters y controlador)
+    logger = None
+    if args.trace in ("simple", "deep"):
+        log_file = (
+            f"logs/train_deep_{timestamp}.log"
+            if args.trace == "deep"
+            else f"logs/train_{timestamp}.log"
+        )
+        logger = setup_logger("trainer", log_file=log_file)
+
+    # 4. Metric reporters (solo para --trace off/simple; deep los gestiona internamente)
+    #    Se apilan de dentro hacia afuera: el primero en imprimir es el más interno.
+    #    Orden de salida: loss → f1 → accuracy → precision_recall
+    if args.trace != "deep":
+        if "loss" in metrics:
+            inner = LossReporter(inner, logger=logger)
+        if "f1" in metrics:
+            inner = F1Reporter(inner, logger=logger)
+        if "accuracy" in metrics:
+            inner = AccuracyReporter(inner, logger=logger)
+        if "precision_recall" in metrics:
+            inner = PrecisionRecallReporter(inner, logger=logger)
+
+    # 5. Controlador OOP (siempre el más externo)
     if args.trace == "off":
         trainer = TracingDecorator(inner)
-
     elif args.trace == "simple":
-        logger = setup_logger("trainer", log_file=f"logs/train_{timestamp}.log")
         trainer = TracingDecorator(inner, logger=logger)
-
     else:  # deep
-        logger = setup_logger("trainer", log_file=f"logs/train_deep_{timestamp}.log")
         trainer = DeepTracingDecorator(
             inner, logger=logger,
             log_every=cfg["training"].get("log_batch_every", 100),
