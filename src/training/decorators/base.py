@@ -25,6 +25,7 @@ class TrainerDecorator(BaseTrainer):
         self._trainer = trainer
 
     def __getattr__(self, name: str):
+        # Only called when `name` is not found on self — safe to delegate without recursion
         return getattr(self._trainer, name)
 
     def train_epoch(self, loader: DataLoader) -> dict:
@@ -53,6 +54,8 @@ class EpochController(TrainerDecorator):
     """
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
+        # Stack invariant: EpochController (controller) sits outermost; aspect decorators
+        # (PlottingDecorator, LayerHooksDecorator) sit between it and the Trainer.
         best_f1 = 0.0
         epoch_times: list[float] = []
 

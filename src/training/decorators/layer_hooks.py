@@ -33,6 +33,7 @@ class LayerHooksDecorator(TrainerDecorator):
         try:
             result = self._trainer.train_epoch(loader)
         finally:
+            # always remove hooks even if train_epoch raises — leaked hooks accumulate memory
             self._remove()
         if self._epoch % self.log_every_n_epochs == 0:
             self._print()
@@ -45,6 +46,8 @@ class LayerHooksDecorator(TrainerDecorator):
                 self._hooks.append(h)
 
     def _make_hook(self, name: str):
+        # Returns a closure so each hook captures its own `name` by value,
+        # not the loop variable (which would be the same for all hooks otherwise)
         def hook(_m, _i, output):
             self._activations[name] = output.detach().abs().mean().item()
         return hook

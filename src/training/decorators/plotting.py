@@ -29,6 +29,8 @@ class PlottingDecorator(TrainerDecorator):
         self._epoch = 0
 
     def train_epoch(self, loader: DataLoader) -> dict:
+        # When DeepTracingDecorator is the controller it bypasses this method and calls
+        # _record_train_result directly; one of the two paths fires per run, never both.
         result = self._trainer.train_epoch(loader)
         self._record_train_result(result)
         return result
@@ -51,7 +53,7 @@ class PlottingDecorator(TrainerDecorator):
 
     def _save_plot(self):
         import matplotlib
-        matplotlib.use("Agg")
+        matplotlib.use("Agg")  # non-interactive backend; required on headless servers (cluster, SSH)
         import matplotlib.pyplot as plt
 
         epochs = range(1, self._epoch + 1)

@@ -1,3 +1,5 @@
+"""Single-GPU trainer for BigEarthNet multi-label classification."""
+
 import time
 from pathlib import Path
 
@@ -30,6 +32,8 @@ class Trainer(BaseTrainer):
         self.device = device
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        # Model returns raw logits (no sigmoid) — BCEWithLogitsLoss applies sigmoid
+        # internally. Switching to BCELoss would require adding sigmoid to the model.
         self.criterion = nn.BCEWithLogitsLoss()
 
     def train_epoch(self, loader: DataLoader) -> dict:

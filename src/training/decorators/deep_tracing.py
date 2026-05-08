@@ -53,9 +53,14 @@ class DeepTracingDecorator(TracingDecorator):
       - Anomaly detection: dead neurons, vanishing/exploding gradients
     """
 
+    # Gradient norm below this is practically zero → vanishing gradient
     VANISHING_THRESHOLD = 1e-7
+    # Gradient norm above this causes instability → exploding gradient
     EXPLODING_THRESHOLD = 10.0
+    # Activation absolute value below this → neuron considered dead
     DEAD_NEURON_THRESHOLD = 1e-6
+    # Healthy update ratio: grad_norm / weight_norm should be in [1e-4, 1.0]
+    # Below 1e-4 → learning too slow; above 1.0 → updates larger than weights
     HEALTHY_RATIO_MIN = 1e-4
     HEALTHY_RATIO_MAX = 1.0
 
@@ -97,6 +102,7 @@ class DeepTracingDecorator(TracingDecorator):
             if not isinstance(output, torch.Tensor):
                 return
             with torch.no_grad():
+                # detach() drops autograd graph; float() avoids precision loss on fp16
                 f = output.detach().float()
                 s = self._layer_stats.setdefault(name, LayerStats())
                 s.act_mean = f.abs().mean().item()
@@ -107,6 +113,7 @@ class DeepTracingDecorator(TracingDecorator):
 
     def _bwd_hook(self, name: str):
         def hook(_m, _gi, grad_output):
+            # grad_output is a tuple of tensors (one per output); index [0] is the main one
             if grad_output[0] is None:
                 return
             with torch.no_grad():
@@ -129,7 +136,7 @@ class DeepTracingDecorator(TracingDecorator):
                 ps.weight_norm = w_norm
                 ps.grad_norm = g_norm
                 ps.grad_max = g.abs().max().item()
-                ps.update_ratio = g_norm / (w_norm + 1e-8)
+                ps.update_ratio = g_norm / (w_norm + 1e-8)  # +1e-8: avoid div-by-zero on zero-init params
                 ps.vanishing = g_norm < self.VANISHING_THRESHOLD
                 ps.exploding = g_norm > self.EXPLODING_THRESHOLD
         return hook
@@ -171,6 +178,9 @@ class DeepTracingDecorator(TracingDecorator):
         self._emit(f"Entrenamiento completado — mejor Val F1: {best_f1:.4f}")
 
     # ── Custom train_epoch with batch-level table ────────────────────────────
+    # Reimplements train_epoch instead of delegating because it needs access to
+    # batch_idx to fire _log_layer_table every log_every batches. Inner decorators'
+    # train_epoch is bypassed; _propagate_train_result notifies them at the end.
 
     def train_epoch(self, loader: DataLoader) -> dict:
         model = self._trainer.model
@@ -260,6 +270,9 @@ class DeepTracingDecorator(TracingDecorator):
         return "✓ OK"
 
     def _representative_layers(self) -> list[tuple[str, LayerStats]]:
+        # Selects 14 diagnostic points in ViT-B/16:
+        #   1 patch embedding projection + 12 attention output projections (one per block)
+        #   + 1 classification head → captures the full depth of the network
         selected: dict[str, LayerStats] = {}
         for name in sorted(self._layer_stats):
             if "patch_embed" in name and "proj" in name:
