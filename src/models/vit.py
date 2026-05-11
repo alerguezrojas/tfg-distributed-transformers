@@ -1,14 +1,19 @@
 import timm
 import torch
 import torch.nn as nn
+import torch.optim
 
 
-class BigEarthViT(nn.Module):
-    """Vision Transformer for multi-label classification on BigEarthNet-S2.
+class BigEarthModel(nn.Module):
+    """Generic timm model for multi-label classification on BigEarthNet-S2.
 
-    Wraps a pretrained ViT from timm and replaces the classification head
+    Wraps any pretrained model from timm and replaces the classification head
     with one suited for multi-label output (19 classes, no softmax).
+    Supports ViT, DeiT, Swin, ResNet, EfficientNet, and any other timm model.
     """
+
+    # Model families whose backbone exposes `.blocks` and `.patch_embed` → LLRD-compatible
+    VIT_PATTERNS = ("vit_", "deit_", "swin_")
 
     def __init__(
         self,
@@ -17,14 +22,8 @@ class BigEarthViT(nn.Module):
         pretrained: bool = True,
         dropout: float = 0.1,
     ):
-        """
-        Args:
-            model_name: timm model identifier.
-            num_classes: Number of output classes (19 for BigEarthNet).
-            pretrained: Whether to load ImageNet pretrained weights.
-            dropout: Dropout rate before the classification head.
-        """
         super().__init__()
+        self.model_name = model_name
 
         self.backbone = timm.create_model(
             model_name,
@@ -39,6 +38,11 @@ class BigEarthViT(nn.Module):
             nn.Linear(embed_dim, num_classes),
         )
 
+    @property
+    def is_vit(self) -> bool:
+        """True for ViT/DeiT/Swin backbones — required for LLRD optimizer."""
+        return any(self.model_name.startswith(p) for p in self.VIT_PATTERNS)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
@@ -51,15 +55,90 @@ class BigEarthViT(nn.Module):
         return self.head(features)
 
 
+# Backward-compatible alias
+BigEarthViT = BigEarthModel
+
+
 def build_model(
     model_name: str = "vit_base_patch16_224",
     num_classes: int = 19,
     pretrained: bool = True,
-) -> BigEarthViT:
+) -> BigEarthModel:
     """Instantiate and return the model."""
-    model = BigEarthViT(
+    return BigEarthModel(
         model_name=model_name,
         num_classes=num_classes,
         pretrained=pretrained,
     )
-    return model
+
+
+def build_llrd_optimizer(
+    model: BigEarthModel,
+    lr_base: float,
+    weight_decay: float,
+    llrd_decay: float = 0.75,
+) -> torch.optim.AdamW:
+    """Build AdamW with layer-wise learning rate decay (LLRD) for ViT fine-tuning.
+
+    LR decays geometrically from head (lr_base) toward patch_embed
+    (lr_base * llrd_decay^(num_blocks+2)). Bias and norm params skip weight decay.
+
+    Only valid for ViT/DeiT/Swin backbones (model.is_vit == True).
+    For CNN models, use standard AdamW instead.
+
+    Decay schedule (ViT-B/16, 12 blocks):
+      head            → lr_base
+      backbone.norm   → lr_base * decay^1
+      blocks[11]      → lr_base * decay^2
+      ...
+      blocks[0]       → lr_base * decay^13
+      patch_embed     → lr_base * decay^14
+    """
+    if not model.is_vit:
+        raise ValueError(
+            f"LLRD requires a ViT/DeiT/Swin backbone, got '{model.model_name}'. "
+            "Use standard AdamW for CNN models."
+        )
+
+    no_decay = {"bias", "norm"}
+
+    def _split(named_params):
+        decay_p, no_decay_p = [], []
+        for name, param in named_params:
+            if not param.requires_grad:
+                continue
+            if any(kw in name for kw in no_decay):
+                no_decay_p.append(param)
+            else:
+                decay_p.append(param)
+        return decay_p, no_decay_p
+
+    groups: list[dict] = []
+    num_blocks = len(model.backbone.blocks)
+
+    def _add(params_decay, params_no_decay, lr):
+        if params_decay:
+            groups.append({"params": params_decay, "lr": lr, "weight_decay": weight_decay})
+        if params_no_decay:
+            groups.append({"params": params_no_decay, "lr": lr, "weight_decay": 0.0})
+
+    # Head — full lr_base
+    _add(*_split(model.head.named_parameters()), lr_base)
+
+    # backbone top-level params (norm, cls_token, pos_embed) — depth 1
+    top_named = [
+        (n, p) for n, p in model.backbone.named_parameters()
+        if "blocks" not in n and "patch_embed" not in n
+    ]
+    _add(*_split(top_named), lr_base * llrd_decay)
+
+    # Transformer blocks — deeper blocks get lower LR
+    for block_idx in reversed(range(num_blocks)):
+        depth = num_blocks - block_idx  # block 11 → depth 1, block 0 → depth 12
+        lr_block = lr_base * (llrd_decay ** depth)
+        _add(*_split(model.backbone.blocks[block_idx].named_parameters()), lr_block)
+
+    # patch_embed — deepest
+    _add(*_split(model.backbone.patch_embed.named_parameters()), lr_base * (llrd_decay ** (num_blocks + 2)))
+
+    return torch.optim.AdamW(groups)

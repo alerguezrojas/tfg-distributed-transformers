@@ -1,8 +1,14 @@
 """DeepTracingDecorator — per-layer, per-neuron real-time tracing.
 
 Extends TracingDecorator: inherits the fit loop (EpochController) and the
-logging infrastructure (_emit). Adds hook registration around the loop and
-batch-level table output inside train_epoch.
+logging infrastructure (_emit). Each diagnostic feature is independently
+activatable via the `features` parameter.
+
+Features:
+  model-summary  — torchinfo architecture summary at fit start
+  grad-monitor   — forward/backward/param hooks (activation & gradient stats)
+  batch-table    — per-layer table logged every log_every batches (requires hooks)
+  anomalies      — dead-neuron / vanishing / exploding gradient alerts at epoch end
 """
 
 import logging
@@ -16,6 +22,11 @@ from torch.utils.data import DataLoader
 from src.training.base_trainer import BaseTrainer
 from src.training.metrics import f1_score, accuracy, eta_str
 from src.training.decorators.tracing import TracingDecorator
+
+
+ALL_INSPECT_FEATURES: frozenset[str] = frozenset(
+    {"model-summary", "grad-monitor", "batch-table", "anomalies"}
+)
 
 
 @dataclass
@@ -41,37 +52,58 @@ class ParamStats:
 
 
 class DeepTracingDecorator(TracingDecorator):
-    """Maximum-depth tracing: forward hooks, backward hooks, param hooks, GPU memory.
+    """Granular diagnostic tracing — each feature independently activatable.
 
     Inherits from TracingDecorator so the fit loop and logging are reused.
-    Adds:
-      - Model summary via torchinfo at startup
-      - Forward hooks on every leaf module → activation stats
-      - Backward hooks on every leaf module → gradient stats
-      - Param hooks on every trainable parameter → weight/update ratio
-      - Batch-level layer table logged every log_every batches
-      - Anomaly detection: dead neurons, vanishing/exploding gradients
+
+    Pass `features` to select which diagnostics to enable (default: all).
+    Available features:
+      "model-summary"  — torchinfo summary at fit start
+      "grad-monitor"   — hooks on every leaf module and param
+      "batch-table"    — per-layer table every log_every batches
+      "anomalies"      — anomaly alerts at epoch end (needs grad-monitor)
+
+    Examples:
+        # Only show model architecture — zero hook overhead:
+        DeepTracingDecorator(trainer, logger, features={"model-summary"})
+
+        # Monitor gradients and detect anomalies, no per-batch output:
+        DeepTracingDecorator(trainer, logger, features={"grad-monitor", "anomalies"})
+
+        # Full depth (equivalent to legacy --trace deep):
+        DeepTracingDecorator(trainer, logger)  # features defaults to all
     """
 
-    # Gradient norm below this is practically zero → vanishing gradient
     VANISHING_THRESHOLD = 1e-7
-    # Gradient norm above this causes instability → exploding gradient
     EXPLODING_THRESHOLD = 10.0
-    # Activation absolute value below this → neuron considered dead
     DEAD_NEURON_THRESHOLD = 1e-6
-    # Healthy update ratio: grad_norm / weight_norm should be in [1e-4, 1.0]
-    # Below 1e-4 → learning too slow; above 1.0 → updates larger than weights
     HEALTHY_RATIO_MIN = 1e-4
     HEALTHY_RATIO_MAX = 1.0
 
-    def __init__(self, trainer: BaseTrainer, logger: logging.Logger, log_every: int = 100):
-        super().__init__(trainer, logger=logger)
+    def __init__(
+        self,
+        trainer: BaseTrainer,
+        logger: logging.Logger,
+        log_every: int = 100,
+        patience: int | None = None,
+        features: set[str] | None = None,
+    ):
+        super().__init__(trainer, logger=logger, patience=patience)
+        self._features: frozenset[str] = (
+            frozenset(features) if features is not None else ALL_INSPECT_FEATURES
+        )
         self.log_every = log_every
         self._layer_stats: dict[str, LayerStats] = {}
         self._param_stats: dict[str, ParamStats] = {}
         self._forward_hooks: list = []
         self._param_hooks: list = []
         self._current_epoch: int = 0
+
+    def _needs_hooks(self) -> bool:
+        return bool(self._features & {"grad-monitor", "batch-table", "anomalies"})
+
+    def _needs_own_train_loop(self) -> bool:
+        return "batch-table" in self._features
 
     # ── Hook registration ────────────────────────────────────────────────────
 
@@ -144,14 +176,22 @@ class DeepTracingDecorator(TracingDecorator):
     # ── EpochController hooks ────────────────────────────────────────────────
 
     def _on_fit_start(self, epochs: int):
-        self._show_model_summary()
-        self._register_all_hooks()
-        n_mod = len(list(self._trainer.model.named_modules()))
-        n_par = sum(1 for p in self._trainer.model.parameters() if p.requires_grad)
-        self._emit(
-            f"Iniciando entrenamiento profundo — {epochs} epochs | "
-            f"módulos: {n_mod} | params: {n_par}"
-        )
+        if "model-summary" in self._features:
+            self._show_model_summary()
+        if self._needs_hooks():
+            self._register_all_hooks()
+            n_mod = len(list(self._trainer.model.named_modules()))
+            n_par = sum(1 for p in self._trainer.model.parameters() if p.requires_grad)
+            self._emit(
+                f"Iniciando entrenamiento profundo — {epochs} epochs | "
+                f"módulos: {n_mod} | params: {n_par} | "
+                f"features: {', '.join(sorted(self._features))}"
+            )
+        else:
+            self._emit(
+                f"Iniciando entrenamiento — {epochs} epochs | "
+                f"features: {', '.join(sorted(self._features))}"
+            )
 
     def _on_epoch_start(self, epoch: int, epochs: int):
         self._current_epoch = epoch
@@ -163,7 +203,8 @@ class DeepTracingDecorator(TracingDecorator):
         )
 
     def _on_epoch_end(self, epoch, epochs, train_m, val_m, best_f1, epoch_times):
-        self._log_anomalies(epoch)
+        if "anomalies" in self._features and self._needs_hooks():
+            self._log_anomalies(epoch)
         self._emit(
             f"[E{epoch:03d}/{epochs}] ══ RESUMEN  "
             f"train_loss={train_m['loss']:.4f}  train_f1={train_m['f1']:.4f}  train_acc={train_m['accuracy']:.4f} | "
@@ -174,20 +215,26 @@ class DeepTracingDecorator(TracingDecorator):
         )
 
     def _on_fit_end(self, best_f1: float):
-        self._remove_all_hooks()
+        if self._needs_hooks():
+            self._remove_all_hooks()
         self._emit(f"Entrenamiento completado — mejor Val F1: {best_f1:.4f}")
 
-    # ── Custom train_epoch with batch-level table ────────────────────────────
-    # Reimplements train_epoch instead of delegating because it needs access to
-    # batch_idx to fire _log_layer_table every log_every batches. Inner decorators'
-    # train_epoch is bypassed; _propagate_train_result notifies them at the end.
+    # ── train_epoch: own loop only when batch-table is active ────────────────
+    # When batch-table is inactive, delegates to inner trainer (normal chain).
+    # When active, reimplements the loop to fire _log_layer_table every log_every
+    # batches. Inner decorators' train_epoch is bypassed; _propagate_train_result
+    # notifies them (e.g. PlottingDecorator) at the end.
 
     def train_epoch(self, loader: DataLoader) -> dict:
+        if not self._needs_own_train_loop():
+            return self._trainer.train_epoch(loader)
+        return self._train_epoch_deep(loader)
+
+    def _train_epoch_deep(self, loader: DataLoader) -> dict:
         model = self._trainer.model
         optimizer = self._trainer.optimizer
         criterion = self._trainer.criterion
         device = self._trainer.device
-        scheduler = self._trainer.scheduler
 
         model.train()
         total_loss = 0.0
@@ -201,6 +248,9 @@ class DeepTracingDecorator(TracingDecorator):
             logits = model(images)
             loss = criterion(logits, labels)
             loss.backward()
+            grad_clip = getattr(self._trainer, "grad_clip", None)
+            if grad_clip is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
 
             total_loss += loss.item()
@@ -212,6 +262,7 @@ class DeepTracingDecorator(TracingDecorator):
             if batch_idx % self.log_every == 0:
                 self._log_layer_table(self._current_epoch, batch_idx, len(loader))
 
+        scheduler = getattr(self._trainer, "scheduler", None)
         if scheduler:
             scheduler.step()
 
@@ -227,12 +278,7 @@ class DeepTracingDecorator(TracingDecorator):
         return result
 
     def _propagate_train_result(self, result: dict):
-        """Notify inner decorators of train metrics.
-
-        DeepTracingDecorator owns the training loop directly (for per-batch tables),
-        bypassing inner decorators' train_epoch. This method propagates the final
-        result so that inner decorators like PlottingDecorator can still record it.
-        """
+        """Notify inner decorators of train metrics when we own the training loop."""
         inner = self._trainer
         while hasattr(inner, "_trainer"):
             if hasattr(inner, "_record_train_result"):
@@ -262,12 +308,12 @@ class DeepTracingDecorator(TracingDecorator):
 
     def _layer_status(self, s: LayerStats) -> str:
         if s.dead_ratio > 0.5:
-            return "⚠ DEAD"
+            return "DEAD"
         if s.exploding:
-            return "⚠ EXPLODE"
+            return "EXPLODE"
         if s.vanishing and s.grad_norm > 0:
-            return "⚠ VANISH"
-        return "✓ OK"
+            return "VANISH"
+        return "OK"
 
     def _representative_layers(self) -> list[tuple[str, LayerStats]]:
         # Selects 14 diagnostic points in ViT-B/16:
@@ -300,15 +346,15 @@ class DeepTracingDecorator(TracingDecorator):
         )
         self._emit(
             f"  {'Layer':<45} {'act_μ':>7} {'act_σ':>7} {'dead%':>6} "
-            f"{'grad_n':>8} {'grad_max':>9} {'status':>10}"
+            f"{'grad_n':>8} {'grad_max':>9} {'status':>8}"
         )
-        self._emit("  " + "─" * 100)
+        self._emit("  " + "─" * 98)
         for name, s in layers:
             short = name[-43:] if len(name) > 43 else name
             self._emit(
                 f"  {short:<45} "
                 f"{s.act_mean:>7.4f} {s.act_std:>7.4f} {s.dead_ratio*100:>5.1f}% "
-                f"{s.grad_norm:>8.4f} {s.grad_max:>9.4f} {self._layer_status(s):>10}"
+                f"{s.grad_norm:>8.4f} {s.grad_max:>9.4f} {self._layer_status(s):>8}"
             )
 
     def _log_anomalies(self, epoch: int):
@@ -320,12 +366,12 @@ class DeepTracingDecorator(TracingDecorator):
             if s.update_ratio > 0 and not (self.HEALTHY_RATIO_MIN <= s.update_ratio <= self.HEALTHY_RATIO_MAX)
         ]
         if dead:
-            self._emit(f"[E{epoch:03d}] ⚠ Neuronas muertas en {len(dead)} capas: {dead[:3]}")
+            self._emit(f"[E{epoch:03d}] Neuronas muertas en {len(dead)} capas: {dead[:3]}")
         if exploding:
-            self._emit(f"[E{epoch:03d}] ⚠ Gradiente explosivo en: {exploding[:3]}")
+            self._emit(f"[E{epoch:03d}] Gradiente explosivo en: {exploding[:3]}")
         if vanishing:
-            self._emit(f"[E{epoch:03d}] ⚠ Gradiente evanescente en: {vanishing[:3]}")
+            self._emit(f"[E{epoch:03d}] Gradiente evanescente en: {vanishing[:3]}")
         if bad:
-            self._emit(f"[E{epoch:03d}] ⚠ Update ratio anómalo en {len(bad)} params")
+            self._emit(f"[E{epoch:03d}] Update ratio anómalo en {len(bad)} params")
         if not any([dead, exploding, vanishing, bad]):
-            self._emit(f"[E{epoch:03d}] ✓ Flujo de gradientes sin anomalías")
+            self._emit(f"[E{epoch:03d}] Flujo de gradientes sin anomalías")

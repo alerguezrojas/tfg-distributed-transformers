@@ -1,4 +1,4 @@
-# Configuración de entrenamiento - BigEarthNet-S2
+# Configuración de entrenamiento local - BigEarthNet-S2 (RTX 3060 Ti, 8 GB)
 
 data:
   root: "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2"
@@ -12,10 +12,15 @@ model:
 
 training:
   epochs: 30
-  batch_size: 32          # 64 OOM en RTX 3060 Ti (8 GB); usar --batch-size 32
-  lr: 0.0001              # OJO: no usar 1e-4, se parsea como string en YAML
-  weight_decay: 0.0001
-  log_batch_every: 50     # DeepTracingDecorator: log de tabla de capas cada N batches
+  batch_size: 32            # 64 OOM en RTX 3060 Ti (8 GB)
+  lr: 0.0001                # OJO: no usar 1e-4, se parsea como string en YAML
+  lr_min: 0.000001
+  weight_decay: 0.05        # estándar AdamW+ViT (DeiT, timm recipes)
+  warmup_epochs: 5          # LinearLR warmup antes del cosine decay
+  llrd_decay: 0.75          # layer-wise LR decay para ViT; 0.0 = AdamW estándar
+  grad_clip: 1.0            # max_norm para clip_grad_norm_
+  early_stopping_patience: 10
+  log_batch_every: 50       # DeepTracingDecorator / BatchMonitor: log cada N batches
 
 checkpoint:
   dir: "checkpoints/single_gpu"

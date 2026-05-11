@@ -25,6 +25,7 @@ class Trainer(BaseTrainer):
         scheduler: torch.optim.lr_scheduler.LRScheduler | None,
         device: torch.device,
         checkpoint_dir: str = "checkpoints",
+        grad_clip: float | None = None,
     ):
         self.model = model.to(device)
         self.optimizer = optimizer
@@ -32,6 +33,7 @@ class Trainer(BaseTrainer):
         self.device = device
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.grad_clip = grad_clip
         # Model returns raw logits (no sigmoid) — BCEWithLogitsLoss applies sigmoid
         # internally. Switching to BCELoss would require adding sigmoid to the model.
         self.criterion = nn.BCEWithLogitsLoss()
@@ -51,6 +53,8 @@ class Trainer(BaseTrainer):
             logits = self.model(images)
             loss = self.criterion(logits, labels)
             loss.backward()
+            if self.grad_clip is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
             self.optimizer.step()
 
             total_loss += loss.item()
@@ -100,6 +104,9 @@ class Trainer(BaseTrainer):
             "accuracy": m.accuracy(all_preds_t, all_labels_t),
             "precision": m.precision(all_preds_t, all_labels_t),
             "recall": m.recall(all_preds_t, all_labels_t),
+            # Tensors for per-class analysis (consumed by ConfusionMatrixDecorator if active)
+            "_preds": all_preds_t,
+            "_labels": all_labels_t,
         }
 
     def save_checkpoint(self, epoch: int, metrics: dict):
