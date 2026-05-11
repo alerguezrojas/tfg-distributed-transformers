@@ -31,8 +31,13 @@ class TracingDecorator(EpochController):
         trainer.fit(train_loader, val_loader, epochs=30)
     """
 
-    def __init__(self, trainer: BaseTrainer, logger: logging.Logger | None = None):
-        super().__init__(trainer)
+    def __init__(
+        self,
+        trainer: BaseTrainer,
+        logger: logging.Logger | None = None,
+        patience: int | None = None,
+    ):
+        super().__init__(trainer, patience=patience)
         self._logger = logger
 
     # ── Internal helpers ─────────────────────────────────────────────────────
@@ -59,6 +64,12 @@ class TracingDecorator(EpochController):
 
     def _on_fit_end(self, best_f1: float):
         self._emit(f"Entrenamiento completado — mejor Val F1: {best_f1:.4f}")
+
+    def _on_early_stop(self, epoch: int, best_f1: float):
+        self._emit(
+            f"[Early stopping] Sin mejora en {self._patience} epochs consecutivos. "
+            f"Parado en epoch {epoch}. Mejor Val F1: {best_f1:.4f}"
+        )
 
     def save_checkpoint(self, epoch: int, metrics: dict):
         self._trainer.save_checkpoint(epoch, metrics)

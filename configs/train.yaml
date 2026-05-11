@@ -12,10 +12,15 @@ model:
 
 training:
   epochs: 30
-  batch_size: 32          # 64 OOM en RTX 3060 Ti (8 GB); usar --batch-size 32
+  batch_size: 32          # 64 OOM en RTX 3060 Ti (8 GB)
   lr: 0.0001              # OJO: no usar 1e-4, se parsea como string en YAML
-  weight_decay: 0.0001
-  log_batch_every: 50     # DeepTracingDecorator: log de tabla de capas cada N batches
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 100    # DeepTracingDecorator: log de tabla de capas cada N batches
 
 checkpoint:
   dir: "checkpoints/single_gpu"

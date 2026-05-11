@@ -40,7 +40,7 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.dataset import BigEarthNetDataset, get_transforms
-from src.models.vit import build_model
+from src.models.vit import build_model, build_llrd_optimizer
 from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.decorators import (
@@ -145,13 +145,37 @@ def main():
     model = build_model(cfg["model"]["name"], pretrained=cfg["model"]["pretrained"])
     print(f"Modelo: {cfg['model']['name']} | Parámetros: {sum(p.numel() for p in model.parameters()):,}")
 
-    optimizer = torch.optim.AdamW(
-        model.parameters(), lr=cfg["training"]["lr"],
-        weight_decay=cfg["training"]["weight_decay"],
-    )
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer, T_max=cfg["training"]["epochs"],
-    )
+    lr_base = cfg["training"]["lr"]
+    weight_decay = cfg["training"]["weight_decay"]
+    llrd_decay = cfg["training"].get("llrd_decay", 0.0)
+
+    if llrd_decay > 0.0:
+        optimizer = build_llrd_optimizer(model, lr_base, weight_decay, llrd_decay)
+        print(f"Optimizer: AdamW + LLRD (decay={llrd_decay}, {len(optimizer.param_groups)} param groups)")
+    else:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr_base, weight_decay=weight_decay)
+        print(f"Optimizer: AdamW (lr={lr_base}, wd={weight_decay})")
+
+    warmup_epochs = cfg["training"].get("warmup_epochs", 0)
+    epochs = cfg["training"]["epochs"]
+    lr_min = cfg["training"].get("lr_min", 1e-6)
+    if warmup_epochs > 0:
+        scheduler_warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs,
+        )
+        scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=epochs - warmup_epochs, eta_min=lr_min,
+        )
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, schedulers=[scheduler_warmup, scheduler_cosine],
+            milestones=[warmup_epochs],
+        )
+        print(f"Scheduler: LinearWarmup({warmup_epochs} epochs) + CosineAnnealingLR(eta_min={lr_min})")
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=epochs, eta_min=lr_min,
+        )
+        print(f"Scheduler: CosineAnnealingLR(eta_min={lr_min})")
 
     # ── Construcción del stack de decoradores ────────────────────────────────
     #
@@ -168,9 +192,11 @@ def main():
     #   3. Metric reporters OOP (loss, f1, accuracy, precision_recall)
     #   4. Controlador OOP (el más externo)
 
+    grad_clip = cfg["training"].get("grad_clip", None)
     base = Trainer(
         model=model, optimizer=optimizer, scheduler=scheduler,
         device=device, checkpoint_dir=cfg["checkpoint"]["dir"],
+        grad_clip=grad_clip,
     )
 
     # 1. Decoradores @ de Python (sobre métodos concretos del Trainer)
@@ -214,19 +240,21 @@ def main():
             inner = PrecisionRecallReporter(inner, logger=logger)
 
     # 5. Controlador OOP (siempre el más externo)
+    patience = cfg["training"].get("early_stopping_patience", None)
     if args.trace == "off":
-        trainer = TracingDecorator(inner)
+        trainer = TracingDecorator(inner, patience=patience)
     elif args.trace == "simple":
-        trainer = TracingDecorator(inner, logger=logger)
+        trainer = TracingDecorator(inner, logger=logger, patience=patience)
     else:  # deep
         trainer = DeepTracingDecorator(
             inner, logger=logger,
             log_every=cfg["training"].get("log_batch_every", 100),
+            patience=patience,
         )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────
 
-    trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])
+    trainer.fit(train_loader, val_loader, epochs=epochs)
 
 
 if __name__ == "__main__":

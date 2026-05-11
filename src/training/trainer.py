@@ -25,6 +25,8 @@ class Trainer(BaseTrainer):
         scheduler: torch.optim.lr_scheduler.LRScheduler | None,
         device: torch.device,
         checkpoint_dir: str = "checkpoints",
+        criterion: nn.Module | None = None,
+        grad_clip: float | None = None,
     ):
         self.model = model.to(device)
         self.optimizer = optimizer
@@ -34,7 +36,9 @@ class Trainer(BaseTrainer):
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         # Model returns raw logits (no sigmoid) — BCEWithLogitsLoss applies sigmoid
         # internally. Switching to BCELoss would require adding sigmoid to the model.
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.criterion = criterion if criterion is not None else nn.BCEWithLogitsLoss()
+        # None = no clipping; otherwise clips gradient norm to this value before optimizer.step()
+        self.grad_clip = grad_clip
 
     def train_epoch(self, loader: DataLoader) -> dict:
         self.model.train()
@@ -51,6 +55,8 @@ class Trainer(BaseTrainer):
             logits = self.model(images)
             loss = self.criterion(logits, labels)
             loss.backward()
+            if self.grad_clip is not None:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
             self.optimizer.step()
 
             total_loss += loss.item()

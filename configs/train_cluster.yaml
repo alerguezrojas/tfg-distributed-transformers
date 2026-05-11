@@ -10,10 +10,15 @@ model:
 
 training:
   epochs: 30
-  batch_size: 32
+  batch_size: 64
   lr: 0.0001
-  weight_decay: 0.0001
-  log_batch_every: 50
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 100
 
 checkpoint:
   dir: "checkpoints/single_gpu"
