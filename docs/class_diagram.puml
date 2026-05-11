@@ -1,0 +1,418 @@
+@startuml class_diagram
+skinparam monochrome false
+skinparam classAttributeIconSize 0
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 11
+skinparam classFontStyle bold
+skinparam classFontSize 12
+skinparam classHeaderBackgroundColor #1A5276
+skinparam classBorderColor #2C3E50
+skinparam classBackgroundColor #EBF5FB
+skinparam arrowColor #2C3E50
+skinparam arrowThickness 1.5
+skinparam roundCorner 8
+skinparam padding 4
+skinparam linetype ortho
+skinparam packageStyle rectangle
+skinparam packageBorderColor #95A5A6
+skinparam packageBackgroundColor #FDFEFE
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.training
+' ════════════════════════════════════════════════════════════════
+package "src.training" #FDFEFE {
+
+  abstract class BaseTrainer <<abstract>> {
+    {abstract} + train_epoch(loader: DataLoader): dict
+    {abstract} + eval_epoch(loader: DataLoader): dict
+    {abstract} + save_checkpoint(epoch: int, metrics: dict)
+    {abstract} + fit(train_loader, val_loader, epochs: int)
+  }
+
+  class Trainer {
+    - model: nn.Module
+    - optimizer: Optimizer
+    - scheduler: LRScheduler | None
+    - device: torch.device
+    - checkpoint_dir: Path
+    - criterion: BCEWithLogitsLoss
+    + train_epoch(loader): dict
+    + eval_epoch(loader): dict
+    + save_checkpoint(epoch, metrics)
+    + fit(train_loader, val_loader, epochs)
+  }
+
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.training.decorators
+' ════════════════════════════════════════════════════════════════
+package "src.training.decorators" #FDFEFE {
+
+  ' ── Base decorator ─────────────────────────────────────────
+  class TrainerDecorator {
+    # _trainer: BaseTrainer
+    + train_epoch(loader): dict
+    + eval_epoch(loader): dict
+    + save_checkpoint(epoch, metrics)
+    + fit(train_loader, val_loader, epochs)
+    + __getattr__(name: str)
+  }
+
+  ' ── Template Method controller ─────────────────────────────
+  class EpochController {
+    + fit(train_loader, val_loader, epochs)
+    # _on_fit_start(epochs: int)
+    # _on_epoch_start(epoch, epochs)
+    # _on_epoch_end(epoch, epochs, train_m,\n  val_m, best_f1, epoch_times)
+    # _on_fit_end(best_f1: float)
+  }
+
+  ' ── Controllers ────────────────────────────────────────────
+  class TracingDecorator {
+    - _logger: Logger | None
+    + save_checkpoint(epoch, metrics)
+    # _on_fit_start(epochs)
+    # _on_epoch_start(epoch, epochs)
+    # _on_epoch_end(...)
+    # _on_fit_end(best_f1)
+    - _emit(msg: str)
+  }
+
+  class DeepTracingDecorator {
+    - _layer_stats: dict[str, LayerStats]
+    - _param_stats: dict[str, ParamStats]
+    - _forward_hooks: list
+    - _param_hooks: list
+    - log_every: int
+    + train_epoch(loader): dict
+    # _on_fit_start(epochs)
+    # _on_epoch_start(epoch, epochs)
+    # _on_epoch_end(...)
+    # _on_fit_end(best_f1)
+    - _register_all_hooks()
+    - _remove_all_hooks()
+    - _log_layer_table(epoch, batch, n)
+    - _log_anomalies(epoch)
+    - _propagate_train_result(result)
+  }
+
+  ' ── Aspect decorators ──────────────────────────────────────
+  class PlottingDecorator {
+    - _history: dict[str, list[float]]
+    - _output_path: Path
+    - _epoch: int
+    + train_epoch(loader): dict
+    + eval_epoch(loader): dict
+    + _record_train_result(result: dict)
+    - _save_plot()
+    - _subplot(ax, epochs, key, title)
+  }
+
+  class LayerHooksDecorator {
+    - _hooks: list
+    - _activations: dict[str, float]
+    - log_every_n_epochs: int
+    - _epoch: int
+    + train_epoch(loader): dict
+    - _register()
+    - _make_hook(name: str)
+    - _remove()
+    - _print()
+  }
+
+  ' ── Metric reporters ───────────────────────────────────────
+  abstract class _MetricReporter {
+    - _logger: Logger | None
+    - _emit(msg: str)
+  }
+
+  abstract class _TrainValReporter {
+    - _key: str
+    - _label: str
+    - _cached_train: float | None
+    + train_epoch(loader): dict
+    + eval_epoch(loader): dict
+  }
+
+  class LossReporter {
+    - _key = "loss"
+    - _label = "loss"
+  }
+
+  class F1Reporter {
+    - _key = "f1"
+    - _label = "f1"
+  }
+
+  class AccuracyReporter {
+    - _key = "accuracy"
+    - _label = "accuracy"
+  }
+
+  class PrecisionRecallReporter {
+    + eval_epoch(loader): dict
+  }
+
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.training.decorators — dataclasses internas
+' ════════════════════════════════════════════════════════════════
+package "src.training.decorators (dataclasses)" #FDFEFE {
+
+  class LayerStats <<dataclass>> {
+    + act_mean: float
+    + act_std: float
+    + act_max: float
+    + dead_ratio: float
+    + grad_norm: float
+    + grad_max: float
+    + vanishing: bool
+    + exploding: bool
+  }
+
+  class ParamStats <<dataclass>> {
+    + weight_norm: float
+    + grad_norm: float
+    + grad_max: float
+    + update_ratio: float
+    + vanishing: bool
+    + exploding: bool
+  }
+
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.training (fn_decorators)
+' ════════════════════════════════════════════════════════════════
+package "src.training.fn_decorators" #FDFEFE {
+
+  class _PowerSampler {
+    - _samples: list[float]
+    - _stop: threading.Event
+    - _thread: Thread | None
+    - _handle
+    + available: bool
+    + start()
+    - _run()
+    + stop(): tuple[float, float]
+  }
+
+  note as fn_note
+    **Decoradores @ de función**
+    timed(fn) → wrapper
+    log_call(fn) → wrapper
+    retry_on_cuda_oom(fn) → wrapper
+    measure_energy(fn) → wrapper
+  end note
+
+  _PowerSampler .. fn_note
+
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.models
+' ════════════════════════════════════════════════════════════════
+package "src.models" #FDFEFE {
+
+  class BigEarthViT {
+    - backbone: VisionTransformer
+    - head: nn.Sequential
+    + forward(x: Tensor): Tensor
+    + build_model(name, num_classes, pretrained): BigEarthViT
+  }
+
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.data
+' ════════════════════════════════════════════════════════════════
+package "src.data" #FDFEFE {
+
+  class BigEarthNetDataset {
+    - root: Path
+    - patch_ids: list[str]
+    - labels_list: list
+    - transform: Compose | None
+    + __len__(): int
+    + __getitem__(idx): tuple[Tensor, Tensor]
+    - _get_patch_dir(patch_id): Path
+    - _load_image(patch_dir): ndarray
+    - _load_labels(idx): Tensor
+    + get_transforms(split): Compose
+  }
+
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: scripts.check_feasibility
+' ════════════════════════════════════════════════════════════════
+package "scripts.check_feasibility" #FDFEFE {
+
+  class ModelInfo <<dataclass>> {
+    + name: str
+    + total_params: int
+    + flops_per_image_mflops: float
+    + weight_mb: float
+    + gradient_mb: float
+    + optimizer_mb: float
+    + activation_mb_per_image: float
+    + total_static_mb: float
+    + total_mb(batch_size): float
+  }
+
+  class HardwareInfo <<dataclass>> {
+    + device_name: str
+    + total_vram_gb: float
+    + free_vram_gb: float
+    + is_cuda: bool
+  }
+
+  class BenchmarkResult <<dataclass>> {
+    + batch_size: int
+    + trace_mode: str
+    + seconds_per_batch: float
+    + images_per_second: float
+    + peak_vram_gb: float
+    + oom: bool
+  }
+
+  class FeasibilityReport <<dataclass>> {
+    + model_info: ModelInfo
+    + hardware_info: HardwareInfo
+    + dataset_train: int
+    + dataset_val: int
+    + results: list[BenchmarkResult]
+  }
+
+  class ModelAnalyzer {
+    - model: nn.Module
+    - device: torch.device
+    + analyze(): ModelInfo
+    - _run_summary(): tuple[float, float]
+  }
+
+  class HardwareProbe {
+    + probe(): HardwareInfo
+  }
+
+  class Benchmarker {
+    - model: nn.Module
+    - device: torch.device
+    + run(batch_size, trace_mode): BenchmarkResult
+    - _benchmark(batches, mode): tuple
+    - _step(images, labels)
+    - _register_deep_hooks(): list
+  }
+
+  class TimeEstimator {
+    + estimate(result, size, epochs): tuple | None
+    + format_time(seconds): str
+  }
+
+  class ReportFormatter {
+    + print(report: FeasibilityReport)
+    - _model_section(m: ModelInfo)
+    - _hardware_section(h: HardwareInfo)
+    - _benchmark_section(report)
+    - _estimates_section(report)
+    - _recommendations_section(report)
+  }
+
+  class FeasibilityChecker <<Facade>> {
+    - model_name: str
+    - batch_sizes: list[int]
+    - epochs_list: list[int]
+    - trace_modes: list[str]
+    - dataset_train: int
+    - dataset_val: int
+    + run(): FeasibilityReport
+  }
+
+}
+
+' ════════════════════════════════════════════════════════════════
+' RELACIONES DE HERENCIA
+' ════════════════════════════════════════════════════════════════
+
+BaseTrainer <|-- Trainer
+BaseTrainer <|-- TrainerDecorator
+
+TrainerDecorator <|-- EpochController
+TrainerDecorator <|-- PlottingDecorator
+TrainerDecorator <|-- LayerHooksDecorator
+TrainerDecorator <|-- _MetricReporter
+
+EpochController <|-- TracingDecorator
+TracingDecorator <|-- DeepTracingDecorator
+
+_MetricReporter <|-- _TrainValReporter
+_MetricReporter <|-- PrecisionRecallReporter
+
+_TrainValReporter <|-- LossReporter
+_TrainValReporter <|-- F1Reporter
+_TrainValReporter <|-- AccuracyReporter
+
+' ════════════════════════════════════════════════════════════════
+' RELACIONES DE COMPOSICIÓN / DEPENDENCIA
+' ════════════════════════════════════════════════════════════════
+
+TrainerDecorator o-- BaseTrainer : wraps >
+
+DeepTracingDecorator ..> LayerStats : uses >
+DeepTracingDecorator ..> ParamStats : uses >
+
+_PowerSampler ..> fn_note : implements
+
+FeasibilityChecker ..> ModelAnalyzer : uses >
+FeasibilityChecker ..> HardwareProbe : uses >
+FeasibilityChecker ..> Benchmarker : uses >
+FeasibilityChecker ..> TimeEstimator : uses >
+FeasibilityChecker ..> ReportFormatter : uses >
+
+ModelAnalyzer ..> ModelInfo : returns >
+HardwareProbe ..> HardwareInfo : returns >
+Benchmarker ..> BenchmarkResult : returns >
+FeasibilityChecker ..> FeasibilityReport : returns >
+
+FeasibilityReport *-- ModelInfo
+FeasibilityReport *-- HardwareInfo
+FeasibilityReport *-- BenchmarkResult
+
+BigEarthViT ..> BigEarthNetDataset : trained on >
+
+' ════════════════════════════════════════════════════════════════
+' ESTILOS POR TIPO
+' ════════════════════════════════════════════════════════════════
+
+skinparam class {
+  HeaderBackgroundColor #1A5276
+  BackgroundColor #EBF5FB
+  BorderColor #2C3E50
+  FontColor #FFFFFF
+  AttributeFontColor #2C3E50
+}
+
+skinparam class<<abstract>> {
+  HeaderBackgroundColor #1B2631
+  BackgroundColor #F4F6F7
+}
+
+skinparam class<<dataclass>> {
+  HeaderBackgroundColor #6E2F04
+  BackgroundColor #FDF2E9
+}
+
+skinparam class<<Facade>> {
+  HeaderBackgroundColor #512E5F
+  BackgroundColor #F9EBF8
+}
+
+' Colores por clase (override manual)
+skinparam class {
+  BackgroundColor<<TrainerDecorator>> #F5EEF8
+  HeaderBackgroundColor<<TrainerDecorator>> #4A235A
+}
+
+@enduml
