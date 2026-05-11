@@ -297,7 +297,12 @@ uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off
 - batch_size=64: OOM (necesita ~11.5 GB)
 - `--trace deep` añade ~22% overhead vs off
 
-**En V100 32 GB (clúster):** pendiente de ejecutar tras liberar el nodo.
+**En V100 32 GB (clúster):** ejecutado el 2026-05-07 en verode21.
+- Batch óptimo: **64** (100.6 imgs/s) — batch=128 también cabe (16.55 GB, 100.5 imgs/s, sin ganancia real)
+- batch=64 OOM solo en local (8 GB); el V100 tiene 34 GB, caben hasta batch=128
+- `--trace deep` añade **18% overhead** a batch 64 (vs 22% en local a batch 32)
+- Estimación 30 epochs batch 64: ~19h 42m (off) / ~23h 10m (deep)
+- ⚠ La estimación subestima el tiempo real: no cuenta eval (~22 min/epoch) ni latencia NFS (ver resultados)
 
 ---
 
@@ -349,25 +354,54 @@ data:
 - Sobreajuste claro a partir del epoch 9: train loss → 0.0001, val loss sigue subiendo
 - Log completo: `logs/train_local.log`
 
-### Clúster — V100 32 GB (pendiente)
-- Job en cola (Slurm), esperando que libere verode21 (nhernang lleva ~3 días)
-- Comando lanzado desde tmux:
-```bash
-/opt/soft/slurm/20.11.04/bin/srun \
-    --partition=batch --nodelist=verode21 --gres=gpu:1 --time=72:00:00 \
-    --job-name=single_gpu_vit \
-    bash -c "
-cd ~/tfg-distributed-transformers && \
-.venv/bin/python scripts/check_feasibility.py \
-  --batch-sizes 16 32 64 128 --epochs 30 \
-  2>&1 | tee ~/logs/feasibility_cluster.log && \
-.venv/bin/python scripts/train_single_gpu.py \
-  --config configs/train_cluster.yaml \
-  --batch-size 64 \
-  --trace deep \
-  2>&1 | tee ~/logs/train_cluster.log
-"
-```
+### Clúster — V100 32 GB, batch_size=64, 30 epochs (completado 2026-05-07/09)
+
+Ejecutado con la versión previa a la refactorización (sin metric reporters), con `--trace deep`.
+
+| Epoch | Train F1 | Val F1 | Val Loss |
+|-------|----------|--------|----------|
+| 1  | 0.5865 | 0.6121 | 0.1628 |
+| 2  | 0.6832 | 0.6388 | 0.1557 |
+| 4  | 0.7415 | 0.6578 | 0.1567 |
+| 9  | 0.8535 | 0.6540 | 0.2125 |
+| 18 | 0.9383 | 0.6565 | 0.4688 |
+| 26 | 0.9471 | 0.6587 | 0.6401 |
+| 28 | 0.9473 | **0.6588** ← mejor | 0.6526 |
+| 30 | 0.9473 | 0.6588 | 0.6554 |
+
+- **Mejor Val F1: 0.6588** (epoch 28) — checkpoints en `~/tfg-distributed-transformers/checkpoints/single_gpu/` en verode21
+- Duración real: **~45h 50m** (08:41 May 7 → 06:29 May 9)
+  - Train: ~67 min/epoch | Eval: ~22 min/epoch | Total: ~89 min/epoch
+  - Epoch 1: ~135 min (torchinfo + hook registration + warmup GPU)
+  - Epoch 7: ~103 min (contención de recursos en verode21)
+- Overfitting severo: val F1 se estabiliza en 0.65-0.66 desde epoch 4, train F1 sigue subiendo hasta 0.947
+- Val loss diverge monotónicamente (0.16 → 0.66) mientras train loss cae a 0.0001
+- Sin anomalías de gradiente detectadas por DeepTracingDecorator en ningún epoch
+- Log completo: `~/logs/train_cluster.log` (en verode) / copia en `Escritorio/train_cluster.log` (local)
+
+### Comparativa local vs clúster (single GPU, 30 epochs)
+
+| | Local (RTX 3060 Ti) | Clúster (V100 32 GB) |
+|---|---|---|
+| **Versión código** | previa a refactorización | previa a refactorización |
+| **Trace mode** | `--trace simple` | `--trace deep` |
+| **Batch size** | 32 | 64 |
+| **VRAM usada** | ~4.95 GB / 8 GB | ~8.83 GB / 34 GB |
+| **Tiempo train/epoch** | ~43 min | ~67 min |
+| **Tiempo eval/epoch** | ~22 min | ~22 min |
+| **Tiempo total/epoch** | ~65 min | ~89 min |
+| **Duración 30 epochs** | ~32.5h | ~45.8h |
+| **Mejor Val F1** | 0.6586 (epoch 9) | 0.6588 (epoch 28) |
+
+**Por qué el clúster tardó más a pesar del V100:**
+1. `--trace deep` añade ~18% overhead en train (el local usó `--trace simple`)
+2. Datos en NFS (disco de red) vs SSD local — el cuello de botella fue I/O, no cómputo
+3. Sin estos factores, el V100 con batch 64 debería ser más rápido
+
+**Conclusiones:**
+- El techo de generalización es ~0.66 Val F1 independientemente del hardware y batch size
+- Early stopping en epoch 5-6 habría dado el mismo resultado con un ~80% menos de cómputo
+- El cuello de botella NFS es relevante para la demo DDP: añadir GPUs no escala linealmente si el I/O es el límite
 
 ---
 
@@ -425,16 +459,17 @@ main ← feature/xxx
 - [x] Dataset en el clúster: 549 488 patches verificados
 - [x] Entorno Python en el clúster: uv + PyTorch cu118 instalado
 - [x] `configs/train_cluster.yaml` con rutas del clúster
-- [x] Job en cola Slurm (esperando verode21)
+- [x] `check_feasibility.py` en V100: batch óptimo=64, 100.6 imgs/s, `--trace deep` overhead=18%
+- [x] Entrenamiento single-GPU en clúster completado: 30 epochs, batch=64, Val F1=0.6588 (07-09/05/26)
 
 ### Pendiente inmediato
-- [ ] Esperar que el job del clúster arranque y verificar CUDA + resultados
-- [ ] Ejecutar `check_feasibility.py` en V100 para calibrar batch_size óptimo
+- [ ] Merge `feature/refactor-decorators` → `main`
 
 ### Pendiente futuro
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
 - [ ] Proyección multi-GPU en feasibility checker
-- [ ] Merge `feature/refactor-decorators` → `main`
+- [ ] Añadir early stopping (el modelo converge en epoch 5-6, 30 epochs es innecesario)
+- [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP
 
 ---
 
