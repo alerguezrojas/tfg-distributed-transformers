@@ -1,0 +1,24 @@
+data:
+  root: "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet"
+  num_workers: 4
+
+model:
+  name: "vit_tiny_patch16_224"
+  pretrained: true
+  num_classes: 19
+
+training:
+  epochs: 30
+  batch_size: 64            # vit_tiny cabe en 8 GB con batch 64
+  lr: 0.0002                # slightly higher for smaller model
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 50
+
+checkpoint:
+  dir: "checkpoints/vit_tiny"

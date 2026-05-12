@@ -144,16 +144,19 @@ BaseTrainer (ABC)
 ```
 src/training/
   base_trainer.py          # ABC con train_epoch, eval_epoch, save_checkpoint, fit
-  trainer.py               # implementación pura, usa metrics.py
+  trainer.py               # implementación pura, usa metrics.py; devuelve _preds/_labels en eval_epoch
+  builder.py               # TrainingSessionBuilder — fluent API para montar el stack de decoradores
   metrics.py               # f1_score, precision, recall, accuracy, eta_str
   logger_setup.py          # setup_logger() con formato timestamp
   fn_decorators.py         # decoradores @ de Python: timed, log_call, measure_energy, retry_on_cuda_oom
   decorators/
-    base.py                # TrainerDecorator + EpochController
+    base.py                # TrainerDecorator + EpochController (con early stopping: patience)
     tracing.py             # TracingDecorator (consola o fichero según logger=)
-    deep_tracing.py        # DeepTracingDecorator (hereda TracingDecorator)
+    deep_tracing.py        # DeepTracingDecorator — features: set[str] para inspección modular
     plotting.py            # PlottingDecorator (aspecto, guarda PNG)
     layer_hooks.py         # LayerHooksDecorator (aspecto, forward hooks)
+    confusion.py           # ConfusionMatrixDecorator — PNG con F1/prec/rec por clase (multi-label)
+    batch_monitor.py       # BatchMonitorDecorator — CSV con running loss por batch
     metric_reporters.py    # LossReporter, F1Reporter, AccuracyReporter, PrecisionRecallReporter
     __init__.py
 ```
@@ -231,10 +234,16 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
                              simple → TracingDecorator con log a logs/train_FECHA.log
                              deep   → DeepTracingDecorator con log a logs/train_deep_FECHA.log
 
---layers [plot] [hooks]    Decoradores de aspecto (combinables):
-                             plot  → PlottingDecorator, PNG en plots/training_FECHA.png
-                             hooks → LayerHooksDecorator, activaciones cada 5 epochs
-                                     (ignorado con --trace deep, que tiene sus propios hooks)
+--model NAME               Override del modelo timm (default: cfg model.name)
+                             Ejemplos: vit_tiny_patch16_224, resnet50, efficientnet_b0
+                             Si el modelo no es ViT/DeiT/Swin → AdamW estándar (sin LLRD)
+
+--layers [plot] [hooks] [confusion] [batch-monitor]
+                           Decoradores de aspecto (combinables):
+                             plot         → PlottingDecorator, PNG en plots/training_FECHA.png
+                             hooks        → LayerHooksDecorator, activaciones cada 5 epochs
+                             confusion    → ConfusionMatrixDecorator, PNG por clase tras cada eval
+                             batch-monitor → BatchMonitorDecorator, CSV con loss por batch
 
 --fn [timing] [energy]     Decoradores @ de Python (combinables):
                              timing → @timed en train_epoch y eval_epoch
@@ -245,6 +254,15 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
                            Metric reporters individuales (solo para --trace off/simple):
                              sin args (--metrics) → desactiva todos
                              por defecto → todos activos
+
+--inspect [model-summary] [batch-table] [grad-monitor] [anomalies]
+                           Inspección modular con DeepTracingDecorator (combinable con --trace simple):
+                             model-summary → torchinfo al inicio
+                             batch-table  → tabla de capas cada N batches
+                             grad-monitor → backward hooks en todos los módulos hoja
+                             anomalies    → alertas de neuronas muertas / gradientes
+                           Si se pasa --inspect, activa DeepTracingDecorator automáticamente.
+                           --trace deep equivale a --inspect model-summary batch-table grad-monitor anomalies
 ```
 
 ### Ejemplos
@@ -253,20 +271,28 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
 # Solo consola
 uv run python scripts/train_single_gpu.py --trace off
 
-# Log a fichero + gráficas
-uv run python scripts/train_single_gpu.py --trace simple --layers plot
+# Log a fichero + gráficas + confusion matrix
+uv run python scripts/train_single_gpu.py --trace simple --layers plot confusion
 
 # Solo F1 y loss en pantalla
 uv run python scripts/train_single_gpu.py --trace simple --metrics loss f1
 
-# Trazado profundo + medición de energía
-uv run python scripts/train_single_gpu.py --trace deep --fn energy
+# Modelo pequeño para test rápido (~10x más rápido que vit_base)
+uv run python scripts/train_single_gpu.py --model vit_tiny_patch16_224 --epochs 1 --trace simple
 
-# Todo junto
-uv run python scripts/train_single_gpu.py --trace deep --layers plot hooks --fn energy timing
+# Inspección modular: solo summary del modelo + monitor de gradientes
+uv run python scripts/train_single_gpu.py --trace simple --inspect model-summary grad-monitor anomalies
 
-# Test rápido 1 epoch con todo activado
-uv run python scripts/train_single_gpu.py --epochs 1 --trace deep --layers plot hooks --fn energy timing
+# Batch monitor + gráficas
+uv run python scripts/train_single_gpu.py --trace simple --layers plot batch-monitor
+
+# Test rápido 1 epoch con todo activo (modelo pequeño)
+uv run python scripts/train_single_gpu.py --model vit_tiny_patch16_224 --epochs 1 \
+  --trace simple --layers plot confusion batch-monitor \
+  --inspect model-summary grad-monitor anomalies
+
+# Trazado profundo (equivalente al --inspect completo)
+uv run python scripts/train_single_gpu.py --trace deep --layers plot --fn energy
 
 # Con config del clúster
 uv run python scripts/train_single_gpu.py --config configs/train_cluster.yaml --trace simple
@@ -379,29 +405,47 @@ Ejecutado con la versión previa a la refactorización (sin metric reporters), c
 - Sin anomalías de gradiente detectadas por DeepTracingDecorator en ningún epoch
 - Log completo: `~/logs/train_cluster.log` (en verode) / copia en `Escritorio/train_cluster.log` (local)
 
-### Comparativa local vs clúster (single GPU, 30 epochs)
+### Clúster v2 — V100 32 GB, batch_size=64, early stopping (completado 2026-05-11/12)
 
-| | Local (RTX 3060 Ti) | Clúster (V100 32 GB) |
+Ejecutado con `feature/training-improvements`: LLRD (decay=0.75, 30 grupos), warmup lineal (5 epochs),
+cosine scheduler, grad_clip=1.0, early stopping patience=10. Flags: `--trace simple --layers plot hooks --fn energy`.
+
+| Epoch | Train F1 | Val F1 | Val Loss |
+|-------|----------|--------|----------|
+| 1  | 0.4708 | 0.5442 | 0.1816 |
+| 2  | 0.6159 | 0.6239 | 0.1562 |
+| 4  | 0.7127 | 0.6696 | 0.1464 |
+| 7  | 0.7828 | **0.6707** ← mejor | 0.1637 |
+| 10 | 0.8461 | 0.6671 | 0.2053 |
+| 17 | 0.9186 | 0.6652 | 0.3365 ← early stop |
+
+- **Mejor Val F1: 0.6707** (epoch 7) — guardado en `checkpoints/single_gpu/` en verode21
+- **Early stopping** paró en epoch 17 (sin mejora desde epoch 7 — patience=10)
+- Duración: **~19h** (15:08 May 11 → 10:19 May 12) — 17 epochs × ~67 min/epoch
+- Tiempo ahorrado vs v1: ~27h (se habrían necesitado 30 epochs × 89 min = 45h)
+- Overfitting idéntico: val F1 plana en 0.67 desde epoch 4, train F1 → 0.92
+- `[energy]` reportó "GPU no disponible" en verode — pynvml no accede al driver en ese entorno; no afecta al entrenamiento
+- Activaciones de hooks estables en epochs 5/10/15: mlp.fc1 ~1.83, attn.qkv ~0.71, sin neuronas muertas
+- Log completo: `train_cluster_v2.log` (adjunto localmente)
+
+### Comparativa de todas las ejecuciones en clúster
+
+| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) |
 |---|---|---|
-| **Versión código** | previa a refactorización | previa a refactorización |
-| **Trace mode** | `--trace simple` | `--trace deep` |
-| **Batch size** | 32 | 64 |
-| **VRAM usada** | ~4.95 GB / 8 GB | ~8.83 GB / 34 GB |
-| **Tiempo train/epoch** | ~43 min | ~67 min |
-| **Tiempo eval/epoch** | ~22 min | ~22 min |
-| **Tiempo total/epoch** | ~65 min | ~89 min |
-| **Duración 30 epochs** | ~32.5h | ~45.8h |
-| **Mejor Val F1** | 0.6586 (epoch 9) | 0.6588 (epoch 28) |
+| **Rama** | previa a refactorización | `feature/training-improvements` |
+| **Trace mode** | `--trace deep` | `--trace simple` |
+| **LLRD** | No | Sí (decay=0.75, 30 grupos) |
+| **Warmup** | No | Sí (5 epochs, lineal) |
+| **Early stopping** | No | Sí (patience=10) |
+| **Epochs ejecutados** | 30 | 17 |
+| **Duración** | ~45.8h | **~19h** |
+| **Mejor Val F1** | 0.6588 (epoch 28) | **0.6707 (epoch 7)** |
 
-**Por qué el clúster tardó más a pesar del V100:**
-1. `--trace deep` añade ~18% overhead en train (el local usó `--trace simple`)
-2. Datos en NFS (disco de red) vs SSD local — el cuello de botella fue I/O, no cómputo
-3. Sin estos factores, el V100 con batch 64 debería ser más rápido
-
-**Conclusiones:**
-- El techo de generalización es ~0.66 Val F1 independientemente del hardware y batch size
-- Early stopping en epoch 5-6 habría dado el mismo resultado con un ~80% menos de cómputo
-- El cuello de botella NFS es relevante para la demo DDP: añadir GPUs no escala linealmente si el I/O es el límite
+**Conclusiones v1 → v2:**
+- LLRD + warmup mejoraron Val F1 en +0.012 y aceleraron la convergencia (mejor epoch: 28 → 7)
+- Early stopping ahorró ~27h eliminando epochs innecesarios
+- El techo de generalización (~0.67 Val F1) es una limitación del dataset/regularización, no del hardware
+- El cuello de botella NFS persiste: añadir GPUs (DDP) no escala linealmente si el I/O es el límite
 
 ---
 
@@ -431,11 +475,12 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 ## Git workflow
 
 ```
-main ← feature/xxx
+main ← develop ← feature/xxx
 ```
 
-- Rama activa: `feature/training-improvements` (desde `develop`)
-- Flujo: `feature/*` → `develop` → `main`
+- Las feature branches salen de `develop` y hacen PR a `develop`
+- Cuando `develop` está validado, se mergea a `main`
+- Ramas activas: `feature/architecture-improvements`, `feature/web-dashboard`, `feature/training-improvements`
 - **No añadir Co-Authored-By en los commits**
 
 ---
@@ -444,38 +489,38 @@ main ← feature/xxx
 
 ### Completado
 - [x] Pipeline de datos: `BigEarthNetDataset` con metadata.parquet
-- [x] Modelo: `BigEarthViT` (ViT + cabeza multi-label)
-- [x] Entrenamiento single-GPU: `Trainer` + scheduler cosine + checkpoints
+- [x] Modelo: `BigEarthModel` (ViT + cabeza multi-label, soporte genérico timm; alias `BigEarthViT`)
+- [x] Entrenamiento single-GPU: `Trainer` + LLRD + warmup + cosine scheduler + checkpoints
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
+  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — F1/prec/rec por clase (multi-label)
+  - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running loss por batch
   - `decorators/metric_reporters.py`: `LossReporter`, `F1Reporter`, `AccuracyReporter`, `PrecisionRecallReporter`
   - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom`
+  - `builder.py`: `TrainingSessionBuilder` — fluent API para montar el stack completo
 - [x] `metrics.py`: métricas extraídas en módulo propio (sin duplicación)
-- [x] Flags `--trace / --layers / --fn / --metrics` en script de entrenamiento
+- [x] Flags `--trace / --layers / --fn / --metrics / --inspect / --model` en script de entrenamiento
+- [x] Inspección modular: `--inspect model-summary batch-table grad-monitor anomalies`
+- [x] Early stopping: `patience` configurable en `EpochController`
 - [x] Log con timestamp a fichero + gráficas PNG por epoch
 - [x] `check_feasibility.py` con benchmark, estimaciones y análisis de memoria
-- [x] Entrenamiento local completado: 30 epochs, Val F1 = 0.6586
+- [x] Entrenamiento local completado: 30 epochs, Val F1 = 0.6586 (01-02/05/26)
 - [x] Test completo con todo el stack activo: 1 epoch `--trace deep --layers plot hooks --fn energy timing` (06/05/26)
 - [x] Acceso al clúster VERODE (ULL) con V100 32 GB
 - [x] Dataset en el clúster: 549 488 patches verificados
 - [x] Entorno Python en el clúster: uv + PyTorch cu118 instalado
 - [x] `configs/train_cluster.yaml` con rutas del clúster
 - [x] `check_feasibility.py` en V100: batch óptimo=64, 100.6 imgs/s, `--trace deep` overhead=18%
-- [x] Entrenamiento single-GPU en clúster completado: 30 epochs, batch=64, Val F1=0.6588 (07-09/05/26)
-- [x] `feature/refactor-decorators` mergeada en `develop` (PR #11, 11/05/26)
-- [x] Mejoras de entrenamiento implementadas en `feature/training-improvements`:
-  - Weight decay 0.0001 → 0.05 (estándar AdamW+ViT)
-  - Warmup lineal 5 epochs + CosineAnnealingLR (eta_min=1e-6)
-  - Gradient clipping max_norm=1.0
-  - Layer-wise LR decay factor=0.75 (head 1e-4 → patch_embed 1.78e-6, 30 param groups)
-  - Early stopping patience=10
-  - Augmentaciones: rotación discreta 4-way + RandomResizedCrop(scale=0.7-1.0)
+- [x] Entrenamiento clúster v1: 30 epochs, batch=64, Val F1=0.6588 (07-09/05/26)
+- [x] Entrenamiento clúster v2 (LLRD+warmup+early stop): 17 epochs, Val F1=0.6707 (11-12/05/26)
+- [x] Test local vit_tiny con stack completo: 1 epoch, Val F1=0.4457 (11/05/26)
+- [x] Dashboard web Streamlit: `src/web/` con 5 tabs (curvas, por clase, batch, comparar, info)
 
-### Pendiente inmediato
-- [ ] Lanzar run v2 en VERODE con `feature/training-improvements` (Val F1 objetivo: 0.77-0.82)
-- [ ] Merge `feature/training-improvements` → `develop` → `main` tras obtener resultados
-
-### Pendiente futuro
+### Pendiente
+- [ ] Merge `feature/architecture-improvements` → `develop`
+- [ ] Merge `feature/web-dashboard` → `develop`
+- [ ] Merge `feature/training-improvements` → `develop`
+- [ ] Merge `develop` → `main`
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
 - [ ] Proyección multi-GPU en feasibility checker
 - [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP

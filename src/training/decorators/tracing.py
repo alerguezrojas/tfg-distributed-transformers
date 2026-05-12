@@ -6,8 +6,6 @@ Extends EpochController: only overrides the _on_* hooks, never the fit loop.
 
 import logging
 
-from torch.utils.data import DataLoader
-
 from src.training.base_trainer import BaseTrainer
 from src.training.metrics import eta_str
 from src.training.decorators.base import EpochController

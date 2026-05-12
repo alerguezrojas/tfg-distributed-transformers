@@ -113,3 +113,6 @@ class EpochController(TrainerDecorator):
 
     def _on_early_stop(self, epoch: int, best_f1: float):  # noqa: ARG002
         pass
+
+    def _on_early_stop(self, epoch: int, best_f1: float):
+        pass

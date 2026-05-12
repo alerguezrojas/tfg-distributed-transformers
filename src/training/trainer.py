@@ -106,6 +106,9 @@ class Trainer(BaseTrainer):
             "accuracy": m.accuracy(all_preds_t, all_labels_t),
             "precision": m.precision(all_preds_t, all_labels_t),
             "recall": m.recall(all_preds_t, all_labels_t),
+            # Tensors for per-class analysis (consumed by ConfusionMatrixDecorator if active)
+            "_preds": all_preds_t,
+            "_labels": all_labels_t,
         }
 
     def save_checkpoint(self, epoch: int, metrics: dict):
