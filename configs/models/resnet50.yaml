@@ -1,0 +1,24 @@
+data:
+  root: "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet"
+  num_workers: 4
+
+model:
+  name: "resnet50"
+  pretrained: true
+  num_classes: 19
+
+training:
+  epochs: 30
+  batch_size: 64
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.01        # lower WD for CNNs
+  warmup_epochs: 3
+  llrd_decay: 0.0           # LLRD not supported for CNNs — uses standard AdamW
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 50
+
+checkpoint:
+  dir: "checkpoints/resnet50"
