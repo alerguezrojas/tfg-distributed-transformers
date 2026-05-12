@@ -468,7 +468,41 @@ uv sync
     --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
 ```
 
-Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `rasterio`, `pandas`, `pyarrow`, `pyyaml`, `matplotlib`, `nvidia-ml-py`
+Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `rasterio`, `pandas`, `pyarrow`, `pyyaml`, `matplotlib`, `nvidia-ml-py`, `streamlit`, `plotly`
+
+---
+
+## Dashboard web
+
+`src/web/` — interfaz Streamlit para visualizar resultados de entrenamiento (no lanza el training).
+
+```
+src/web/
+  __init__.py
+  app.py            # Streamlit entrypoint — 5 tabs
+  run_registry.py   # descubre runs en logs/ y plots/ por timestamp
+  log_parser.py     # parsea logs --trace simple y --trace deep → DataFrame por epoch
+  batch_parser.py   # lee batch_metrics_*.csv → DataFrame por batch
+```
+
+### Arranque
+
+```bash
+uv run streamlit run src/web/app.py
+# Abre http://localhost:8501
+```
+
+### Tabs
+
+| Tab | Contenido |
+|-----|-----------|
+| Training Curves | Plotly interactivo: loss, F1, accuracy, precision/recall (train + val) |
+| Per-class Metrics | PNGs de ConfusionMatrixDecorator por epoch (requiere `--layers confusion`) |
+| Batch Monitor | Running loss intra-epoch por batch (requiere `--layers batch-monitor`) |
+| Compare Runs | Superpone hasta 4 runs en el mismo gráfico |
+| Run Info | Metadatos, tiempos, log crudo (200 primeras líneas) |
+
+El dashboard detecta automáticamente los runs existentes en `logs/`. Compatible con ambos formatos de log (`--trace simple` y `--trace deep`).
 
 ---
 
