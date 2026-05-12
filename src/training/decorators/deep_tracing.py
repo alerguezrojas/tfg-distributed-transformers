@@ -64,8 +64,14 @@ class DeepTracingDecorator(TracingDecorator):
     HEALTHY_RATIO_MIN = 1e-4
     HEALTHY_RATIO_MAX = 1.0
 
-    def __init__(self, trainer: BaseTrainer, logger: logging.Logger, log_every: int = 100):
-        super().__init__(trainer, logger=logger)
+    def __init__(
+        self,
+        trainer: BaseTrainer,
+        logger: logging.Logger,
+        log_every: int = 100,
+        patience: int | None = None,
+    ):
+        super().__init__(trainer, logger=logger, patience=patience)
         self.log_every = log_every
         self._layer_stats: dict[str, LayerStats] = {}
         self._param_stats: dict[str, ParamStats] = {}
@@ -201,6 +207,9 @@ class DeepTracingDecorator(TracingDecorator):
             logits = model(images)
             loss = criterion(logits, labels)
             loss.backward()
+            grad_clip = getattr(self._trainer, "grad_clip", None)
+            if grad_clip is not None:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
 
             total_loss += loss.item()

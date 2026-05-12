@@ -434,7 +434,8 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 main ← feature/xxx
 ```
 
-- Rama activa: `feature/refactor-decorators`
+- Rama activa: `feature/training-improvements` (desde `develop`)
+- Flujo: `feature/*` → `develop` → `main`
 - **No añadir Co-Authored-By en los commits**
 
 ---
@@ -461,14 +462,22 @@ main ← feature/xxx
 - [x] `configs/train_cluster.yaml` con rutas del clúster
 - [x] `check_feasibility.py` en V100: batch óptimo=64, 100.6 imgs/s, `--trace deep` overhead=18%
 - [x] Entrenamiento single-GPU en clúster completado: 30 epochs, batch=64, Val F1=0.6588 (07-09/05/26)
+- [x] `feature/refactor-decorators` mergeada en `develop` (PR #11, 11/05/26)
+- [x] Mejoras de entrenamiento implementadas en `feature/training-improvements`:
+  - Weight decay 0.0001 → 0.05 (estándar AdamW+ViT)
+  - Warmup lineal 5 epochs + CosineAnnealingLR (eta_min=1e-6)
+  - Gradient clipping max_norm=1.0
+  - Layer-wise LR decay factor=0.75 (head 1e-4 → patch_embed 1.78e-6, 30 param groups)
+  - Early stopping patience=10
+  - Augmentaciones: rotación discreta 4-way + RandomResizedCrop(scale=0.7-1.0)
 
 ### Pendiente inmediato
-- [ ] Merge `feature/refactor-decorators` → `main`
+- [ ] Lanzar run v2 en VERODE con `feature/training-improvements` (Val F1 objetivo: 0.77-0.82)
+- [ ] Merge `feature/training-improvements` → `develop` → `main` tras obtener resultados
 
 ### Pendiente futuro
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
 - [ ] Proyección multi-GPU en feasibility checker
-- [ ] Añadir early stopping (el modelo converge en epoch 5-6, 30 epochs es innecesario)
 - [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP
 
 ---

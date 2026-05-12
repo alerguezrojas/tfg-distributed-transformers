@@ -11,7 +11,6 @@ import time
 from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
-from src.training.metrics import eta_str
 
 
 class TrainerDecorator(BaseTrainer):
@@ -45,19 +44,25 @@ class EpochController(TrainerDecorator):
     """Template Method pattern for the training loop.
 
     Defines the skeleton of training: epoch iteration, best-model tracking,
-    checkpointing, ETA. Subclasses override the _on_* hooks to add logging
-    or other behaviour without touching the loop itself.
+    checkpointing, ETA, and optional early stopping. Subclasses override the
+    _on_* hooks to add logging or other behaviour without touching the loop.
 
     This is the base for all 'controller' decorators (TracingDecorator,
     DeepTracingDecorator). Only one controller should be active per run —
     it sits at the outermost position of the decorator stack.
     """
 
+    def __init__(self, trainer: BaseTrainer, patience: int | None = None):
+        super().__init__(trainer)
+        # None = disabled; positive int = stop after N epochs without improvement
+        self._patience = patience
+
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         # Stack invariant: EpochController (controller) sits outermost; aspect decorators
         # (PlottingDecorator, LayerHooksDecorator) sit between it and the Trainer.
         best_f1 = 0.0
         epoch_times: list[float] = []
+        epochs_no_improve: int = 0
 
         self._on_fit_start(epochs)
 
@@ -71,18 +76,25 @@ class EpochController(TrainerDecorator):
 
             if val_m["f1"] > best_f1:
                 best_f1 = val_m["f1"]
+                epochs_no_improve = 0
                 self.save_checkpoint(epoch, val_m)
+            else:
+                epochs_no_improve += 1
 
             self._on_epoch_end(epoch, epochs, train_m, val_m, best_f1, epoch_times)
+
+            if self._patience is not None and epochs_no_improve >= self._patience:
+                self._on_early_stop(epoch, best_f1)
+                break
 
         self._on_fit_end(best_f1)
 
     # ── Hooks — override in subclasses ──────────────────────────────────────
 
-    def _on_fit_start(self, epochs: int):
+    def _on_fit_start(self, epochs: int):  # noqa: ARG002
         pass
 
-    def _on_epoch_start(self, epoch: int, epochs: int):
+    def _on_epoch_start(self, epoch: int, epochs: int):  # noqa: ARG002
         pass
 
     def _on_epoch_end(
@@ -93,8 +105,11 @@ class EpochController(TrainerDecorator):
         val_m: dict,
         best_f1: float,
         epoch_times: list[float],
-    ):
+    ):  # noqa: ARG002
         pass
 
-    def _on_fit_end(self, best_f1: float):
+    def _on_fit_end(self, best_f1: float):  # noqa: ARG002
+        pass
+
+    def _on_early_stop(self, epoch: int, best_f1: float):  # noqa: ARG002
         pass

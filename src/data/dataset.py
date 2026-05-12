@@ -1,3 +1,4 @@
+import random
 from pathlib import Path
 
 import numpy as np
@@ -130,6 +131,14 @@ def get_transforms(split: str) -> transforms.Compose:
             transforms.Resize((224, 224)),
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
+            # Discrete 90° rotation: Sentinel-2 has no preferred orbital orientation
+            transforms.Lambda(
+                lambda img: transforms.functional.rotate(
+                    img, angle=random.choice([0, 90, 180, 270])
+                )
+            ),
+            # Scale invariance: randomly crop then resize back to 224
+            transforms.RandomResizedCrop(224, scale=(0.7, 1.0), ratio=(0.9, 1.1)),
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225]),
         ])
