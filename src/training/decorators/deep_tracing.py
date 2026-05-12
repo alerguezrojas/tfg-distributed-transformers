@@ -304,7 +304,10 @@ class DeepTracingDecorator(TracingDecorator):
         return f"{torch.cuda.memory_allocated()/1e9:.1f}GB/{torch.cuda.memory_reserved()/1e9:.1f}GB"
 
     def _lr_str(self) -> str:
-        return " | ".join(f"{g['lr']:.2e}" for g in self._trainer.optimizer.param_groups)
+        lrs = [g["lr"] for g in self._trainer.optimizer.param_groups]
+        if len(lrs) <= 4:
+            return " | ".join(f"{lr:.2e}" for lr in lrs)
+        return f"{min(lrs):.2e} … {max(lrs):.2e} ({len(lrs)} groups)"
 
     def _layer_status(self, s: LayerStats) -> str:
         if s.dead_ratio > 0.5:
