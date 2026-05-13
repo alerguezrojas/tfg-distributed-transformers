@@ -1,8 +1,13 @@
-# Model checkpoints
-checkpoints/
+# Model checkpoints — exclude large .pt files
+checkpoints/**/*.pt
 
-# Training logs
-logs/
+# Training logs: keep *.log files in local/ and verode/ (reproducibility)
+# The global *.log rule below is negated for these paths
+!logs/local/*.log
+!logs/verode/*.log
+# Batch CSVs are large — excluded
+logs/local/*.csv
+logs/verode/*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

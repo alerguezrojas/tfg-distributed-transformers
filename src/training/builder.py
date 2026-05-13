@@ -62,7 +62,7 @@ class TrainingSessionBuilder:
     def __init__(self, cfg: dict, device: torch.device, timestamp: str | None = None):
         self._cfg = cfg
         self._device = device
-        self._timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._timestamp = timestamp or datetime.now().strftime("%d%m%Y_%H%M%S")
 
         # Defaults — mirrors the CLI defaults in train_single_gpu.py
         self._model_name: str | None = None          # None → use cfg["model"]["name"]
@@ -158,6 +158,13 @@ class TrainingSessionBuilder:
                 optimizer, T_max=epochs, eta_min=lr_min,
             )
 
+        # ── Output directories (env-aware) ────────────────────────────────────
+        env = cfg.get("output", {}).get("env", "local")
+        logs_dir = f"logs/{env}"
+        plots_dir = f"plots/{env}"
+        Path(logs_dir).mkdir(parents=True, exist_ok=True)
+        Path(plots_dir).mkdir(parents=True, exist_ok=True)
+
         # ── Base Trainer ──────────────────────────────────────────────────────
         grad_clip = cfg["training"].get("grad_clip", None)
         base = Trainer(
@@ -185,16 +192,16 @@ class TrainingSessionBuilder:
             inner = BatchMonitorDecorator(
                 inner,
                 log_every=cfg["training"].get("log_batch_every", 50),
-                output_dir="logs",
+                output_dir=logs_dir,
                 timestamp=self._timestamp,
             )
         if "plot" in self._layers:
             inner = PlottingDecorator(
-                inner, output_path=f"plots/training_{self._timestamp}.png"
+                inner, output_path=f"{plots_dir}/training_{self._timestamp}.png"
             )
         if "confusion" in self._layers:
             inner = ConfusionMatrixDecorator(
-                inner, output_dir="plots", timestamp=self._timestamp
+                inner, output_dir=plots_dir, timestamp=self._timestamp
             )
 
         # ── 3. Logger ─────────────────────────────────────────────────────────
@@ -203,7 +210,7 @@ class TrainingSessionBuilder:
 
         if self._trace in ("simple", "deep") or use_deep:
             prefix = "train_deep" if use_deep else "train"
-            log_file = f"logs/{prefix}_{self._timestamp}.log"
+            log_file = f"{logs_dir}/{prefix}_{self._timestamp}.log"
             logger = setup_logger("trainer", log_file=log_file)
 
         # ── 4. Metric reporters (only when not using DeepTracingDecorator) ────

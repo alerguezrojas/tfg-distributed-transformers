@@ -21,4 +21,7 @@ training:
   log_batch_every: 100
 
 checkpoint:
-  dir: "checkpoints/single_gpu"
+  dir: "checkpoints/verode"
+
+output:
+  env: "verode"  # "local" → logs/local/, plots/local/ | "verode" → logs/verode/, plots/verode/
