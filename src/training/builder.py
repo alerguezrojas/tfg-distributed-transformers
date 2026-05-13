@@ -160,6 +160,8 @@ class TrainingSessionBuilder:
 
         # ── Base Trainer ──────────────────────────────────────────────────────
         grad_clip = cfg["training"].get("grad_clip", None)
+        label_smoothing = cfg["training"].get("label_smoothing", 0.0)
+        mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         base = Trainer(
             model=model,
             optimizer=optimizer,
@@ -167,6 +169,8 @@ class TrainingSessionBuilder:
             device=self._device,
             checkpoint_dir=cfg["checkpoint"]["dir"],
             grad_clip=grad_clip,
+            label_smoothing=label_smoothing,
+            mixup_alpha=mixup_alpha,
         )
 
         # ── 1. @ function decorators on Trainer methods ───────────────────────

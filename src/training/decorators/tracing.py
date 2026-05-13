@@ -54,10 +54,16 @@ class TracingDecorator(EpochController):
     def _on_epoch_start(self, epoch: int, epochs: int):
         self._emit(f"\n── Epoch {epoch:03d}/{epochs:03d} " + "─" * 28)
 
-    def _on_epoch_end(self, epoch, epochs, train_m, _val_m, best_f1, epoch_times):
+    def _on_epoch_end(self, epoch, epochs, train_m, val_m, best_f1, epoch_times):
+        opt_t = val_m.get("_optimal_threshold")
+        opt_f1 = val_m.get("_f1_at_optimal_threshold")
+        thresh_note = ""
+        if opt_t is not None and opt_t != 0.5:
+            thresh_note = f"  (threshold óptimo={opt_t:.2f}, F1={opt_f1:.4f})"
         self._emit(
             f"  ETA: {eta_str(epoch_times, epoch, epochs)}  "
             f"({train_m['time']:.0f}s/epoch, best_f1={best_f1:.4f})"
+            + thresh_note
         )
 
     def _on_fit_end(self, best_f1: float):
