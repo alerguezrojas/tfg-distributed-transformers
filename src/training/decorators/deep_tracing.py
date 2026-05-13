@@ -208,7 +208,7 @@ class DeepTracingDecorator(TracingDecorator):
         self._emit(
             f"[E{epoch:03d}/{epochs}] ══ RESUMEN  "
             f"train_loss={train_m['loss']:.4f}  train_f1={train_m['f1']:.4f}  train_acc={train_m['accuracy']:.4f} | "
-            f"val_loss={val_m['loss']:.4f}  val_f1={val_m['f1']:.4f}  best={best_f1:.4f} | "
+            f"val_loss={val_m['loss']:.4f}  val_f1={val_m['f1']:.4f}  val_acc={val_m['accuracy']:.4f}  best={best_f1:.4f} | "
             f"val_prec={val_m['precision']:.4f}  val_rec={val_m['recall']:.4f} | "
             f"time={train_m['time']:.0f}s  ETA={eta_str(epoch_times, epoch, epochs)}  "
             f"GPU={self._gpu_str()}"

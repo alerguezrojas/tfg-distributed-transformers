@@ -7,21 +7,22 @@ for the full training run without touching the real dataset.
 Usage:
     uv run python scripts/check_feasibility.py
     uv run python scripts/check_feasibility.py --batch-sizes 16 32 64
-    uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 --epochs 10 30
+    uv run python scripts/check_feasibility.py --batch-sizes 32 64 --epochs 10 30
     uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off deep
+    uv run python scripts/check_feasibility.py --nfs-factor 1.3   # para Verode con NFS
+    uv run python scripts/check_feasibility.py --output logs/feasibility.log
 """
 
 import argparse
-import logging
 import sys
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -40,7 +41,7 @@ class ModelInfo:
     weight_mb: float
     gradient_mb: float
     optimizer_mb: float
-    activation_mb_per_image: float = 0.0  # from torchinfo forward/backward pass size
+    activation_mb_per_image: float = 0.0
 
     @property
     def total_static_mb(self) -> float:
@@ -62,8 +63,10 @@ class HardwareInfo:
 class BenchmarkResult:
     batch_size: int
     trace_mode: str
-    seconds_per_batch: float
-    images_per_second: float
+    seconds_per_batch_train: float
+    seconds_per_batch_eval: float
+    images_per_second_train: float
+    images_per_second_eval: float
     peak_vram_gb: float
     oom: bool = False
 
@@ -74,6 +77,7 @@ class FeasibilityReport:
     hardware_info: HardwareInfo
     dataset_train: int
     dataset_val: int
+    nfs_factor: float
     results: list[BenchmarkResult] = field(default_factory=list)
     batch_sizes: list[int] = field(default_factory=list)
     epochs_list: list[int] = field(default_factory=list)
@@ -81,12 +85,10 @@ class FeasibilityReport:
 
 
 # ──────────────────────────────────────────────────────────────
-# ModelAnalyzer — SRP: only analyses model complexity
+# ModelAnalyzer
 # ──────────────────────────────────────────────────────────────
 
 class ModelAnalyzer:
-    """Computes theoretical complexity metrics for a given model."""
-
     def __init__(self, model: nn.Module, model_name: str, device: torch.device):
         self._model = model
         self._name = model_name
@@ -96,9 +98,9 @@ class ModelAnalyzer:
         total = sum(p.numel() for p in self._model.parameters())
         trainable = sum(p.numel() for p in self._model.parameters() if p.requires_grad)
 
-        weight_mb = total * 4 / 1e6          # float32
+        weight_mb = total * 4 / 1e6
         gradient_mb = trainable * 4 / 1e6
-        optimizer_mb = trainable * 8 / 1e6   # AdamW: m + v buffers
+        optimizer_mb = trainable * 8 / 1e6
 
         flops, activation_mb = self._run_summary()
 
@@ -114,10 +116,8 @@ class ModelAnalyzer:
         )
 
     def _run_summary(self) -> tuple[float, float]:
-        """Returns (flops_mflops, activation_mb_per_image) via torchinfo on CPU."""
         try:
             from torchinfo import summary
-            # Run on CPU to avoid fragmenting GPU memory before benchmarks
             stats = summary(
                 self._model,
                 input_size=(1, 3, 224, 224),
@@ -132,43 +132,35 @@ class ModelAnalyzer:
 
 
 # ──────────────────────────────────────────────────────────────
-# HardwareProbe — SRP: only reads hardware capabilities
+# HardwareProbe
 # ──────────────────────────────────────────────────────────────
 
 class HardwareProbe:
-    """Reads GPU memory and device information."""
-
     def probe(self) -> HardwareInfo:
         if not torch.cuda.is_available():
-            return HardwareInfo(
-                device_name="CPU",
-                total_vram_gb=0.0,
-                free_vram_gb=0.0,
-                is_cuda=False,
-            )
+            return HardwareInfo(device_name="CPU", total_vram_gb=0.0, free_vram_gb=0.0, is_cuda=False)
 
         props = torch.cuda.get_device_properties(0)
         total_gb = props.total_memory / 1e9
         reserved_gb = torch.cuda.memory_reserved(0) / 1e9
-        free_gb = total_gb - reserved_gb
 
         return HardwareInfo(
             device_name=props.name,
             total_vram_gb=total_gb,
-            free_vram_gb=free_gb,
+            free_vram_gb=total_gb - reserved_gb,
             is_cuda=True,
         )
 
 
 # ──────────────────────────────────────────────────────────────
-# Benchmarker — SRP: measures real throughput per configuration
+# Benchmarker — measures real train AND eval throughput
 # ──────────────────────────────────────────────────────────────
 
 class Benchmarker:
     """Runs timing and memory benchmarks using synthetic data.
 
-    Uses random tensors instead of the real dataset so the benchmark
-    is fast and independent of I/O speed.
+    Benchmarks both train (forward + backward + step) and eval
+    (forward only, no_grad) to give accurate total-epoch estimates.
     """
 
     N_WARMUP = 3
@@ -178,23 +170,22 @@ class Benchmarker:
         self._model = model.to(device)
         self._device = device
         self._criterion = nn.BCEWithLogitsLoss()
-        # Single optimizer instance reused across all runs
         self._optimizer = torch.optim.AdamW(self._model.parameters(), lr=1e-4)
 
     def run(self, batch_size: int, trace_mode: str) -> BenchmarkResult:
-        # Release fragmented memory from previous run
         if self._device.type == "cuda":
             torch.cuda.empty_cache()
 
         batches = self._make_batches(batch_size)
         try:
-            seconds, peak_vram = self._benchmark(batches, trace_mode)
-            imgs_per_sec = batch_size / seconds if seconds > 0 else 0.0
+            sec_train, sec_eval, peak_vram = self._benchmark(batches, trace_mode)
             return BenchmarkResult(
                 batch_size=batch_size,
                 trace_mode=trace_mode,
-                seconds_per_batch=seconds,
-                images_per_second=imgs_per_sec,
+                seconds_per_batch_train=sec_train,
+                seconds_per_batch_eval=sec_eval,
+                images_per_second_train=batch_size / sec_train if sec_train > 0 else 0.0,
+                images_per_second_eval=batch_size / sec_eval if sec_eval > 0 else 0.0,
                 peak_vram_gb=peak_vram,
             )
         except torch.cuda.OutOfMemoryError:
@@ -202,8 +193,10 @@ class Benchmarker:
             return BenchmarkResult(
                 batch_size=batch_size,
                 trace_mode=trace_mode,
-                seconds_per_batch=0.0,
-                images_per_second=0.0,
+                seconds_per_batch_train=0.0,
+                seconds_per_batch_eval=0.0,
+                images_per_second_train=0.0,
+                images_per_second_eval=0.0,
                 peak_vram_gb=0.0,
                 oom=True,
             )
@@ -215,7 +208,7 @@ class Benchmarker:
             for _ in range(n)
         ]
 
-    def _benchmark(self, batches: list, trace_mode: str) -> tuple[float, float]:
+    def _benchmark(self, batches: list, trace_mode: str) -> tuple[float, float, float]:
         hooks: list = []
         if trace_mode == "deep":
             hooks = self._register_deep_hooks()
@@ -223,31 +216,40 @@ class Benchmarker:
         if self._device.type == "cuda":
             torch.cuda.reset_peak_memory_stats()
 
+        # Warmup (train)
         self._model.train()
         for images, labels in batches[:self.N_WARMUP]:
-            self._step(images, labels)
+            self._train_step(images, labels)
 
+        # Measure train
         if self._device.type == "cuda":
             torch.cuda.synchronize()
         t0 = time.perf_counter()
         for images, labels in batches[self.N_WARMUP:]:
-            self._step(images, labels)
+            self._train_step(images, labels)
         if self._device.type == "cuda":
             torch.cuda.synchronize()
-        elapsed = time.perf_counter() - t0
+        sec_train = (time.perf_counter() - t0) / self.N_MEASURE
 
-        peak_vram = (
-            torch.cuda.max_memory_allocated() / 1e9
-            if self._device.type == "cuda"
-            else 0.0
-        )
+        # Measure eval (forward only)
+        self._model.eval()
+        if self._device.type == "cuda":
+            torch.cuda.synchronize()
+        t0 = time.perf_counter()
+        for images, labels in batches[self.N_WARMUP:]:
+            self._eval_step(images, labels)
+        if self._device.type == "cuda":
+            torch.cuda.synchronize()
+        sec_eval = (time.perf_counter() - t0) / self.N_MEASURE
+
+        peak_vram = torch.cuda.max_memory_allocated() / 1e9 if self._device.type == "cuda" else 0.0
 
         for h in hooks:
             h.remove()
 
-        return elapsed / self.N_MEASURE, peak_vram
+        return sec_train, sec_eval, peak_vram
 
-    def _step(self, images: torch.Tensor, labels: torch.Tensor):
+    def _train_step(self, images: torch.Tensor, labels: torch.Tensor):
         images = images.to(self._device)
         labels = labels.to(self._device)
         self._optimizer.zero_grad()
@@ -255,8 +257,12 @@ class Benchmarker:
         loss.backward()
         self._optimizer.step()
 
+    def _eval_step(self, images: torch.Tensor, labels: torch.Tensor):
+        with torch.no_grad():
+            images = images.to(self._device)
+            _ = self._model(images)
+
     def _register_deep_hooks(self) -> list:
-        """Register the same hooks as DeepTracingDecorator to measure overhead."""
         hooks = []
         for _name, module in self._model.named_modules():
             if not list(module.children()):
@@ -285,24 +291,42 @@ class Benchmarker:
 
 
 # ──────────────────────────────────────────────────────────────
-# TimeEstimator — SRP: converts benchmark results into estimates
+# TimeEstimator
 # ──────────────────────────────────────────────────────────────
 
 class TimeEstimator:
-    """Converts per-batch timings into full training time estimates."""
+    """Converts per-batch timings into full training time estimates.
+
+    Takes into account both train and eval phases, plus an optional
+    NFS overhead factor for networked filesystems (e.g. Verode cluster).
+    """
 
     def estimate(
         self,
         result: BenchmarkResult,
-        dataset_size: int,
+        dataset_train: int,
+        dataset_val: int,
         epochs: int,
-    ) -> Optional[tuple[float, float]]:
-        """Returns (seconds_per_epoch, total_seconds) or None if OOM."""
-        if result.oom or result.images_per_second == 0:
+        nfs_factor: float = 1.0,
+    ) -> Optional[dict]:
+        """Returns dict with train/eval/total per epoch and full total, or None if OOM."""
+        if result.oom or result.images_per_second_train == 0:
             return None
-        batches_per_epoch = dataset_size / result.batch_size
-        seconds_per_epoch = batches_per_epoch * result.seconds_per_batch
-        return seconds_per_epoch, seconds_per_epoch * epochs
+
+        train_batches = dataset_train / result.batch_size
+        eval_batches = dataset_val / result.batch_size
+
+        sec_train = train_batches * result.seconds_per_batch_train * nfs_factor
+        sec_eval = eval_batches * result.seconds_per_batch_eval * nfs_factor
+        sec_epoch = sec_train + sec_eval
+        sec_total = sec_epoch * epochs
+
+        return {
+            "train_per_epoch": sec_train,
+            "eval_per_epoch": sec_eval,
+            "total_per_epoch": sec_epoch,
+            "total": sec_total,
+        }
 
     @staticmethod
     def format_time(seconds: float) -> str:
@@ -312,55 +336,70 @@ class TimeEstimator:
 
 
 # ──────────────────────────────────────────────────────────────
-# ReportFormatter — SRP: formats and prints the report
+# ReportFormatter
 # ──────────────────────────────────────────────────────────────
 
 class ReportFormatter:
-    """Formats a FeasibilityReport as a human-readable console output."""
+    """Formats a FeasibilityReport as a human-readable output."""
 
-    W = 70
+    W = 72
+
+    def __init__(self, output_path: Path | None = None):
+        self._output_path = output_path
+        self._lines: list[str] = []
+
+    def _emit(self, line: str = ""):
+        print(line)
+        self._lines.append(line)
+
+    def flush(self):
+        if self._output_path:
+            self._output_path.parent.mkdir(parents=True, exist_ok=True)
+            self._output_path.write_text("\n".join(self._lines) + "\n")
+            print(f"\n  Informe guardado en: {self._output_path}")
 
     def print(self, report: FeasibilityReport):
-        self._header()
+        self._header(report)
         self._model_section(report.model_info)
         self._hardware_section(report.hardware_info)
         self._memory_section(report)
         self._benchmark_section(report)
         self._estimates_section(report)
         self._recommendations_section(report)
+        self.flush()
 
-    # ------------------------------------------------------------------
-
-    def _header(self):
-        print("═" * self.W)
-        title = "ANÁLISIS DE VIABILIDAD — BigEarthNet ViT"
-        print(f"  {title}")
-        print("═" * self.W)
+    def _header(self, report: FeasibilityReport):
+        self._emit("═" * self.W)
+        self._emit("  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT")
+        self._emit(f"  {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
+        if report.nfs_factor != 1.0:
+            self._emit(f"  Factor NFS aplicado: ×{report.nfs_factor:.2f}  (I/O en red más lento)")
+        self._emit("═" * self.W)
 
     def _model_section(self, m: ModelInfo):
-        print(f"\n{'─'*self.W}")
-        print("  MODELO")
-        print(f"{'─'*self.W}")
-        print(f"  Nombre:               {m.name}")
-        print(f"  Parámetros totales:   {m.total_params:,} ({m.total_params/1e6:.1f}M)")
-        print(f"  Parámetros train.:    {m.trainable_params:,} ({m.trainable_params/1e6:.1f}M)")
+        self._emit(f"\n{'─'*self.W}")
+        self._emit("  MODELO")
+        self._emit(f"{'─'*self.W}")
+        self._emit(f"  Nombre:               {m.name}")
+        self._emit(f"  Parámetros totales:   {m.total_params:,} ({m.total_params/1e6:.1f}M)")
+        self._emit(f"  Parámetros train.:    {m.trainable_params:,} ({m.trainable_params/1e6:.1f}M)")
         if m.flops_per_image_mflops:
-            print(f"  FLOPs/imagen:         {m.flops_per_image_mflops:.1f} MFLOPs")
-        print(f"  Memoria pesos:        {m.weight_mb:.0f} MB")
-        print(f"  Gradientes:           {m.gradient_mb:.0f} MB")
-        print(f"  Estado AdamW:         {m.optimizer_mb:.0f} MB")
-        print(f"  Total estático:       {m.total_static_mb/1024:.2f} GB  (sin activaciones)")
+            self._emit(f"  FLOPs/imagen:         {m.flops_per_image_mflops:.1f} MFLOPs")
+        self._emit(f"  Memoria pesos:        {m.weight_mb:.0f} MB")
+        self._emit(f"  Gradientes:           {m.gradient_mb:.0f} MB")
+        self._emit(f"  Estado AdamW:         {m.optimizer_mb:.0f} MB")
+        self._emit(f"  Total estático:       {m.total_static_mb/1024:.2f} GB  (sin activaciones)")
 
     def _hardware_section(self, h: HardwareInfo):
-        print(f"\n{'─'*self.W}")
-        print("  HARDWARE")
-        print(f"{'─'*self.W}")
+        self._emit(f"\n{'─'*self.W}")
+        self._emit("  HARDWARE")
+        self._emit(f"{'─'*self.W}")
         if h.is_cuda:
-            print(f"  GPU:                  {h.device_name}")
-            print(f"  VRAM total:           {h.total_vram_gb:.2f} GB")
-            print(f"  VRAM libre:           {h.free_vram_gb:.2f} GB")
+            self._emit(f"  GPU:                  {h.device_name}")
+            self._emit(f"  VRAM total:           {h.total_vram_gb:.2f} GB")
+            self._emit(f"  VRAM libre:           {h.free_vram_gb:.2f} GB")
         else:
-            print("  Dispositivo:          CPU (CUDA no disponible)")
+            self._emit("  Dispositivo:          CPU (CUDA no disponible)")
 
     def _memory_section(self, report: FeasibilityReport):
         m = report.model_info
@@ -368,14 +407,14 @@ class ReportFormatter:
         if not m.activation_mb_per_image:
             return
 
-        print(f"\n{'─'*self.W}")
-        print("  MEMORIA POR BATCH SIZE")
-        print(f"{'─'*self.W}")
-        print(f"  Memoria estática (pesos + grad + AdamW): {m.total_static_mb/1024:.2f} GB")
-        print(f"  Activaciones por imagen (forward+backward): {m.activation_mb_per_image:.1f} MB")
-        print()
-        print(f"  {'Batch':>5}  {'Estática':>10}  {'Activaciones':>13}  {'Total est.':>11}  {'Estado':>8}")
-        print(f"  {'─'*5}  {'─'*10}  {'─'*13}  {'─'*11}  {'─'*8}")
+        self._emit(f"\n{'─'*self.W}")
+        self._emit("  MEMORIA POR BATCH SIZE")
+        self._emit(f"{'─'*self.W}")
+        self._emit(f"  Estática (pesos+grad+AdamW): {m.total_static_mb/1024:.2f} GB")
+        self._emit(f"  Activaciones por imagen:     {m.activation_mb_per_image:.1f} MB")
+        self._emit()
+        self._emit(f"  {'Batch':>5}  {'Estática':>10}  {'Activac.':>9}  {'Total est.':>11}  {'Estado':>8}")
+        self._emit(f"  {'─'*5}  {'─'*10}  {'─'*9}  {'─'*11}  {'─'*8}")
 
         for bs in report.batch_sizes:
             total_gb = m.total_mb(bs) / 1024
@@ -387,17 +426,20 @@ class ReportFormatter:
                 estado = "⚠ Límite"
             else:
                 estado = "✓ OK"
-            print(
-                f"  {bs:>5}  {static_gb:>8.2f} GB  {act_gb:>11.2f} GB  "
+            self._emit(
+                f"  {bs:>5}  {static_gb:>8.2f} GB  {act_gb:>7.2f} GB  "
                 f"{total_gb:>9.2f} GB  {estado:>8}"
             )
 
     def _benchmark_section(self, report: FeasibilityReport):
-        print(f"\n{'─'*self.W}")
-        print(f"  BENCHMARK  ({Benchmarker.N_MEASURE} batches sintéticos por configuración)")
-        print(f"{'─'*self.W}")
-        print(f"  {'Batch':>5}  {'Modo':<8}  {'s/batch':>8}  {'imgs/s':>7}  {'VRAM pico':>10}  {'Estado':>8}")
-        print(f"  {'─'*5}  {'─'*8}  {'─'*8}  {'─'*7}  {'─'*10}  {'─'*8}")
+        self._emit(f"\n{'─'*self.W}")
+        self._emit(f"  BENCHMARK  ({Benchmarker.N_MEASURE} batches sintéticos — sin I/O real)")
+        self._emit(f"{'─'*self.W}")
+        self._emit(
+            f"  {'Batch':>5}  {'Modo':<8}  {'s/batch(train)':>14}  "
+            f"{'imgs/s(train)':>13}  {'s/batch(eval)':>13}  {'VRAM':>7}"
+        )
+        self._emit(f"  {'─'*5}  {'─'*8}  {'─'*14}  {'─'*13}  {'─'*13}  {'─'*7}")
 
         baseline = {
             bs: next((r for r in report.results if r.batch_size == bs and r.trace_mode == "off"), None)
@@ -406,82 +448,98 @@ class ReportFormatter:
 
         for r in report.results:
             if r.oom:
-                estado = "OOM ✗"
-                row = f"  {r.batch_size:>5}  {r.trace_mode:<8}  {'—':>8}  {'—':>7}  {'—':>10}  {estado:>8}"
+                self._emit(f"  {r.batch_size:>5}  {r.trace_mode:<8}  {'OOM':>14}  {'—':>13}  {'—':>13}  {'—':>7}")
             else:
                 base = baseline.get(r.batch_size)
                 overhead = ""
                 if base and not base.oom and r.trace_mode != "off":
-                    pct = (r.seconds_per_batch / base.seconds_per_batch - 1) * 100
-                    overhead = f"+{max(0, round(pct)):.0f}%"
-                estado = f"✓ OK {overhead}"
-                row = (
+                    pct = (r.seconds_per_batch_train / base.seconds_per_batch_train - 1) * 100
+                    overhead = f"  (+{max(0,round(pct)):.0f}% vs off)"
+                self._emit(
                     f"  {r.batch_size:>5}  {r.trace_mode:<8}  "
-                    f"{r.seconds_per_batch:>7.3f}s  {r.images_per_second:>6.1f}  "
-                    f"{r.peak_vram_gb:>8.2f} GB  {estado}"
+                    f"{r.seconds_per_batch_train:>12.3f}s  "
+                    f"{r.images_per_second_train:>11.1f}  "
+                    f"{r.seconds_per_batch_eval:>11.3f}s  "
+                    f"{r.peak_vram_gb:>5.2f} GB"
+                    f"{overhead}"
                 )
-            print(row)
 
     def _estimates_section(self, report: FeasibilityReport):
         estimator = TimeEstimator()
-        print(f"\n{'─'*self.W}")
-        print(f"  ESTIMACIONES  (train={report.dataset_train:,} imgs)")
-        print(f"{'─'*self.W}")
+        nfs = report.nfs_factor
+        self._emit(f"\n{'─'*self.W}")
+        label = f"train={report.dataset_train:,} | val={report.dataset_val:,}"
+        if nfs != 1.0:
+            label += f" | NFS ×{nfs:.2f}"
+        self._emit(f"  ESTIMACIONES  ({label})")
+        self._emit(f"{'─'*self.W}")
 
         for epochs in report.epochs_list:
-            print(f"\n  {epochs} epochs:")
-            print(f"  {'Batch':>5}  {'Modo':<8}  {'Tiempo/epoch':>13}  {'Total':>10}")
-            print(f"  {'─'*5}  {'─'*8}  {'─'*13}  {'─'*10}")
+            self._emit(f"\n  {epochs} epochs:")
+            self._emit(
+                f"  {'Batch':>5}  {'Modo':<8}  {'Train/epoch':>11}  "
+                f"{'Eval/epoch':>10}  {'Total/epoch':>11}  {'TOTAL':>10}"
+            )
+            self._emit(f"  {'─'*5}  {'─'*8}  {'─'*11}  {'─'*10}  {'─'*11}  {'─'*10}")
             for r in report.results:
-                est = estimator.estimate(r, report.dataset_train, epochs)
+                est = estimator.estimate(r, report.dataset_train, report.dataset_val, epochs, nfs)
                 if est is None:
-                    print(f"  {r.batch_size:>5}  {r.trace_mode:<8}  {'—':>13}  {'OOM':>10}")
+                    self._emit(f"  {r.batch_size:>5}  {r.trace_mode:<8}  {'OOM':>11}  {'—':>10}  {'—':>11}  {'—':>10}")
                 else:
-                    spe, total = est
-                    print(
+                    self._emit(
                         f"  {r.batch_size:>5}  {r.trace_mode:<8}  "
-                        f"{TimeEstimator.format_time(spe):>13}  "
-                        f"{TimeEstimator.format_time(total):>10}"
+                        f"{TimeEstimator.format_time(est['train_per_epoch']):>11}  "
+                        f"{TimeEstimator.format_time(est['eval_per_epoch']):>10}  "
+                        f"{TimeEstimator.format_time(est['total_per_epoch']):>11}  "
+                        f"{TimeEstimator.format_time(est['total']):>10}"
                     )
 
     def _recommendations_section(self, report: FeasibilityReport):
-        print(f"\n{'─'*self.W}")
-        print("  RECOMENDACIONES")
-        print(f"{'─'*self.W}")
+        self._emit(f"\n{'─'*self.W}")
+        self._emit("  RECOMENDACIONES")
+        self._emit(f"{'─'*self.W}")
         estimator = TimeEstimator()
+        nfs = report.nfs_factor
         target_epochs = max(report.epochs_list)
 
         viable = [r for r in report.results if not r.oom and r.trace_mode == "off"]
         if not viable:
-            print("  ✗ Ningún batch size viable en esta GPU")
+            self._emit("  ✗ Ningún batch size viable en esta GPU")
             return
 
-        best = max(viable, key=lambda r: r.images_per_second)
-        print(f"  ✓ Batch size óptimo:  {best.batch_size} ({best.images_per_second:.1f} imgs/s)")
+        best = max(viable, key=lambda r: r.images_per_second_train)
+        self._emit(f"  ✓ Batch size óptimo:  {best.batch_size} ({best.images_per_second_train:.1f} imgs/s en train)")
 
         for mode in report.trace_modes:
             r = next((x for x in report.results if x.batch_size == best.batch_size and x.trace_mode == mode), None)
             if r and not r.oom:
-                est = estimator.estimate(r, report.dataset_train, target_epochs)
+                est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs, nfs)
                 if est:
-                    print(f"  → --trace {mode:<8} para {target_epochs} epochs:  ~{TimeEstimator.format_time(est[1])}")
+                    self._emit(
+                        f"  → --trace {mode:<8} para {target_epochs} epochs: "
+                        f" ~{TimeEstimator.format_time(est['total'])}"
+                        f"  (train {TimeEstimator.format_time(est['train_per_epoch'])}/epoch"
+                        f" + eval {TimeEstimator.format_time(est['eval_per_epoch'])}/epoch)"
+                    )
 
-        off_result = next((r for r in report.results if r.batch_size == best.batch_size and r.trace_mode == "off"), None)
-        deep_result = next((r for r in report.results if r.batch_size == best.batch_size and r.trace_mode == "deep"), None)
-        if off_result and deep_result and not off_result.oom and not deep_result.oom:
-            overhead = (deep_result.seconds_per_batch / off_result.seconds_per_batch - 1) * 100
-            print(f"  ⚠ --trace deep añade un {overhead:.0f}% de overhead — úsalo solo para análisis puntual")
+        off_r = next((r for r in report.results if r.batch_size == best.batch_size and r.trace_mode == "off"), None)
+        deep_r = next((r for r in report.results if r.batch_size == best.batch_size and r.trace_mode == "deep"), None)
+        if off_r and deep_r and not off_r.oom and not deep_r.oom:
+            pct = (deep_r.seconds_per_batch_train / off_r.seconds_per_batch_train - 1) * 100
+            self._emit(f"  ⚠ --trace deep añade un {pct:.0f}% de overhead — úsalo solo para análisis puntual")
 
-        print()
+        if nfs == 1.0:
+            self._emit()
+            self._emit("  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas")
+
+        self._emit()
 
 
 # ──────────────────────────────────────────────────────────────
-# FeasibilityChecker — Facade: orchestrates all components
+# FeasibilityChecker — Facade
 # ──────────────────────────────────────────────────────────────
 
 class FeasibilityChecker:
-    """Facade that coordinates analysis, benchmarking and reporting."""
-
     def __init__(
         self,
         model_name: str,
@@ -490,6 +548,7 @@ class FeasibilityChecker:
         trace_modes: list[str],
         dataset_train: int,
         dataset_val: int,
+        nfs_factor: float = 1.0,
     ):
         self._model_name = model_name
         self._batch_sizes = batch_sizes
@@ -497,6 +556,7 @@ class FeasibilityChecker:
         self._trace_modes = trace_modes
         self._dataset_train = dataset_train
         self._dataset_val = dataset_val
+        self._nfs_factor = nfs_factor
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def run(self) -> FeasibilityReport:
@@ -512,6 +572,7 @@ class FeasibilityChecker:
             hardware_info=hardware_info,
             dataset_train=self._dataset_train,
             dataset_val=self._dataset_val,
+            nfs_factor=self._nfs_factor,
             batch_sizes=self._batch_sizes,
             epochs_list=self._epochs_list,
             trace_modes=self._trace_modes,
@@ -546,6 +607,20 @@ def parse_args():
         choices=["off", "simple", "deep"],
         default=["off", "simple", "deep"],
     )
+    parser.add_argument(
+        "--nfs-factor",
+        type=float,
+        default=1.0,
+        metavar="FACTOR",
+        help="Overhead multiplier for NFS storage (e.g. 1.3 for Verode). Default: 1.0 (local SSD)",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="Save report to FILE (default: auto-generate in logs/)",
+    )
     return parser.parse_args()
 
 
@@ -559,6 +634,13 @@ def main():
     batch_sizes = args.batch_sizes or [cfg["training"]["batch_size"]]
     epochs_list = args.epochs or [cfg["training"]["epochs"]]
 
+    # Auto-generate output path if not specified
+    output_path = args.output
+    if output_path is None:
+        ts = datetime.now().strftime("%d%m%Y_%H%M%S")
+        env = cfg.get("output", {}).get("env", "local")
+        output_path = Path(f"logs/{env}/feasibility_{ts}.log")
+
     checker = FeasibilityChecker(
         model_name=cfg["model"]["name"],
         batch_sizes=batch_sizes,
@@ -566,10 +648,11 @@ def main():
         trace_modes=args.trace_modes,
         dataset_train=237871,
         dataset_val=122342,
+        nfs_factor=args.nfs_factor,
     )
 
     report = checker.run()
-    ReportFormatter().print(report)
+    ReportFormatter(output_path=output_path).print(report)
 
 
 if __name__ == "__main__":

@@ -77,7 +77,8 @@ class EpochController(TrainerDecorator):
             if val_m["f1"] > best_f1:
                 best_f1 = val_m["f1"]
                 epochs_no_improve = 0
-                self.save_checkpoint(epoch, val_m)
+                metrics_clean = {k: v for k, v in val_m.items() if not k.startswith("_")}
+                self.save_checkpoint(epoch, metrics_clean)
             else:
                 epochs_no_improve += 1
 

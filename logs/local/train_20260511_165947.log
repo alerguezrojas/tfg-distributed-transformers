@@ -1,0 +1,11 @@
+2026-05-11 16:59:52 [INFO ] Iniciando entrenamiento — 1 epochs
+2026-05-11 16:59:52 [INFO ] 
+── Epoch 001/001 ────────────────────────────
+2026-05-11 17:12:57 [INFO ]   loss           train=0.2265  val=0.2080
+2026-05-11 17:12:57 [INFO ]   f1             train=0.3715  val=0.4378
+2026-05-11 17:12:57 [INFO ]   accuracy       train=0.9027  val=0.9117
+2026-05-11 17:12:57 [INFO ]   precision      val=0.6700
+2026-05-11 17:12:57 [INFO ]   recall         val=0.3804
+2026-05-11 17:12:57 [INFO ] [Epoch 001] Checkpoint guardado
+2026-05-11 17:12:57 [INFO ]   ETA: 0h 00m  (530s/epoch, best_f1=0.4378)
+2026-05-11 17:12:57 [INFO ] Entrenamiento completado — mejor Val F1: 0.4378

@@ -23,4 +23,7 @@ training:
   log_batch_every: 50       # DeepTracingDecorator / BatchMonitor: log cada N batches
 
 checkpoint:
-  dir: "checkpoints/single_gpu"
+  dir: "checkpoints/local"
+
+output:
+  env: "local"   # "local" → logs/local/, plots/local/ | "verode" → logs/verode/, plots/verode/
