@@ -442,10 +442,10 @@ Igual que `train_cluster.yaml` más `label_smoothing: 0.1`, `mixup_alpha: 0.2`, 
 | 9  | 0.825 | **0.659** ← mejor | 0.183 |
 | 30 | 0.947 | 0.654 | 0.674 |
 
-- **Mejor Val F1: 0.6586** (epoch 9) — guardado en `checkpoints/single_gpu/checkpoint_epoch_009.pt`
+- **Mejor Val F1: 0.6586** (epoch 9) — guardado en `checkpoints/local/checkpoint_epoch_009.pt`
 - Duración: ~32.5 horas (~65 min/epoch)
 - Sobreajuste claro a partir del epoch 9: train loss → 0.0001, val loss sigue subiendo
-- Log completo: `logs/train_local.log`
+- Log completo: `logs/local/train_legacy.log`
 
 ### Clúster — V100 32 GB, batch_size=64, 30 epochs (completado 2026-05-07/09)
 
@@ -495,9 +495,35 @@ cosine scheduler, grad_clip=1.0, early stopping patience=10. Flags: `--trace sim
 - Activaciones de hooks estables en epochs 5/10/15: mlp.fc1 ~1.83, attn.qkv ~0.71, sin neuronas muertas
 - Log completo: `logs/verode/train_20260511_150808.log` | Plot: `plots/verode/training_20260511_150808.png`
 
+### Clúster v3 — V100 32 GB, batch_size=64, label smoothing + mixup (completado 2026-05-13/14)
+
+Ejecutado con `configs/train_cluster_v3.yaml`: label smoothing=0.1, mixup α=0.2, dropout=0.3, weight decay=0.1, LLRD decay=0.75, warmup=5, early stopping patience=10. Flags: `--trace simple --layers plot confusion batch-monitor --fn energy`.
+
+| Epoch | Train F1 | Val F1 | Val Loss | Threshold óptimo | F1@threshold |
+|-------|----------|--------|----------|-------------------|--------------|
+| 1  | 0.4813 | 0.5357 | 0.1813 | 0.30 | 0.5778 |
+| 2  | 0.6122 | 0.6237 | 0.1596 | 0.30 | 0.6394 |
+| 3  | 0.6813 | 0.6548 | 0.1501 | 0.35 | 0.6668 |
+| 4  | 0.7122 | 0.6523 | 0.1478 | 0.30 | 0.6683 |
+| 5  | 0.7351 | 0.6687 | 0.1488 | 0.35 | 0.6763 |
+| 6  | 0.7535 | **0.6738** ← mejor | 0.1545 | 0.35 | 0.6799 |
+| 7  | 0.7816 | 0.6651 | 0.1641 | 0.35 | 0.6711 |
+| 10 | 0.8454 | 0.6624 | 0.1992 | 0.35 | 0.6665 |
+| 16 | 0.9120 | 0.6630 | 0.3121 ← early stop | 0.35 | 0.6655 |
+
+- **Mejor Val F1: 0.6738** (epoch 6, threshold=0.5) — checkpoint en `checkpoints/verode/` en verode21
+- **Con threshold óptimo 0.35:** F1=0.6799 en el mejor epoch (mejora práctica para inferencia)
+- **Early stopping** paró en epoch 16 (sin mejora desde epoch 6 — patience=10)
+- Duración: **~18h** (13 May 16:15 → 14 May 10:13) — ~67 min/epoch (train+eval)
+- **Gap train-val en mejor epoch (6):** 0.7535 - 0.6738 = 0.08 (vs 0.11 en v2 — reducción clara)
+- Overfitting reducido pero no eliminado: val F1 plana en 0.66-0.67 desde epoch 6, train F1 → 0.91
+- Val loss empieza a divergir desde epoch 6 (mínima fue epoch 4: 0.1478)
+- `[energy]` reportó "GPU no disponible" en verode — pynvml no accede al driver; no afecta al entrenamiento
+- Log completo: `logs/verode/train_13052026_161533.log` | Plot: `plots/verode/training_13052026_161533.png`
+
 ### Comparativa de todas las ejecuciones en clúster
 
-| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) | v3 (pendiente) |
+| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) | v3 (label smoothing + mixup) |
 |---|---|---|---|
 | **Config** | `train_cluster.yaml` | `train_cluster.yaml` + flags | `train_cluster_v3.yaml` |
 | **Trace mode** | `--trace deep` | `--trace simple` | `--trace simple` |
@@ -508,9 +534,10 @@ cosine scheduler, grad_clip=1.0, early stopping patience=10. Flags: `--trace sim
 | **Mixup** | No | No | Sí (α=0.2) |
 | **Dropout** | 0.1 | 0.1 | 0.3 |
 | **Weight decay** | 0.05 | 0.05 | 0.1 |
-| **Epochs ejecutados** | 30 | 17 | — |
-| **Duración** | ~45.8h | **~19h** | — |
-| **Mejor Val F1** | 0.6588 (epoch 28) | **0.6707 (epoch 7)** | — |
+| **Epochs ejecutados** | 30 | 17 | 16 |
+| **Duración** | ~45.8h | ~19h | **~18h** |
+| **Mejor Val F1** | 0.6588 (epoch 28) | 0.6707 (epoch 7) | **0.6738 (epoch 6)** |
+| **Gap train-val en mejor epoch** | ~0.34 | ~0.11 | **~0.08** |
 
 **Conclusiones v1 → v2:**
 - LLRD + warmup mejoraron Val F1 en +0.012 y aceleraron la convergencia (mejor epoch: 28 → 7)
@@ -518,7 +545,13 @@ cosine scheduler, grad_clip=1.0, early stopping patience=10. Flags: `--trace sim
 - El techo de generalización (~0.67 Val F1) es una limitación del dataset/regularización, no del hardware
 - El cuello de botella NFS persiste: añadir GPUs (DDP) no escala linealmente si el I/O es el límite
 
-**Objetivo v3:** romper el techo ~0.67 con label smoothing + mixup + regularización aumentada. Esperado +0.01–0.03 Val F1.
+**Conclusiones v2 → v3:**
+- Label smoothing + mixup mejoraron Val F1 en +0.003 (modesto pero consistente)
+- La reducción del gap train-val (0.11 → 0.08) confirma que la regularización adicional funciona
+- La convergencia al mejor epoch fue más rápida (epoch 7 → epoch 6)
+- El techo del dataset (~0.67-0.68 Val F1 a threshold=0.5) parece real — las clases raras limitan F1 macro
+- **Para inferencia usar threshold=0.35:** consistentemente mejora F1 en ~0.005-0.006 sobre threshold=0.5
+- El siguiente paso para mejorar resultados es DDP (más datos efectivos por epoch) o cambio de dataset split
 
 ---
 
@@ -627,11 +660,11 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Clúster VERODE: V100 32 GB, dataset 549 488 patches, PyTorch cu118, SSH key configurada
 - [x] Entrenamiento clúster v1: 30 epochs, batch=64, Val F1=0.6588 (07-09/05/26) → `logs/verode/train_deep_20260507_084113.log`
 - [x] Entrenamiento clúster v2: 17 epochs, Val F1=0.6707, early stop epoch 17 (11-12/05/26) → `logs/verode/train_20260511_150808.log`
+- [x] Entrenamiento clúster v3: 16 epochs, Val F1=0.6738, early stop epoch 16 (13-14/05/26) → `logs/verode/train_13052026_161533.log`
 - [x] Configs v3 listos: `configs/train_v3.yaml` (local) y `configs/train_cluster_v3.yaml` (Verode)
 - [x] Diagrama de clases actualizado: `docs/class_diagram.puml` + `docs/class_diagram.png`
 
 ### Pendiente
-- [ ] Entrenamiento clúster v3 con `configs/train_cluster_v3.yaml` (objetivo: superar Val F1=0.67)
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
 - [ ] Proyección multi-GPU en feasibility checker
 - [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP
@@ -688,18 +721,20 @@ tmux attach -t training        # reconectar a sesión existente
 # Ctrl+B, D → desconectarse sin matar la sesión
 
 # Entrar al nodo de cómputo (interactivo)
-srun --partition=short --gres=gpu:1 --time=30:00:00 --pty bash
+/opt/soft/slurm/20.11.04/bin/srun --partition=batch --nodelist=verode21 --gres=gpu:1 --time=72:00:00 --pty bash
 
 cd ~/tfg-distributed-transformers
 
 # Verificar CUDA
 .venv/bin/python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
-# Feasibility previo al entrenamiento v3
-uv run python scripts/check_feasibility.py --batch-sizes 64 --epochs 30 --nfs-factor 1.3
+# Feasibility previo al entrenamiento (usar --config para que guarde en logs/verode/)
+.venv/bin/python scripts/check_feasibility.py \
+  --config configs/train_cluster_v3.yaml \
+  --batch-sizes 32 64 128 --epochs 30 --nfs-factor 1.3
 
-# Entrenamiento v3 completo
-uv run python scripts/train_single_gpu.py \
+# Entrenamiento completo
+.venv/bin/python scripts/train_single_gpu.py \
   --config configs/train_cluster_v3.yaml \
   --trace simple \
   --layers plot confusion batch-monitor \
@@ -708,9 +743,8 @@ uv run python scripts/train_single_gpu.py \
 # Ver log en tiempo real
 tail -f logs/verode/train_*.log
 
-# Al terminar: subir resultados
+# Al terminar: subir resultados (gitignore ya configurado, no necesita -f)
 git add logs/verode/ plots/verode/
-git add -f logs/verode/*.log
-git commit -m "feat: add Verode v3 training results"
+git commit -m "feat: add Verode training results"
 git push origin main
 ```
