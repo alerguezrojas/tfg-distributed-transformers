@@ -47,8 +47,9 @@ module add slurm/client/20.11.04   # o añadir al ~/.bashrc
 - **PyTorch:** `2.7.1+cu118` — instalado con cu118 para compatibilidad con driver 525 (CUDA 12.0 máx.)
   - ⚠️ `uv sync` instala cu13 por defecto → incompatible. Después de sync, ejecutar:
   ```bash
-  .venv/bin/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
+  uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
   ```
+  - ⚠️ `python -m pip` no está disponible en el venv del clúster → usar siempre `uv pip` en su lugar
 
 #### Problemas conocidos del clúster
 - `sbatch` falla con "I/O error writing script/environment to file" — bug de configuración de Slurm, no reparable por el usuario
@@ -587,7 +588,8 @@ El entorno `.venv` ya está creado. Si se reinstala desde cero:
 cd ~/tfg-distributed-transformers
 uv sync
 # Después, reinstalar PyTorch con cu118 (cu13 por defecto no es compatible con driver 525):
-.venv/bin/python -m pip install torch torchvision \
+# OJO: usar uv pip, NO python -m pip (el módulo pip no está disponible en el venv del clúster)
+uv pip install torch torchvision \
     --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
 ```
 
@@ -679,11 +681,10 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Entrenamiento clúster v2: 17 epochs, Val F1=0.6707, early stop epoch 17 (11-12/05/26) → `logs/verode/train_20260511_150808.log`
 - [x] Entrenamiento clúster v3: 16 epochs, Val F1=0.6738, early stop epoch 16 (13-14/05/26) → `logs/verode/train_13052026_161533.log`
 - [x] Configs v3 listos: `configs/train_v3.yaml` (local) y `configs/train_cluster_v3.yaml` (Verode)
-- [x] Diagrama de clases actualizado: `docs/class_diagram.puml` + `docs/class_diagram.png`
+- [x] Diagrama de clases actualizado: `docs/class_diagram.puml` + `docs/class_diagram.png` — incluye src.web (RunInfo, run_registry, log_parser, batch_parser, app), metrics.py y logger_setup.py; eliminado `docs/class_diagram_pre_v3.png`
 - [x] Smoke test ResNet50 local: 2 epochs, Val F1=0.4725, threshold óptimo=0.30 (14/05/26) → `logs/local/train_14052026_170438.log`
-- [x] Entrenamiento v3b en curso en Verode: stack completo (plot+confusion+batch-monitor+hooks, --fn energy+timing) — pynvml instalado y funcional
-- [x] Fix pynvml en Verode: `nvidia-ml-py` no estaba instalado → `uv sync` + reinstall torch cu118; confirmado funcionando en v3b
-- [x] Entrenamiento v3b Verode en curso: stack completo con `--fn energy timing --layers plot confusion batch-monitor hooks`
+- [x] Fix pynvml en Verode: `nvidia-ml-py` no estaba instalado → `uv sync` + `uv pip install torch cu118`; confirmado funcionando
+- [x] Entrenamiento v3b en Verode en curso: stack completo (`--trace simple --layers plot confusion batch-monitor hooks --fn energy timing`) con pynvml funcional; resultados pendientes de commitear
 
 ### Pendiente
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
