@@ -721,7 +721,7 @@ tmux attach -t training        # reconectar a sesión existente
 # Ctrl+B, D → desconectarse sin matar la sesión
 
 # Entrar al nodo de cómputo (interactivo)
-/opt/soft/slurm/20.11.04/bin/srun --partition=batch --nodelist=verode21 --gres=gpu:1 --time=72:00:00 --pty bash
+/opt/soft/slurm/20.11.04/bin/srun --partition=batch --nodelist=verode21 --gres=gpu:tesla:1 --time=72:00:00 --pty bash
 
 cd ~/tfg-distributed-transformers
 
