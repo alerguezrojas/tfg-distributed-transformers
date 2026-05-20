@@ -59,10 +59,19 @@ class TrainingSessionBuilder:
         ← controller           (TracingDecorator or DeepTracingDecorator)
     """
 
-    def __init__(self, cfg: dict, device: torch.device, timestamp: str | None = None):
+    def __init__(
+        self,
+        cfg: dict,
+        device: torch.device,
+        timestamp: str | None = None,
+        rank: int = 0,
+        world_size: int = 1,
+    ):
         self._cfg = cfg
         self._device = device
         self._timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._rank = rank
+        self._world_size = world_size
 
         # Defaults — mirrors the CLI defaults in train_single_gpu.py
         self._model_name: str | None = None          # None → use cfg["model"]["name"]
@@ -160,14 +169,27 @@ class TrainingSessionBuilder:
 
         # ── Base Trainer ──────────────────────────────────────────────────────
         grad_clip = cfg["training"].get("grad_clip", None)
-        base = Trainer(
-            model=model,
-            optimizer=optimizer,
-            scheduler=scheduler,
-            device=self._device,
-            checkpoint_dir=cfg["checkpoint"]["dir"],
-            grad_clip=grad_clip,
-        )
+        if self._world_size > 1:
+            from src.training.ddp_trainer import DDPTrainer
+            base = DDPTrainer(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                device=self._device,
+                checkpoint_dir=cfg["checkpoint"]["dir"],
+                grad_clip=grad_clip,
+                rank=self._rank,
+                world_size=self._world_size,
+            )
+        else:
+            base = Trainer(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                device=self._device,
+                checkpoint_dir=cfg["checkpoint"]["dir"],
+                grad_clip=grad_clip,
+            )
 
         # ── 1. @ function decorators on Trainer methods ───────────────────────
         if "energy" in self._fn:
