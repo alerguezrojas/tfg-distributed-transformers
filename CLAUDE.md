@@ -315,6 +315,41 @@ uv run python scripts/train_single_gpu.py --config configs/train_cluster.yaml --
 
 ---
 
+## Entrenamiento distribuido (DDP)
+
+`scripts/train_ddp.py` — punto de entrada para `torchrun` (PyTorch DistributedDataParallel).
+
+### Arquitectura DDP
+
+- **`src/training/ddp_trainer.py`**: `DDPTrainer(Trainer)` — subclase mínima que sobreescribe tres métodos:
+  - `train_epoch`: llama `sampler.set_epoch(epoch)` para shuffle correcto
+  - `eval_epoch`: reúne predicciones de todos los procesos con `dist.all_gather`; promedia loss con `dist.all_reduce`; recalcula métricas globales
+  - `save_checkpoint`: solo el proceso con `rank=0` guarda el checkpoint
+- **`src/training/builder.py`**: acepta `rank` y `world_size`; si `world_size > 1` crea `DDPTrainer`, si no crea `Trainer`
+- **`src/training/decorators/base.py`**: `EpochController` añade `dist.barrier()` entre epochs; early stopping se decide en rank 0 y se broadcast a todos los procesos
+- **`src/training/decorators/tracing.py`**: `_emit()` comprueba `rank == 0` antes de escribir logs (solo el proceso principal escribe)
+
+### Lanzamiento
+
+```bash
+# Smoke test local (1 GPU, valida el código sin necesitar 2 GPUs):
+torchrun --nproc_per_node=1 scripts/train_ddp.py \
+  --model vit_tiny_patch16_224 --epochs 1 \
+  --config configs/train.yaml --trace simple
+# → Val F1=0.4353, completado sin errores (verificado 20/05/26)
+
+# En Verode con 2 GPUs:
+torchrun --nproc_per_node=2 scripts/train_ddp.py \
+  --config configs/train_ddp_verode.yaml \
+  --trace simple --layers plot confusion --epochs 5
+```
+
+### Config DDP Verode
+
+`configs/train_ddp_verode.yaml` — batch_size=64 **por GPU** (global batch = 128 con 2 GPUs), backend NCCL.
+
+---
+
 ## Feasibility Checker
 
 `scripts/check_feasibility.py` — análisis de viabilidad previo al entrenamiento. Usa datos sintéticos (sin tocar el dataset) para medir throughput real y estimar tiempos.
@@ -324,18 +359,23 @@ Arquitectura (patrón Facade + SRP):
 - `HardwareProbe` — VRAM disponible
 - `Benchmarker` — throughput real por (batch_size, trace_mode)
 - `TimeEstimator` — convierte throughput en estimaciones de tiempo
-- `ReportFormatter` — imprime el informe
+- `ReportFormatter` — imprime el informe + escribe CSV estructurado
 - `FeasibilityChecker` — Facade que coordina todo
 
 ```bash
 uv run python scripts/check_feasibility.py
 uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 128 --epochs 30
 uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off deep
-# Nuevo: factor NFS para corregir estimación en Verode (NFS añade ~30% de latencia I/O)
+# Factor NFS para corregir estimación en Verode (NFS añade ~30% de latencia I/O)
 uv run python scripts/check_feasibility.py --batch-sizes 64 --nfs-factor 1.3
+# Nuevo: override del modelo desde CLI para comparar arquitecturas
+uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
 ```
 
-El informe se guarda automáticamente en `logs/{env}/feasibility_DDMMYYYY.log`.
+Genera dos artefactos en `logs/{env}/`:
+- `feasibility_DDMMYYYY_HHMMSS.log` — informe de texto legible
+- `feasibility_DDMMYYYY_HHMMSS.csv` — CSV estructurado con filas `#meta` (modelo/hardware) y filas de benchmark; consumido por la pestaña Feasibility del dashboard
+
 La tabla de estimaciones muestra **train/epoch**, **eval/epoch**, **total/epoch** y **total N epochs** por separado.
 
 **Resultados conocidos en RTX 3060 Ti:**
@@ -628,10 +668,12 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 ```
 src/web/
   __init__.py
-  app.py            # Streamlit entrypoint — 5 tabs
-  run_registry.py   # descubre runs en logs/ y plots/ por timestamp
-  log_parser.py     # parsea logs --trace simple y --trace deep → DataFrame por epoch
-  batch_parser.py   # lee batch_metrics_*.csv → DataFrame por batch
+  app.py                # Streamlit entrypoint — 7 tabs
+  run_registry.py       # descubre runs en logs/ y plots/ por timestamp; RunInfo con epoch/perclass CSV
+  log_parser.py         # parsea logs --trace simple y --trace deep → DataFrame (fallback)
+  batch_parser.py       # lee batch_metrics_*.csv → DataFrame por batch
+  perclass_parser.py    # lee perclass_metrics_*.csv → DataFrame (nuevas métricas por clase)
+  feasibility_parser.py # lee feasibility_*.csv → (metadata dict, benchmark DataFrame)
 ```
 
 ### Arranque
@@ -645,25 +687,27 @@ uv run streamlit run src/web/app.py
 
 | Tab | Contenido |
 |-----|-----------|
-| Training Curves | Plotly interactivo: loss, F1, accuracy, precision/recall (train + val) |
-| Per-class Metrics | PNGs de ConfusionMatrixDecorator por epoch (requiere `--layers confusion`) |
+| Training Curves | CSV-first: lee `epoch_metrics_*.csv`; fallback a log_parser para runs antiguos |
+| Per-class Metrics | Plotly interactivo por clase desde `perclass_metrics_*.csv`; fallback a PNGs |
 | Batch Monitor | Running loss intra-epoch por batch (requiere `--layers batch-monitor`) |
 | Compare Runs | Superpone hasta 4 runs en el mismo gráfico |
+| Feasibility | Tabla de benchmarks, gráfico de throughput, formulario para lanzar feasibility check |
+| Time Analysis | Tiempo real por epoch vs estimación del feasibility checker |
 | Run Info | Metadatos, tiempos, log crudo (200 primeras líneas) |
 
-El dashboard detecta automáticamente los runs existentes en `logs/`. Compatible con ambos formatos de log (`--trace simple` y `--trace deep`).
+Escanea `logs/local/` y `logs/verode/` más el root legacy. Compatible con `--trace simple`, `--trace deep` y logs legacy.
 
 ---
 
 ## Git workflow
 
 ```
-main ← feature/xxx   (PR directo a main)
+main ← develop ← feature/xxx
 ```
 
-- Las feature branches salen de `main` y hacen PR directo a `main`
-- `develop` existía en versiones anteriores pero ya no se usa — `main` es la rama de integración
-- **No añadir Co-Authored-By en los commits**
+- Las feature branches salen de `develop` y hacen PR a `develop`
+- Cuando `develop` está validado, se mergea a `main`
+- **No añadir Co-Authored-By en los commits ni "Generated with Claude" en los PRs**
 
 ### Configuración SSH en Verode (hecho una sola vez)
 ```bash
@@ -709,10 +753,13 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Smoke test ResNet50 local: 2 epochs, Val F1=0.4725, threshold óptimo=0.30 (14/05/26) → `logs/local/train_14052026_170438.log`
 - [x] Fix pynvml en Verode: `nvidia-ml-py` no estaba instalado → `uv sync` + `uv pip install torch cu118`; confirmado funcionando
 - [x] Entrenamiento v3b en Verode: 15 epochs, Val F1=0.6708 (epoch 5), early stop epoch 15 (14-15/05/26) → `logs/verode/train_14052026_145711.log` — confirma energía funcional (~35 Wh/eval, ~100 W media V100)
+- [x] **Entrenamiento distribuido DDP (20/05/26):** `DDPTrainer`, `scripts/train_ddp.py`, `configs/train_ddp_verode.yaml`; smoke test local 1 proceso completado sin errores (Val F1=0.4353) → `logs/local/train_20260520_221708.log`
+- [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
+- [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
 
 ### Pendiente
-- [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
-- [ ] Proyección multi-GPU en feasibility checker
+- [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
+- [ ] Proyección multi-GPU en feasibility checker (estimación de throughput con N GPUs)
 - [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP
 
 ---
@@ -738,14 +785,22 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 
 ### Local
 ```bash
-# Feasibility checker
-uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 --epochs 30
+# Feasibility checker (genera .log + .csv)
+uv run python scripts/check_feasibility.py --batch-sizes 16 32 --epochs 5
+uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
 
-# Test rápido (1 epoch)
+# Test rápido single-GPU (1 epoch)
 uv run python scripts/train_single_gpu.py --model vit_tiny_patch16_224 --epochs 1 --trace simple
 
 # Entrenamiento completo con config v3
 uv run python scripts/train_single_gpu.py --config configs/train_v3.yaml --trace simple --layers plot
+
+# Smoke test DDP local (1 proceso, valida sin 2 GPUs)
+torchrun --nproc_per_node=1 scripts/train_ddp.py \
+  --model vit_tiny_patch16_224 --epochs 1 --config configs/train.yaml --trace simple
+
+# Dashboard web (7 tabs)
+uv run streamlit run src/web/app.py
 
 # Ver log en tiempo real
 tail -f logs/local/train_*.log

@@ -1,18 +1,20 @@
 @startuml class_diagram
+scale 1400 width
 skinparam monochrome false
 skinparam classAttributeIconSize 0
 skinparam defaultFontName "DejaVu Sans"
-skinparam defaultFontSize 11
+skinparam defaultFontSize 10
 skinparam classFontStyle bold
-skinparam classFontSize 12
+skinparam classFontSize 11
 skinparam classHeaderBackgroundColor #1A5276
 skinparam classBorderColor #2C3E50
 skinparam classBackgroundColor #EBF5FB
 skinparam arrowColor #2C3E50
 skinparam arrowThickness 1.5
 skinparam roundCorner 8
-skinparam padding 4
-skinparam linetype ortho
+skinparam padding 3
+skinparam nodesep 40
+skinparam ranksep 50
 skinparam packageStyle rectangle
 skinparam packageBorderColor #95A5A6
 skinparam packageBackgroundColor #FDFEFE
@@ -45,10 +47,21 @@ package "src.training" #FDFEFE {
     + fit(train_loader, val_loader, epochs)
   }
 
+  class DDPTrainer {
+    - rank: int
+    - world_size: int
+    - _epoch: int
+    + train_epoch(loader): dict
+    + eval_epoch(loader): dict
+    + save_checkpoint(epoch, metrics)
+  }
+
   class TrainingSessionBuilder <<Builder>> {
     - _cfg: dict
     - _device: torch.device
     - _timestamp: str
+    - _rank: int
+    - _world_size: int
     - _model_name: str | None
     - _trace: str
     - _layers: list[str]
@@ -122,6 +135,7 @@ package "src.training.decorators" #FDFEFE {
   ' ── Controllers ────────────────────────────────────────────
   class TracingDecorator {
     - _logger: Logger | None
+    - _epoch_csv: Path | None
     + save_checkpoint(epoch, metrics)
     # _on_fit_start(epochs)
     # _on_epoch_start(epoch, epochs)
@@ -176,9 +190,11 @@ package "src.training.decorators" #FDFEFE {
   class ConfusionMatrixDecorator {
     - _output_dir: Path
     - _timestamp: str
+    - _csv_path: Path | None
     - _epoch: int
     + eval_epoch(loader): dict
     - _save_matrix(preds, labels, epoch)
+    - _write_csv(preds, labels, epoch)
   }
 
   class BatchMonitorDecorator {
@@ -386,6 +402,7 @@ package "scripts.check_feasibility" #FDFEFE {
   class ReportFormatter {
     - _output_path: Path | None
     + print(report: FeasibilityReport)
+    + write_csv(report, env: str)
     - _emit(msg: str)
     - _model_section(m: ModelInfo)
     - _hardware_section(h: HardwareInfo)
@@ -420,14 +437,16 @@ package "src.web" #FDFEFE {
     + plot_path: Path | None
     + perclass_paths: list[Path]
     + batch_csv_path: Path | None
+    + epoch_csv_path: Path | None
+    + perclass_csv_path: Path | None
     + label: str
   }
 
   note as web_note
     **run_registry.py**
     discover_runs(root) → list[RunInfo]
-    Escanea logs/local/ + logs/verode/
-    y agrupa artefactos por timestamp.
+    discover_feasibility_csvs(root) → list[Path]
+    Escanea logs/local/ + logs/verode/ (env-aware).
 
     **log_parser.py**
     parse_log(log_path) → DataFrame
@@ -436,9 +455,16 @@ package "src.web" #FDFEFE {
     **batch_parser.py**
     parse_batch_csv(csv_path) → DataFrame
 
-    **app.py** (Streamlit, 5 pestañas)
+    **perclass_parser.py**
+    parse_perclass_csv(csv_path) → DataFrame
+
+    **feasibility_parser.py**
+    parse_feasibility_csv(csv_path) → (dict, DataFrame)
+
+    **app.py** (Streamlit, 7 pestañas)
     Training Curves | Per-class Metrics
-    Batch Monitor | Compare Runs | Run Info
+    Batch Monitor | Compare Runs
+    Feasibility | Time Analysis | Run Info
   end note
 
 }
@@ -448,6 +474,7 @@ package "src.web" #FDFEFE {
 ' ════════════════════════════════════════════════════════════════
 
 BaseTrainer <|-- Trainer
+Trainer <|-- DDPTrainer
 BaseTrainer <|-- TrainerDecorator
 
 TrainerDecorator <|-- EpochController
@@ -475,6 +502,7 @@ TrainerDecorator o-- BaseTrainer : wraps >
 
 TrainingSessionBuilder ..> BaseTrainer : builds >
 TrainingSessionBuilder ..> Trainer : creates >
+TrainingSessionBuilder ..> DDPTrainer : creates (world_size>1) >
 TrainingSessionBuilder ..> aug_note : uses >
 
 DeepTracingDecorator ..> LayerStats : uses >
