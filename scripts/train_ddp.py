@@ -62,12 +62,13 @@ def parse_args():
 
 def main():
     # ── Distributed init ─────────────────────────────────────────────────────
-    dist.init_process_group(backend="nccl")
-    rank = dist.get_rank()
     local_rank = int(os.environ["LOCAL_RANK"])
-    world_size = dist.get_world_size()
     device = torch.device(f"cuda:{local_rank}")
     torch.cuda.set_device(device)
+    # Pass device_id to suppress "barrier() using device under current context" warning
+    dist.init_process_group(backend="nccl", device_id=device)
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
 
     args = parse_args()
 
