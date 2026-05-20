@@ -1,0 +1,66 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT
+  20/05/2026 22:14:57
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  MODELO
+────────────────────────────────────────────────────────────────────────
+  Nombre:               resnet50
+  Parámetros totales:   23,546,963 (23.5M)
+  Parámetros train.:    23,546,963 (23.5M)
+  FLOPs/imagen:         4087.2 MFLOPs
+  Memoria pesos:        94 MB
+  Gradientes:           94 MB
+  Estado AdamW:         188 MB
+  Total estático:       0.37 GB  (sin activaciones)
+
+────────────────────────────────────────────────────────────────────────
+  HARDWARE
+────────────────────────────────────────────────────────────────────────
+  GPU:                  NVIDIA GeForce RTX 3060 Ti
+  VRAM total:           8.20 GB
+  VRAM libre:           8.20 GB
+
+────────────────────────────────────────────────────────────────────────
+  MEMORIA POR BATCH SIZE
+────────────────────────────────────────────────────────────────────────
+  Estática (pesos+grad+AdamW): 0.37 GB
+  Activaciones por imagen:     177.8 MB
+
+  Batch    Estática   Activac.   Total est.    Estado
+  ─────  ──────────  ─────────  ───────────  ────────
+     32      0.37 GB     5.56 GB       5.92 GB      ✓ OK
+     64      0.37 GB    11.11 GB      11.48 GB     OOM ✗
+
+────────────────────────────────────────────────────────────────────────
+  BENCHMARK  (8 batches sintéticos — sin I/O real)
+────────────────────────────────────────────────────────────────────────
+  Batch  Modo      s/batch(train)  imgs/s(train)  s/batch(eval)     VRAM
+  ─────  ────────  ──────────────  ─────────────  ─────────────  ───────
+     32  off              0.143s        223.0        0.048s   3.10 GB
+     32  simple           0.144s        222.4        0.048s   3.10 GB  (+0% vs off)
+     64  off              0.278s        230.4        0.092s   5.88 GB
+     64  simple           0.279s        229.3        0.092s   5.87 GB  (+0% vs off)
+
+────────────────────────────────────────────────────────────────────────
+  ESTIMACIONES  (train=237,871 | val=122,342)
+────────────────────────────────────────────────────────────────────────
+
+  30 epochs:
+  Batch  Modo      Train/epoch  Eval/epoch  Total/epoch       TOTAL
+  ─────  ────────  ───────────  ──────────  ───────────  ──────────
+     32  off            0h 17m      0h 03m       0h 20m     10h 24m
+     32  simple         0h 17m      0h 03m       0h 20m     10h 26m
+     64  off            0h 17m      0h 02m       0h 20m     10h 04m
+     64  simple         0h 17m      0h 02m       0h 20m     10h 06m
+
+────────────────────────────────────────────────────────────────────────
+  RECOMENDACIONES
+────────────────────────────────────────────────────────────────────────
+  ✓ Batch size óptimo:  64 (230.4 imgs/s en train)
+  → --trace off      para 30 epochs:  ~10h 04m  (train 0h 17m/epoch + eval 0h 02m/epoch)
+  → --trace simple   para 30 epochs:  ~10h 06m  (train 0h 17m/epoch + eval 0h 02m/epoch)
+
+  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+
