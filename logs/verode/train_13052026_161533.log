@@ -1,0 +1,152 @@
+2026-05-13 16:15:37 [INFO ] Iniciando entrenamiento — 30 epochs
+2026-05-13 16:15:37 [INFO ] 
+── Epoch 001/030 ────────────────────────────
+2026-05-13 17:21:30 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-13 17:21:34 [INFO ]   loss           train=0.1934  val=0.1813
+2026-05-13 17:21:34 [INFO ]   f1             train=0.4813  val=0.5357
+2026-05-13 17:21:34 [INFO ]   accuracy       train=0.9186  val=0.9229
+2026-05-13 17:21:34 [INFO ]   precision      val=0.6888
+2026-05-13 17:21:34 [INFO ]   recall         val=0.4842
+2026-05-13 17:22:51 [INFO ] [Epoch 001] Checkpoint guardado
+2026-05-13 17:22:51 [INFO ]   ETA: 31h 52m  (2704s/epoch, best_f1=0.5357)  (threshold óptimo=0.30, F1=0.5778)
+2026-05-13 17:22:51 [INFO ] 
+── Epoch 002/030 ────────────────────────────
+2026-05-13 18:29:20 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-13 18:29:21 [INFO ]   loss           train=0.1536  val=0.1596
+2026-05-13 18:29:21 [INFO ]   f1             train=0.6122  val=0.6237
+2026-05-13 18:29:21 [INFO ]   accuracy       train=0.9354  val=0.9325
+2026-05-13 18:29:21 [INFO ]   precision      val=0.7390
+2026-05-13 18:29:21 [INFO ]   recall         val=0.5782
+2026-05-13 18:30:36 [INFO ] [Epoch 002] Checkpoint guardado
+2026-05-13 18:30:36 [INFO ]   ETA: 30h 54m  (2725s/epoch, best_f1=0.6237)  (threshold óptimo=0.30, F1=0.6394)
+2026-05-13 18:30:36 [INFO ] 
+── Epoch 003/030 ────────────────────────────
+2026-05-13 19:37:07 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-13 19:37:08 [INFO ]   loss           train=0.1360  val=0.1501
+2026-05-13 19:37:08 [INFO ]   f1             train=0.6813  val=0.6548
+2026-05-13 19:37:08 [INFO ]   accuracy       train=0.9426  val=0.9359
+2026-05-13 19:37:08 [INFO ]   precision      val=0.7397
+2026-05-13 19:37:08 [INFO ]   recall         val=0.6158
+2026-05-13 19:38:24 [INFO ] [Epoch 003] Checkpoint guardado
+2026-05-13 19:38:24 [INFO ]   ETA: 29h 50m  (2728s/epoch, best_f1=0.6548)  (threshold óptimo=0.35, F1=0.6668)
+2026-05-13 19:38:24 [INFO ] 
+── Epoch 004/030 ────────────────────────────
+2026-05-13 20:45:17 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-13 20:45:18 [INFO ]   loss           train=0.1262  val=0.1478
+2026-05-13 20:45:18 [INFO ]   f1             train=0.7122  val=0.6523
+2026-05-13 20:45:18 [INFO ]   accuracy       train=0.9466  val=0.9381
+2026-05-13 20:45:18 [INFO ]   precision      val=0.7668
+2026-05-13 20:45:18 [INFO ]   recall         val=0.6022
+2026-05-13 20:45:18 [INFO ]   ETA: 28h 48m  (2717s/epoch, best_f1=0.6548)  (threshold óptimo=0.30, F1=0.6683)
+2026-05-13 20:45:18 [INFO ] 
+── Epoch 005/030 ────────────────────────────
+2026-05-13 21:52:10 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-13 21:52:12 [INFO ]   loss           train=0.1186  val=0.1488
+2026-05-13 21:52:12 [INFO ]   f1             train=0.7351  val=0.6687
+2026-05-13 21:52:12 [INFO ]   accuracy       train=0.9498  val=0.9386
+2026-05-13 21:52:12 [INFO ]   precision      val=0.7332
+2026-05-13 21:52:12 [INFO ]   recall         val=0.6296
+2026-05-13 21:53:29 [INFO ] [Epoch 005] Checkpoint guardado
+2026-05-13 21:53:29 [INFO ]   ETA: 27h 43m  (2754s/epoch, best_f1=0.6687)  (threshold óptimo=0.35, F1=0.6763)
+2026-05-13 21:53:29 [INFO ] 
+── Epoch 006/030 ────────────────────────────
+2026-05-13 23:00:31 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-13 23:00:32 [INFO ]   loss           train=0.1116  val=0.1545
+2026-05-13 23:00:32 [INFO ]   f1             train=0.7535  val=0.6738
+2026-05-13 23:00:32 [INFO ]   accuracy       train=0.9529  val=0.9376
+2026-05-13 23:00:32 [INFO ]   precision      val=0.7338
+2026-05-13 23:00:32 [INFO ]   recall         val=0.6358
+2026-05-13 23:01:48 [INFO ] [Epoch 006] Checkpoint guardado
+2026-05-13 23:01:48 [INFO ]   ETA: 26h 39m  (2762s/epoch, best_f1=0.6738)  (threshold óptimo=0.35, F1=0.6799)
+2026-05-13 23:01:48 [INFO ] 
+── Epoch 007/030 ────────────────────────────
+2026-05-14 00:09:03 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 00:09:04 [INFO ]   loss           train=0.1014  val=0.1641
+2026-05-14 00:09:04 [INFO ]   f1             train=0.7816  val=0.6651
+2026-05-14 00:09:04 [INFO ]   accuracy       train=0.9573  val=0.9370
+2026-05-14 00:09:04 [INFO ]   precision      val=0.7133
+2026-05-14 00:09:04 [INFO ]   recall         val=0.6327
+2026-05-14 00:09:04 [INFO ]   ETA: 25h 34m  (2769s/epoch, best_f1=0.6738)  (threshold óptimo=0.35, F1=0.6711)
+2026-05-14 00:09:04 [INFO ] 
+── Epoch 008/030 ────────────────────────────
+2026-05-14 01:15:52 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 01:15:53 [INFO ]   loss           train=0.0912  val=0.1755
+2026-05-14 01:15:53 [INFO ]   f1             train=0.8041  val=0.6678
+2026-05-14 01:15:53 [INFO ]   accuracy       train=0.9618  val=0.9356
+2026-05-14 01:15:53 [INFO ]   precision      val=0.7103
+2026-05-14 01:15:53 [INFO ]   recall         val=0.6377
+2026-05-14 01:15:53 [INFO ]   ETA: 24h 28m  (2726s/epoch, best_f1=0.6738)  (threshold óptimo=0.40, F1=0.6723)
+2026-05-14 01:15:53 [INFO ] 
+── Epoch 009/030 ────────────────────────────
+2026-05-14 02:23:09 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 02:23:11 [INFO ]   loss           train=0.0810  val=0.1868
+2026-05-14 02:23:11 [INFO ]   f1             train=0.8259  val=0.6619
+2026-05-14 02:23:11 [INFO ]   accuracy       train=0.9662  val=0.9352
+2026-05-14 02:23:11 [INFO ]   precision      val=0.7126
+2026-05-14 02:23:11 [INFO ]   recall         val=0.6298
+2026-05-14 02:23:11 [INFO ]   ETA: 23h 22m  (2742s/epoch, best_f1=0.6738)  (threshold óptimo=0.30, F1=0.6689)
+2026-05-14 02:23:11 [INFO ] 
+── Epoch 010/030 ────────────────────────────
+2026-05-14 03:30:27 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 03:30:28 [INFO ]   loss           train=0.0715  val=0.1992
+2026-05-14 03:30:28 [INFO ]   f1             train=0.8454  val=0.6624
+2026-05-14 03:30:28 [INFO ]   accuracy       train=0.9704  val=0.9349
+2026-05-14 03:30:28 [INFO ]   precision      val=0.7156
+2026-05-14 03:30:28 [INFO ]   recall         val=0.6309
+2026-05-14 03:30:28 [INFO ]   ETA: 22h 16m  (2759s/epoch, best_f1=0.6738)  (threshold óptimo=0.35, F1=0.6665)
+2026-05-14 03:30:28 [INFO ] 
+── Epoch 011/030 ────────────────────────────
+2026-05-14 04:37:44 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 04:37:45 [INFO ]   loss           train=0.0628  val=0.2148
+2026-05-14 04:37:45 [INFO ]   f1             train=0.8605  val=0.6675
+2026-05-14 04:37:45 [INFO ]   accuracy       train=0.9742  val=0.9346
+2026-05-14 04:37:45 [INFO ]   precision      val=0.7027
+2026-05-14 04:37:45 [INFO ]   recall         val=0.6457
+2026-05-14 04:37:45 [INFO ]   ETA: 21h 10m  (2758s/epoch, best_f1=0.6738)  (threshold óptimo=0.40, F1=0.6693)
+2026-05-14 04:37:45 [INFO ] 
+── Epoch 012/030 ────────────────────────────
+2026-05-14 05:44:35 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 05:44:36 [INFO ]   loss           train=0.0545  val=0.2284
+2026-05-14 05:44:36 [INFO ]   f1             train=0.8738  val=0.6617
+2026-05-14 05:44:36 [INFO ]   accuracy       train=0.9778  val=0.9337
+2026-05-14 05:44:36 [INFO ]   precision      val=0.7112
+2026-05-14 05:44:36 [INFO ]   recall         val=0.6331
+2026-05-14 05:44:36 [INFO ]   ETA: 20h 03m  (2727s/epoch, best_f1=0.6738)  (threshold óptimo=0.35, F1=0.6653)
+2026-05-14 05:44:36 [INFO ] 
+── Epoch 013/030 ────────────────────────────
+2026-05-14 06:52:01 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 06:52:02 [INFO ]   loss           train=0.0471  val=0.2533
+2026-05-14 06:52:02 [INFO ]   f1             train=0.8859  val=0.6583
+2026-05-14 06:52:02 [INFO ]   accuracy       train=0.9810  val=0.9327
+2026-05-14 06:52:02 [INFO ]   precision      val=0.7024
+2026-05-14 06:52:02 [INFO ]   recall         val=0.6303
+2026-05-14 06:52:02 [INFO ]   ETA: 18h 57m  (2763s/epoch, best_f1=0.6738)  (threshold óptimo=0.35, F1=0.6623)
+2026-05-14 06:52:02 [INFO ] 
+── Epoch 014/030 ────────────────────────────
+2026-05-14 07:58:36 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 07:58:37 [INFO ]   loss           train=0.0403  val=0.2717
+2026-05-14 07:58:37 [INFO ]   f1             train=0.8958  val=0.6616
+2026-05-14 07:58:37 [INFO ]   accuracy       train=0.9839  val=0.9325
+2026-05-14 07:58:37 [INFO ]   precision      val=0.7087
+2026-05-14 07:58:37 [INFO ]   recall         val=0.6317
+2026-05-14 07:58:37 [INFO ]   ETA: 17h 50m  (2727s/epoch, best_f1=0.6738)  (threshold óptimo=0.30, F1=0.6659)
+2026-05-14 07:58:37 [INFO ] 
+── Epoch 015/030 ────────────────────────────
+2026-05-14 09:05:59 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 09:06:00 [INFO ]   loss           train=0.0341  val=0.2961
+2026-05-14 09:06:00 [INFO ]   f1             train=0.9042  val=0.6591
+2026-05-14 09:06:00 [INFO ]   accuracy       train=0.9866  val=0.9319
+2026-05-14 09:06:00 [INFO ]   precision      val=0.6921
+2026-05-14 09:06:00 [INFO ]   recall         val=0.6396
+2026-05-14 09:06:00 [INFO ]   ETA: 16h 44m  (2768s/epoch, best_f1=0.6738)  (threshold óptimo=0.35, F1=0.6603)
+2026-05-14 09:06:00 [INFO ] 
+── Epoch 016/030 ────────────────────────────
+2026-05-14 10:12:59 [DEBUG] [energy] Trainer.eval_epoch: GPU no disponible (pynvml no instalado)
+2026-05-14 10:13:00 [INFO ]   loss           train=0.0285  val=0.3121
+2026-05-14 10:13:00 [INFO ]   f1             train=0.9120  val=0.6630
+2026-05-14 10:13:00 [INFO ]   accuracy       train=0.9890  val=0.9325
+2026-05-14 10:13:00 [INFO ]   precision      val=0.7040
+2026-05-14 10:13:00 [INFO ]   recall         val=0.6365
+2026-05-14 10:13:00 [INFO ]   ETA: 15h 37m  (2728s/epoch, best_f1=0.6738)  (threshold óptimo=0.35, F1=0.6655)
+2026-05-14 10:13:00 [INFO ] [Early stopping] Sin mejora en 10 epochs consecutivos. Parado en epoch 16. Mejor Val F1: 0.6738
+2026-05-14 10:13:00 [INFO ] Entrenamiento completado — mejor Val F1: 0.6738

@@ -1,0 +1,35 @@
+# Configuración v3 local — BigEarthNet-S2 (RTX 3060 Ti, 8 GB)
+# Mejoras sobre v2: label smoothing, mixup, regularización aumentada
+
+data:
+  root: "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet"
+  num_workers: 4
+
+model:
+  name: "vit_base_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.3              # 0.1 → 0.3: más regularización en la cabeza
+
+training:
+  epochs: 30
+  batch_size: 32            # 64 OOM en RTX 3060 Ti (8 GB)
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.1         # 0.05 → 0.1: regularización L2 más fuerte
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 50
+
+  # v3: técnicas anti-overfitting
+  label_smoothing: 0.1      # suaviza etiquetas 0→0.05, 1→0.95
+  mixup_alpha: 0.2          # mezcla pares de imágenes (prob=0.5 por batch)
+
+checkpoint:
+  dir: "checkpoints/local"
+
+output:
+  env: "local"

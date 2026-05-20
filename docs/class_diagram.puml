@@ -36,11 +36,60 @@ package "src.training" #FDFEFE {
     - device: torch.device
     - checkpoint_dir: Path
     - criterion: BCEWithLogitsLoss
+    - grad_clip: float | None
+    - label_smoothing: float
+    - mixup_alpha: float
     + train_epoch(loader): dict
     + eval_epoch(loader): dict
     + save_checkpoint(epoch, metrics)
     + fit(train_loader, val_loader, epochs)
   }
+
+  class TrainingSessionBuilder <<Builder>> {
+    - _cfg: dict
+    - _device: torch.device
+    - _timestamp: str
+    - _model_name: str | None
+    - _trace: str
+    - _layers: list[str]
+    - _fn: list[str]
+    - _metrics: list[str]
+    - _inspect: set[str] | None
+    + with_model(name): Self
+    + with_trace(mode): Self
+    + with_layers(*layers): Self
+    + with_fn(*fns): Self
+    + with_metrics(*metrics): Self
+    + with_inspect(*features): Self
+    + build(): BaseTrainer
+    + print_config(model_params)
+  }
+
+  note as aug_note
+    **augmentations.py**
+    mixup_batch(images, labels, alpha)
+    → tuple[Tensor, Tensor]
+    Mezcla pares del batch con coef. Beta(α,α).
+    Compatible con clasificación multi-label.
+  end note
+
+  note as metrics_note
+    **metrics.py**
+    f1_score(preds, labels) → float
+    precision(preds, labels) → float
+    recall(preds, labels) → float
+    accuracy(preds, labels) → float
+    eta_str(elapsed, done, total) → str
+    Funciones puras sobre tensores GPU.
+  end note
+
+  note as logger_note
+    **logger_setup.py**
+    setup_logger(name, level, log_file) → Logger
+    Configura handler de consola + fichero.
+    El logger "trainer" es el que usan todos
+    los decoradores y fn_decorators.
+  end note
 
 }
 
@@ -61,11 +110,13 @@ package "src.training.decorators" #FDFEFE {
 
   ' ── Template Method controller ─────────────────────────────
   class EpochController {
+    - _patience: int | None
     + fit(train_loader, val_loader, epochs)
     # _on_fit_start(epochs: int)
     # _on_epoch_start(epoch, epochs)
     # _on_epoch_end(epoch, epochs, train_m,\n  val_m, best_f1, epoch_times)
     # _on_fit_end(best_f1: float)
+    # _on_early_stop(epoch, best_f1)
   }
 
   ' ── Controllers ────────────────────────────────────────────
@@ -85,6 +136,7 @@ package "src.training.decorators" #FDFEFE {
     - _forward_hooks: list
     - _param_hooks: list
     - log_every: int
+    - features: set[str]
     + train_epoch(loader): dict
     # _on_fit_start(epochs)
     # _on_epoch_start(epoch, epochs)
@@ -119,6 +171,21 @@ package "src.training.decorators" #FDFEFE {
     - _make_hook(name: str)
     - _remove()
     - _print()
+  }
+
+  class ConfusionMatrixDecorator {
+    - _output_dir: Path
+    - _timestamp: str
+    - _epoch: int
+    + eval_epoch(loader): dict
+    - _save_matrix(preds, labels, epoch)
+  }
+
+  class BatchMonitorDecorator {
+    - _log_every: int
+    - _csv_path: Path
+    - _epoch: int
+    + train_epoch(loader): dict
   }
 
   ' ── Metric reporters ───────────────────────────────────────
@@ -193,6 +260,7 @@ package "src.training.fn_decorators" #FDFEFE {
     - _stop: threading.Event
     - _thread: Thread | None
     - _handle
+    - _error: str | None
     + available: bool
     + start()
     - _run()
@@ -205,6 +273,8 @@ package "src.training.fn_decorators" #FDFEFE {
     log_call(fn) → wrapper
     retry_on_cuda_oom(fn) → wrapper
     measure_energy(fn) → wrapper
+    Ruteados a logging.getLogger("trainer")
+    con fallback a print() si no hay logger.
   end note
 
   _PowerSampler .. fn_note
@@ -272,7 +342,8 @@ package "scripts.check_feasibility" #FDFEFE {
   class BenchmarkResult <<dataclass>> {
     + batch_size: int
     + trace_mode: str
-    + seconds_per_batch: float
+    + train_seconds_per_batch: float
+    + eval_seconds_per_batch: float
     + images_per_second: float
     + peak_vram_gb: float
     + oom: bool
@@ -301,18 +372,21 @@ package "scripts.check_feasibility" #FDFEFE {
     - model: nn.Module
     - device: torch.device
     + run(batch_size, trace_mode): BenchmarkResult
-    - _benchmark(batches, mode): tuple
+    - _benchmark_train(batches): tuple
+    - _benchmark_eval(batches): tuple
     - _step(images, labels)
     - _register_deep_hooks(): list
   }
 
   class TimeEstimator {
-    + estimate(result, size, epochs): tuple | None
+    + estimate(result, train_size, val_size,\n  epochs, nfs_factor): dict | None
     + format_time(seconds): str
   }
 
   class ReportFormatter {
+    - _output_path: Path | None
     + print(report: FeasibilityReport)
+    - _emit(msg: str)
     - _model_section(m: ModelInfo)
     - _hardware_section(h: HardwareInfo)
     - _benchmark_section(report)
@@ -325,10 +399,47 @@ package "scripts.check_feasibility" #FDFEFE {
     - batch_sizes: list[int]
     - epochs_list: list[int]
     - trace_modes: list[str]
+    - nfs_factor: float
     - dataset_train: int
     - dataset_val: int
     + run(): FeasibilityReport
   }
+
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.web
+' ════════════════════════════════════════════════════════════════
+package "src.web" #FDFEFE {
+
+  class RunInfo <<dataclass>> {
+    + timestamp: str
+    + log_path: Path
+    + trace_mode: str
+    + env: str
+    + plot_path: Path | None
+    + perclass_paths: list[Path]
+    + batch_csv_path: Path | None
+    + label: str
+  }
+
+  note as web_note
+    **run_registry.py**
+    discover_runs(root) → list[RunInfo]
+    Escanea logs/local/ + logs/verode/
+    y agrupa artefactos por timestamp.
+
+    **log_parser.py**
+    parse_log(log_path) → DataFrame
+    Soporta trace simple, deep y legacy.
+
+    **batch_parser.py**
+    parse_batch_csv(csv_path) → DataFrame
+
+    **app.py** (Streamlit, 5 pestañas)
+    Training Curves | Per-class Metrics
+    Batch Monitor | Compare Runs | Run Info
+  end note
 
 }
 
@@ -342,6 +453,8 @@ BaseTrainer <|-- TrainerDecorator
 TrainerDecorator <|-- EpochController
 TrainerDecorator <|-- PlottingDecorator
 TrainerDecorator <|-- LayerHooksDecorator
+TrainerDecorator <|-- ConfusionMatrixDecorator
+TrainerDecorator <|-- BatchMonitorDecorator
 TrainerDecorator <|-- _MetricReporter
 
 EpochController <|-- TracingDecorator
@@ -359,6 +472,10 @@ _TrainValReporter <|-- AccuracyReporter
 ' ════════════════════════════════════════════════════════════════
 
 TrainerDecorator o-- BaseTrainer : wraps >
+
+TrainingSessionBuilder ..> BaseTrainer : builds >
+TrainingSessionBuilder ..> Trainer : creates >
+TrainingSessionBuilder ..> aug_note : uses >
 
 DeepTracingDecorator ..> LayerStats : uses >
 DeepTracingDecorator ..> ParamStats : uses >
@@ -381,6 +498,10 @@ FeasibilityReport *-- HardwareInfo
 FeasibilityReport *-- BenchmarkResult
 
 BigEarthViT ..> BigEarthNetDataset : trained on >
+
+Trainer ..> metrics_note : uses >
+TracingDecorator ..> logger_note : uses >
+web_note ..> RunInfo : creates >
 
 ' ════════════════════════════════════════════════════════════════
 ' ESTILOS POR TIPO
@@ -407,6 +528,11 @@ skinparam class<<dataclass>> {
 skinparam class<<Facade>> {
   HeaderBackgroundColor #512E5F
   BackgroundColor #F9EBF8
+}
+
+skinparam class<<Builder>> {
+  HeaderBackgroundColor #145A32
+  BackgroundColor #E9F7EF
 }
 
 ' Colores por clase (override manual)

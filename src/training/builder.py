@@ -69,7 +69,7 @@ class TrainingSessionBuilder:
     ):
         self._cfg = cfg
         self._device = device
-        self._timestamp = timestamp or datetime.now().strftime("%Y%m%d_%H%M%S")
+        self._timestamp = timestamp or datetime.now().strftime("%d%m%Y_%H%M%S")
         self._rank = rank
         self._world_size = world_size
 
@@ -169,6 +169,8 @@ class TrainingSessionBuilder:
 
         # ── Base Trainer ──────────────────────────────────────────────────────
         grad_clip = cfg["training"].get("grad_clip", None)
+        label_smoothing = cfg["training"].get("label_smoothing", 0.0)
+        mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         if self._world_size > 1:
             from src.training.ddp_trainer import DDPTrainer
             base = DDPTrainer(
@@ -189,6 +191,8 @@ class TrainingSessionBuilder:
                 device=self._device,
                 checkpoint_dir=cfg["checkpoint"]["dir"],
                 grad_clip=grad_clip,
+                label_smoothing=label_smoothing,
+                mixup_alpha=mixup_alpha,
             )
 
         # ── 1. @ function decorators on Trainer methods ───────────────────────

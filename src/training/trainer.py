@@ -1,5 +1,6 @@
 """Single-GPU trainer for BigEarthNet multi-label classification."""
 
+import random
 import time
 from pathlib import Path
 
@@ -9,6 +10,9 @@ from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
 from src.training import metrics as m
+from src.training.augmentations import mixup_batch
+
+_THRESHOLD_GRID = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
 
 
 class Trainer(BaseTrainer):
@@ -27,6 +31,8 @@ class Trainer(BaseTrainer):
         checkpoint_dir: str = "checkpoints",
         criterion: nn.Module | None = None,
         grad_clip: float | None = None,
+        label_smoothing: float = 0.0,
+        mixup_alpha: float = 0.0,
     ):
         self.model = model.to(device)
         self.optimizer = optimizer
@@ -34,11 +40,14 @@ class Trainer(BaseTrainer):
         self.device = device
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        # Model returns raw logits (no sigmoid) — BCEWithLogitsLoss applies sigmoid
-        # internally. Switching to BCELoss would require adding sigmoid to the model.
+        # Model returns raw logits (no sigmoid) — BCEWithLogitsLoss applies sigmoid internally.
         self.criterion = criterion if criterion is not None else nn.BCEWithLogitsLoss()
-        # None = no clipping; otherwise clips gradient norm to this value before optimizer.step()
+        # None = no clipping; positive float = clip gradient norm before optimizer.step()
         self.grad_clip = grad_clip
+        # Label smoothing: targets 0→ls/2, 1→1-ls/2. Set 0.0 to disable.
+        self.label_smoothing = label_smoothing
+        # Mixup alpha: Beta distribution param. Set 0.0 to disable.
+        self.mixup_alpha = mixup_alpha
 
     def train_epoch(self, loader: DataLoader) -> dict:
         self.model.train()
@@ -51,6 +60,14 @@ class Trainer(BaseTrainer):
             images = images.to(self.device)
             labels = labels.to(self.device)
 
+            # Mixup augmentation (50% probability per batch)
+            if self.mixup_alpha > 0.0 and random.random() < 0.5:
+                images, labels = mixup_batch(images, labels, self.mixup_alpha)
+
+            # Label smoothing: shift hard targets away from 0 and 1
+            if self.label_smoothing > 0.0:
+                labels = labels * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
+
             self.optimizer.zero_grad()
             logits = self.model(images)
             loss = self.criterion(logits, labels)
@@ -61,9 +78,11 @@ class Trainer(BaseTrainer):
 
             total_loss += loss.item()
             with torch.no_grad():
-                preds = torch.sigmoid(logits) > 0.5
+                # Threshold at 0.5 for train metrics (labels may be soft due to mixup/smoothing)
+                hard_labels = (labels > 0.5).long()
+                preds = (torch.sigmoid(logits) > 0.5).long()
                 all_preds.append(preds.cpu())
-                all_labels.append(labels.cpu())
+                all_labels.append(hard_labels.cpu())
 
         if self.scheduler:
             self.scheduler.step()
@@ -82,7 +101,7 @@ class Trainer(BaseTrainer):
     def eval_epoch(self, loader: DataLoader) -> dict:
         self.model.eval()
         total_loss = 0.0
-        all_preds: list[torch.Tensor] = []
+        all_probs: list[torch.Tensor] = []
         all_labels: list[torch.Tensor] = []
 
         for images, labels in loader:
@@ -93,20 +112,32 @@ class Trainer(BaseTrainer):
             loss = self.criterion(logits, labels)
             total_loss += loss.item()
 
-            preds = torch.sigmoid(logits) > 0.5
-            all_preds.append(preds.cpu())
+            all_probs.append(torch.sigmoid(logits).cpu())
             all_labels.append(labels.cpu())
 
-        all_preds_t = torch.cat(all_preds)
+        all_probs_t = torch.cat(all_probs)
         all_labels_t = torch.cat(all_labels)
+        all_preds_t = (all_probs_t > 0.5).long()
+
+        f1_base = m.f1_score(all_preds_t, all_labels_t)
+
+        # Threshold grid search on validation set to find optimal F1 threshold
+        best_thresh, best_f1_thresh = 0.5, f1_base
+        for t in _THRESHOLD_GRID:
+            preds_t = (all_probs_t > t).long()
+            f1_t = m.f1_score(preds_t, all_labels_t)
+            if f1_t > best_f1_thresh:
+                best_thresh, best_f1_thresh = t, f1_t
 
         return {
             "loss": total_loss / len(loader),
-            "f1": m.f1_score(all_preds_t, all_labels_t),
+            "f1": f1_base,                          # at threshold=0.5 (used for checkpoint criterion)
             "accuracy": m.accuracy(all_preds_t, all_labels_t),
             "precision": m.precision(all_preds_t, all_labels_t),
             "recall": m.recall(all_preds_t, all_labels_t),
-            # Tensors for per-class analysis (consumed by ConfusionMatrixDecorator if active)
+            "_optimal_threshold": best_thresh,
+            "_f1_at_optimal_threshold": best_f1_thresh,
+            # Raw tensors for ConfusionMatrixDecorator (consumed by decorator, stripped before checkpoint)
             "_preds": all_preds_t,
             "_labels": all_labels_t,
         }

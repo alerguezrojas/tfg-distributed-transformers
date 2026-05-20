@@ -114,7 +114,7 @@ def main():
         cfg["training"]["batch_size"] = args.batch_size
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
 
     metrics = args.metrics if args.metrics is not None else []
     layers = args.layers or []

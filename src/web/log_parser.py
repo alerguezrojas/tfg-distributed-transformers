@@ -18,8 +18,16 @@ _SIMPLE_ETA = re.compile(r"ETA:.*?\(([0-9.]+)s/epoch")
 _DEEP_RESUMEN = re.compile(
     r"\[E(\d+)/\d+\] ══ RESUMEN\s+"
     r"train_loss=([0-9.]+)\s+train_f1=([0-9.]+)\s+train_acc=([0-9.]+)\s*\|\s*"
-    r"val_loss=([0-9.]+)\s+val_f1=([0-9.]+)\s+best=[0-9.]+\s*\|\s*"
+    r"val_loss=([0-9.]+)\s+val_f1=([0-9.]+)\s+(?:val_acc=([0-9.]+)\s+)?best=[0-9.]+\s*\|\s*"
     r"val_prec=([0-9.]+)\s+val_rec=([0-9.]+)\s*\|\s*"
+    r"time=([0-9.]+)s"
+)
+
+# ── Legacy format (pre-refactor simple trace) ─────────────────────────────────
+_LEGACY_LINE = re.compile(
+    r"\[Epoch (\d+)/\d+\]\s+"
+    r"train_loss=([0-9.]+)\s+train_f1=([0-9.]+)\s+train_acc=([0-9.]+)\s*\|\s*"
+    r"val_loss=([0-9.]+)\s+val_f1=([0-9.]+)\s+best=[0-9.]+\s+val_acc=([0-9.]+)\s*\|\s*"
     r"time=([0-9.]+)s"
 )
 
@@ -31,7 +39,12 @@ def parse_log(log_path: Path) -> pd.DataFrame:
     """Return one-row-per-epoch DataFrame from a training log file."""
     text = log_path.read_text(errors="replace")
     is_deep = "train_deep" in log_path.name
-    df = _parse_deep(text) if is_deep else _parse_simple(text)
+    if is_deep:
+        df = _parse_deep(text)
+    elif _LEGACY_LINE.search(text):
+        df = _parse_legacy(text)
+    else:
+        df = _parse_simple(text)
     return df[_COLS]
 
 
@@ -83,6 +96,28 @@ def _parse_deep(text: str) -> pd.DataFrame:
     for line in text.splitlines():
         m = _DEEP_RESUMEN.search(line)
         if m:
+            row: dict = {
+                "epoch": int(m.group(1)),
+                "train_loss": float(m.group(2)),
+                "train_f1": float(m.group(3)),
+                "train_acc": float(m.group(4)),
+                "val_loss": float(m.group(5)),
+                "val_f1": float(m.group(6)),
+                "val_prec": float(m.group(8)),
+                "val_rec": float(m.group(9)),
+                "epoch_time": float(m.group(10)),
+            }
+            if m.group(7) is not None:
+                row["val_acc"] = float(m.group(7))
+            rows.append(row)
+    return _to_df(rows)
+
+
+def _parse_legacy(text: str) -> pd.DataFrame:
+    rows: list[dict] = []
+    for line in text.splitlines():
+        m = _LEGACY_LINE.search(line)
+        if m:
             rows.append({
                 "epoch": int(m.group(1)),
                 "train_loss": float(m.group(2)),
@@ -90,9 +125,8 @@ def _parse_deep(text: str) -> pd.DataFrame:
                 "train_acc": float(m.group(4)),
                 "val_loss": float(m.group(5)),
                 "val_f1": float(m.group(6)),
-                "val_prec": float(m.group(7)),
-                "val_rec": float(m.group(8)),
-                "epoch_time": float(m.group(9)),
+                "val_acc": float(m.group(7)),
+                "epoch_time": float(m.group(8)),
             })
     return _to_df(rows)
 

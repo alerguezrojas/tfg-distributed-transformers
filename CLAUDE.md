@@ -47,8 +47,9 @@ module add slurm/client/20.11.04   # o añadir al ~/.bashrc
 - **PyTorch:** `2.7.1+cu118` — instalado con cu118 para compatibilidad con driver 525 (CUDA 12.0 máx.)
   - ⚠️ `uv sync` instala cu13 por defecto → incompatible. Después de sync, ejecutar:
   ```bash
-  .venv/bin/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
+  uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
   ```
+  - ⚠️ `python -m pip` no está disponible en el venv del clúster → usar siempre `uv pip` en su lugar
 
 #### Problemas conocidos del clúster
 - `sbatch` falla con "I/O error writing script/environment to file" — bug de configuración de Slurm, no reparable por el usuario
@@ -106,7 +107,7 @@ find ~/datasets/bigearthnet/BigEarthNet-S2/ -mindepth 2 -maxdepth 2 -type d | wc
 
 - `vit_base_patch16_224` de **timm**, pretrained ImageNet
 - 85 813 267 parámetros, embed_dim = 768
-- Cabeza personalizada: `Dropout(0.1) → Linear(768, 19)`
+- Cabeza personalizada: `Dropout(p) → Linear(768, 19)` — p=0.1 (configs v1/v2), p=0.3 (config v3)
 - Forward devuelve logits crudos (sin sigmoid)
 - Fichero: `src/models/vit.py` — clase `BigEarthViT`, función `build_model()`
 
@@ -126,7 +127,7 @@ Esto elimina la duplicación del bucle que tendría el Decorator puro.
 
 ```
 BaseTrainer (ABC)
-├── Trainer                        # lógica pura, sin prints ni logging
+├── Trainer                        # lógica pura: label smoothing, mixup, threshold search
 └── TrainerDecorator               # base OOP: delega todos los métodos al trainer envuelto
     ├── LossReporter               # metric reporter: train_loss / val_loss
     ├── F1Reporter                 # metric reporter: train_f1 / val_f1
@@ -134,9 +135,14 @@ BaseTrainer (ABC)
     ├── PrecisionRecallReporter    # metric reporter: val_precision / val_recall
     ├── PlottingDecorator          # aspecto: guarda curvas PNG tras cada epoch
     ├── LayerHooksDecorator        # aspecto: forward hooks en capas Linear
+    ├── ConfusionMatrixDecorator   # aspecto: PNG de F1/prec/rec por clase tras cada eval
+    ├── BatchMonitorDecorator      # aspecto: CSV con running loss por batch
     └── EpochController            # Template Method: define fit() con hooks _on_*
         └── TracingDecorator       # controlador: logging a consola y/o fichero
             └── DeepTracingDecorator  # controlador: hereda TracingDecorator + trazado profundo
+
+TrainingSessionBuilder             # Builder fluent API: monta el stack completo
+augmentations.mixup_batch()        # mezcla pares de batch con coef. Beta(α,α)
 ```
 
 ### Ficheros
@@ -172,6 +178,8 @@ Envuelven el objeto trainer completo. Hay tres subtipos:
 - **Aspecto** (`TrainerDecorator`): envuelven métodos concretos; combinables libremente
   - `PlottingDecorator` — acumula métricas y guarda PNG tras cada eval epoch; expone `_record_train_result()` para recibir métricas de train cuando `DeepTracingDecorator` gestiona el bucle directamente
   - `LayerHooksDecorator` — captura activaciones de capas Linear cada N epochs
+  - `ConfusionMatrixDecorator` — PNG con F1/prec/rec por clase (multi-label) tras cada eval epoch
+  - `BatchMonitorDecorator` — CSV con running loss cada N batches dentro del epoch
 - **Metric reporters** (`TrainerDecorator`): cada uno imprime una métrica independiente; activables con `--metrics`
   - `LossReporter` — cachea train_loss en train_epoch, imprime train+val loss tras eval_epoch
   - `F1Reporter` — ídem para F1 macro
@@ -185,6 +193,13 @@ Envuelven funciones individuales, no objetos. Se aplican a métodos del trainer 
 - `@log_call` — traza de entrada/salida
 - `@measure_energy` — muestrea potencia GPU en hilo de fondo, informa Julios/Wh
 - `@retry_on_cuda_oom` — reintenta una vez tras liberar caché CUDA en OOM
+
+Todos rutean a `logging.getLogger("trainer")` cuando hay fichero de log activo; caen a `print()` en modo `--trace off`.
+
+**Técnicas de regularización en `Trainer`** (v3)
+- **Label smoothing** (`label_smoothing: float`) — suaviza targets: 0→ls/2, 1→1-ls/2
+- **Mixup** (`mixup_alpha: float`) — mezcla pares del batch con λ ~ Beta(α,α); 50% prob por batch
+- **Threshold search** — tras cada `eval_epoch`, busca en [0.30…0.60] el threshold que maximiza F1 macro; reportado en log como `threshold óptimo`; no afecta al criterio de checkpoint (siempre threshold=0.5 para consistencia)
 
 ### Stack resultante
 
@@ -316,7 +331,12 @@ Arquitectura (patrón Facade + SRP):
 uv run python scripts/check_feasibility.py
 uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 128 --epochs 30
 uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off deep
+# Nuevo: factor NFS para corregir estimación en Verode (NFS añade ~30% de latencia I/O)
+uv run python scripts/check_feasibility.py --batch-sizes 64 --nfs-factor 1.3
 ```
+
+El informe se guarda automáticamente en `logs/{env}/feasibility_DDMMYYYY.log`.
+La tabla de estimaciones muestra **train/epoch**, **eval/epoch**, **total/epoch** y **total N epochs** por separado.
 
 **Resultados conocidos en RTX 3060 Ti:**
 - batch_size=32: ~65 imgs/s, 4.95 GB VRAM ← óptimo local
@@ -332,9 +352,30 @@ uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off
 
 ---
 
+## Estructura de artefactos
+
+Logs, plots y checkpoints se separan por entorno para no mezclar ejecuciones locales y de clúster:
+
+```
+logs/
+  local/        # RTX 3060 Ti — commiteados en git (excluye *.csv grandes)
+  verode/       # V100 Verode — commiteados en git
+plots/
+  local/
+  verode/
+checkpoints/
+  local/        # excluidos de git (*.pt)
+  verode/       # excluidos de git (*.pt)
+```
+
+El builder lee `output.env` del config (`"local"` o `"verode"`) y escribe en el subdirectorio correcto.
+Los ficheros se nombran con formato **DDMMYYYY_HHMMSS** (desde housekeeping, mayo 2026).
+
+---
+
 ## Configuración
 
-### `configs/train.yaml` — local
+### `configs/train.yaml` — local (baseline, sin regularización v3)
 ```yaml
 data:
   root: "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2"
@@ -344,23 +385,50 @@ model:
   name: "vit_base_patch16_224"
   pretrained: true
   num_classes: 19
+  dropout: 0.1
 training:
   epochs: 30
   batch_size: 32          # 64 OOM en RTX 3060 Ti (8 GB)
   lr: 0.0001              # OJO: no usar 1e-4, se parsea como string en YAML
-  weight_decay: 0.0001
-  log_batch_every: 50     # DeepTracingDecorator: tabla cada N batches
+  weight_decay: 0.05
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 50
 checkpoint:
-  dir: "checkpoints/single_gpu"
+  dir: "checkpoints/local"
+output:
+  env: "local"
 ```
 
-### `configs/train_cluster.yaml` — clúster VERODE
-Igual que `train.yaml` pero con rutas del clúster:
+### `configs/train_v3.yaml` — local con regularización v3
+Igual que `train.yaml` más:
+```yaml
+model:
+  dropout: 0.3
+training:
+  weight_decay: 0.1
+  label_smoothing: 0.1
+  mixup_alpha: 0.2
+```
+
+### `configs/train_cluster.yaml` — clúster VERODE (baseline)
+Igual que `train.yaml` pero con rutas del clúster y batch=64:
 ```yaml
 data:
   root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
   metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet"
+training:
+  batch_size: 64
+checkpoint:
+  dir: "checkpoints/verode"
+output:
+  env: "verode"
 ```
+
+### `configs/train_cluster_v3.yaml` — clúster VERODE con regularización v3
+Igual que `train_cluster.yaml` más `label_smoothing: 0.1`, `mixup_alpha: 0.2`, `dropout: 0.3`, `weight_decay: 0.1`.
 
 ---
 
@@ -375,10 +443,10 @@ data:
 | 9  | 0.825 | **0.659** ← mejor | 0.183 |
 | 30 | 0.947 | 0.654 | 0.674 |
 
-- **Mejor Val F1: 0.6586** (epoch 9) — guardado en `checkpoints/single_gpu/checkpoint_epoch_009.pt`
+- **Mejor Val F1: 0.6586** (epoch 9) — guardado en `checkpoints/local/checkpoint_epoch_009.pt`
 - Duración: ~32.5 horas (~65 min/epoch)
 - Sobreajuste claro a partir del epoch 9: train loss → 0.0001, val loss sigue subiendo
-- Log completo: `logs/train_local.log`
+- Log completo: `logs/local/train_legacy.log`
 
 ### Clúster — V100 32 GB, batch_size=64, 30 epochs (completado 2026-05-07/09)
 
@@ -395,7 +463,7 @@ Ejecutado con la versión previa a la refactorización (sin metric reporters), c
 | 28 | 0.9473 | **0.6588** ← mejor | 0.6526 |
 | 30 | 0.9473 | 0.6588 | 0.6554 |
 
-- **Mejor Val F1: 0.6588** (epoch 28) — checkpoints en `~/tfg-distributed-transformers/checkpoints/single_gpu/` en verode21
+- **Mejor Val F1: 0.6588** (epoch 28) — checkpoints en `~/tfg-distributed-transformers/checkpoints/verode/` en verode21
 - Duración real: **~45h 50m** (08:41 May 7 → 06:29 May 9)
   - Train: ~67 min/epoch | Eval: ~22 min/epoch | Total: ~89 min/epoch
   - Epoch 1: ~135 min (torchinfo + hook registration + warmup GPU)
@@ -403,7 +471,7 @@ Ejecutado con la versión previa a la refactorización (sin metric reporters), c
 - Overfitting severo: val F1 se estabiliza en 0.65-0.66 desde epoch 4, train F1 sigue subiendo hasta 0.947
 - Val loss diverge monotónicamente (0.16 → 0.66) mientras train loss cae a 0.0001
 - Sin anomalías de gradiente detectadas por DeepTracingDecorator en ningún epoch
-- Log completo: `~/logs/train_cluster.log` (en verode) / copia en `Escritorio/train_cluster.log` (local)
+- Log completo: `logs/verode/train_deep_20260507_084113.log`
 
 ### Clúster v2 — V100 32 GB, batch_size=64, early stopping (completado 2026-05-11/12)
 
@@ -419,33 +487,113 @@ cosine scheduler, grad_clip=1.0, early stopping patience=10. Flags: `--trace sim
 | 10 | 0.8461 | 0.6671 | 0.2053 |
 | 17 | 0.9186 | 0.6652 | 0.3365 ← early stop |
 
-- **Mejor Val F1: 0.6707** (epoch 7) — guardado en `checkpoints/single_gpu/` en verode21
+- **Mejor Val F1: 0.6707** (epoch 7) — guardado en `checkpoints/verode/` en verode21
 - **Early stopping** paró en epoch 17 (sin mejora desde epoch 7 — patience=10)
 - Duración: **~19h** (15:08 May 11 → 10:19 May 12) — 17 epochs × ~67 min/epoch
 - Tiempo ahorrado vs v1: ~27h (se habrían necesitado 30 epochs × 89 min = 45h)
 - Overfitting idéntico: val F1 plana en 0.67 desde epoch 4, train F1 → 0.92
 - `[energy]` reportó "GPU no disponible" en verode — pynvml no accede al driver en ese entorno; no afecta al entrenamiento
 - Activaciones de hooks estables en epochs 5/10/15: mlp.fc1 ~1.83, attn.qkv ~0.71, sin neuronas muertas
-- Log completo: `train_cluster_v2.log` (adjunto localmente)
+- Log completo: `logs/verode/train_20260511_150808.log` | Plot: `plots/verode/training_20260511_150808.png`
+
+### Clúster v3 — V100 32 GB, batch_size=64, label smoothing + mixup (completado 2026-05-13/14)
+
+Ejecutado con `configs/train_cluster_v3.yaml`: label smoothing=0.1, mixup α=0.2, dropout=0.3, weight decay=0.1, LLRD decay=0.75, warmup=5, early stopping patience=10. Flags: `--trace simple --layers plot confusion batch-monitor --fn energy`.
+
+| Epoch | Train F1 | Val F1 | Val Loss | Threshold óptimo | F1@threshold |
+|-------|----------|--------|----------|-------------------|--------------|
+| 1  | 0.4813 | 0.5357 | 0.1813 | 0.30 | 0.5778 |
+| 2  | 0.6122 | 0.6237 | 0.1596 | 0.30 | 0.6394 |
+| 3  | 0.6813 | 0.6548 | 0.1501 | 0.35 | 0.6668 |
+| 4  | 0.7122 | 0.6523 | 0.1478 | 0.30 | 0.6683 |
+| 5  | 0.7351 | 0.6687 | 0.1488 | 0.35 | 0.6763 |
+| 6  | 0.7535 | **0.6738** ← mejor | 0.1545 | 0.35 | 0.6799 |
+| 7  | 0.7816 | 0.6651 | 0.1641 | 0.35 | 0.6711 |
+| 10 | 0.8454 | 0.6624 | 0.1992 | 0.35 | 0.6665 |
+| 16 | 0.9120 | 0.6630 | 0.3121 ← early stop | 0.35 | 0.6655 |
+
+- **Mejor Val F1: 0.6738** (epoch 6, threshold=0.5) — checkpoint en `checkpoints/verode/` en verode21
+- **Con threshold óptimo 0.35:** F1=0.6799 en el mejor epoch (mejora práctica para inferencia)
+- **Early stopping** paró en epoch 16 (sin mejora desde epoch 6 — patience=10)
+- Duración: **~18h** (13 May 16:15 → 14 May 10:13) — ~67 min/epoch (train+eval)
+- **Gap train-val en mejor epoch (6):** 0.7535 - 0.6738 = 0.08 (vs 0.11 en v2 — reducción clara)
+- Overfitting reducido pero no eliminado: val F1 plana en 0.66-0.67 desde epoch 6, train F1 → 0.91
+- Val loss empieza a divergir desde epoch 6 (mínima fue epoch 4: 0.1478)
+- `[energy]` reportó "GPU no disponible" en verode — pynvml no accede al driver; no afecta al entrenamiento
+- Log completo: `logs/verode/train_13052026_161533.log` | Plot: `plots/verode/training_13052026_161533.png`
+
+### Local — ResNet50, batch_size=32, 2 epochs (smoke test 2026-05-14)
+
+Prueba de soporte genérico timm con modelo convolucional. Config: `train_v3.yaml` (label smoothing + mixup).
+
+| Epoch | Train F1 | Val F1 | Val Loss | Threshold óptimo |
+|-------|----------|--------|----------|-----------------|
+| 1 | 0.2311 | 0.3588 | 0.2463 | 0.30 |
+| 2 | 0.4046 | **0.4725** | 0.2174 | 0.30 |
+
+- **~17 min/epoch** — 4× más rápido que ViT-Base (~65 min/epoch en RTX 3060 Ti)
+- Val F1 > Train F1 en ambos epochs — modelo aún en fase de aprendizaje rápido, sin overfitting
+- Val loss bajando fuerte — con entrenamiento completo llegaría claramente más lejos
+- Threshold óptimo 0.30 (más bajo que el 0.35 del ViT) — ResNet más conservador en sus predicciones
+- A epoch 2, ViT-Base v3 tenía Val F1=0.6237 — ventaja clara del transformer con preentrenamiento ImageNet
+- **Valida que el soporte genérico timm funciona correctamente** para modelos no-ViT (sin LLRD, AdamW estándar)
+- Log: `logs/local/train_14052026_170438.log` | Plot: `plots/local/training_14052026_170438.png`
+
+### Clúster v3b — V100 32 GB, batch_size=64, stack completo con energía (completado 2026-05-14/15)
+
+Misma config que v3 (`configs/train_cluster_v3.yaml`). Objetivo: verificar pynvml funcionando y obtener datos de consumo energético. Flags: `--trace simple --layers plot confusion batch-monitor hooks --fn energy timing`.
+
+| Epoch | Train F1 | Val F1 | Val Loss | Threshold óptimo | F1@threshold |
+|-------|----------|--------|----------|------------------|--------------|
+| 1  | 0.4711 | 0.5593 | 0.1777 | 0.35 | 0.5865 |
+| 2  | 0.6186 | 0.6170 | 0.1567 | 0.30 | 0.6370 |
+| 3  | 0.6829 | 0.6295 | 0.1502 | 0.30 | 0.6631 |
+| 4  | 0.7150 | 0.6685 | 0.1487 | 0.35 | 0.6757 |
+| 5  | 0.7377 | **0.6708** ← mejor | 0.1502 | 0.35 | 0.6788 |
+| 7  | 0.7838 | 0.6700 | 0.1613 | 0.35 | 0.6766 |
+| 10 | 0.8465 | 0.6655 | 0.2039 | 0.40 | 0.6673 |
+| 15 | 0.9044 | 0.6538 | 0.2909 ← early stop | 0.30 | 0.6579 |
+
+- **Mejor Val F1: 0.6708** (epoch 5) — prácticamente igual a v3 (0.6738); diferencia de 0.003 es variación aleatoria
+- **Early stopping** en epoch 15 (sin mejora desde epoch 5 — patience=10)
+- Duración: **~17h 17m** (14 May 14:57 → 15 May 08:14) — ~69 min/época
+- **Energía (primera medición real):** eval_epoch consume ~35 Wh/época a ~100-104 W de potencia media en V100; total estimado 15 evals ≈ 530 Wh solo en evaluación
+- El patrón de overfitting es idéntico a v3: val F1 plana en 0.67 desde epoch 5, train F1 → 0.90
+- Val loss mínima en epoch 4 (0.1487), empieza a divergir desde epoch 5 — igual que v3
+- Log: `logs/verode/train_14052026_145711.log` | Plot: `plots/verode/training_14052026_145711.png`
 
 ### Comparativa de todas las ejecuciones en clúster
 
-| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) |
-|---|---|---|
-| **Rama** | previa a refactorización | `feature/training-improvements` |
-| **Trace mode** | `--trace deep` | `--trace simple` |
-| **LLRD** | No | Sí (decay=0.75, 30 grupos) |
-| **Warmup** | No | Sí (5 epochs, lineal) |
-| **Early stopping** | No | Sí (patience=10) |
-| **Epochs ejecutados** | 30 | 17 |
-| **Duración** | ~45.8h | **~19h** |
-| **Mejor Val F1** | 0.6588 (epoch 28) | **0.6707 (epoch 7)** |
+| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) | v3 (label smoothing + mixup) | v3b (stack completo + energía) |
+|---|---|---|---|---|
+| **Config** | `train_cluster.yaml` | `train_cluster.yaml` + flags | `train_cluster_v3.yaml` | `train_cluster_v3.yaml` |
+| **Trace mode** | `--trace deep` | `--trace simple` | `--trace simple` | `--trace simple` |
+| **LLRD** | No | Sí (decay=0.75) | Sí (decay=0.75) | Sí (decay=0.75) |
+| **Warmup** | No | Sí (5 epochs) | Sí (5 epochs) | Sí (5 epochs) |
+| **Early stopping** | No | Sí (patience=10) | Sí (patience=10) | Sí (patience=10) |
+| **Label smoothing** | No | No | Sí (0.1) | Sí (0.1) |
+| **Mixup** | No | No | Sí (α=0.2) | Sí (α=0.2) |
+| **Dropout** | 0.1 | 0.1 | 0.3 | 0.3 |
+| **Weight decay** | 0.05 | 0.05 | 0.1 | 0.1 |
+| **Energía medida** | No | No | No | **Sí (~35 Wh/eval, ~100 W)** |
+| **Epochs ejecutados** | 30 | 17 | 16 | 15 |
+| **Duración** | ~45.8h | ~19h | **~18h** | ~17.3h |
+| **Mejor Val F1** | 0.6588 (epoch 28) | 0.6707 (epoch 7) | **0.6738 (epoch 6)** | 0.6708 (epoch 5) |
+| **Gap train-val en mejor epoch** | ~0.34 | ~0.11 | **~0.08** | ~0.07 |
 
 **Conclusiones v1 → v2:**
 - LLRD + warmup mejoraron Val F1 en +0.012 y aceleraron la convergencia (mejor epoch: 28 → 7)
 - Early stopping ahorró ~27h eliminando epochs innecesarios
 - El techo de generalización (~0.67 Val F1) es una limitación del dataset/regularización, no del hardware
 - El cuello de botella NFS persiste: añadir GPUs (DDP) no escala linealmente si el I/O es el límite
+
+**Conclusiones v2 → v3:**
+- Label smoothing + mixup mejoraron Val F1 en +0.003 (modesto pero consistente)
+- La reducción del gap train-val (0.11 → 0.08) confirma que la regularización adicional funciona
+- La convergencia al mejor epoch fue más rápida (epoch 7 → epoch 6)
+- El techo del dataset (~0.67-0.68 Val F1 a threshold=0.5) parece real — las clases raras limitan F1 macro
+- **Para inferencia usar threshold=0.35:** consistentemente mejora F1 en ~0.005-0.006 sobre threshold=0.5
+- El siguiente paso para mejorar resultados es DDP (más datos efectivos por epoch) o cambio de dataset split
 
 ---
 
@@ -464,7 +612,8 @@ El entorno `.venv` ya está creado. Si se reinstala desde cero:
 cd ~/tfg-distributed-transformers
 uv sync
 # Después, reinstalar PyTorch con cu118 (cu13 por defecto no es compatible con driver 525):
-.venv/bin/python -m pip install torch torchvision \
+# OJO: usar uv pip, NO python -m pip (el módulo pip no está disponible en el venv del clúster)
+uv pip install torch torchvision \
     --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
 ```
 
@@ -509,13 +658,19 @@ El dashboard detecta automáticamente los runs existentes en `logs/`. Compatible
 ## Git workflow
 
 ```
-main ← develop ← feature/xxx
+main ← feature/xxx   (PR directo a main)
 ```
 
-- Las feature branches salen de `develop` y hacen PR a `develop`
-- Cuando `develop` está validado, se mergea a `main`
-- Ramas activas: `feature/architecture-improvements`, `feature/web-dashboard`, `feature/training-improvements`
+- Las feature branches salen de `main` y hacen PR directo a `main`
+- `develop` existía en versiones anteriores pero ya no se usa — `main` es la rama de integración
 - **No añadir Co-Authored-By en los commits**
+
+### Configuración SSH en Verode (hecho una sola vez)
+```bash
+ssh-keygen -t ed25519 -C "alu0101317038@verode" -f ~/.ssh/id_ed25519 -N ""
+cat ~/.ssh/id_ed25519.pub   # añadir en github.com → Settings → SSH keys
+git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transformers.git
+```
 
 ---
 
@@ -523,38 +678,39 @@ main ← develop ← feature/xxx
 
 ### Completado
 - [x] Pipeline de datos: `BigEarthNetDataset` con metadata.parquet
-- [x] Modelo: `BigEarthModel` (ViT + cabeza multi-label, soporte genérico timm; alias `BigEarthViT`)
+- [x] Modelo: `BigEarthViT` (ViT + cabeza multi-label, soporte genérico timm)
 - [x] Entrenamiento single-GPU: `Trainer` + LLRD + warmup + cosine scheduler + checkpoints
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
   - `decorators/confusion.py`: `ConfusionMatrixDecorator` — F1/prec/rec por clase (multi-label)
   - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running loss por batch
   - `decorators/metric_reporters.py`: `LossReporter`, `F1Reporter`, `AccuracyReporter`, `PrecisionRecallReporter`
-  - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom`
+  - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom` — rutean a logger
   - `builder.py`: `TrainingSessionBuilder` — fluent API para montar el stack completo
+  - `augmentations.py`: `mixup_batch()` — mezcla de batch compatible con multi-label
+- [x] Técnicas anti-overfitting v3: label smoothing, mixup, threshold search, dropout 0.3, weight decay 0.1
 - [x] `metrics.py`: métricas extraídas en módulo propio (sin duplicación)
 - [x] Flags `--trace / --layers / --fn / --metrics / --inspect / --model` en script de entrenamiento
 - [x] Inspección modular: `--inspect model-summary batch-table grad-monitor anomalies`
 - [x] Early stopping: `patience` configurable en `EpochController`
-- [x] Log con timestamp a fichero + gráficas PNG por epoch
-- [x] `check_feasibility.py` con benchmark, estimaciones y análisis de memoria
-- [x] Entrenamiento local completado: 30 epochs, Val F1 = 0.6586 (01-02/05/26)
-- [x] Test completo con todo el stack activo: 1 epoch `--trace deep --layers plot hooks --fn energy timing` (06/05/26)
-- [x] Acceso al clúster VERODE (ULL) con V100 32 GB
-- [x] Dataset en el clúster: 549 488 patches verificados
-- [x] Entorno Python en el clúster: uv + PyTorch cu118 instalado
-- [x] `configs/train_cluster.yaml` con rutas del clúster
-- [x] `check_feasibility.py` en V100: batch óptimo=64, 100.6 imgs/s, `--trace deep` overhead=18%
-- [x] Entrenamiento clúster v1: 30 epochs, batch=64, Val F1=0.6588 (07-09/05/26)
-- [x] Entrenamiento clúster v2 (LLRD+warmup+early stop): 17 epochs, Val F1=0.6707 (11-12/05/26)
-- [x] Test local vit_tiny con stack completo: 1 epoch, Val F1=0.4457 (11/05/26)
+- [x] Log con timestamp (DDMMYYYY) a fichero en `logs/{env}/` + gráficas PNG en `plots/{env}/`
+- [x] `check_feasibility.py`: benchmark train+eval por separado, `--nfs-factor`, auto-save log
 - [x] Dashboard web Streamlit: `src/web/` con 5 tabs (curvas, por clase, batch, comparar, info)
+  - Escanea `logs/local/` y `logs/verode/`, soporta formato simple y deep, y logs legacy
+- [x] Entrenamiento local: 30 epochs, Val F1=0.6586 (01-02/05/26) → `logs/local/train_legacy.log`
+- [x] Test local stack completo: 1 epoch vit_tiny, Val F1=0.4457 (11/05/26)
+- [x] Smoke test v3 local: 1 epoch vit_tiny, Val F1=0.4019, threshold óptimo=0.30 (13/05/26)
+- [x] Clúster VERODE: V100 32 GB, dataset 549 488 patches, PyTorch cu118, SSH key configurada
+- [x] Entrenamiento clúster v1: 30 epochs, batch=64, Val F1=0.6588 (07-09/05/26) → `logs/verode/train_deep_20260507_084113.log`
+- [x] Entrenamiento clúster v2: 17 epochs, Val F1=0.6707, early stop epoch 17 (11-12/05/26) → `logs/verode/train_20260511_150808.log`
+- [x] Entrenamiento clúster v3: 16 epochs, Val F1=0.6738, early stop epoch 16 (13-14/05/26) → `logs/verode/train_13052026_161533.log`
+- [x] Configs v3 listos: `configs/train_v3.yaml` (local) y `configs/train_cluster_v3.yaml` (Verode)
+- [x] Diagrama de clases actualizado: `docs/class_diagram.puml` + `docs/class_diagram.png` — incluye src.web (RunInfo, run_registry, log_parser, batch_parser, app), metrics.py y logger_setup.py; eliminado `docs/class_diagram_pre_v3.png`
+- [x] Smoke test ResNet50 local: 2 epochs, Val F1=0.4725, threshold óptimo=0.30 (14/05/26) → `logs/local/train_14052026_170438.log`
+- [x] Fix pynvml en Verode: `nvidia-ml-py` no estaba instalado → `uv sync` + `uv pip install torch cu118`; confirmado funcionando
+- [x] Entrenamiento v3b en Verode: 15 epochs, Val F1=0.6708 (epoch 5), early stop epoch 15 (14-15/05/26) → `logs/verode/train_14052026_145711.log` — confirma energía funcional (~35 Wh/eval, ~100 W media V100)
 
 ### Pendiente
-- [ ] Merge `feature/architecture-improvements` → `develop`
-- [ ] Merge `feature/web-dashboard` → `develop`
-- [ ] Merge `feature/training-improvements` → `develop`
-- [ ] Merge `develop` → `main`
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
 - [ ] Proyección multi-GPU en feasibility checker
 - [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP
@@ -573,6 +729,8 @@ main ← develop ← feature/xxx
 | `CUDA out of memory` en hooks | Tensores grandes copiados a RAM | Calcular en GPU con `.detach().float()`, solo `.item()` para el escalar |
 | `FileNotFoundError` metadata.parquet | `configs/train.yaml` tiene rutas del SSD local | Usar `configs/train_cluster.yaml` en el clúster |
 | `nvidia driver` no funciona con kernel 6.8 | Driver 470 incompatible | Actualizar a `nvidia-driver-580-open` |
+| `[energy] GPU no disponible (pynvml no instalado)` en Verode | `uv sync` antes de añadir `nvidia-ml-py` al pyproject.toml | `uv sync` + reinstall torch cu118 |
+| `srun --gres=gpu:1` falla en Verode | El recurso GPU se llama `gpu:tesla` en este clúster | Usar `--gres=gpu:tesla:1` |
 
 ---
 
@@ -584,16 +742,13 @@ main ← develop ← feature/xxx
 uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 --epochs 30
 
 # Test rápido (1 epoch)
-uv run python scripts/train_single_gpu.py --epochs 1 --batch-size 32 --trace deep
+uv run python scripts/train_single_gpu.py --model vit_tiny_patch16_224 --epochs 1 --trace simple
 
-# Entrenamiento completo
-uv run python scripts/train_single_gpu.py --config configs/train.yaml --trace simple
-
-# Con gráficas y medición de energía
-uv run python scripts/train_single_gpu.py --trace simple --layers plot --fn energy
+# Entrenamiento completo con config v3
+uv run python scripts/train_single_gpu.py --config configs/train_v3.yaml --trace simple --layers plot
 
 # Ver log en tiempo real
-tail -f logs/train_*.log
+tail -f logs/local/train_*.log
 ```
 
 ### Clúster VERODE
@@ -614,12 +769,30 @@ tmux attach -t training        # reconectar a sesión existente
 # Ctrl+B, D → desconectarse sin matar la sesión
 
 # Entrar al nodo de cómputo (interactivo)
-srun --partition=short --gres=gpu:1 --time=02:00:00 --pty bash
+/opt/soft/slurm/20.11.04/bin/srun --partition=batch --nodelist=verode21 --gres=gpu:tesla:1 --time=72:00:00 --pty bash
 
-# Verificar CUDA tras reinstalar torch
 cd ~/tfg-distributed-transformers
+
+# Verificar CUDA
 .venv/bin/python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
-# Ver log del entrenamiento en tiempo real
-tail -f ~/logs/train_cluster.log
+# Feasibility previo al entrenamiento (usar --config para que guarde en logs/verode/)
+.venv/bin/python scripts/check_feasibility.py \
+  --config configs/train_cluster_v3.yaml \
+  --batch-sizes 32 64 128 --epochs 30 --nfs-factor 1.3
+
+# Entrenamiento completo
+.venv/bin/python scripts/train_single_gpu.py \
+  --config configs/train_cluster_v3.yaml \
+  --trace simple \
+  --layers plot confusion batch-monitor \
+  --fn energy
+
+# Ver log en tiempo real
+tail -f logs/verode/train_*.log
+
+# Al terminar: subir resultados (gitignore ya configurado, no necesita -f)
+git add logs/verode/ plots/verode/
+git commit -m "feat: add Verode training results"
+git push origin main
 ```

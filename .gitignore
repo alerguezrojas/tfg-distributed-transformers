@@ -1,8 +1,8 @@
-# Model checkpoints
-checkpoints/
+# Model checkpoints — exclude large .pt files
+checkpoints/**/*.pt
 
-# Training logs
-logs/
+# Batch CSVs de local excluidos (runs de prueba); verode se incluye (resultados)
+logs/local/*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -63,6 +63,9 @@ cover/
 
 # Django stuff:
 *.log
+# Excepción: logs de entrenamiento en local/ y verode/ se incluyen en el repo
+!logs/local/*.log
+!logs/verode/*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal

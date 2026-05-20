@@ -7,26 +7,36 @@ the standard @ syntax or by direct application at runtime:
 
 Available decorators
 --------------------
-timed             — prints wall-clock execution time
-log_call          — prints when a function starts and finishes
+timed             — logs wall-clock execution time
+log_call          — logs when a function starts and finishes
 retry_on_cuda_oom — retries once after clearing the CUDA cache on OOM
 measure_energy    — samples GPU power consumption and reports Joules / Wh
 """
 
 import functools
+import logging
 import threading
 import time
+
+
+def _log(msg: str) -> None:
+    """Route to 'trainer' logger if configured, otherwise print to stdout."""
+    logger = logging.getLogger("trainer")
+    if logger.handlers:
+        logger.info(msg)
+    else:
+        print(msg)
 
 
 # ── timed ────────────────────────────────────────────────────────────────────
 
 def timed(fn):
-    """Print the wall-clock execution time of any function."""
+    """Log the wall-clock execution time of any function."""
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
         t0 = time.time()
         result = fn(*args, **kwargs)
-        print(f"[timed] {fn.__qualname__}: {time.time() - t0:.2f}s")
+        _log(f"[timed] {fn.__qualname__}: {time.time() - t0:.2f}s")
         return result
     return wrapper
 
@@ -34,12 +44,12 @@ def timed(fn):
 # ── log_call ─────────────────────────────────────────────────────────────────
 
 def log_call(fn):
-    """Print when a function is called and when it returns."""
+    """Log when a function is called and when it returns."""
     @functools.wraps(fn)
     def wrapper(*args, **kwargs):
-        print(f"[call] → {fn.__qualname__}")
+        _log(f"[call] → {fn.__qualname__}")
         result = fn(*args, **kwargs)
-        print(f"[call] ← {fn.__qualname__} done")
+        _log(f"[call] ← {fn.__qualname__} done")
         return result
     return wrapper
 
@@ -55,7 +65,7 @@ def retry_on_cuda_oom(fn):
             return fn(*args, **kwargs)
         except torch.cuda.OutOfMemoryError:
             torch.cuda.empty_cache()
-            print(f"[oom] CUDA OOM en {fn.__qualname__} — liberando caché y reintentando")
+            _log(f"[oom] CUDA OOM en {fn.__qualname__} — liberando caché y reintentando")
             return fn(*args, **kwargs)
     return wrapper
 
@@ -70,12 +80,15 @@ class _PowerSampler:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._handle = None
+        self._error: str | None = None
         try:
             import pynvml
             pynvml.nvmlInit()
             self._handle = pynvml.nvmlDeviceGetHandleByIndex(device_index)
-        except Exception:
-            pass
+        except ImportError:
+            self._error = "pynvml no instalado"
+        except Exception as e:
+            self._error = f"{type(e).__name__}: {e}"
 
     @property
     def available(self) -> bool:
@@ -120,12 +133,13 @@ def measure_energy(fn):
         result = fn(*args, **kwargs)
         avg_w, energy_j = sampler.stop()
         if sampler.available:
-            print(
+            _log(
                 f"[energy] {fn.__qualname__}: "
                 f"{energy_j:.1f} J  ({energy_j / 3600:.5f} Wh)  "
                 f"potencia media {avg_w:.1f} W"
             )
         else:
-            print(f"[energy] {fn.__qualname__}: GPU no disponible — medición omitida")
+            logger = logging.getLogger("trainer")
+            logger.debug(f"[energy] {fn.__qualname__}: GPU no disponible ({sampler._error})")
         return result
     return wrapper

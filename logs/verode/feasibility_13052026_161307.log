@@ -1,0 +1,78 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT
+  13/05/2026 16:14:56
+  Factor NFS aplicado: ×1.30  (I/O en red más lento)
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  MODELO
+────────────────────────────────────────────────────────────────────────
+  Nombre:               vit_base_patch16_224
+  Parámetros totales:   85,813,267 (85.8M)
+  Parámetros train.:    85,813,267 (85.8M)
+  FLOPs/imagen:         200.8 MFLOPs
+  Memoria pesos:        343 MB
+  Gradientes:           343 MB
+  Estado AdamW:         687 MB
+  Total estático:       1.34 GB  (sin activaciones)
+
+────────────────────────────────────────────────────────────────────────
+  HARDWARE
+────────────────────────────────────────────────────────────────────────
+  GPU:                  Tesla V100-PCIE-32GB
+  VRAM total:           34.08 GB
+  VRAM libre:           34.08 GB
+
+────────────────────────────────────────────────────────────────────────
+  MEMORIA POR BATCH SIZE
+────────────────────────────────────────────────────────────────────────
+  Estática (pesos+grad+AdamW): 1.34 GB
+  Activaciones por imagen:     162.2 MB
+
+  Batch    Estática   Activac.   Total est.    Estado
+  ─────  ──────────  ─────────  ───────────  ────────
+     32      1.34 GB     5.07 GB       6.41 GB      ✓ OK
+     64      1.34 GB    10.14 GB      11.48 GB      ✓ OK
+    128      1.34 GB    20.27 GB      21.61 GB      ✓ OK
+
+────────────────────────────────────────────────────────────────────────
+  BENCHMARK  (8 batches sintéticos — sin I/O real)
+────────────────────────────────────────────────────────────────────────
+  Batch  Modo      s/batch(train)  imgs/s(train)  s/batch(eval)     VRAM
+  ─────  ────────  ──────────────  ─────────────  ─────────────  ───────
+     32  off              0.333s         96.1        0.106s   4.95 GB
+     32  simple           0.334s         95.8        0.106s   4.95 GB  (+0% vs off)
+     32  deep             0.411s         77.9        0.147s   4.95 GB  (+23% vs off)
+     64  off              0.636s        100.7        0.203s   8.82 GB
+     64  simple           0.638s        100.3        0.203s   8.82 GB  (+0% vs off)
+     64  deep             0.749s         85.5        0.268s   8.82 GB  (+18% vs off)
+    128  off              1.278s        100.2        0.412s  16.53 GB
+    128  simple           1.286s         99.6        0.414s  16.53 GB  (+1% vs off)
+    128  deep             1.451s         88.2        0.522s  16.53 GB  (+14% vs off)
+
+────────────────────────────────────────────────────────────────────────
+  ESTIMACIONES  (train=237,871 | val=122,342 | NFS ×1.30)
+────────────────────────────────────────────────────────────────────────
+
+  30 epochs:
+  Batch  Modo      Train/epoch  Eval/epoch  Total/epoch       TOTAL
+  ─────  ────────  ───────────  ──────────  ───────────  ──────────
+     32  off            0h 53m      0h 08m       1h 02m     31h 13m
+     32  simple         0h 53m      0h 08m       1h 02m     31h 17m
+     32  deep           1h 06m      0h 12m       1h 18m     39h 11m
+     64  off            0h 51m      0h 08m       0h 59m     29h 47m
+     64  simple         0h 51m      0h 08m       0h 59m     29h 53m
+     64  deep           1h 00m      0h 11m       1h 11m     35h 42m
+    128  off            0h 51m      0h 08m       0h 59m     29h 59m
+    128  simple         0h 51m      0h 08m       1h 00m     30h 09m
+    128  deep           0h 58m      0h 10m       1h 09m     34h 36m
+
+────────────────────────────────────────────────────────────────────────
+  RECOMENDACIONES
+────────────────────────────────────────────────────────────────────────
+  ✓ Batch size óptimo:  64 (100.7 imgs/s en train)
+  → --trace off      para 30 epochs:  ~29h 47m  (train 0h 51m/epoch + eval 0h 08m/epoch)
+  → --trace simple   para 30 epochs:  ~29h 53m  (train 0h 51m/epoch + eval 0h 08m/epoch)
+  → --trace deep     para 30 epochs:  ~35h 42m  (train 1h 00m/epoch + eval 0h 11m/epoch)
+  ⚠ --trace deep añade un 18% de overhead — úsalo solo para análisis puntual
+

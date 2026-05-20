@@ -26,4 +26,4 @@ checkpoint:
   dir: "checkpoints/local"
 
 output:
-  env: "local"
+  env: "local"   # "local" → logs/local/, plots/local/ | "verode" → logs/verode/, plots/verode/
