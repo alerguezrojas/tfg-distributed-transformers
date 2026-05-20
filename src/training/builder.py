@@ -199,6 +199,13 @@ class TrainingSessionBuilder:
             base.train_epoch = timed(base.train_epoch)
             base.eval_epoch = timed(base.eval_epoch)
 
+        # ── Output environment (local / verode / etc.) ────────────────────────
+        env = cfg.get("output", {}).get("env", "local")
+        log_dir = Path(f"logs/{env}")
+        plot_dir = Path(f"plots/{env}")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        plot_dir.mkdir(parents=True, exist_ok=True)
+
         # ── 2. Aspect decorators (inner → outer) ──────────────────────────────
         inner: BaseTrainer = base
         if "hooks" in self._layers:
@@ -207,16 +214,17 @@ class TrainingSessionBuilder:
             inner = BatchMonitorDecorator(
                 inner,
                 log_every=cfg["training"].get("log_batch_every", 50),
-                output_dir="logs",
+                output_dir=str(log_dir),
                 timestamp=self._timestamp,
             )
         if "plot" in self._layers:
             inner = PlottingDecorator(
-                inner, output_path=f"plots/training_{self._timestamp}.png"
+                inner, output_path=str(plot_dir / f"training_{self._timestamp}.png")
             )
         if "confusion" in self._layers:
             inner = ConfusionMatrixDecorator(
-                inner, output_dir="plots", timestamp=self._timestamp
+                inner, output_dir=str(plot_dir), timestamp=self._timestamp,
+                csv_dir=str(log_dir),
             )
 
         # ── 3. Logger ─────────────────────────────────────────────────────────
@@ -225,7 +233,7 @@ class TrainingSessionBuilder:
 
         if self._trace in ("simple", "deep") or use_deep:
             prefix = "train_deep" if use_deep else "train"
-            log_file = f"logs/{prefix}_{self._timestamp}.log"
+            log_file = str(log_dir / f"{prefix}_{self._timestamp}.log")
             logger = setup_logger("trainer", log_file=log_file)
 
         # ── 4. Metric reporters (only when not using DeepTracingDecorator) ────
@@ -241,6 +249,7 @@ class TrainingSessionBuilder:
 
         # ── 5. Controller (outermost) ─────────────────────────────────────────
         patience = cfg["training"].get("early_stopping_patience", None)
+        epoch_csv = log_dir / f"epoch_metrics_{self._timestamp}.csv" if self._trace != "off" else None
 
         if use_deep:
             features = (
@@ -258,7 +267,8 @@ class TrainingSessionBuilder:
         elif self._trace == "off":
             trainer = TracingDecorator(inner, patience=patience)
         else:  # simple
-            trainer = TracingDecorator(inner, logger=logger, patience=patience)
+            trainer = TracingDecorator(inner, logger=logger, patience=patience,
+                                       epoch_csv=epoch_csv)
 
         return trainer
 
