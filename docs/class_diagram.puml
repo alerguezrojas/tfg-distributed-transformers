@@ -73,6 +73,24 @@ package "src.training" #FDFEFE {
     Compatible con clasificación multi-label.
   end note
 
+  note as metrics_note
+    **metrics.py**
+    f1_score(preds, labels) → float
+    precision(preds, labels) → float
+    recall(preds, labels) → float
+    accuracy(preds, labels) → float
+    eta_str(elapsed, done, total) → str
+    Funciones puras sobre tensores GPU.
+  end note
+
+  note as logger_note
+    **logger_setup.py**
+    setup_logger(name, level, log_file) → Logger
+    Configura handler de consola + fichero.
+    El logger "trainer" es el que usan todos
+    los decoradores y fn_decorators.
+  end note
+
 }
 
 ' ════════════════════════════════════════════════════════════════
@@ -390,6 +408,42 @@ package "scripts.check_feasibility" #FDFEFE {
 }
 
 ' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.web
+' ════════════════════════════════════════════════════════════════
+package "src.web" #FDFEFE {
+
+  class RunInfo <<dataclass>> {
+    + timestamp: str
+    + log_path: Path
+    + trace_mode: str
+    + env: str
+    + plot_path: Path | None
+    + perclass_paths: list[Path]
+    + batch_csv_path: Path | None
+    + label: str
+  }
+
+  note as web_note
+    **run_registry.py**
+    discover_runs(root) → list[RunInfo]
+    Escanea logs/local/ + logs/verode/
+    y agrupa artefactos por timestamp.
+
+    **log_parser.py**
+    parse_log(log_path) → DataFrame
+    Soporta trace simple, deep y legacy.
+
+    **batch_parser.py**
+    parse_batch_csv(csv_path) → DataFrame
+
+    **app.py** (Streamlit, 5 pestañas)
+    Training Curves | Per-class Metrics
+    Batch Monitor | Compare Runs | Run Info
+  end note
+
+}
+
+' ════════════════════════════════════════════════════════════════
 ' RELACIONES DE HERENCIA
 ' ════════════════════════════════════════════════════════════════
 
@@ -444,6 +498,10 @@ FeasibilityReport *-- HardwareInfo
 FeasibilityReport *-- BenchmarkResult
 
 BigEarthViT ..> BigEarthNetDataset : trained on >
+
+Trainer ..> metrics_note : uses >
+TracingDecorator ..> logger_note : uses >
+web_note ..> RunInfo : creates >
 
 ' ════════════════════════════════════════════════════════════════
 ' ESTILOS POR TIPO

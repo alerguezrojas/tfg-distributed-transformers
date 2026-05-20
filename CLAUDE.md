@@ -47,8 +47,9 @@ module add slurm/client/20.11.04   # o añadir al ~/.bashrc
 - **PyTorch:** `2.7.1+cu118` — instalado con cu118 para compatibilidad con driver 525 (CUDA 12.0 máx.)
   - ⚠️ `uv sync` instala cu13 por defecto → incompatible. Después de sync, ejecutar:
   ```bash
-  .venv/bin/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
+  uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
   ```
+  - ⚠️ `python -m pip` no está disponible en el venv del clúster → usar siempre `uv pip` en su lugar
 
 #### Problemas conocidos del clúster
 - `sbatch` falla con "I/O error writing script/environment to file" — bug de configuración de Slurm, no reparable por el usuario
@@ -521,6 +522,23 @@ Ejecutado con `configs/train_cluster_v3.yaml`: label smoothing=0.1, mixup α=0.2
 - `[energy]` reportó "GPU no disponible" en verode — pynvml no accede al driver; no afecta al entrenamiento
 - Log completo: `logs/verode/train_13052026_161533.log` | Plot: `plots/verode/training_13052026_161533.png`
 
+### Local — ResNet50, batch_size=32, 2 epochs (smoke test 2026-05-14)
+
+Prueba de soporte genérico timm con modelo convolucional. Config: `train_v3.yaml` (label smoothing + mixup).
+
+| Epoch | Train F1 | Val F1 | Val Loss | Threshold óptimo |
+|-------|----------|--------|----------|-----------------|
+| 1 | 0.2311 | 0.3588 | 0.2463 | 0.30 |
+| 2 | 0.4046 | **0.4725** | 0.2174 | 0.30 |
+
+- **~17 min/epoch** — 4× más rápido que ViT-Base (~65 min/epoch en RTX 3060 Ti)
+- Val F1 > Train F1 en ambos epochs — modelo aún en fase de aprendizaje rápido, sin overfitting
+- Val loss bajando fuerte — con entrenamiento completo llegaría claramente más lejos
+- Threshold óptimo 0.30 (más bajo que el 0.35 del ViT) — ResNet más conservador en sus predicciones
+- A epoch 2, ViT-Base v3 tenía Val F1=0.6237 — ventaja clara del transformer con preentrenamiento ImageNet
+- **Valida que el soporte genérico timm funciona correctamente** para modelos no-ViT (sin LLRD, AdamW estándar)
+- Log: `logs/local/train_14052026_170438.log` | Plot: `plots/local/training_14052026_170438.png`
+
 ### Comparativa de todas las ejecuciones en clúster
 
 | | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) | v3 (label smoothing + mixup) |
@@ -570,7 +588,8 @@ El entorno `.venv` ya está creado. Si se reinstala desde cero:
 cd ~/tfg-distributed-transformers
 uv sync
 # Después, reinstalar PyTorch con cu118 (cu13 por defecto no es compatible con driver 525):
-.venv/bin/python -m pip install torch torchvision \
+# OJO: usar uv pip, NO python -m pip (el módulo pip no está disponible en el venv del clúster)
+uv pip install torch torchvision \
     --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
 ```
 
@@ -662,7 +681,10 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Entrenamiento clúster v2: 17 epochs, Val F1=0.6707, early stop epoch 17 (11-12/05/26) → `logs/verode/train_20260511_150808.log`
 - [x] Entrenamiento clúster v3: 16 epochs, Val F1=0.6738, early stop epoch 16 (13-14/05/26) → `logs/verode/train_13052026_161533.log`
 - [x] Configs v3 listos: `configs/train_v3.yaml` (local) y `configs/train_cluster_v3.yaml` (Verode)
-- [x] Diagrama de clases actualizado: `docs/class_diagram.puml` + `docs/class_diagram.png`
+- [x] Diagrama de clases actualizado: `docs/class_diagram.puml` + `docs/class_diagram.png` — incluye src.web (RunInfo, run_registry, log_parser, batch_parser, app), metrics.py y logger_setup.py; eliminado `docs/class_diagram_pre_v3.png`
+- [x] Smoke test ResNet50 local: 2 epochs, Val F1=0.4725, threshold óptimo=0.30 (14/05/26) → `logs/local/train_14052026_170438.log`
+- [x] Fix pynvml en Verode: `nvidia-ml-py` no estaba instalado → `uv sync` + `uv pip install torch cu118`; confirmado funcionando
+- [x] Entrenamiento v3b en Verode en curso: stack completo (`--trace simple --layers plot confusion batch-monitor hooks --fn energy timing`) con pynvml funcional; resultados pendientes de commitear
 
 ### Pendiente
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
@@ -683,6 +705,8 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 | `CUDA out of memory` en hooks | Tensores grandes copiados a RAM | Calcular en GPU con `.detach().float()`, solo `.item()` para el escalar |
 | `FileNotFoundError` metadata.parquet | `configs/train.yaml` tiene rutas del SSD local | Usar `configs/train_cluster.yaml` en el clúster |
 | `nvidia driver` no funciona con kernel 6.8 | Driver 470 incompatible | Actualizar a `nvidia-driver-580-open` |
+| `[energy] GPU no disponible (pynvml no instalado)` en Verode | `uv sync` antes de añadir `nvidia-ml-py` al pyproject.toml | `uv sync` + reinstall torch cu118 |
+| `srun --gres=gpu:1` falla en Verode | El recurso GPU se llama `gpu:tesla` en este clúster | Usar `--gres=gpu:tesla:1` |
 
 ---
 
