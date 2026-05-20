@@ -539,23 +539,47 @@ Prueba de soporte genérico timm con modelo convolucional. Config: `train_v3.yam
 - **Valida que el soporte genérico timm funciona correctamente** para modelos no-ViT (sin LLRD, AdamW estándar)
 - Log: `logs/local/train_14052026_170438.log` | Plot: `plots/local/training_14052026_170438.png`
 
+### Clúster v3b — V100 32 GB, batch_size=64, stack completo con energía (completado 2026-05-14/15)
+
+Misma config que v3 (`configs/train_cluster_v3.yaml`). Objetivo: verificar pynvml funcionando y obtener datos de consumo energético. Flags: `--trace simple --layers plot confusion batch-monitor hooks --fn energy timing`.
+
+| Epoch | Train F1 | Val F1 | Val Loss | Threshold óptimo | F1@threshold |
+|-------|----------|--------|----------|------------------|--------------|
+| 1  | 0.4711 | 0.5593 | 0.1777 | 0.35 | 0.5865 |
+| 2  | 0.6186 | 0.6170 | 0.1567 | 0.30 | 0.6370 |
+| 3  | 0.6829 | 0.6295 | 0.1502 | 0.30 | 0.6631 |
+| 4  | 0.7150 | 0.6685 | 0.1487 | 0.35 | 0.6757 |
+| 5  | 0.7377 | **0.6708** ← mejor | 0.1502 | 0.35 | 0.6788 |
+| 7  | 0.7838 | 0.6700 | 0.1613 | 0.35 | 0.6766 |
+| 10 | 0.8465 | 0.6655 | 0.2039 | 0.40 | 0.6673 |
+| 15 | 0.9044 | 0.6538 | 0.2909 ← early stop | 0.30 | 0.6579 |
+
+- **Mejor Val F1: 0.6708** (epoch 5) — prácticamente igual a v3 (0.6738); diferencia de 0.003 es variación aleatoria
+- **Early stopping** en epoch 15 (sin mejora desde epoch 5 — patience=10)
+- Duración: **~17h 17m** (14 May 14:57 → 15 May 08:14) — ~69 min/época
+- **Energía (primera medición real):** eval_epoch consume ~35 Wh/época a ~100-104 W de potencia media en V100; total estimado 15 evals ≈ 530 Wh solo en evaluación
+- El patrón de overfitting es idéntico a v3: val F1 plana en 0.67 desde epoch 5, train F1 → 0.90
+- Val loss mínima en epoch 4 (0.1487), empieza a divergir desde epoch 5 — igual que v3
+- Log: `logs/verode/train_14052026_145711.log` | Plot: `plots/verode/training_14052026_145711.png`
+
 ### Comparativa de todas las ejecuciones en clúster
 
-| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) | v3 (label smoothing + mixup) |
-|---|---|---|---|
-| **Config** | `train_cluster.yaml` | `train_cluster.yaml` + flags | `train_cluster_v3.yaml` |
-| **Trace mode** | `--trace deep` | `--trace simple` | `--trace simple` |
-| **LLRD** | No | Sí (decay=0.75) | Sí (decay=0.75) |
-| **Warmup** | No | Sí (5 epochs) | Sí (5 epochs) |
-| **Early stopping** | No | Sí (patience=10) | Sí (patience=10) |
-| **Label smoothing** | No | No | Sí (0.1) |
-| **Mixup** | No | No | Sí (α=0.2) |
-| **Dropout** | 0.1 | 0.1 | 0.3 |
-| **Weight decay** | 0.05 | 0.05 | 0.1 |
-| **Epochs ejecutados** | 30 | 17 | 16 |
-| **Duración** | ~45.8h | ~19h | **~18h** |
-| **Mejor Val F1** | 0.6588 (epoch 28) | 0.6707 (epoch 7) | **0.6738 (epoch 6)** |
-| **Gap train-val en mejor epoch** | ~0.34 | ~0.11 | **~0.08** |
+| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) | v3 (label smoothing + mixup) | v3b (stack completo + energía) |
+|---|---|---|---|---|
+| **Config** | `train_cluster.yaml` | `train_cluster.yaml` + flags | `train_cluster_v3.yaml` | `train_cluster_v3.yaml` |
+| **Trace mode** | `--trace deep` | `--trace simple` | `--trace simple` | `--trace simple` |
+| **LLRD** | No | Sí (decay=0.75) | Sí (decay=0.75) | Sí (decay=0.75) |
+| **Warmup** | No | Sí (5 epochs) | Sí (5 epochs) | Sí (5 epochs) |
+| **Early stopping** | No | Sí (patience=10) | Sí (patience=10) | Sí (patience=10) |
+| **Label smoothing** | No | No | Sí (0.1) | Sí (0.1) |
+| **Mixup** | No | No | Sí (α=0.2) | Sí (α=0.2) |
+| **Dropout** | 0.1 | 0.1 | 0.3 | 0.3 |
+| **Weight decay** | 0.05 | 0.05 | 0.1 | 0.1 |
+| **Energía medida** | No | No | No | **Sí (~35 Wh/eval, ~100 W)** |
+| **Epochs ejecutados** | 30 | 17 | 16 | 15 |
+| **Duración** | ~45.8h | ~19h | **~18h** | ~17.3h |
+| **Mejor Val F1** | 0.6588 (epoch 28) | 0.6707 (epoch 7) | **0.6738 (epoch 6)** | 0.6708 (epoch 5) |
+| **Gap train-val en mejor epoch** | ~0.34 | ~0.11 | **~0.08** | ~0.07 |
 
 **Conclusiones v1 → v2:**
 - LLRD + warmup mejoraron Val F1 en +0.012 y aceleraron la convergencia (mejor epoch: 28 → 7)
@@ -684,7 +708,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Diagrama de clases actualizado: `docs/class_diagram.puml` + `docs/class_diagram.png` — incluye src.web (RunInfo, run_registry, log_parser, batch_parser, app), metrics.py y logger_setup.py; eliminado `docs/class_diagram_pre_v3.png`
 - [x] Smoke test ResNet50 local: 2 epochs, Val F1=0.4725, threshold óptimo=0.30 (14/05/26) → `logs/local/train_14052026_170438.log`
 - [x] Fix pynvml en Verode: `nvidia-ml-py` no estaba instalado → `uv sync` + `uv pip install torch cu118`; confirmado funcionando
-- [x] Entrenamiento v3b en Verode en curso: stack completo (`--trace simple --layers plot confusion batch-monitor hooks --fn energy timing`) con pynvml funcional; resultados pendientes de commitear
+- [x] Entrenamiento v3b en Verode: 15 epochs, Val F1=0.6708 (epoch 5), early stop epoch 15 (14-15/05/26) → `logs/verode/train_14052026_145711.log` — confirma energía funcional (~35 Wh/eval, ~100 W media V100)
 
 ### Pendiente
 - [ ] Implementar entrenamiento distribuido (PyTorch DDP) con múltiples V100
