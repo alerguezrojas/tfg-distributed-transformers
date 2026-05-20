@@ -8,6 +8,7 @@ Two abstract levels:
 
 import time
 
+import torch.distributed as dist
 from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
@@ -84,9 +85,22 @@ class EpochController(TrainerDecorator):
 
             self._on_epoch_end(epoch, epochs, train_m, val_m, best_f1, epoch_times)
 
-            if self._patience is not None and epochs_no_improve >= self._patience:
-                self._on_early_stop(epoch, best_f1)
-                break
+            # Sync all processes at epoch boundary before early-stop decision
+            if dist.is_available() and dist.is_initialized():
+                dist.barrier()
+
+            if self._patience is not None:
+                # Rank 0 evaluates; result is broadcast so all ranks agree
+                if dist.is_available() and dist.is_initialized():
+                    stop_flag = [epochs_no_improve >= self._patience]
+                    dist.broadcast_object_list(stop_flag, src=0)
+                    should_stop = stop_flag[0]
+                else:
+                    should_stop = epochs_no_improve >= self._patience
+
+                if should_stop:
+                    self._on_early_stop(epoch, best_f1)
+                    break
 
         self._on_fit_end(best_f1)
 
@@ -113,7 +127,4 @@ class EpochController(TrainerDecorator):
         pass
 
     def _on_early_stop(self, epoch: int, best_f1: float):  # noqa: ARG002
-        pass
-
-    def _on_early_stop(self, epoch: int, best_f1: float):
         pass

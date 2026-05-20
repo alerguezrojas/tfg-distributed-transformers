@@ -14,6 +14,8 @@ Usage:
 """
 
 import argparse
+import csv
+import logging
 import sys
 import time
 from dataclasses import dataclass, field
@@ -534,6 +536,56 @@ class ReportFormatter:
 
         self._emit()
 
+    def write_csv(self, report: FeasibilityReport, env: str = "local"):
+        """Write benchmark results to a structured CSV in logs/{env}/."""
+        timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
+        out_dir = Path(f"logs/{env}")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        csv_path = out_dir / f"feasibility_{timestamp}.csv"
+
+        estimator = TimeEstimator()
+        target_epochs = max(report.epochs_list) if report.epochs_list else 0
+        mi = report.model_info
+        hi = report.hardware_info
+
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            # Metadata row (prefixed with '#' so parsers can identify it)
+            writer.writerow([
+                "#meta", "model_name", "total_params_M", "flops_mflops",
+                "hardware_name", "total_vram_gb", "free_vram_gb",
+            ])
+            writer.writerow([
+                "#meta",
+                mi.name,
+                round(mi.total_params / 1e6, 2),
+                round(mi.flops_per_image_mflops, 1),
+                hi.device_name,
+                round(hi.total_vram_gb, 2),
+                round(hi.free_vram_gb, 2),
+            ])
+            # Benchmark rows
+            writer.writerow([
+                "batch_size", "trace_mode", "s_per_batch", "imgs_per_s",
+                "peak_vram_gb", "oom",
+                f"est_min_per_epoch_{target_epochs}ep",
+                f"est_total_h_{target_epochs}ep",
+            ])
+            for r in report.results:
+                est = estimator.estimate(r, report.dataset_train, target_epochs) if not r.oom else None
+                writer.writerow([
+                    r.batch_size,
+                    r.trace_mode,
+                    round(r.seconds_per_batch, 4) if not r.oom else "",
+                    round(r.images_per_second, 1) if not r.oom else "",
+                    round(r.peak_vram_gb, 2) if not r.oom else "",
+                    "yes" if r.oom else "no",
+                    round(est[0] / 60, 1) if est else "",
+                    round(est[1] / 3600, 2) if est else "",
+                ])
+
+        print(f"  → CSV guardado: {csv_path}")
+
 
 # ──────────────────────────────────────────────────────────────
 # FeasibilityChecker — Facade
@@ -599,6 +651,8 @@ def parse_args():
         description="Pre-training feasibility checker for BigEarthNet ViT"
     )
     parser.add_argument("--config", default="configs/train.yaml")
+    parser.add_argument("--model", type=str, default=None,
+                        help="Override model name from config (any timm ID)")
     parser.add_argument("--batch-sizes", type=int, nargs="+", default=None)
     parser.add_argument("--epochs", type=int, nargs="+", default=None)
     parser.add_argument(
@@ -633,6 +687,8 @@ def main():
 
     batch_sizes = args.batch_sizes or [cfg["training"]["batch_size"]]
     epochs_list = args.epochs or [cfg["training"]["epochs"]]
+    model_name = args.model or cfg["model"]["name"]
+    env = cfg.get("output", {}).get("env", "local")
 
     # Auto-generate output path if not specified
     output_path = args.output
@@ -642,7 +698,7 @@ def main():
         output_path = Path(f"logs/{env}/feasibility_{ts}.log")
 
     checker = FeasibilityChecker(
-        model_name=cfg["model"]["name"],
+        model_name=model_name,
         batch_sizes=batch_sizes,
         epochs_list=epochs_list,
         trace_modes=args.trace_modes,
@@ -652,7 +708,9 @@ def main():
     )
 
     report = checker.run()
-    ReportFormatter(output_path=output_path).print(report)
+    formatter = ReportFormatter(output_path=output_path)
+    formatter.print(report)
+    formatter.write_csv(report, env=env)
 
 
 if __name__ == "__main__":
