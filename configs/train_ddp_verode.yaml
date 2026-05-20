@@ -1,0 +1,35 @@
+# Configuración para entrenamiento distribuido DDP — Verode (V100 32 GB)
+# Lanzar con torchrun:
+#   torchrun --nproc_per_node=2 scripts/train_ddp.py --config configs/train_ddp_verode.yaml
+#
+# batch_size es POR GPU. Con 2 GPUs el batch global es 2×64 = 128.
+# Ajustar lr según la linear scaling rule si se cambia el número de GPUs:
+#   lr = lr_base × (world_size × batch_size_per_gpu) / batch_size_referencia
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet"
+  num_workers: 4
+
+model:
+  name: "vit_base_patch16_224"
+  pretrained: true
+  num_classes: 19
+
+training:
+  epochs: 30
+  batch_size: 64            # POR GPU — batch global = 64 × world_size
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 100
+
+distributed:
+  backend: "nccl"           # nccl es el backend óptimo para GPUs NVIDIA
+
+checkpoint:
+  dir: "checkpoints/verode"

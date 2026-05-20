@@ -41,6 +41,10 @@ class TracingDecorator(EpochController):
     # ── Internal helpers ─────────────────────────────────────────────────────
 
     def _emit(self, msg: str):
+        # In DDP runs, rank is forwarded via __getattr__ from DDPTrainer.
+        # Default to 0 (always emit) for single-GPU runs where rank is absent.
+        if getattr(self, "rank", 0) != 0:
+            return
         if self._logger:
             self._logger.info(msg)
         else:
