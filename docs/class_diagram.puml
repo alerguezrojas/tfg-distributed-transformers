@@ -1,11 +1,10 @@
 @startuml class_diagram
-scale 1400 width
 skinparam monochrome false
 skinparam classAttributeIconSize 0
 skinparam defaultFontName "DejaVu Sans"
-skinparam defaultFontSize 10
+skinparam defaultFontSize 11
 skinparam classFontStyle bold
-skinparam classFontSize 11
+skinparam classFontSize 12
 skinparam classHeaderBackgroundColor #1A5276
 skinparam classBorderColor #2C3E50
 skinparam classBackgroundColor #EBF5FB
