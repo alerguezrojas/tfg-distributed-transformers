@@ -325,14 +325,14 @@ uv run python scripts/train_single_gpu.py --config configs/train_cluster.yaml --
   - `train_epoch`: llama `sampler.set_epoch(epoch)` para shuffle correcto
   - `eval_epoch`: reúne predicciones de todos los procesos con `dist.all_gather`; promedia loss con `dist.all_reduce`; recalcula métricas globales
   - `save_checkpoint`: solo el proceso con `rank=0` guarda el checkpoint
-- **`src/training/builder.py`**: acepta `rank` y `world_size`; si `world_size > 1` crea `DDPTrainer`, si no crea `Trainer`
+- **`src/training/builder.py`**: acepta `rank`, `world_size` y `distributed`; si `distributed=True` crea `DDPTrainer` (independientemente de `world_size`), si no crea `Trainer`
 - **`src/training/decorators/base.py`**: `EpochController` añade `dist.barrier()` entre epochs; early stopping se decide en rank 0 y se broadcast a todos los procesos
 - **`src/training/decorators/tracing.py`**: `_emit()` comprueba `rank == 0` antes de escribir logs (solo el proceso principal escribe)
 
 ### Lanzamiento
 
 ```bash
-# Smoke test local (1 GPU, valida el código sin necesitar 2 GPUs):
+# Smoke test local (1 GPU, usa DDPTrainer real — distributed=True siempre activo en train_ddp.py):
 torchrun --nproc_per_node=1 scripts/train_ddp.py \
   --model vit_tiny_patch16_224 --epochs 1 \
   --config configs/train.yaml --trace simple
@@ -754,6 +754,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Fix pynvml en Verode: `nvidia-ml-py` no estaba instalado → `uv sync` + `uv pip install torch cu118`; confirmado funcionando
 - [x] Entrenamiento v3b en Verode: 15 epochs, Val F1=0.6708 (epoch 5), early stop epoch 15 (14-15/05/26) → `logs/verode/train_14052026_145711.log` — confirma energía funcional (~35 Wh/eval, ~100 W media V100)
 - [x] **Entrenamiento distribuido DDP (20/05/26):** `DDPTrainer`, `scripts/train_ddp.py`, `configs/train_ddp_verode.yaml`; smoke test local 1 proceso completado sin errores (Val F1=0.4353) → `logs/local/train_20260520_221708.log`
+- [x] **Fix DDPTrainer con 1 GPU (21/05/26):** `TrainingSessionBuilder` usa `distributed=True` en vez de `world_size>1`; `torchrun --nproc_per_node=1` ahora usa `DDPTrainer` real
 - [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
 - [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
 

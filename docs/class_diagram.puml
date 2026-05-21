@@ -61,6 +61,7 @@ package "src.training" #FDFEFE {
     - _timestamp: str
     - _rank: int
     - _world_size: int
+    - _distributed: bool
     - _model_name: str | None
     - _trace: str
     - _layers: list[str]
@@ -501,7 +502,7 @@ TrainerDecorator o-- BaseTrainer : wraps >
 
 TrainingSessionBuilder ..> BaseTrainer : builds >
 TrainingSessionBuilder ..> Trainer : creates >
-TrainingSessionBuilder ..> DDPTrainer : creates (world_size>1) >
+TrainingSessionBuilder ..> DDPTrainer : creates (distributed=True) >
 TrainingSessionBuilder ..> aug_note : uses >
 
 DeepTracingDecorator ..> LayerStats : uses >
