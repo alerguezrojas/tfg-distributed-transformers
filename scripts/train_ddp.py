@@ -132,7 +132,7 @@ def main():
     layers_r0 = layers if rank == 0 else []
 
     builder = (
-        TrainingSessionBuilder(cfg, device, timestamp, rank=rank, world_size=world_size)
+        TrainingSessionBuilder(cfg, device, timestamp, rank=rank, world_size=world_size, distributed=True)
         .with_trace(trace)
         .with_layers(*layers_r0)
         .with_fn(*fn)
