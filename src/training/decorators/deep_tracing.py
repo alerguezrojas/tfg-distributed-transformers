@@ -12,6 +12,7 @@ Features:
 """
 
 import logging
+import random
 import time
 from dataclasses import dataclass
 
@@ -21,6 +22,7 @@ from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
 from src.training.metrics import f1_score, accuracy, eta_str
+from src.training.augmentations import mixup_batch
 from src.training.decorators.tracing import TracingDecorator
 
 
@@ -242,8 +244,17 @@ class DeepTracingDecorator(TracingDecorator):
         all_labels: list[torch.Tensor] = []
         start = time.time()
 
+        label_smoothing = getattr(self._trainer, "label_smoothing", 0.0)
+        mixup_alpha = getattr(self._trainer, "mixup_alpha", 0.0)
+
         for batch_idx, (images, labels) in enumerate(loader, 1):
             images, labels = images.to(device), labels.to(device)
+
+            if mixup_alpha > 0.0 and random.random() < 0.5:
+                images, labels = mixup_batch(images, labels, mixup_alpha)
+            if label_smoothing > 0.0:
+                labels = labels * (1.0 - label_smoothing) + 0.5 * label_smoothing
+
             optimizer.zero_grad()
             logits = model(images)
             loss = criterion(logits, labels)
@@ -255,9 +266,10 @@ class DeepTracingDecorator(TracingDecorator):
 
             total_loss += loss.item()
             with torch.no_grad():
-                preds = torch.sigmoid(logits) > 0.5
+                hard_labels = (labels > 0.5).long()
+                preds = (torch.sigmoid(logits) > 0.5).long()
                 all_preds.append(preds.cpu())
-                all_labels.append(labels.cpu())
+                all_labels.append(hard_labels.cpu())
 
             if batch_idx % self.log_every == 0:
                 self._log_layer_table(self._current_epoch, batch_idx, len(loader))
@@ -319,15 +331,15 @@ class DeepTracingDecorator(TracingDecorator):
         return "OK"
 
     def _representative_layers(self) -> list[tuple[str, LayerStats]]:
-        # Selects 14 diagnostic points in ViT-B/16:
-        #   1 patch embedding projection + 12 attention output projections (one per block)
-        #   + 1 classification head → captures the full depth of the network
+        # Selects N+2 diagnostic points: patch_embed, one attn.proj per block, head
         selected: dict[str, LayerStats] = {}
         for name in sorted(self._layer_stats):
             if "patch_embed" in name and "proj" in name:
                 selected[name] = self._layer_stats[name]
                 break
-        for i in range(12):
+        backbone = getattr(self._trainer.model, "backbone", None)
+        n_blocks = len(getattr(backbone, "blocks", []))
+        for i in range(n_blocks):
             key = f"backbone.blocks.{i}.attn.proj"
             if key in self._layer_stats:
                 selected[key] = self._layer_stats[key]
