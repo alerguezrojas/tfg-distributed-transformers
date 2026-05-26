@@ -11,6 +11,7 @@ Propagates the final train result to inner decorators (e.g. PlottingDecorator)
 via the same _propagate_train_result mechanism used by DeepTracingDecorator.
 """
 
+import random
 import time
 from pathlib import Path
 
@@ -19,6 +20,7 @@ from torch.utils.data import DataLoader
 
 from src.training.decorators.base import TrainerDecorator
 from src.training import metrics as m
+from src.training.augmentations import mixup_batch
 
 
 class BatchMonitorDecorator(TrainerDecorator):
@@ -59,8 +61,17 @@ class BatchMonitorDecorator(TrainerDecorator):
         start = time.time()
         self._epoch += 1
 
+        label_smoothing = getattr(self._trainer, "label_smoothing", 0.0)
+        mixup_alpha = getattr(self._trainer, "mixup_alpha", 0.0)
+
         for batch_idx, (images, labels) in enumerate(loader, 1):
             images, labels = images.to(device), labels.to(device)
+
+            if mixup_alpha > 0.0 and random.random() < 0.5:
+                images, labels = mixup_batch(images, labels, mixup_alpha)
+            if label_smoothing > 0.0:
+                labels = labels * (1.0 - label_smoothing) + 0.5 * label_smoothing
+
             optimizer.zero_grad()
             logits = model(images)
             loss = criterion(logits, labels)
@@ -72,9 +83,10 @@ class BatchMonitorDecorator(TrainerDecorator):
 
             total_loss += loss.item()
             with torch.no_grad():
-                preds = torch.sigmoid(logits) > 0.5
+                hard_labels = (labels > 0.5).long()
+                preds = (torch.sigmoid(logits) > 0.5).long()
                 all_preds.append(preds.cpu())
-                all_labels.append(labels.cpu())
+                all_labels.append(hard_labels.cpu())
 
             if batch_idx % self._log_every == 0:
                 running_loss = total_loss / batch_idx
