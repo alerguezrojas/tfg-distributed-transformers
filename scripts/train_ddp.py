@@ -79,7 +79,7 @@ def main():
         cfg["training"]["epochs"] = args.epochs
 
     # All ranks must use the same timestamp for consistent log/checkpoint naming
-    ts_list = [datetime.now().strftime("%Y%m%d_%H%M%S") if rank == 0 else ""]
+    ts_list = [datetime.now().strftime("%d%m%Y_%H%M%S") if rank == 0 else ""]
     dist.broadcast_object_list(ts_list, src=0)
     timestamp = ts_list[0]
 
@@ -100,12 +100,13 @@ def main():
               f"{cfg['training']['batch_size'] * world_size}")
 
     # ── DistributedSampler ───────────────────────────────────────────────────
-    # drop_last=True ensures equal-sized batches across ranks.
+    # drop_last=True on train keeps equal-sized batches across ranks.
+    # drop_last=False on val preserves all validation samples for unbiased metrics.
     train_sampler = DistributedSampler(
         train_ds, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True,
     )
     val_sampler = DistributedSampler(
-        val_ds, num_replicas=world_size, rank=rank, shuffle=False, drop_last=True,
+        val_ds, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False,
     )
 
     train_loader = DataLoader(

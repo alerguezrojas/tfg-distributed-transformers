@@ -182,6 +182,8 @@ class TrainingSessionBuilder:
                 device=self._device,
                 checkpoint_dir=cfg["checkpoint"]["dir"],
                 grad_clip=grad_clip,
+                label_smoothing=label_smoothing,
+                mixup_alpha=mixup_alpha,
                 rank=self._rank,
                 world_size=self._world_size,
             )
