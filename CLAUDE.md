@@ -669,11 +669,12 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 src/web/
   __init__.py
   app.py                # Streamlit entrypoint — 7 tabs
-  run_registry.py       # descubre runs en logs/ y plots/ por timestamp; RunInfo con epoch/perclass CSV
-  log_parser.py         # parsea logs --trace simple y --trace deep → DataFrame (fallback)
-  batch_parser.py       # lee batch_metrics_*.csv → DataFrame por batch
-  perclass_parser.py    # lee perclass_metrics_*.csv → DataFrame (nuevas métricas por clase)
-  feasibility_parser.py # lee feasibility_*.csv → (metadata dict, benchmark DataFrame)
+  run_registry.py            # descubre runs en logs/ y plots/ por timestamp; RunInfo con todos los CSVs
+  log_parser.py              # parsea logs --trace simple y --trace deep → DataFrame (fallback)
+  batch_parser.py            # lee batch_metrics_*.csv → DataFrame por batch
+  perclass_parser.py         # lee perclass_metrics_*.csv → DataFrame (métricas por clase)
+  confusion_matrix_parser.py # lee confusion_matrix_*.csv → DataFrame pivotado 19×19
+  feasibility_parser.py      # lee feasibility_*.csv → (metadata dict, benchmark DataFrame)
 ```
 
 ### Arranque
@@ -688,7 +689,7 @@ uv run streamlit run src/web/app.py
 | Tab | Contenido |
 |-----|-----------|
 | Training Curves | CSV-first: lee `epoch_metrics_*.csv`; fallback a log_parser para runs antiguos |
-| Per-class Metrics | Dos sub-tabs: barras Plotly por clase (CSV) + heatmap 19×19 de confusión por epoch |
+| Per-class Metrics | Dos sub-tabs: barras Plotly por clase (CSV) + heatmap 19×19 Plotly interactivo desde CSV |
 | Batch Monitor | Running loss intra-epoch por batch (requiere `--layers batch-monitor`) |
 | Compare Runs | Superpone hasta 4 runs en el mismo gráfico |
 | Feasibility | Tabla de benchmarks, gráfico de throughput, formulario para lanzar feasibility check |
@@ -757,7 +758,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Fix DDPTrainer con 1 GPU (21/05/26):** `TrainingSessionBuilder` usa `distributed=True` en vez de `world_size>1`; `torchrun --nproc_per_node=1` ahora usa `DDPTrainer` real
 - [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
 - [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
-- [x] **Heatmap 19×19 de confusión (26/05/26):** `ConfusionMatrixDecorator` genera segundo PNG `confusion_matrix_TIMESTAMP_epochNNN.png` con matriz normalizada; web añade sub-tab "Matriz de confusión" con selector de epoch
+- [x] **Heatmap 19×19 de confusión — CSV + Plotly interactivo (26/05/26):** `ConfusionMatrixDecorator` genera `confusion_matrix_TIMESTAMP.csv` (epoch, true_class, pred_class, value) + PNG estático para informes; `confusion_matrix_parser.py` lee el CSV; web sub-tab "Matriz de confusión" muestra heatmap Plotly interactivo con hover y selector de epoch; fallback a PNG para runs anteriores
 
 ### Pendiente
 - [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
