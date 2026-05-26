@@ -572,16 +572,16 @@ class ReportFormatter:
                 f"est_total_h_{target_epochs}ep",
             ])
             for r in report.results:
-                est = estimator.estimate(r, report.dataset_train, target_epochs) if not r.oom else None
+                est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs) if not r.oom else None
                 writer.writerow([
                     r.batch_size,
                     r.trace_mode,
-                    round(r.seconds_per_batch, 4) if not r.oom else "",
-                    round(r.images_per_second, 1) if not r.oom else "",
+                    round(r.seconds_per_batch_train, 4) if not r.oom else "",
+                    round(r.images_per_second_train, 1) if not r.oom else "",
                     round(r.peak_vram_gb, 2) if not r.oom else "",
                     "yes" if r.oom else "no",
-                    round(est[0] / 60, 1) if est else "",
-                    round(est[1] / 3600, 2) if est else "",
+                    round(est["total_per_epoch"] / 60, 1) if est else "",
+                    round(est["total"] / 3600, 2) if est else "",
                 ])
 
         print(f"  → CSV guardado: {csv_path}")
