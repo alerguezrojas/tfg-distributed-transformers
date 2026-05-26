@@ -135,7 +135,7 @@ BaseTrainer (ABC)
     ├── PrecisionRecallReporter    # metric reporter: val_precision / val_recall
     ├── PlottingDecorator          # aspecto: guarda curvas PNG tras cada epoch
     ├── LayerHooksDecorator        # aspecto: forward hooks en capas Linear
-    ├── ConfusionMatrixDecorator   # aspecto: PNG de F1/prec/rec por clase tras cada eval
+    ├── ConfusionMatrixDecorator   # aspecto: PNG de barras por clase + heatmap 19×19 normalizado tras cada eval
     ├── BatchMonitorDecorator      # aspecto: CSV con running loss por batch
     └── EpochController            # Template Method: define fit() con hooks _on_*
         └── TracingDecorator       # controlador: logging a consola y/o fichero
@@ -161,7 +161,7 @@ src/training/
     deep_tracing.py        # DeepTracingDecorator — features: set[str] para inspección modular
     plotting.py            # PlottingDecorator (aspecto, guarda PNG)
     layer_hooks.py         # LayerHooksDecorator (aspecto, forward hooks)
-    confusion.py           # ConfusionMatrixDecorator — PNG con F1/prec/rec por clase (multi-label)
+    confusion.py           # ConfusionMatrixDecorator — PNG barras por clase + heatmap 19×19 normalizado
     batch_monitor.py       # BatchMonitorDecorator — CSV con running loss por batch
     metric_reporters.py    # LossReporter, F1Reporter, AccuracyReporter, PrecisionRecallReporter
     __init__.py
@@ -178,7 +178,7 @@ Envuelven el objeto trainer completo. Hay tres subtipos:
 - **Aspecto** (`TrainerDecorator`): envuelven métodos concretos; combinables libremente
   - `PlottingDecorator` — acumula métricas y guarda PNG tras cada eval epoch; expone `_record_train_result()` para recibir métricas de train cuando `DeepTracingDecorator` gestiona el bucle directamente
   - `LayerHooksDecorator` — captura activaciones de capas Linear cada N epochs
-  - `ConfusionMatrixDecorator` — PNG con F1/prec/rec por clase (multi-label) tras cada eval epoch
+  - `ConfusionMatrixDecorator` — dos PNGs por eval epoch: barras F1/prec/rec por clase + heatmap 19×19 normalizado (celda (i,j) = P(predice j | verdadero es i), diagonal = recall)
   - `BatchMonitorDecorator` — CSV con running loss cada N batches dentro del epoch
 - **Metric reporters** (`TrainerDecorator`): cada uno imprime una métrica independiente; activables con `--metrics`
   - `LossReporter` — cachea train_loss en train_epoch, imprime train+val loss tras eval_epoch
@@ -257,7 +257,7 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
                            Decoradores de aspecto (combinables):
                              plot         → PlottingDecorator, PNG en plots/training_FECHA.png
                              hooks        → LayerHooksDecorator, activaciones cada 5 epochs
-                             confusion    → ConfusionMatrixDecorator, PNG por clase tras cada eval
+                             confusion    → ConfusionMatrixDecorator, PNG barras + heatmap 19×19 por clase tras cada eval
                              batch-monitor → BatchMonitorDecorator, CSV con loss por batch
 
 --fn [timing] [energy]     Decoradores @ de Python (combinables):
@@ -688,7 +688,7 @@ uv run streamlit run src/web/app.py
 | Tab | Contenido |
 |-----|-----------|
 | Training Curves | CSV-first: lee `epoch_metrics_*.csv`; fallback a log_parser para runs antiguos |
-| Per-class Metrics | Plotly interactivo por clase desde `perclass_metrics_*.csv`; fallback a PNGs |
+| Per-class Metrics | Dos sub-tabs: barras Plotly por clase (CSV) + heatmap 19×19 de confusión por epoch |
 | Batch Monitor | Running loss intra-epoch por batch (requiere `--layers batch-monitor`) |
 | Compare Runs | Superpone hasta 4 runs en el mismo gráfico |
 | Feasibility | Tabla de benchmarks, gráfico de throughput, formulario para lanzar feasibility check |
@@ -726,7 +726,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Entrenamiento single-GPU: `Trainer` + LLRD + warmup + cosine scheduler + checkpoints
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
-  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — F1/prec/rec por clase (multi-label)
+  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — barras F1/prec/rec por clase + heatmap 19×19 normalizado
   - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running loss por batch
   - `decorators/metric_reporters.py`: `LossReporter`, `F1Reporter`, `AccuracyReporter`, `PrecisionRecallReporter`
   - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom` — rutean a logger
@@ -757,6 +757,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Fix DDPTrainer con 1 GPU (21/05/26):** `TrainingSessionBuilder` usa `distributed=True` en vez de `world_size>1`; `torchrun --nproc_per_node=1` ahora usa `DDPTrainer` real
 - [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
 - [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
+- [x] **Heatmap 19×19 de confusión (26/05/26):** `ConfusionMatrixDecorator` genera segundo PNG `confusion_matrix_TIMESTAMP_epochNNN.png` con matriz normalizada; web añade sub-tab "Matriz de confusión" con selector de epoch
 
 ### Pendiente
 - [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
