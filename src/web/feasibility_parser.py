@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 import pandas as pd
@@ -10,15 +11,17 @@ import pandas as pd
 def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     """Return (metadata_dict, benchmark_df) from a feasibility CSV.
 
-    The CSV has two '#meta' rows at the top followed by benchmark rows.
+    Handles both legacy format (single s_per_batch column) and the new
+    format with separate train/eval columns and #model_mem rows.
     """
-    rows = []
+    rows: list[list[str]] = []
     meta: dict = {}
+    model_mem: dict = {}
 
     with open(csv_path, newline="") as f:
-        import csv
         reader = csv.reader(f)
         header_meta: list[str] = []
+        header_model_mem: list[str] = []
         for row in reader:
             if not row:
                 continue
@@ -27,31 +30,49 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
                     header_meta = row[1:]
                 else:
                     meta = dict(zip(header_meta, row[1:]))
+            elif row[0] == "#model_mem":
+                if not header_model_mem:
+                    header_model_mem = row[1:]
+                else:
+                    model_mem = dict(zip(header_model_mem, row[1:]))
             else:
                 rows.append(row)
 
     if not rows:
-        return meta, pd.DataFrame()
+        return {**meta, **model_mem}, pd.DataFrame()
 
     header = rows[0]
     data = rows[1:]
     df = pd.DataFrame(data, columns=header)
 
-    for col in ("batch_size", "s_per_batch", "imgs_per_s", "peak_vram_gb"):
+    # Convert all numeric columns
+    numeric_cols = [
+        "batch_size",
+        "s_per_batch", "imgs_per_s",                          # legacy
+        "s_per_batch_train", "imgs_per_s_train",              # new
+        "s_per_batch_eval", "imgs_per_s_eval",                # new
+        "peak_vram_gb",
+    ]
+    for col in numeric_cols:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # Parse numeric columns for estimation columns (variable names based on epoch count)
     for col in df.columns:
         if col.startswith("est_"):
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # Normalize meta numeric fields
-    for key in ("total_params_M", "flops_mflops", "total_vram_gb", "free_vram_gb"):
-        if key in meta:
+    float_fields = (
+        "total_params_M", "flops_mflops", "total_vram_gb", "free_vram_gb",
+        "weight_mb", "gradient_mb", "optimizer_mb",
+        "activation_mb_per_image", "total_static_mb",
+    )
+    combined = {**meta, **model_mem}
+    for key in float_fields:
+        if key in combined:
             try:
-                meta[key] = float(meta[key])
+                combined[key] = float(combined[key])
             except (ValueError, TypeError):
                 pass
 
-    return meta, df
+    return combined, df
