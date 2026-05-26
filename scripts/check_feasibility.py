@@ -564,24 +564,44 @@ class ReportFormatter:
                 round(hi.total_vram_gb, 2),
                 round(hi.free_vram_gb, 2),
             ])
-            # Benchmark rows
+            # Also store model memory breakdown for web display
             writer.writerow([
-                "batch_size", "trace_mode", "s_per_batch", "imgs_per_s",
+                "#model_mem", "weight_mb", "gradient_mb", "optimizer_mb",
+                "activation_mb_per_image", "total_static_mb",
+            ])
+            writer.writerow([
+                "#model_mem",
+                round(mi.weight_mb, 1),
+                round(mi.gradient_mb, 1),
+                round(mi.optimizer_mb, 1),
+                round(mi.activation_mb_per_image, 1),
+                round(mi.total_static_mb, 1),
+            ])
+            # Benchmark rows — train and eval columns separated
+            writer.writerow([
+                "batch_size", "trace_mode",
+                "s_per_batch_train", "imgs_per_s_train",
+                "s_per_batch_eval", "imgs_per_s_eval",
                 "peak_vram_gb", "oom",
-                f"est_min_per_epoch_{target_epochs}ep",
+                "est_train_min_per_epoch", "est_eval_min_per_epoch",
+                "est_total_min_per_epoch",
                 f"est_total_h_{target_epochs}ep",
             ])
             for r in report.results:
-                est = estimator.estimate(r, report.dataset_train, target_epochs) if not r.oom else None
+                est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs) if not r.oom else None
                 writer.writerow([
                     r.batch_size,
                     r.trace_mode,
-                    round(r.seconds_per_batch, 4) if not r.oom else "",
-                    round(r.images_per_second, 1) if not r.oom else "",
+                    round(r.seconds_per_batch_train, 4) if not r.oom else "",
+                    round(r.images_per_second_train, 1) if not r.oom else "",
+                    round(r.seconds_per_batch_eval, 4) if not r.oom else "",
+                    round(r.images_per_second_eval, 1) if not r.oom else "",
                     round(r.peak_vram_gb, 2) if not r.oom else "",
                     "yes" if r.oom else "no",
-                    round(est[0] / 60, 1) if est else "",
-                    round(est[1] / 3600, 2) if est else "",
+                    round(est["train_per_epoch"] / 60, 1) if est else "",
+                    round(est["eval_per_epoch"] / 60, 1) if est else "",
+                    round(est["total_per_epoch"] / 60, 1) if est else "",
+                    round(est["total"] / 3600, 2) if est else "",
                 ])
 
         print(f"  → CSV guardado: {csv_path}")
