@@ -1,9 +1,12 @@
 """ConfusionMatrixDecorator — per-class metrics visualization for multi-label tasks.
 
-For multi-label classification (19 classes) a classic N×N confusion matrix does not
-apply. Instead this decorator generates two complementary visualizations:
-  1. Horizontal bar chart: per-class F1 score (sorted descending)
-  2. Grouped bar chart: per-class precision, recall and F1 side-by-side
+Generates two complementary plots per epoch:
+  1. perclass_TIMESTAMP_epochNNN.png  — bar charts: F1, precision, recall per class
+  2. confusion_matrix_TIMESTAMP_epochNNN.png — 19×19 normalized confusion heatmap
+
+For multi-label classification the heatmap rows=true classes, cols=predicted classes.
+Cell (i, j) = P(predict j | true is i), so the diagonal equals per-class recall and
+off-diagonal entries reveal which classes the model confuses with each other.
 
 Optionally writes a structured CSV alongside each PNG for interactive web display.
 
@@ -64,6 +67,7 @@ class ConfusionMatrixDecorator(TrainerDecorator):
 
         if preds is not None and labels is not None and self._epoch % self._every_n == 0:
             self._save_plot(preds, labels, self._epoch)
+            self._save_confusion_heatmap(preds, labels, self._epoch)
             if self._csv_path is not None:
                 self._write_csv(preds, labels, self._epoch)
 
@@ -143,4 +147,54 @@ class ConfusionMatrixDecorator(TrainerDecorator):
         fig.tight_layout()
         path = self._output_dir / f"perclass_{self._timestamp}_epoch{epoch:03d}.png"
         plt.savefig(path, dpi=100, bbox_inches="tight")
+        plt.close(fig)
+
+    def _save_confusion_heatmap(self, preds: torch.Tensor, labels: torch.Tensor, epoch: int):
+        """Save a 19×19 normalized confusion heatmap.
+
+        Cell (i, j) = P(model predicts class j | true label is class i).
+        Diagonal = per-class recall. Off-diagonal = inter-class confusion.
+        """
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
+
+        preds_b = preds.bool().numpy().astype(float)   # (N, 19)
+        labels_b = labels.bool().numpy().astype(float) # (N, 19)
+
+        n_classes = labels_b.shape[1]
+        # matrix[i, j] = sum over samples of (true==i AND pred==j) / sum(true==i)
+        co = labels_b.T @ preds_b          # (19, 19): raw co-occurrence counts
+        row_sums = labels_b.sum(axis=0)    # (19,): how many times each class is true
+        row_sums = np.where(row_sums == 0, 1, row_sums)  # avoid /0
+        matrix = co / row_sums[:, None]    # normalize by row (true class frequency)
+
+        short_names = [c.replace("_", " ").replace(" and ", "/").replace(" coniferous", " con.").replace(" broadleaf", " brd.").replace(" transitional", " trans.") for c in CLASSES]
+
+        fig, ax = plt.subplots(figsize=(13, 11))
+        im = ax.imshow(matrix, vmin=0, vmax=1, cmap="Blues", aspect="auto")
+        plt.colorbar(im, ax=ax, fraction=0.03, pad=0.02, label="P(pred j | true i)")
+
+        ax.set_xticks(range(n_classes))
+        ax.set_yticks(range(n_classes))
+        ax.set_xticklabels(short_names, rotation=45, ha="right", fontsize=7)
+        ax.set_yticklabels(short_names, fontsize=7)
+        ax.set_xlabel("Clase predicha", fontsize=9)
+        ax.set_ylabel("Clase verdadera", fontsize=9)
+        ax.set_title(f"Matriz de confusión normalizada — epoch {epoch}\n"
+                     f"(diagonal = recall por clase, fuera de diagonal = confusiones)", fontsize=10)
+
+        # Annotate cells with value if they exceed a threshold (avoid clutter)
+        for i in range(n_classes):
+            for j in range(n_classes):
+                val = matrix[i, j]
+                if val >= 0.1:
+                    color = "white" if val > 0.6 else "black"
+                    ax.text(j, i, f"{val:.2f}", ha="center", va="center",
+                            fontsize=5.5, color=color)
+
+        fig.tight_layout()
+        path = self._output_dir / f"confusion_matrix_{self._timestamp}_epoch{epoch:03d}.png"
+        plt.savefig(path, dpi=110, bbox_inches="tight")
         plt.close(fig)

@@ -21,6 +21,7 @@ class RunInfo:
     env: str = "local"          # "local" or "verode"
     plot_path: Path | None = None
     perclass_paths: list[Path] = field(default_factory=list)
+    confusion_matrix_paths: list[Path] = field(default_factory=list)
     batch_csv_path: Path | None = None
     epoch_csv_path: Path | None = None
     perclass_csv_path: Path | None = None
@@ -97,6 +98,12 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
                 key = f"{p_env}_{m.group(1)}"
                 if key in runs:
                     runs[key].perclass_paths.append(plot_path)
+        for plot_path in sorted(plot_dir.glob("confusion_matrix_*.png")):
+            m = _TIMESTAMP_RE.search(plot_path.stem)
+            if m:
+                key = f"{p_env}_{m.group(1)}"
+                if key in runs:
+                    runs[key].confusion_matrix_paths.append(plot_path)
 
     # Attach CSV artifacts
     csv_dirs: list[tuple[Path, str]] = [(logs_root, "legacy")]

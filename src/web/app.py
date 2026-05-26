@@ -230,57 +230,78 @@ with tab_curves:
 # ── Tab: Per-class Metrics ───────────────────────────────────────────────────
 
 with tab_perclass:
-    if run.perclass_csv_path and run.perclass_csv_path.exists():
-        pcdf = _load_perclass(str(run.perclass_csv_path))
-        epochs_available = sorted(pcdf["epoch"].unique().tolist())
+    subtab_bars, subtab_cm = st.tabs(["Métricas por clase", "Matriz de confusión"])
 
-        selected_ep = st.selectbox(
-            "Epoch", epochs_available,
-            format_func=lambda e: f"Epoch {e}",
-        )
-        ep_df = pcdf[pcdf["epoch"] == selected_ep].copy()
-        ep_df = ep_df.sort_values("f1", ascending=False)
+    with subtab_bars:
+        if run.perclass_csv_path and run.perclass_csv_path.exists():
+            pcdf = _load_perclass(str(run.perclass_csv_path))
+            epochs_available = sorted(pcdf["epoch"].unique().tolist())
 
-        colors_f1 = ["steelblue" if v >= 0.5 else "salmon" for v in ep_df["f1"]]
+            selected_ep = st.selectbox(
+                "Epoch", epochs_available,
+                format_func=lambda e: f"Epoch {e}",
+            )
+            ep_df = pcdf[pcdf["epoch"] == selected_ep].copy()
+            ep_df = ep_df.sort_values("f1", ascending=False)
 
-        fig_pc = go.Figure()
-        fig_pc.add_trace(go.Bar(
-            y=ep_df["class_name"], x=ep_df["precision"],
-            name="Precision", orientation="h", marker_color="#4c72b0",
-            opacity=0.85,
-        ))
-        fig_pc.add_trace(go.Bar(
-            y=ep_df["class_name"], x=ep_df["recall"],
-            name="Recall", orientation="h", marker_color="#dd8452",
-            opacity=0.85,
-        ))
-        fig_pc.add_trace(go.Bar(
-            y=ep_df["class_name"], x=ep_df["f1"],
-            name="F1", orientation="h", marker_color=colors_f1,
-        ))
-        fig_pc.update_layout(
-            barmode="group", title=f"Per-class Metrics — Epoch {selected_ep}",
-            xaxis_title="Score", yaxis_title="Class",
-            height=600, margin=dict(l=180, r=20, t=50, b=40),
-            xaxis=dict(range=[0, 1]),
-        )
-        st.plotly_chart(fig_pc, use_container_width=True)
+            colors_f1 = ["steelblue" if v >= 0.5 else "salmon" for v in ep_df["f1"]]
 
-        with st.expander("Raw per-class data"):
-            st.dataframe(ep_df.set_index("class_name"), use_container_width=True)
+            fig_pc = go.Figure()
+            fig_pc.add_trace(go.Bar(
+                y=ep_df["class_name"], x=ep_df["precision"],
+                name="Precision", orientation="h", marker_color="#4c72b0",
+                opacity=0.85,
+            ))
+            fig_pc.add_trace(go.Bar(
+                y=ep_df["class_name"], x=ep_df["recall"],
+                name="Recall", orientation="h", marker_color="#dd8452",
+                opacity=0.85,
+            ))
+            fig_pc.add_trace(go.Bar(
+                y=ep_df["class_name"], x=ep_df["f1"],
+                name="F1", orientation="h", marker_color=colors_f1,
+            ))
+            fig_pc.update_layout(
+                barmode="group", title=f"Per-class Metrics — Epoch {selected_ep}",
+                xaxis_title="Score", yaxis_title="Class",
+                height=600, margin=dict(l=180, r=20, t=50, b=40),
+                xaxis=dict(range=[0, 1]),
+            )
+            st.plotly_chart(fig_pc, use_container_width=True)
 
-    elif run.perclass_paths:
-        st.caption("📊 Showing static PNGs (no perclass CSV found)")
-        epoch_options = [p.stem.split("_epoch")[-1] for p in run.perclass_paths]
-        selected_epoch_idx = st.selectbox(
-            "Epoch", range(len(run.perclass_paths)),
-            format_func=lambda i: f"Epoch {epoch_options[i]}",
-        )
-        img_path = run.perclass_paths[selected_epoch_idx]
-        if img_path.exists():
-            st.image(Image.open(img_path), use_container_width=True)
-    else:
-        st.info("No per-class data for this run. Use `--layers confusion` to generate it.")
+            with st.expander("Raw per-class data"):
+                st.dataframe(ep_df.set_index("class_name"), use_container_width=True)
+
+        elif run.perclass_paths:
+            st.caption("Showing static PNGs (no perclass CSV found)")
+            epoch_options = [p.stem.split("_epoch")[-1] for p in run.perclass_paths]
+            selected_epoch_idx = st.selectbox(
+                "Epoch", range(len(run.perclass_paths)),
+                format_func=lambda i: f"Epoch {epoch_options[i]}",
+            )
+            img_path = run.perclass_paths[selected_epoch_idx]
+            if img_path.exists():
+                st.image(Image.open(img_path), use_container_width=True)
+        else:
+            st.info("No per-class data for this run. Use `--layers confusion` to generate it.")
+
+    with subtab_cm:
+        if run.confusion_matrix_paths:
+            st.caption(
+                "Matriz de confusión normalizada: cada celda (i, j) = P(predice clase j | clase verdadera es i). "
+                "La diagonal equivale al recall por clase. Las celdas fuera de la diagonal muestran confusiones entre clases."
+            )
+            epoch_labels = [p.stem.split("_epoch")[-1] for p in run.confusion_matrix_paths]
+            cm_idx = st.selectbox(
+                "Epoch", range(len(run.confusion_matrix_paths)),
+                format_func=lambda i: f"Epoch {epoch_labels[i]}",
+                key="cm_epoch_sel",
+            )
+            cm_path = run.confusion_matrix_paths[cm_idx]
+            if cm_path.exists():
+                st.image(Image.open(cm_path), use_container_width=True)
+        else:
+            st.info("No hay matriz de confusión para este run. Usa `--layers confusion` para generarla.")
 
 # ── Tab: Batch Monitor ───────────────────────────────────────────────────────
 
