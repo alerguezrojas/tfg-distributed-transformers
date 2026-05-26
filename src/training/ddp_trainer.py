@@ -43,10 +43,13 @@ class DDPTrainer(Trainer):
         checkpoint_dir: str = "checkpoints",
         criterion=None,
         grad_clip: float | None = None,
+        label_smoothing: float = 0.0,
+        mixup_alpha: float = 0.0,
         rank: int = 0,
         world_size: int = 1,
     ):
-        super().__init__(model, optimizer, scheduler, device, checkpoint_dir, criterion, grad_clip)
+        super().__init__(model, optimizer, scheduler, device, checkpoint_dir,
+                         criterion, grad_clip, label_smoothing, mixup_alpha)
         self.rank = rank
         self.world_size = world_size
         self._epoch = 0
