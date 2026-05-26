@@ -1,14 +1,12 @@
 """ConfusionMatrixDecorator — per-class metrics visualization for multi-label tasks.
 
-Generates two complementary plots per epoch:
-  1. perclass_TIMESTAMP_epochNNN.png  — bar charts: F1, precision, recall per class
-  2. confusion_matrix_TIMESTAMP_epochNNN.png — 19×19 normalized confusion heatmap
+Generates per epoch:
+  - perclass_TIMESTAMP_epochNNN.png      — bar charts: F1, precision, recall per class
+  - confusion_matrix_TIMESTAMP_epochNNN.png — 19×19 normalized heatmap (static, for reports)
+  - confusion_matrix_TIMESTAMP.csv       — 19×19 matrix data for interactive web display
 
-For multi-label classification the heatmap rows=true classes, cols=predicted classes.
-Cell (i, j) = P(predict j | true is i), so the diagonal equals per-class recall and
-off-diagonal entries reveal which classes the model confuses with each other.
-
-Optionally writes a structured CSV alongside each PNG for interactive web display.
+CSV columns: epoch, true_class, pred_class, value
+Cell (i, j) = P(predict j | true is i). Diagonal = per-class recall.
 
 Trainer.eval_epoch must include '_preds' and '_labels' in its return dict
 (which the base Trainer already does). This decorator extracts and removes
@@ -52,11 +50,16 @@ class ConfusionMatrixDecorator(TrainerDecorator):
         self._epoch = 0
 
         self._csv_path: Path | None = None
+        self._confusion_csv_path: Path | None = None
         if csv_dir is not None:
-            self._csv_path = Path(csv_dir) / f"perclass_metrics_{timestamp}.csv"
-            self._csv_path.parent.mkdir(parents=True, exist_ok=True)
+            csv_base = Path(csv_dir)
+            csv_base.mkdir(parents=True, exist_ok=True)
+            self._csv_path = csv_base / f"perclass_metrics_{timestamp}.csv"
             with open(self._csv_path, "w", newline="") as f:
                 csv.writer(f).writerow(["epoch", "class_name", "class_idx", "f1", "precision", "recall"])
+            self._confusion_csv_path = csv_base / f"confusion_matrix_{timestamp}.csv"
+            with open(self._confusion_csv_path, "w", newline="") as f:
+                csv.writer(f).writerow(["epoch", "true_class", "pred_class", "value"])
 
     def eval_epoch(self, loader: DataLoader) -> dict:
         result = self._trainer.eval_epoch(loader)
@@ -70,8 +73,24 @@ class ConfusionMatrixDecorator(TrainerDecorator):
             self._save_confusion_heatmap(preds, labels, self._epoch)
             if self._csv_path is not None:
                 self._write_csv(preds, labels, self._epoch)
+            if self._confusion_csv_path is not None:
+                self._write_confusion_matrix_csv(preds, labels, self._epoch)
 
         return result
+
+    def _write_confusion_matrix_csv(self, preds: torch.Tensor, labels: torch.Tensor, epoch: int):
+        import numpy as np
+        preds_b = preds.bool().numpy().astype(float)
+        labels_b = labels.bool().numpy().astype(float)
+        co = labels_b.T @ preds_b
+        row_sums = labels_b.sum(axis=0)
+        row_sums = np.where(row_sums == 0, 1, row_sums)
+        matrix = co / row_sums[:, None]
+        with open(self._confusion_csv_path, "a", newline="") as f:
+            writer = csv.writer(f)
+            for i, true_name in enumerate(CLASSES):
+                for j, pred_name in enumerate(CLASSES):
+                    writer.writerow([epoch, true_name, pred_name, round(float(matrix[i, j]), 6)])
 
     def _write_csv(self, preds: torch.Tensor, labels: torch.Tensor, epoch: int):
         preds = preds.bool()

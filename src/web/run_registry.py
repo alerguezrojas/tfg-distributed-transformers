@@ -22,6 +22,7 @@ class RunInfo:
     plot_path: Path | None = None
     perclass_paths: list[Path] = field(default_factory=list)
     confusion_matrix_paths: list[Path] = field(default_factory=list)
+    confusion_matrix_csv_path: Path | None = None
     batch_csv_path: Path | None = None
     epoch_csv_path: Path | None = None
     perclass_csv_path: Path | None = None
@@ -130,6 +131,12 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
                 key = f"{c_env}_{m.group(1)}"
                 if key in runs and runs[key].perclass_csv_path is None:
                     runs[key].perclass_csv_path = csv_path
+        for csv_path in csv_dir.glob("confusion_matrix_*.csv"):
+            m = _TIMESTAMP_RE.search(csv_path.stem)
+            if m:
+                key = f"{c_env}_{m.group(1)}"
+                if key in runs and runs[key].confusion_matrix_csv_path is None:
+                    runs[key].confusion_matrix_csv_path = csv_path
 
     return sorted(runs.values(), key=lambda r: r.timestamp, reverse=True)
 

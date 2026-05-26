@@ -15,6 +15,7 @@ import streamlit as st
 from PIL import Image
 
 from src.web.batch_parser import parse_batch_csv
+from src.web.confusion_matrix_parser import get_matrix_for_epoch, parse_confusion_matrix_csv
 from src.web.feasibility_parser import parse_feasibility_csv
 from src.web.log_parser import parse_log
 from src.web.perclass_parser import parse_perclass_csv
@@ -286,11 +287,43 @@ with tab_perclass:
             st.info("No per-class data for this run. Use `--layers confusion` to generate it.")
 
     with subtab_cm:
-        if run.confusion_matrix_paths:
-            st.caption(
-                "Matriz de confusión normalizada: cada celda (i, j) = P(predice clase j | clase verdadera es i). "
-                "La diagonal equivale al recall por clase. Las celdas fuera de la diagonal muestran confusiones entre clases."
+        if run.confusion_matrix_csv_path and run.confusion_matrix_csv_path.exists():
+            cm_df = parse_confusion_matrix_csv(run.confusion_matrix_csv_path)
+            epochs_cm = sorted(cm_df["epoch"].unique().tolist())
+            selected_cm_ep = st.selectbox(
+                "Epoch", epochs_cm,
+                format_func=lambda e: f"Epoch {e}",
+                key="cm_epoch_sel",
             )
+            pivot = get_matrix_for_epoch(cm_df, selected_cm_ep)
+            class_order = list(pivot.index)
+            z = pivot.reindex(index=class_order, columns=class_order).values.tolist()
+            fig_cm = go.Figure(go.Heatmap(
+                z=z,
+                x=class_order,
+                y=class_order,
+                colorscale="Blues",
+                zmin=0, zmax=1,
+                text=[[f"{v:.2f}" if v >= 0.05 else "" for v in row] for row in z],
+                texttemplate="%{text}",
+                textfont={"size": 8},
+                hovertemplate="Verdadero: %{y}<br>Predicho: %{x}<br>P = %{z:.3f}<extra></extra>",
+                colorbar=dict(title="P(pred j | true i)"),
+            ))
+            fig_cm.update_layout(
+                title=f"Matriz de confusión normalizada — Epoch {selected_cm_ep}",
+                xaxis=dict(title="Clase predicha", tickangle=45, tickfont=dict(size=9)),
+                yaxis=dict(title="Clase verdadera", tickfont=dict(size=9), autorange="reversed"),
+                height=650,
+                margin=dict(l=160, r=20, t=60, b=160),
+            )
+            st.plotly_chart(fig_cm, use_container_width=True)
+            st.caption(
+                "Diagonal = recall por clase (cuántas veces se predice correctamente cada clase). "
+                "Fuera de la diagonal = confusiones entre clases."
+            )
+        elif run.confusion_matrix_paths:
+            st.caption("Mostrando PNG estático (no hay CSV de matriz de confusión — run anterior a esta feature)")
             epoch_labels = [p.stem.split("_epoch")[-1] for p in run.confusion_matrix_paths]
             cm_idx = st.selectbox(
                 "Epoch", range(len(run.confusion_matrix_paths)),
