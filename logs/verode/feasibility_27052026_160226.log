@@ -1,0 +1,85 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT
+  27/05/2026 16:03:13
+  Factor NFS aplicado: ×1.30  (I/O en red más lento)
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  MODELO
+────────────────────────────────────────────────────────────────────────
+  Nombre:               vit_base_patch16_224
+  Parámetros totales:   85,813,267 (85.8M)
+  Parámetros train.:    85,813,267 (85.8M)
+  FLOPs/imagen:         200.8 MFLOPs
+  Memoria pesos:        343 MB
+  Gradientes:           343 MB
+  Estado AdamW:         687 MB
+  Total estático:       1.34 GB  (sin activaciones)
+
+────────────────────────────────────────────────────────────────────────
+  HARDWARE
+────────────────────────────────────────────────────────────────────────
+  GPU:                  NVIDIA GeForce RTX 3060 Ti
+  VRAM total:           8.20 GB
+  VRAM libre:           8.20 GB
+
+────────────────────────────────────────────────────────────────────────
+  MEMORIA POR BATCH SIZE
+────────────────────────────────────────────────────────────────────────
+  Estática (pesos+grad+AdamW): 1.34 GB
+  Activaciones por imagen:     162.2 MB
+
+  Batch    Estática   Activac.   Total est.    Estado
+  ─────  ──────────  ─────────  ───────────  ────────
+     32      1.34 GB     5.07 GB       6.41 GB      ✓ OK
+     64      1.34 GB    10.14 GB      11.48 GB     OOM ✗
+    128      1.34 GB    20.27 GB      21.61 GB     OOM ✗
+     16      1.34 GB     2.53 GB       3.87 GB      ✓ OK
+
+────────────────────────────────────────────────────────────────────────
+  BENCHMARK  (8 batches sintéticos — sin I/O real)
+────────────────────────────────────────────────────────────────────────
+  Batch  Modo      s/batch(train)  imgs/s(train)  s/batch(eval)     VRAM
+  ─────  ────────  ──────────────  ─────────────  ─────────────  ───────
+     32  off              0.471s         67.9        0.153s   4.94 GB
+     32  simple           0.477s         67.1        0.153s   4.94 GB  (+1% vs off)
+     32  deep             0.571s         56.0        0.213s   4.94 GB  (+21% vs off)
+     64  off                  OOM              —              —        —
+     64  simple               OOM              —              —        —
+     64  deep                 OOM              —              —        —
+    128  off                  OOM              —              —        —
+    128  simple               OOM              —              —        —
+    128  deep                 OOM              —              —        —
+     16  off              0.357s         44.8        0.149s   3.00 GB
+     16  simple           0.362s         44.2        0.150s   3.00 GB  (+1% vs off)
+     16  deep             0.420s         38.1        0.185s   3.00 GB  (+18% vs off)
+
+────────────────────────────────────────────────────────────────────────
+  ESTIMACIONES  (train=237,871 | val=122,342 | NFS ×1.30)
+────────────────────────────────────────────────────────────────────────
+
+  30 epochs:
+  Batch  Modo      Train/epoch  Eval/epoch  Total/epoch       TOTAL
+  ─────  ────────  ───────────  ──────────  ───────────  ──────────
+     32  off            1h 15m      0h 12m       1h 28m     44h 16m
+     32  simple         1h 16m      0h 12m       1h 29m     44h 43m
+     32  deep           1h 31m      0h 17m       1h 49m     54h 48m
+     64  off               OOM           —            —           —
+     64  simple            OOM           —            —           —
+     64  deep              OOM           —            —           —
+    128  off               OOM           —            —           —
+    128  simple            OOM           —            —           —
+    128  deep              OOM           —            —           —
+     16  off            1h 55m      0h 24m       2h 19m     69h 50m
+     16  simple         1h 56m      0h 24m       2h 21m     70h 41m
+     16  deep           2h 15m      0h 30m       2h 46m     83h 00m
+
+────────────────────────────────────────────────────────────────────────
+  RECOMENDACIONES
+────────────────────────────────────────────────────────────────────────
+  ✓ Batch size óptimo:  32 (67.9 imgs/s en train)
+  → --trace off      para 30 epochs:  ~44h 16m  (train 1h 15m/epoch + eval 0h 12m/epoch)
+  → --trace simple   para 30 epochs:  ~44h 43m  (train 1h 16m/epoch + eval 0h 12m/epoch)
+  → --trace deep     para 30 epochs:  ~54h 48m  (train 1h 31m/epoch + eval 0h 17m/epoch)
+  ⚠ --trace deep añade un 21% de overhead — úsalo solo para análisis puntual
+

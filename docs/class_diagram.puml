@@ -1,19 +1,21 @@
 @startuml class_diagram
+scale 1800 width
 skinparam monochrome false
 skinparam classAttributeIconSize 0
 skinparam defaultFontName "DejaVu Sans"
-skinparam defaultFontSize 11
+skinparam defaultFontSize 9
 skinparam classFontStyle bold
-skinparam classFontSize 12
+skinparam classFontSize 10
 skinparam classHeaderBackgroundColor #1A5276
 skinparam classBorderColor #2C3E50
 skinparam classBackgroundColor #EBF5FB
 skinparam arrowColor #2C3E50
 skinparam arrowThickness 1.5
 skinparam roundCorner 8
-skinparam padding 3
-skinparam nodesep 40
-skinparam ranksep 50
+skinparam padding 4
+skinparam nodesep 50
+skinparam ranksep 55
+skinparam wrapWidth 200
 skinparam packageStyle rectangle
 skinparam packageBorderColor #95A5A6
 skinparam packageBackgroundColor #FDFEFE
@@ -61,7 +63,6 @@ package "src.training" #FDFEFE {
     - _timestamp: str
     - _rank: int
     - _world_size: int
-    - _distributed: bool
     - _model_name: str | None
     - _trace: str
     - _layers: list[str]
@@ -82,8 +83,8 @@ package "src.training" #FDFEFE {
     **augmentations.py**
     mixup_batch(images, labels, alpha)
     → tuple[Tensor, Tensor]
-    Mezcla pares del batch con coef. Beta(α,α).
-    Compatible con clasificación multi-label.
+    Mezcla pares con coef. Beta(α,α).
+    Compatible con multi-label.
   end note
 
   note as metrics_note
@@ -98,10 +99,11 @@ package "src.training" #FDFEFE {
 
   note as logger_note
     **logger_setup.py**
-    setup_logger(name, level, log_file) → Logger
-    Configura handler de consola + fichero.
-    El logger "trainer" es el que usan todos
-    los decoradores y fn_decorators.
+    setup_logger(name, level, log_file)
+    → Logger
+    Handler consola + fichero.
+    Logger "trainer" compartido por
+    decoradores y fn_decorators.
   end note
 
 }
@@ -289,8 +291,8 @@ package "src.training.fn_decorators" #FDFEFE {
     log_call(fn) → wrapper
     retry_on_cuda_oom(fn) → wrapper
     measure_energy(fn) → wrapper
-    Ruteados a logging.getLogger("trainer")
-    con fallback a print() si no hay logger.
+    Rutean a getLogger("trainer")
+    o print() si no hay logger.
   end note
 
   _PowerSampler .. fn_note
@@ -434,8 +436,12 @@ package "src.web" #FDFEFE {
     + log_path: Path
     + trace_mode: str
     + env: str
+    + mode: str
+    + model: str
     + plot_path: Path | None
     + perclass_paths: list[Path]
+    + confusion_matrix_paths: list[Path]
+    + confusion_matrix_csv_path: Path | None
     + batch_csv_path: Path | None
     + epoch_csv_path: Path | None
     + perclass_csv_path: Path | None
@@ -446,25 +452,22 @@ package "src.web" #FDFEFE {
     **run_registry.py**
     discover_runs(root) → list[RunInfo]
     discover_feasibility_csvs(root) → list[Path]
-    Escanea logs/local/ + logs/verode/ (env-aware).
+    rglob: soporta logs/{env}/ y logs/{env}/{mode}/{model}/
+    RunInfo extrae env, mode, model de la ruta.
 
     **log_parser.py**
     parse_log(log_path) → DataFrame
     Soporta trace simple, deep y legacy.
 
-    **batch_parser.py**
-    parse_batch_csv(csv_path) → DataFrame
+    **batch_parser.py** — parse_batch_csv() → DataFrame
+    **perclass_parser.py** — parse_perclass_csv() → DataFrame
+    **feasibility_parser.py** — parse_feasibility_csv() → (dict, DataFrame)
+    **confusion_matrix_parser.py**
+    parse_confusion_matrix_csv() → dict[int, ndarray]
 
-    **perclass_parser.py**
-    parse_perclass_csv(csv_path) → DataFrame
-
-    **feasibility_parser.py**
-    parse_feasibility_csv(csv_path) → (dict, DataFrame)
-
-    **app.py** (Streamlit, 7 pestañas)
-    Training Curves | Per-class Metrics
-    Batch Monitor | Compare Runs
-    Feasibility | Time Analysis | Run Info
+    **app.py** (Streamlit, 9 pestañas)
+    Curves | Per-class | Batch | Compare
+    Feasibility | Time | Info | Launcher | Live
   end note
 
 }
@@ -502,7 +505,7 @@ TrainerDecorator o-- BaseTrainer : wraps >
 
 TrainingSessionBuilder ..> BaseTrainer : builds >
 TrainingSessionBuilder ..> Trainer : creates >
-TrainingSessionBuilder ..> DDPTrainer : creates (distributed=True) >
+TrainingSessionBuilder ..> DDPTrainer : creates (world_size>1) >
 TrainingSessionBuilder ..> aug_note : uses >
 
 DeepTracingDecorator ..> LayerStats : uses >

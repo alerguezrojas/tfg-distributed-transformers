@@ -173,6 +173,7 @@ class TrainingSessionBuilder:
         grad_clip = cfg["training"].get("grad_clip", None)
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
+        checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / mode / model_slug)
         if self._distributed:
             from src.training.ddp_trainer import DDPTrainer
             base = DDPTrainer(
@@ -180,7 +181,7 @@ class TrainingSessionBuilder:
                 optimizer=optimizer,
                 scheduler=scheduler,
                 device=self._device,
-                checkpoint_dir=cfg["checkpoint"]["dir"],
+                checkpoint_dir=checkpoint_dir,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
@@ -193,7 +194,7 @@ class TrainingSessionBuilder:
                 optimizer=optimizer,
                 scheduler=scheduler,
                 device=self._device,
-                checkpoint_dir=cfg["checkpoint"]["dir"],
+                checkpoint_dir=checkpoint_dir,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
@@ -209,8 +210,10 @@ class TrainingSessionBuilder:
 
         # ── Output environment (local / verode / etc.) ────────────────────────
         env = cfg.get("output", {}).get("env", "local")
-        log_dir = Path(f"logs/{env}")
-        plot_dir = Path(f"plots/{env}")
+        mode = "ddp" if self._distributed else "single"
+        model_slug = model_name.replace("/", "_")
+        log_dir = Path(f"logs/{env}/{mode}/{model_slug}")
+        plot_dir = Path(f"plots/{env}/{mode}/{model_slug}")
         log_dir.mkdir(parents=True, exist_ok=True)
         plot_dir.mkdir(parents=True, exist_ok=True)
 

@@ -1,0 +1,3 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,resnet50,23.55,4087.2,NVIDIA GeForce RTX 3060 Ti,8.2,8.2
+batch_size,trace_mode,s_per_batch,imgs_per_s,peak_vram_gb,oom,est_min_per_epoch_30ep,est_total_h_30ep

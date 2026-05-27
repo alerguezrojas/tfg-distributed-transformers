@@ -537,9 +537,9 @@ class ReportFormatter:
         self._emit()
 
     def write_csv(self, report: FeasibilityReport, env: str = "local"):
-        """Write benchmark results to a structured CSV in logs/{env}/."""
+        """Write benchmark results to a structured CSV in logs/{env}/feasibility/."""
         timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
-        out_dir = Path(f"logs/{env}")
+        out_dir = Path(f"logs/{env}/feasibility")
         out_dir.mkdir(parents=True, exist_ok=True)
         csv_path = out_dir / f"feasibility_{timestamp}.csv"
 
@@ -715,7 +715,7 @@ def main():
     if output_path is None:
         ts = datetime.now().strftime("%d%m%Y_%H%M%S")
         env = cfg.get("output", {}).get("env", "local")
-        output_path = Path(f"logs/{env}/feasibility_{ts}.log")
+        output_path = Path(f"logs/{env}/feasibility/feasibility_{ts}.log")
 
     checker = FeasibilityChecker(
         model_name=model_name,
