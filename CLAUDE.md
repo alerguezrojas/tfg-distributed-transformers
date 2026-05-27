@@ -820,6 +820,9 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Diagrama de clases v3: RunInfo con mode/model, web con 9 tabs, confusion_matrix_parser (27/05/26)
 - [x] **Multi-model feasibility (27/05/26):** `check_feasibility.py --model` acepta N modelos separados por espacio (`nargs="+"`) — cada modelo genera su propio par log/CSV con timestamp independiente
 - [x] **DDP CPU/gloo support (27/05/26):** `train_ddp.py` lee `backend` del config; `DDPTrainer` omite `device_ids` en CPU; `configs/train_ddp_cpu_test.yaml` con backend gloo, vit_tiny, pretrained=false — permite validar infraestructura multi-nodo sin GPU compatible
+- [x] **Fix ZeroDivisionError scheduler (27/05/26):** `T_max = max(1, epochs - warmup_epochs)` en `builder.py` — evita división por cero cuando `epochs ≤ warmup_epochs`
+- [x] **Feasibility multi-modelo local (27/05/26):** vit_tiny, vit_small, vit_base, resnet50 con batch-sizes 16 y 32; trace-modes off y simple → 4 pares log/CSV en `logs/local/feasibility/`
+- [x] **Entrenamiento local vit_tiny 5 epochs (27/05/26):** Val F1=0.590 (epoch 5, mejorando en todos los epochs), ~11 min/epoch, stack completo (plot, hooks, confusion, batch-monitor, energy, timing) → `logs/local/single/vit_tiny_patch16_224/train_27052026_221827.log`
 
 ### Pendiente
 - [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
@@ -843,6 +846,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 | `[energy] GPU no disponible (pynvml no instalado)` en Verode | `uv sync` antes de añadir `nvidia-ml-py` al pyproject.toml | `uv sync` + reinstall torch cu118 |
 | `srun --gres=gpu:1` falla en Verode | El recurso GPU se llama `gpu:tesla` en este clúster | Usar `--gres=gpu:tesla:1` |
 | `libcudnn.so.9` en srun no-interactivo | `LD_LIBRARY_PATH` vacío en shells no-interactivos; cu13 instalado por `uv sync` | Reinstalar cu118: `uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall` |
+| `ZeroDivisionError` en cosine scheduler | `epochs ≤ warmup_epochs` → `T_max = 0` | `builder.py` usa `max(1, epochs - warmup_epochs)` |
 
 ---
 
