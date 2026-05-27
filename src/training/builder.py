@@ -167,6 +167,11 @@ class TrainingSessionBuilder:
                 optimizer, T_max=epochs, eta_min=lr_min,
             )
 
+        # ── Output paths (env/mode/model — needed for checkpoint_dir) ─────────
+        env = cfg.get("output", {}).get("env", "local")
+        mode = "ddp" if self._world_size > 1 else "single"
+        model_slug = model_name.replace("/", "_")
+
         # ── Base Trainer ──────────────────────────────────────────────────────
         grad_clip = cfg["training"].get("grad_clip", None)
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
@@ -206,10 +211,7 @@ class TrainingSessionBuilder:
             base.train_epoch = timed(base.train_epoch)
             base.eval_epoch = timed(base.eval_epoch)
 
-        # ── Output environment (local / verode / etc.) ────────────────────────
-        env = cfg.get("output", {}).get("env", "local")
-        mode = "ddp" if self._world_size > 1 else "single"
-        model_slug = model_name.replace("/", "_")
+        # ── Output directories ────────────────────────────────────────────────
         log_dir = Path(f"logs/{env}/{mode}/{model_slug}")
         plot_dir = Path(f"plots/{env}/{mode}/{model_slug}")
         log_dir.mkdir(parents=True, exist_ok=True)
