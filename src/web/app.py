@@ -34,12 +34,30 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-  [data-testid="stSidebar"] { min-width: 260px; max-width: 280px; }
-  .block-container { padding-top: 1.5rem; }
+  [data-testid="stSidebar"] { min-width: 240px; max-width: 260px; }
+  .block-container { padding-top: 1.2rem; padding-left: 1.5rem; padding-right: 1.5rem; }
   h1 { font-size: 1.4rem; font-weight: 600; }
   h2 { font-size: 1.1rem; font-weight: 600; margin-top: 1.2rem; }
   h3 { font-size: 0.95rem; font-weight: 600; }
   [data-testid="stMetricValue"] { font-size: 1.1rem; }
+
+  /* Tab bar: allow horizontal scroll on narrow screens, shrink padding */
+  [data-baseweb="tab-list"] {
+    overflow-x: auto !important;
+    flex-wrap: nowrap !important;
+    scrollbar-width: thin;
+    gap: 0 !important;
+  }
+  [data-baseweb="tab-list"]::-webkit-scrollbar { height: 3px; }
+  [data-baseweb="tab-list"]::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
+  [data-baseweb="tab"] {
+    white-space: nowrap !important;
+    font-size: 0.82rem !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.75rem !important;
+    min-width: unset !important;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -307,9 +325,8 @@ with st.sidebar:
     tab_feasibility, tab_time, tab_info,
     tab_launcher, tab_live,
 ) = st.tabs([
-    "Training Curves", "Per-class Metrics", "Batch Monitor",
-    "Compare Runs", "Feasibility", "Time Analysis", "Run Info",
-    "Launcher", "Live Monitor",
+    "Curves", "Per-class", "Batch", "Compare",
+    "Feasibility", "Time", "Info", "Launcher", "Live",
 ])
 
 # ═══════════════════════════════════════════════════════════════════════════════
