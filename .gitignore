@@ -1,8 +1,7 @@
 # Model checkpoints — exclude large .pt files
 checkpoints/**/*.pt
 
-# Batch-level CSVs are large and verbose — skip them; commit all other CSVs
-logs/**/batch_metrics_*.csv
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
