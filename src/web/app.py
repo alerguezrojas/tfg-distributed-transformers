@@ -515,8 +515,9 @@ with tab_perclass:
                         ))
                     fig_trend.update_layout(
                         **_base_layout(400, f"{metric_sel.capitalize()} by class over epochs"),
-                        xaxis_title="Epoch", yaxis=dict(range=[0, 1], gridcolor="#e2e8f0"),
+                        xaxis_title="Epoch",
                     )
+                    fig_trend.update_yaxes(range=[0, 1])
                     st.plotly_chart(fig_trend, use_container_width=True)
             else:
                 st.info("No per-class CSV for this run.")
