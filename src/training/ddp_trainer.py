@@ -53,8 +53,11 @@ class DDPTrainer(Trainer):
         self.rank = rank
         self.world_size = world_size
         self._epoch = 0
-        # Wrap AFTER super().__init__ moves model to device
-        self.model = DDP(self.model, device_ids=[rank])
+        # device_ids only valid for CUDA; omit for CPU (gloo backend)
+        if device.type == "cuda":
+            self.model = DDP(self.model, device_ids=[rank])
+        else:
+            self.model = DDP(self.model)
 
     # ── Overrides ────────────────────────────────────────────────────────────
 
@@ -71,7 +74,7 @@ class DDPTrainer(Trainer):
 
         # _preds: bool tensor (N, C) on CPU from Trainer.eval_epoch
         # _labels: float tensor (N, C) on CPU
-        # Convert to float for NCCL all_gather, then move to CUDA
+        # Move to the process device (CUDA or CPU depending on backend)
         preds_gpu = result["_preds"].float().to(self.device)
         labels_gpu = result["_labels"].float().to(self.device)
 

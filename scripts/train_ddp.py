@@ -72,18 +72,25 @@ def parse_args():
 
 def main():
     # ── Distributed init ─────────────────────────────────────────────────────
-    local_rank = int(os.environ["LOCAL_RANK"])
-    device = torch.device(f"cuda:{local_rank}")
-    torch.cuda.set_device(device)
-    # Pass device_id to suppress "barrier() using device under current context" warning
-    dist.init_process_group(backend="nccl", device_id=device)
-    rank = dist.get_rank()
-    world_size = dist.get_world_size()
-
     args = parse_args()
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
+
+    backend = cfg.get("distributed", {}).get("backend", "nccl")
+    use_cuda = backend == "nccl" and torch.cuda.is_available()
+
+    local_rank = int(os.environ["LOCAL_RANK"])
+    if use_cuda:
+        device = torch.device(f"cuda:{local_rank}")
+        torch.cuda.set_device(device)
+        dist.init_process_group(backend="nccl", device_id=device)
+    else:
+        device = torch.device("cpu")
+        dist.init_process_group(backend="gloo")
+
+    rank = dist.get_rank()
+    world_size = dist.get_world_size()
 
     if args.epochs:
         cfg["training"]["epochs"] = args.epochs
@@ -105,7 +112,7 @@ def main():
 
     if rank == 0:
         print(f"Train: {len(train_ds)} patches | Val: {len(val_ds)} patches")
-        print(f"Dispositivo : cuda:{local_rank}  |  rank {rank}/{world_size}")
+        print(f"Dispositivo : {device}  |  rank {rank}/{world_size}")
         print(f"Batch/GPU   : {cfg['training']['batch_size']}  → global batch: "
               f"{cfg['training']['batch_size'] * world_size}")
 

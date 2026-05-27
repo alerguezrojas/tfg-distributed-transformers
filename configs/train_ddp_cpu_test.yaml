@@ -1,0 +1,47 @@
+# Configuración para test funcional de DDP en CPU (backend gloo)
+# Permite validar la infraestructura multi-nodo en máquinas sin GPU compatible.
+#
+# Lanzar con torchrun en dos nodos (verode16/18/21 via SSH directo):
+#   Nodo 0 (master):
+#     torchrun --nnodes=2 --nproc_per_node=1 --node_rank=0 \
+#       --master_addr=<nodo0> --master_port=29500 \
+#       scripts/train_ddp.py --config configs/train_ddp_cpu_test.yaml
+#
+#   Nodo 1:
+#     torchrun --nnodes=2 --nproc_per_node=1 --node_rank=1 \
+#       --master_addr=<nodo0> --master_port=29500 \
+#       scripts/train_ddp.py --config configs/train_ddp_cpu_test.yaml
+#
+# AVISO: extremadamente lento (CPU vs GPU ~100x). Solo para validar que
+# la comunicación multi-nodo y la sincronización de gradientes funcionan.
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet"
+  num_workers: 0          # 0 evita problemas de multiprocessing en CPU
+
+model:
+  name: "vit_tiny_patch16_224"
+  pretrained: false       # sin descarga — solo verificar infraestructura
+  num_classes: 19
+
+training:
+  epochs: 1
+  batch_size: 4           # muy pequeño para CPU
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 0
+  llrd_decay: 0.0
+  grad_clip: 1.0
+  early_stopping_patience: null
+  log_batch_every: 10
+
+distributed:
+  backend: "gloo"         # gloo soporta CPU; nccl requiere CUDA
+
+checkpoint:
+  dir: "checkpoints/verode"
+
+output:
+  env: "verode"
