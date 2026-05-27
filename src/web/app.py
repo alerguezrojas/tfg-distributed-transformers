@@ -682,12 +682,14 @@ with tab_compare:
             summary_rows = []
             for lbl, r in compare_runs:
                 cdf = next(d for l, d in compare_dfs if l == lbl[:30])
-                best_f1_c = cdf["val_f1"].max() if "val_f1" in cdf.columns else float("nan")
-                best_ep_c = (
-                    int(cdf.loc[cdf["val_f1"].idxmax(), "epoch"])
-                    if not pd.isna(best_f1_c) else "—"
-                )
-                final_f1_c = cdf["val_f1"].iloc[-1] if "val_f1" in cdf.columns else float("nan")
+                best_f1_c = cdf["val_f1"].max() if ("val_f1" in cdf.columns and not cdf.empty) else float("nan")
+                if not pd.isna(best_f1_c):
+                    idx_c = cdf["val_f1"].idxmax()
+                    best_ep_c = int(cdf.loc[idx_c, "epoch"]) if not pd.isna(idx_c) else "—"
+                else:
+                    best_ep_c = "—"
+                _last = cdf["val_f1"].dropna() if ("val_f1" in cdf.columns and not cdf.empty) else pd.Series(dtype=float)
+                final_f1_c = _last.iloc[-1] if not _last.empty else float("nan")
                 total_s_c = cdf["epoch_time"].sum() if "epoch_time" in cdf.columns else float("nan")
                 dur_c = (
                     f"{int(total_s_c//3600)}h {int((total_s_c%3600)//60)}m"
@@ -1018,8 +1020,9 @@ with tab_time:
                         (c for c in ["est_total_min_per_epoch", "est_min_per_epoch_30ep"]
                          if c in viable_t.columns), None
                     )
-                    if tp_col_t and per_ep_col and not viable_t.empty:
-                        best_row = viable_t.loc[viable_t[tp_col_t].idxmax()]
+                    _idx_t = viable_t[tp_col_t].idxmax() if (tp_col_t and per_ep_col and not viable_t.empty) else None
+                    if _idx_t is not None and not pd.isna(_idx_t):
+                        best_row = viable_t.loc[_idx_t]
                         est_min = float(best_row[per_ep_col])
                         fig_time.add_hline(
                             y=est_min, line_dash="dash", line_color=COLORS[1],
@@ -1045,8 +1048,9 @@ with tab_time:
                         (c for c in ["est_total_min_per_epoch", "est_min_per_epoch_30ep"]
                          if c in viable_c.columns), None
                     )
-                    if tp_col_c and per_ep_c and not viable_c.empty:
-                        best_c = viable_c.loc[viable_c[tp_col_c].idxmax()]
+                    _idx_c = viable_c[tp_col_c].idxmax() if (tp_col_c and per_ep_c and not viable_c.empty) else None
+                    if _idx_c is not None and not pd.isna(_idx_c):
+                        best_c = viable_c.loc[_idx_c]
                         est_val = float(best_c[per_ep_c])
                         real_val = avg_s / 60
                         err_pct = (real_val - est_val) / est_val * 100 if est_val else 0
