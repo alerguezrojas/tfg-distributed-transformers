@@ -1,8 +1,18 @@
-"""Distributed training script for BigEarthNet-S2 (multi-GPU, single node).
+"""Distributed training script for BigEarthNet-S2 (multi-GPU, multi-node DDP).
 
 Launch with torchrun:
-    # 2 GPUs:
+    # Single node, 2 GPUs:
     torchrun --nproc_per_node=2 scripts/train_ddp.py --config configs/train_ddp_verode.yaml
+
+    # Multi-node via Slurm (run from login node inside tmux):
+    srun --partition=batch --nodes=2 --nodelist=verode16,verode21 \\
+      --gres=gpu:tesla:1 --ntasks-per-node=1 --cpus-per-task=8 --time=48:00:00 \\
+      bash -c 'cd ~/tfg-distributed-transformers && \\
+        .venv/bin/torchrun \\
+          --nnodes=2 --nproc_per_node=1 \\
+          --node_rank=$SLURM_NODEID \\
+          --master_addr=verode16 --master_port=29500 \\
+          scripts/train_ddp.py --config configs/train_ddp_verode.yaml --trace simple'
 
     # Smoke test (1 GPU, validates DDP code path without a second GPU):
     torchrun --nproc_per_node=1 scripts/train_ddp.py \\

@@ -33,3 +33,6 @@ distributed:
 
 checkpoint:
   dir: "checkpoints/verode"
+
+output:
+  env: "verode"
