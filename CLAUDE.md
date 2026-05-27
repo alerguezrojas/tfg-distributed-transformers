@@ -26,9 +26,11 @@ El objetivo es demostrar la aplicación de principios SOLID y patrones de diseñ
 
 ### Clúster VERODE (ULL) — entrenamiento
 - **Login:** `ssh alu0101317038@verode00.pcg.ull.es`
-- **Nodos de cómputo:** verode[16-21] — solo verode21 operativo actualmente
-- **GPU:** Tesla V100-PCIE, **32 GB VRAM** por nodo
-- **CUDA:** 12.0, Driver 525.147.05
+- **Nodos de cómputo:** verode[16-21] — hardware heterogéneo, solo verode21 es compatible con PyTorch 2.x
+  - **verode16:** Tesla M2090 (2011, CC 2.0, 6 GB) — driver no activo + CC < 3.7 → incompatible
+  - **verode18:** Tesla K40m (2013, CC 3.5, 11 GB) — driver 460/CUDA 11.2 + CC < 3.7 → incompatible
+  - **verode21:** Tesla V100-PCIE (2017, CC 7.0, 32 GB) — operativo ✓
+- **CUDA:** 12.0, Driver 525.147.05 (verode21)
 - **CPUs por nodo:** 16
 - **RAM por nodo:** ~112 GB
 - **Sistema de colas:** Slurm 20.11.04
@@ -368,8 +370,9 @@ uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 128 --epochs 3
 uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off deep
 # Factor NFS para corregir estimación en Verode (NFS añade ~30% de latencia I/O)
 uv run python scripts/check_feasibility.py --batch-sizes 64 --nfs-factor 1.3
-# Nuevo: override del modelo desde CLI para comparar arquitecturas
+# Override de modelo (uno o varios separados por espacio)
 uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
+uv run python scripts/check_feasibility.py --model vit_tiny_patch16_224 vit_small_patch16_224 vit_base_patch16_224 resnet50 --batch-sizes 16 32 64 128
 ```
 
 Genera dos artefactos en `logs/{env}/`:
@@ -803,6 +806,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 | `nvidia driver` no funciona con kernel 6.8 | Driver 470 incompatible | Actualizar a `nvidia-driver-580-open` |
 | `[energy] GPU no disponible (pynvml no instalado)` en Verode | `uv sync` antes de añadir `nvidia-ml-py` al pyproject.toml | `uv sync` + reinstall torch cu118 |
 | `srun --gres=gpu:1` falla en Verode | El recurso GPU se llama `gpu:tesla` en este clúster | Usar `--gres=gpu:tesla:1` |
+| `libcudnn.so.9` en srun no-interactivo | `LD_LIBRARY_PATH` vacío en shells no-interactivos; cu13 instalado por `uv sync` | Reinstalar cu118: `uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall` |
 
 ---
 
