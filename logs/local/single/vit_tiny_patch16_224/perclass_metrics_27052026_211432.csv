@@ -1,0 +1,39 @@
+epoch,class_name,class_idx,f1,precision,recall
+1,Urban fabric,0,0.587925,0.768005,0.476254
+1,Industrial or commercial units,1,0.221266,0.681818,0.132062
+1,Arable land,2,0.782893,0.818248,0.750467
+1,Permanent crops,3,0.16665,0.603015,0.096685
+1,Pastures,4,0.598495,0.781913,0.484777
+1,Complex cultivation patterns,5,0.375281,0.707118,0.255418
+1,Land principally occupied by agriculture,6,0.0,0.0,0.0
+1,Agro-forestry areas,7,0.665926,0.713405,0.624372
+1,Broad-leaved forest,8,0.508754,0.710665,0.396191
+1,Coniferous forest,9,0.755218,0.768971,0.741948
+1,Mixed forest,10,0.729716,0.725219,0.73427
+1,Natural grassland and sparsely vegetated areas,11,0.0,0.0,0.0
+1,"Moors, heathland and sclerophyllous vegetation",12,0.0,0.0,0.0
+1,"Transitional woodland, shrub",13,0.470009,0.650162,0.368031
+1,"Beaches, dunes, sands",14,0.0,0.0,0.0
+1,Inland wetlands,15,0.01022,0.8125,0.005142
+1,Coastal wetlands,16,0.0,0.0,0.0
+1,Inland waters,17,0.651694,0.84322,0.531069
+1,Marine waters,18,0.895625,0.957362,0.841368
+2,Urban fabric,0,0.698692,0.778022,0.634042
+2,Industrial or commercial units,1,0.346595,0.636899,0.238078
+2,Arable land,2,0.792471,0.870694,0.727145
+2,Permanent crops,3,0.469576,0.671303,0.361073
+2,Pastures,4,0.669562,0.821122,0.565233
+2,Complex cultivation patterns,5,0.590601,0.682131,0.520728
+2,Land principally occupied by agriculture,6,0.0,0.0,0.0
+2,Agro-forestry areas,7,0.742435,0.752772,0.732377
+2,Broad-leaved forest,8,0.669534,0.721462,0.62458
+2,Coniferous forest,9,0.804976,0.812629,0.797467
+2,Mixed forest,10,0.770553,0.733618,0.811404
+2,Natural grassland and sparsely vegetated areas,11,0.30917,0.709893,0.197618
+2,"Moors, heathland and sclerophyllous vegetation",12,0.009368,0.486486,0.004729
+2,"Transitional woodland, shrub",13,0.528203,0.688999,0.428258
+2,"Beaches, dunes, sands",14,0.118681,0.931035,0.06338
+2,Inland wetlands,15,0.111751,0.909366,0.059533
+2,Coastal wetlands,16,0.0,0.0,0.0
+2,Inland waters,17,0.709948,0.845679,0.611761
+2,Marine waters,18,0.922348,0.961363,0.886377

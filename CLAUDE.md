@@ -339,16 +339,50 @@ torchrun --nproc_per_node=1 scripts/train_ddp.py \
   --model vit_tiny_patch16_224 --epochs 1 \
   --config configs/train.yaml --trace simple
 # → Val F1=0.4353, completado sin errores (verificado 20/05/26)
-
-# En Verode con 2 GPUs:
-torchrun --nproc_per_node=2 scripts/train_ddp.py \
-  --config configs/train_ddp_verode.yaml \
-  --trace simple --layers plot confusion --epochs 5
 ```
 
-### Config DDP Verode
+**En Verode — GPU real (NCCL, cuando haya 2 nodos operativos):**
+Usar el sistema de colas (Slurm) como recomienda el cotutor. Sin `--gres` si la especificación gres falla.
+```bash
+# Desde login node en tmux:
+/opt/soft/slurm/20.11.04/bin/srun --partition=batch \
+  --nodes=2 --nodelist=verode16,verode21 \
+  --ntasks-per-node=1 --cpus-per-task=8 --time=72:00:00 \
+  bash -c '
+    cd ~/tfg-distributed-transformers
+    .venv/bin/torchrun --nnodes=2 --nproc_per_node=1 \
+      --node_rank=$SLURM_NODEID \
+      --master_addr=verode16 --master_port=29500 \
+      scripts/train_ddp.py \
+      --config configs/train_ddp_verode.yaml --trace simple
+  '
+```
 
-`configs/train_ddp_verode.yaml` — batch_size=64 **por GPU** (global batch = 128 con 2 GPUs), backend NCCL.
+**En Verode — test funcional CPU (gloo, nodos down en Slurm):**
+verode16 y verode18 aparecen como `down*` en Slurm y no son asignables por el sistema de colas,
+pero sí son accesibles via SSH directo. Para el test CPU se usa SSH en dos terminales tmux:
+```bash
+# Terminal 1 — SSH a verode16 (nodo 0, master):
+ssh verode16
+cd ~/tfg-distributed-transformers && git pull origin main
+.venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=0 \
+  --master_addr=verode16 --master_port=29500 \
+  scripts/train_ddp.py --config configs/train_ddp_cpu_test.yaml --trace simple
+
+# Terminal 2 — SSH a verode21 (nodo 1):
+ssh verode21
+cd ~/tfg-distributed-transformers
+.venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=1 \
+  --master_addr=verode16 --master_port=29500 \
+  scripts/train_ddp.py --config configs/train_ddp_cpu_test.yaml --trace simple
+```
+Extremadamente lento (CPU vs V100 ~100x). Solo para confirmar que la comunicación
+multi-nodo y la sincronización de gradientes funcionan antes de tener hardware homogéneo.
+
+### Configs DDP
+
+- `configs/train_ddp_verode.yaml` — batch_size=64 **por GPU** (global batch = 128 con 2 GPUs), backend NCCL, para V100.
+- `configs/train_ddp_cpu_test.yaml` — batch_size=4, backend **gloo**, `pretrained=false`, 1 epoch. Valida infraestructura multi-nodo sin GPU compatible.
 
 ---
 
@@ -784,6 +818,8 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Web dashboard v3 (27/05/26):** 9 tabs, interfaz profesional sin emojis; Launcher (lanzar entrenamientos con output en tiempo real); Live Monitor (auto-refresh, GPU via nvidia-smi); mejoras en todas las pestañas (moving average, comparativa multi-run, anomaly detection, etc.)
 - [x] **Gestión de carpetas y gitignore (27/05/26):** estructura `{env}/{mode}/{model}/` para logs, plots y checkpoints; feasibility en `{env}/feasibility/`; `run_registry.py` con rglob; `RunInfo` añade `mode` y `model`; `.gitignore` corregido — todos los CSVs y logs bajo `logs/` se commitean
 - [x] Diagrama de clases v3: RunInfo con mode/model, web con 9 tabs, confusion_matrix_parser (27/05/26)
+- [x] **Multi-model feasibility (27/05/26):** `check_feasibility.py --model` acepta N modelos separados por espacio (`nargs="+"`) — cada modelo genera su propio par log/CSV con timestamp independiente
+- [x] **DDP CPU/gloo support (27/05/26):** `train_ddp.py` lee `backend` del config; `DDPTrainer` omite `device_ids` en CPU; `configs/train_ddp_cpu_test.yaml` con backend gloo, vit_tiny, pretrained=false — permite validar infraestructura multi-nodo sin GPU compatible
 
 ### Pendiente
 - [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
