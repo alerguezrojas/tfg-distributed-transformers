@@ -434,8 +434,12 @@ package "src.web" #FDFEFE {
     + log_path: Path
     + trace_mode: str
     + env: str
+    + mode: str
+    + model: str
     + plot_path: Path | None
     + perclass_paths: list[Path]
+    + confusion_matrix_paths: list[Path]
+    + confusion_matrix_csv_path: Path | None
     + batch_csv_path: Path | None
     + epoch_csv_path: Path | None
     + perclass_csv_path: Path | None
@@ -446,7 +450,10 @@ package "src.web" #FDFEFE {
     **run_registry.py**
     discover_runs(root) → list[RunInfo]
     discover_feasibility_csvs(root) → list[Path]
-    Escanea logs/local/ + logs/verode/ (env-aware).
+    Descubrimiento recursivo con rglob — soporta
+    estructura plana (logs/{env}/) y profunda
+    (logs/{env}/{mode}/{model}/). RunInfo incluye
+    env, mode y model extraídos de la ruta.
 
     **log_parser.py**
     parse_log(log_path) → DataFrame
@@ -461,10 +468,14 @@ package "src.web" #FDFEFE {
     **feasibility_parser.py**
     parse_feasibility_csv(csv_path) → (dict, DataFrame)
 
-    **app.py** (Streamlit, 7 pestañas)
-    Training Curves | Per-class Metrics
-    Batch Monitor | Compare Runs
-    Feasibility | Time Analysis | Run Info
+    **confusion_matrix_parser.py**
+    parse_confusion_matrix_csv(csv_path) → dict[int, ndarray]
+    get_matrix_for_epoch(data, epoch) → ndarray
+
+    **app.py** (Streamlit, 9 pestañas)
+    Curves | Per-class | Batch | Compare
+    Feasibility | Time | Info
+    Launcher | Live Monitor
   end note
 
 }

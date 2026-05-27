@@ -394,22 +394,39 @@ La tabla de estimaciones muestra **train/epoch**, **eval/epoch**, **total/epoch*
 
 ## Estructura de artefactos
 
-Logs, plots y checkpoints se separan por entorno para no mezclar ejecuciones locales y de clúster:
+Los artefactos se organizan por entorno (`local`/`verode`), modo (`single`/`ddp`) y modelo:
 
 ```
 logs/
-  local/        # RTX 3060 Ti — commiteados en git (excluye *.csv grandes)
-  verode/       # V100 Verode — commiteados en git
+  local/
+    single/{model}/   # train_*.log, epoch_metrics_*.csv, perclass_metrics_*.csv,
+                      # batch_metrics_*.csv, confusion_matrix_*.csv
+    ddp/{model}/      # ídem para runs distribuidos
+    feasibility/      # feasibility_*.log + feasibility_*.csv
+  verode/
+    single/{model}/
+    ddp/{model}/
+    feasibility/
 plots/
   local/
+    single/{model}/   # training_*.png, perclass_*.png, confusion_matrix_*.png
+    ddp/{model}/
   verode/
+    single/{model}/
+    ddp/{model}/
 checkpoints/
-  local/        # excluidos de git (*.pt)
-  verode/       # excluidos de git (*.pt)
+  local/
+    single/{model}/   # excluidos de git (*.pt)
+    ddp/{model}/
+  verode/
+    single/{model}/
+    ddp/{model}/
 ```
 
-El builder lee `output.env` del config (`"local"` o `"verode"`) y escribe en el subdirectorio correcto.
-Los ficheros se nombran con formato **DDMMYYYY_HHMMSS** (desde housekeeping, mayo 2026).
+- El builder lee `output.env` del config y deduce `mode`/`model` automáticamente.
+- Los runs anteriores a mayo 2026 usan la estructura plana (`logs/{env}/`) — el dashboard los descubre igual vía `rglob`.
+- Los ficheros se nombran con formato **DDMMYYYY_HHMMSS**.
+- **git:** todos los logs y CSVs bajo `logs/` se commitean (los `*.pt` de checkpoints, no).
 
 ---
 
@@ -663,17 +680,19 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 
 ## Dashboard web
 
-`src/web/` — interfaz Streamlit para visualizar resultados de entrenamiento (no lanza el training).
+`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin.
 
 ```
 src/web/
   __init__.py
-  app.py                # Streamlit entrypoint — 7 tabs
-  run_registry.py       # descubre runs en logs/ y plots/ por timestamp; RunInfo con epoch/perclass CSV
-  log_parser.py         # parsea logs --trace simple y --trace deep → DataFrame (fallback)
-  batch_parser.py       # lee batch_metrics_*.csv → DataFrame por batch
-  perclass_parser.py    # lee perclass_metrics_*.csv → DataFrame (nuevas métricas por clase)
-  feasibility_parser.py # lee feasibility_*.csv → (metadata dict, benchmark DataFrame)
+  app.py                    # Streamlit entrypoint — 9 tabs
+  run_registry.py           # descubre runs con rglob (estructura plana y profunda);
+                            # RunInfo con env, mode, model, epoch/perclass/batch CSV paths
+  log_parser.py             # parsea logs --trace simple y --trace deep → DataFrame (fallback)
+  batch_parser.py           # lee batch_metrics_*.csv → DataFrame por batch
+  perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
+  feasibility_parser.py     # lee feasibility_*.csv → (metadata dict, benchmark DataFrame)
+  confusion_matrix_parser.py # lee confusion_matrix_*.csv → matriz numpy por epoch
 ```
 
 ### Arranque
@@ -687,15 +706,18 @@ uv run streamlit run src/web/app.py
 
 | Tab | Contenido |
 |-----|-----------|
-| Training Curves | CSV-first: lee `epoch_metrics_*.csv`; fallback a log_parser para runs antiguos |
-| Per-class Metrics | Plotly interactivo por clase desde `perclass_metrics_*.csv`; fallback a PNGs |
-| Batch Monitor | Running loss intra-epoch por batch (requiere `--layers batch-monitor`) |
-| Compare Runs | Superpone hasta 4 runs en el mismo gráfico |
-| Feasibility | Tabla de benchmarks, gráfico de throughput, formulario para lanzar feasibility check |
-| Time Analysis | Tiempo real por epoch vs estimación del feasibility checker |
-| Run Info | Metadatos, tiempos, log crudo (200 primeras líneas) |
+| Curves | Curvas de F1/loss/accuracy; metric cards; epoch time chart; descarga CSV |
+| Per-class | Tabla ranking de clases + tendencia multi-clase + confusion matrix (normalizada/absoluta) |
+| Batch | Running loss por batch con moving average y detección de picos |
+| Compare | Superpone hasta 4 runs; tabla resumen comparativa |
+| Feasibility | Benchmark VRAM/throughput; estimaciones; lanzar feasibility check desde la web |
+| Time | Tiempo real por epoch vs estimación; tendencia lineal; warmup detection |
+| Info | Config YAML, anomaly log, dataset info, log completo con buscador |
+| Launcher | Lanzar entrenamientos single-GPU o feasibility check con output en tiempo real |
+| Live | Monitor en vivo: epoch progress, GPU usage, últimas líneas del log, auto-refresh |
 
-Escanea `logs/local/` y `logs/verode/` más el root legacy. Compatible con `--trace simple`, `--trace deep` y logs legacy.
+Descubre runs recursivamente en toda la estructura `logs/` (tanto flat legacy como profunda env/mode/model).
+Compatible con `--trace simple`, `--trace deep` y logs legacy.
 
 ---
 
@@ -737,10 +759,8 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Flags `--trace / --layers / --fn / --metrics / --inspect / --model` en script de entrenamiento
 - [x] Inspección modular: `--inspect model-summary batch-table grad-monitor anomalies`
 - [x] Early stopping: `patience` configurable en `EpochController`
-- [x] Log con timestamp (DDMMYYYY) a fichero en `logs/{env}/` + gráficas PNG en `plots/{env}/`
-- [x] `check_feasibility.py`: benchmark train+eval por separado, `--nfs-factor`, auto-save log
-- [x] Dashboard web Streamlit: `src/web/` con 5 tabs (curvas, por clase, batch, comparar, info)
-  - Escanea `logs/local/` y `logs/verode/`, soporta formato simple y deep, y logs legacy
+- [x] Log con timestamp (DDMMYYYY) a fichero en `logs/{env}/{mode}/{model}/` + gráficas PNG en `plots/{env}/{mode}/{model}/`
+- [x] `check_feasibility.py`: benchmark train+eval por separado, `--nfs-factor`, auto-save log + CSV en `logs/{env}/feasibility/`
 - [x] Entrenamiento local: 30 epochs, Val F1=0.6586 (01-02/05/26) → `logs/local/train_legacy.log`
 - [x] Test local stack completo: 1 epoch vit_tiny, Val F1=0.4457 (11/05/26)
 - [x] Smoke test v3 local: 1 epoch vit_tiny, Val F1=0.4019, threshold óptimo=0.30 (13/05/26)
@@ -756,6 +776,9 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Entrenamiento distribuido DDP (20/05/26):** `DDPTrainer`, `scripts/train_ddp.py`, `configs/train_ddp_verode.yaml`; smoke test local 1 proceso completado sin errores (Val F1=0.4353) → `logs/local/train_20260520_221708.log`
 - [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
 - [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
+- [x] **Web dashboard v3 (27/05/26):** 9 tabs, interfaz profesional sin emojis; Launcher (lanzar entrenamientos desde la web con output en tiempo real); Live Monitor (auto-refresh, GPU via nvidia-smi, últimas líneas del log); mejoras en todas las pestañas existentes (moving average, comparativa multi-run, anomaly detection, etc.); `confusion_matrix_parser.py`
+- [x] **Gestión de carpetas y gitignore (27/05/26):** estructura `{env}/{mode}/{model}/` para logs, plots y checkpoints; feasibility en `{env}/feasibility/`; `run_registry.py` con rglob; `RunInfo` añade `mode` y `model`; `.gitignore` corregido — todos los CSVs y logs bajo `logs/` se commitean
+- [x] Diagrama de clases v3: RunInfo con mode/model, web con 9 tabs, confusion_matrix_parser (27/05/26)
 
 ### Pendiente
 - [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
@@ -799,11 +822,11 @@ uv run python scripts/train_single_gpu.py --config configs/train_v3.yaml --trace
 torchrun --nproc_per_node=1 scripts/train_ddp.py \
   --model vit_tiny_patch16_224 --epochs 1 --config configs/train.yaml --trace simple
 
-# Dashboard web (7 tabs)
+# Dashboard web (9 tabs)
 uv run streamlit run src/web/app.py
 
-# Ver log en tiempo real
-tail -f logs/local/train_*.log
+# Ver log en tiempo real (ajusta la ruta al modelo concreto)
+tail -f logs/local/single/vit_base_patch16_224/train_*.log
 ```
 
 ### Clúster VERODE
