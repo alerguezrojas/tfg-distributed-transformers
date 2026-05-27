@@ -35,7 +35,7 @@ st.set_page_config(
 st.markdown("""
 <style>
   [data-testid="stSidebar"] { min-width: 240px; max-width: 260px; }
-  .block-container { padding-top: 1.2rem; padding-left: 1.5rem; padding-right: 1.5rem; }
+  .block-container { padding-top: 4rem; padding-left: 1.5rem; padding-right: 1.5rem; }
   h1 { font-size: 1.4rem; font-weight: 600; }
   h2 { font-size: 1.1rem; font-weight: 600; margin-top: 1.2rem; }
   h3 { font-size: 0.95rem; font-weight: 600; }
