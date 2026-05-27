@@ -66,12 +66,14 @@ class TrainingSessionBuilder:
         timestamp: str | None = None,
         rank: int = 0,
         world_size: int = 1,
+        distributed: bool = False,
     ):
         self._cfg = cfg
         self._device = device
         self._timestamp = timestamp or datetime.now().strftime("%d%m%Y_%H%M%S")
         self._rank = rank
         self._world_size = world_size
+        self._distributed = distributed
 
         # Defaults — mirrors the CLI defaults in train_single_gpu.py
         self._model_name: str | None = None          # None → use cfg["model"]["name"]
@@ -169,7 +171,7 @@ class TrainingSessionBuilder:
 
         # ── Output paths (env/mode/model — needed for checkpoint_dir) ─────────
         env = cfg.get("output", {}).get("env", "local")
-        mode = "ddp" if self._world_size > 1 else "single"
+        mode = "ddp" if self._distributed else "single"
         model_slug = model_name.replace("/", "_")
 
         # ── Base Trainer ──────────────────────────────────────────────────────
@@ -177,7 +179,7 @@ class TrainingSessionBuilder:
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / mode / model_slug)
-        if self._world_size > 1:
+        if self._distributed:
             from src.training.ddp_trainer import DDPTrainer
             base = DDPTrainer(
                 model=model,

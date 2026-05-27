@@ -671,8 +671,8 @@ def parse_args():
         description="Pre-training feasibility checker for BigEarthNet ViT"
     )
     parser.add_argument("--config", default="configs/train.yaml")
-    parser.add_argument("--model", type=str, default=None,
-                        help="Override model name from config (any timm ID)")
+    parser.add_argument("--model", type=str, nargs="+", default=None,
+                        help="Override model name(s) from config (any timm ID, space-separated)")
     parser.add_argument("--batch-sizes", type=int, nargs="+", default=None)
     parser.add_argument("--epochs", type=int, nargs="+", default=None)
     parser.add_argument(
@@ -707,30 +707,30 @@ def main():
 
     batch_sizes = args.batch_sizes or [cfg["training"]["batch_size"]]
     epochs_list = args.epochs or [cfg["training"]["epochs"]]
-    model_name = args.model or cfg["model"]["name"]
+    model_names = args.model or [cfg["model"]["name"]]
     env = cfg.get("output", {}).get("env", "local")
 
-    # Auto-generate output path if not specified
-    output_path = args.output
-    if output_path is None:
-        ts = datetime.now().strftime("%d%m%Y_%H%M%S")
-        env = cfg.get("output", {}).get("env", "local")
-        output_path = Path(f"logs/{env}/feasibility/feasibility_{ts}.log")
+    for model_name in model_names:
+        output_path = args.output
+        if output_path is None:
+            ts = datetime.now().strftime("%d%m%Y_%H%M%S")
+            output_path = Path(f"logs/{env}/feasibility/feasibility_{ts}.log")
 
-    checker = FeasibilityChecker(
-        model_name=model_name,
-        batch_sizes=batch_sizes,
-        epochs_list=epochs_list,
-        trace_modes=args.trace_modes,
-        dataset_train=237871,
-        dataset_val=122342,
-        nfs_factor=args.nfs_factor,
-    )
+        checker = FeasibilityChecker(
+            model_name=model_name,
+            batch_sizes=batch_sizes,
+            epochs_list=epochs_list,
+            trace_modes=args.trace_modes,
+            dataset_train=237871,
+            dataset_val=122342,
+            nfs_factor=args.nfs_factor,
+        )
 
-    report = checker.run()
-    formatter = ReportFormatter(output_path=output_path)
-    formatter.print(report)
-    formatter.write_csv(report, env=env)
+        report = checker.run()
+        formatter = ReportFormatter(output_path=output_path)
+        formatter.print(report)
+        formatter.write_csv(report, env=env)
+        output_path = None  # reset so next model gets its own timestamp
 
 
 if __name__ == "__main__":

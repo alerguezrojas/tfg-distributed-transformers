@@ -26,9 +26,11 @@ El objetivo es demostrar la aplicación de principios SOLID y patrones de diseñ
 
 ### Clúster VERODE (ULL) — entrenamiento
 - **Login:** `ssh alu0101317038@verode00.pcg.ull.es`
-- **Nodos de cómputo:** verode[16-21] — solo verode21 operativo actualmente
-- **GPU:** Tesla V100-PCIE, **32 GB VRAM** por nodo
-- **CUDA:** 12.0, Driver 525.147.05
+- **Nodos de cómputo:** verode[16-21] — hardware heterogéneo, solo verode21 es compatible con PyTorch 2.x
+  - **verode16:** Tesla M2090 (2011, CC 2.0, 6 GB) — driver no activo + CC < 3.7 → incompatible
+  - **verode18:** Tesla K40m (2013, CC 3.5, 11 GB) — driver 460/CUDA 11.2 + CC < 3.7 → incompatible
+  - **verode21:** Tesla V100-PCIE (2017, CC 7.0, 32 GB) — operativo ✓
+- **CUDA:** 12.0, Driver 525.147.05 (verode21)
 - **CPUs por nodo:** 16
 - **RAM por nodo:** ~112 GB
 - **Sistema de colas:** Slurm 20.11.04
@@ -135,7 +137,7 @@ BaseTrainer (ABC)
     ├── PrecisionRecallReporter    # metric reporter: val_precision / val_recall
     ├── PlottingDecorator          # aspecto: guarda curvas PNG tras cada epoch
     ├── LayerHooksDecorator        # aspecto: forward hooks en capas Linear
-    ├── ConfusionMatrixDecorator   # aspecto: PNG de F1/prec/rec por clase tras cada eval
+    ├── ConfusionMatrixDecorator   # aspecto: PNG de barras por clase + heatmap 19×19 normalizado tras cada eval
     ├── BatchMonitorDecorator      # aspecto: CSV con running loss por batch
     └── EpochController            # Template Method: define fit() con hooks _on_*
         └── TracingDecorator       # controlador: logging a consola y/o fichero
@@ -161,7 +163,7 @@ src/training/
     deep_tracing.py        # DeepTracingDecorator — features: set[str] para inspección modular
     plotting.py            # PlottingDecorator (aspecto, guarda PNG)
     layer_hooks.py         # LayerHooksDecorator (aspecto, forward hooks)
-    confusion.py           # ConfusionMatrixDecorator — PNG con F1/prec/rec por clase (multi-label)
+    confusion.py           # ConfusionMatrixDecorator — PNG barras por clase + heatmap 19×19 normalizado
     batch_monitor.py       # BatchMonitorDecorator — CSV con running loss por batch
     metric_reporters.py    # LossReporter, F1Reporter, AccuracyReporter, PrecisionRecallReporter
     __init__.py
@@ -178,7 +180,7 @@ Envuelven el objeto trainer completo. Hay tres subtipos:
 - **Aspecto** (`TrainerDecorator`): envuelven métodos concretos; combinables libremente
   - `PlottingDecorator` — acumula métricas y guarda PNG tras cada eval epoch; expone `_record_train_result()` para recibir métricas de train cuando `DeepTracingDecorator` gestiona el bucle directamente
   - `LayerHooksDecorator` — captura activaciones de capas Linear cada N epochs
-  - `ConfusionMatrixDecorator` — PNG con F1/prec/rec por clase (multi-label) tras cada eval epoch
+  - `ConfusionMatrixDecorator` — dos PNGs por eval epoch: barras F1/prec/rec por clase + heatmap 19×19 normalizado (celda (i,j) = P(predice j | verdadero es i), diagonal = recall)
   - `BatchMonitorDecorator` — CSV con running loss cada N batches dentro del epoch
 - **Metric reporters** (`TrainerDecorator`): cada uno imprime una métrica independiente; activables con `--metrics`
   - `LossReporter` — cachea train_loss en train_epoch, imprime train+val loss tras eval_epoch
@@ -257,7 +259,7 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
                            Decoradores de aspecto (combinables):
                              plot         → PlottingDecorator, PNG en plots/training_FECHA.png
                              hooks        → LayerHooksDecorator, activaciones cada 5 epochs
-                             confusion    → ConfusionMatrixDecorator, PNG por clase tras cada eval
+                             confusion    → ConfusionMatrixDecorator, PNG barras + heatmap 19×19 por clase tras cada eval
                              batch-monitor → BatchMonitorDecorator, CSV con loss por batch
 
 --fn [timing] [energy]     Decoradores @ de Python (combinables):
@@ -325,14 +327,14 @@ uv run python scripts/train_single_gpu.py --config configs/train_cluster.yaml --
   - `train_epoch`: llama `sampler.set_epoch(epoch)` para shuffle correcto
   - `eval_epoch`: reúne predicciones de todos los procesos con `dist.all_gather`; promedia loss con `dist.all_reduce`; recalcula métricas globales
   - `save_checkpoint`: solo el proceso con `rank=0` guarda el checkpoint
-- **`src/training/builder.py`**: acepta `rank` y `world_size`; si `world_size > 1` crea `DDPTrainer`, si no crea `Trainer`
+- **`src/training/builder.py`**: acepta `rank`, `world_size` y `distributed`; si `distributed=True` crea `DDPTrainer` (independientemente de `world_size`), si no crea `Trainer`
 - **`src/training/decorators/base.py`**: `EpochController` añade `dist.barrier()` entre epochs; early stopping se decide en rank 0 y se broadcast a todos los procesos
 - **`src/training/decorators/tracing.py`**: `_emit()` comprueba `rank == 0` antes de escribir logs (solo el proceso principal escribe)
 
 ### Lanzamiento
 
 ```bash
-# Smoke test local (1 GPU, valida el código sin necesitar 2 GPUs):
+# Smoke test local (1 GPU, usa DDPTrainer real — distributed=True siempre activo en train_ddp.py):
 torchrun --nproc_per_node=1 scripts/train_ddp.py \
   --model vit_tiny_patch16_224 --epochs 1 \
   --config configs/train.yaml --trace simple
@@ -368,8 +370,9 @@ uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 128 --epochs 3
 uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off deep
 # Factor NFS para corregir estimación en Verode (NFS añade ~30% de latencia I/O)
 uv run python scripts/check_feasibility.py --batch-sizes 64 --nfs-factor 1.3
-# Nuevo: override del modelo desde CLI para comparar arquitecturas
+# Override de modelo (uno o varios separados por espacio)
 uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
+uv run python scripts/check_feasibility.py --model vit_tiny_patch16_224 vit_small_patch16_224 vit_base_patch16_224 resnet50 --batch-sizes 16 32 64 128
 ```
 
 Genera dos artefactos en `logs/{env}/`:
@@ -748,7 +751,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Entrenamiento single-GPU: `Trainer` + LLRD + warmup + cosine scheduler + checkpoints
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
-  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — F1/prec/rec por clase (multi-label)
+  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — barras F1/prec/rec por clase + heatmap 19×19 normalizado
   - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running loss por batch
   - `decorators/metric_reporters.py`: `LossReporter`, `F1Reporter`, `AccuracyReporter`, `PrecisionRecallReporter`
   - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom` — rutean a logger
@@ -774,9 +777,11 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Fix pynvml en Verode: `nvidia-ml-py` no estaba instalado → `uv sync` + `uv pip install torch cu118`; confirmado funcionando
 - [x] Entrenamiento v3b en Verode: 15 epochs, Val F1=0.6708 (epoch 5), early stop epoch 15 (14-15/05/26) → `logs/verode/train_14052026_145711.log` — confirma energía funcional (~35 Wh/eval, ~100 W media V100)
 - [x] **Entrenamiento distribuido DDP (20/05/26):** `DDPTrainer`, `scripts/train_ddp.py`, `configs/train_ddp_verode.yaml`; smoke test local 1 proceso completado sin errores (Val F1=0.4353) → `logs/local/train_20260520_221708.log`
+- [x] **Fix DDPTrainer con 1 GPU (21/05/26):** `TrainingSessionBuilder` usa `distributed=True` en vez de `world_size>1`; `torchrun --nproc_per_node=1` ahora usa `DDPTrainer` real
 - [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
 - [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
-- [x] **Web dashboard v3 (27/05/26):** 9 tabs, interfaz profesional sin emojis; Launcher (lanzar entrenamientos desde la web con output en tiempo real); Live Monitor (auto-refresh, GPU via nvidia-smi, últimas líneas del log); mejoras en todas las pestañas existentes (moving average, comparativa multi-run, anomaly detection, etc.); `confusion_matrix_parser.py`
+- [x] **Heatmap 19×19 de confusión — CSV + Plotly interactivo (26/05/26):** `ConfusionMatrixDecorator` genera `confusion_matrix_TIMESTAMP.csv`; `confusion_matrix_parser.py` lee el CSV; sub-tab muestra heatmap Plotly interactivo con hover y selector de epoch; fallback a PNG
+- [x] **Web dashboard v3 (27/05/26):** 9 tabs, interfaz profesional sin emojis; Launcher (lanzar entrenamientos con output en tiempo real); Live Monitor (auto-refresh, GPU via nvidia-smi); mejoras en todas las pestañas (moving average, comparativa multi-run, anomaly detection, etc.)
 - [x] **Gestión de carpetas y gitignore (27/05/26):** estructura `{env}/{mode}/{model}/` para logs, plots y checkpoints; feasibility en `{env}/feasibility/`; `run_registry.py` con rglob; `RunInfo` añade `mode` y `model`; `.gitignore` corregido — todos los CSVs y logs bajo `logs/` se commitean
 - [x] Diagrama de clases v3: RunInfo con mode/model, web con 9 tabs, confusion_matrix_parser (27/05/26)
 
@@ -801,6 +806,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 | `nvidia driver` no funciona con kernel 6.8 | Driver 470 incompatible | Actualizar a `nvidia-driver-580-open` |
 | `[energy] GPU no disponible (pynvml no instalado)` en Verode | `uv sync` antes de añadir `nvidia-ml-py` al pyproject.toml | `uv sync` + reinstall torch cu118 |
 | `srun --gres=gpu:1` falla en Verode | El recurso GPU se llama `gpu:tesla` en este clúster | Usar `--gres=gpu:tesla:1` |
+| `libcudnn.so.9` en srun no-interactivo | `LD_LIBRARY_PATH` vacío en shells no-interactivos; cu13 instalado por `uv sync` | Reinstalar cu118: `uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall` |
 
 ---
 
