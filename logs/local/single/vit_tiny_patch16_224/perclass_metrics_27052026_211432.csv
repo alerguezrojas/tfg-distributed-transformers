@@ -37,3 +37,41 @@ epoch,class_name,class_idx,f1,precision,recall
 2,Coastal wetlands,16,0.0,0.0,0.0
 2,Inland waters,17,0.709948,0.845679,0.611761
 2,Marine waters,18,0.922348,0.961363,0.886377
+3,Urban fabric,0,0.733943,0.757956,0.711405
+3,Industrial or commercial units,1,0.448439,0.631158,0.347762
+3,Arable land,2,0.822253,0.857945,0.789412
+3,Permanent crops,3,0.575149,0.649616,0.515999
+3,Pastures,4,0.710793,0.777645,0.654524
+3,Complex cultivation patterns,5,0.638067,0.679095,0.601714
+3,Land principally occupied by agriculture,6,0.0,0.0,0.0
+3,Agro-forestry areas,7,0.771847,0.72843,0.820767
+3,Broad-leaved forest,8,0.702269,0.766845,0.647724
+3,Coniferous forest,9,0.821055,0.832809,0.809627
+3,Mixed forest,10,0.776735,0.778415,0.775061
+3,Natural grassland and sparsely vegetated areas,11,0.422937,0.698372,0.303312
+3,"Moors, heathland and sclerophyllous vegetation",12,0.155241,0.672032,0.087756
+3,"Transitional woodland, shrub",13,0.579599,0.685849,0.501853
+3,"Beaches, dunes, sands",14,0.451264,0.976562,0.293427
+3,Inland wetlands,15,0.388839,0.804969,0.256329
+3,Coastal wetlands,16,0.0,0.0,0.0
+3,Inland waters,17,0.746734,0.857271,0.661447
+3,Marine waters,18,0.937438,0.968534,0.908276
+4,Urban fabric,0,0.745822,0.815384,0.687197
+4,Industrial or commercial units,1,0.424242,0.721586,0.30044
+4,Arable land,2,0.83391,0.842178,0.825804
+4,Permanent crops,3,0.622389,0.669627,0.581377
+4,Pastures,4,0.688052,0.848692,0.578545
+4,Complex cultivation patterns,5,0.640081,0.710469,0.582383
+4,Land principally occupied by agriculture,6,0.0,0.0,0.0
+4,Agro-forestry areas,7,0.778638,0.717758,0.850803
+4,Broad-leaved forest,8,0.721774,0.774889,0.675474
+4,Coniferous forest,9,0.821515,0.856739,0.789073
+4,Mixed forest,10,0.778725,0.807965,0.751528
+4,Natural grassland and sparsely vegetated areas,11,0.416531,0.772957,0.285076
+4,"Moors, heathland and sclerophyllous vegetation",12,0.362903,0.674037,0.248292
+4,"Transitional woodland, shrub",13,0.648734,0.636878,0.661039
+4,"Beaches, dunes, sands",14,0.533107,0.96319,0.368545
+4,Inland wetlands,15,0.465261,0.817504,0.325158
+4,Coastal wetlands,16,0.0,0.0,0.0
+4,Inland waters,17,0.783126,0.835759,0.73673
+4,Marine waters,18,0.946384,0.969498,0.924346

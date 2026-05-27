@@ -157,7 +157,7 @@ class TrainingSessionBuilder:
                 optimizer, start_factor=0.1, end_factor=1.0, total_iters=warmup_epochs,
             )
             scheduler_cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
-                optimizer, T_max=epochs - warmup_epochs, eta_min=lr_min,
+                optimizer, T_max=max(1, epochs - warmup_epochs), eta_min=lr_min,
             )
             scheduler = torch.optim.lr_scheduler.SequentialLR(
                 optimizer,
