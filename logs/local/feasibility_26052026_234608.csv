@@ -1,0 +1,9 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,vit_small_patch16_224,21.67,79.2,NVIDIA GeForce RTX 3060 Ti,8.2,8.2
+batch_size,trace_mode,s_per_batch,imgs_per_s,peak_vram_gb,oom,est_min_per_epoch_30ep,est_total_h_30ep
+32,off,0.152,210.5,2.24,no,21.9,10.94
+32,simple,0.1513,211.5,2.24,no,21.8,10.89
+32,deep,0.2192,146.0,2.24,no,32.6,16.31
+64,off,0.2972,215.4,4.19,no,21.4,10.72
+64,simple,0.2961,216.2,4.19,no,21.4,10.69
+64,deep,0.3992,160.3,4.19,no,29.8,14.89

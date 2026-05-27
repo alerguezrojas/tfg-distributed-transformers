@@ -304,9 +304,12 @@ with st.sidebar:
 
             st.markdown("---")
             has_csv = run.epoch_csv_path is not None and run.epoch_csv_path.exists()
+            model_label = run.model or "—"
             st.caption(
                 f"**Log:** {run.log_path.name}  \n"
                 f"**Env:** {run.env}  \n"
+                f"**Mode:** {run.mode}  \n"
+                f"**Model:** {model_label}  \n"
                 f"**Trace:** {run.trace_mode}  \n"
                 f"**Epoch CSV:** {'yes' if has_csv else 'no'}  \n"
                 f"**Batch CSV:** {'yes' if run.batch_csv_path else 'no'}  \n"

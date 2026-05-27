@@ -1,7 +1,8 @@
 """Discovers and indexes training runs from logs/, plots/, and checkpoints/.
 
-Scans both legacy (logs/train_*.log) and env-structured directories
-(logs/local/, logs/verode/) for training logs and their associated artifacts.
+Scans recursively under logs/ and plots/ so it handles both the legacy flat
+structure (logs/{env}/train_*.log) and the new deep structure
+(logs/{env}/{mode}/{model}/train_*.log).
 """
 
 from __future__ import annotations
@@ -19,6 +20,8 @@ class RunInfo:
     log_path: Path
     trace_mode: str
     env: str = "local"          # "local" or "verode"
+    mode: str = "single"        # "single" or "ddp"
+    model: str = ""             # model name slug, e.g. "vit_tiny_patch16_224"
     plot_path: Path | None = None
     perclass_paths: list[Path] = field(default_factory=list)
     confusion_matrix_paths: list[Path] = field(default_factory=list)
@@ -37,11 +40,34 @@ class RunInfo:
         else:                      # legacy YYYYMMDD
             date = f"{ts[6:8]}/{ts[4:6]}/{ts[:4]}"
         time_str = f"{ts[9:11]}:{ts[11:13]}:{ts[13:15]}"
-        return f"{date} {time_str}  [{self.trace_mode}]  [{self.env}]"
+        parts = [f"{date} {time_str}", f"[{self.trace_mode}]", f"[{self.env}]"]
+        if self.model:
+            parts.append(f"[{self.model}]")
+        if self.mode != "single":
+            parts.append(f"[{self.mode}]")
+        return "  ".join(parts)
+
+
+def _env_mode_model_from_path(log_path: Path, logs_root: Path) -> tuple[str, str, str]:
+    """Extract (env, mode, model) from a log path relative to logs_root."""
+    try:
+        parts = log_path.relative_to(logs_root).parts
+    except ValueError:
+        return "unknown", "single", ""
+
+    if len(parts) >= 4:
+        # New structure: logs/{env}/{mode}/{model}/train_*.log
+        return parts[0], parts[1], parts[2]
+    elif len(parts) == 2:
+        # Old structure: logs/{env}/train_*.log
+        return parts[0], "single", ""
+    else:
+        # Legacy root: logs/train_*.log
+        return "legacy", "single", ""
 
 
 def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
-    """Scan logs/ for training runs (legacy root + env subdirs).
+    """Scan logs/ recursively for training runs.
 
     Returns list sorted by timestamp descending.
     """
@@ -52,16 +78,8 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
     if not logs_root.exists():
         return []
 
-    # Collect (log_path, env) pairs from both legacy root and env subdirs
-    log_sources: list[tuple[Path, str]] = []
-    for lp in logs_root.glob("train_*.log"):
-        log_sources.append((lp, "legacy"))
-    for env_dir in logs_root.iterdir():
-        if env_dir.is_dir():
-            for lp in env_dir.glob("train_*.log"):
-                log_sources.append((lp, env_dir.name))
-
-    for log_path, env in log_sources:
+    # Discover all train logs recursively
+    for log_path in logs_root.rglob("train_*.log"):
         name = log_path.stem
         if name in ("train", "train_legacy", "train_local"):
             continue
@@ -70,73 +88,57 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
             continue
         ts = m.group(1)
         is_deep = "deep" in name
-        key = f"{env}_{ts}"
-        runs[key] = RunInfo(
+        env, mode, model = _env_mode_model_from_path(log_path, logs_root)
+
+        runs[ts] = RunInfo(
             timestamp=ts,
             log_path=log_path,
             trace_mode="deep" if is_deep else "simple",
             env=env,
+            mode=mode,
+            model=model,
         )
 
-    # Attach plots
-    plot_dirs: list[tuple[Path, str]] = []
+    if not runs:
+        return []
+
+    # Attach plots — scan recursively, match by timestamp
     if plots_root.exists():
-        plot_dirs.append((plots_root, "legacy"))
-        for env_dir in plots_root.iterdir():
-            if env_dir.is_dir():
-                plot_dirs.append((env_dir, env_dir.name))
-
-    for plot_dir, p_env in plot_dirs:
-        for plot_path in plot_dir.glob("training_*.png"):
+        for plot_path in plots_root.rglob("training_*.png"):
             m = _TIMESTAMP_RE.search(plot_path.stem)
-            if m:
-                key = f"{p_env}_{m.group(1)}"
-                if key in runs:
-                    runs[key].plot_path = plot_path
-        for plot_path in sorted(plot_dir.glob("perclass_*.png")):
-            m = _TIMESTAMP_RE.search(plot_path.stem)
-            if m:
-                key = f"{p_env}_{m.group(1)}"
-                if key in runs:
-                    runs[key].perclass_paths.append(plot_path)
-        for plot_path in sorted(plot_dir.glob("confusion_matrix_*.png")):
-            m = _TIMESTAMP_RE.search(plot_path.stem)
-            if m:
-                key = f"{p_env}_{m.group(1)}"
-                if key in runs:
-                    runs[key].confusion_matrix_paths.append(plot_path)
+            if m and m.group(1) in runs:
+                runs[m.group(1)].plot_path = plot_path
 
-    # Attach CSV artifacts
-    csv_dirs: list[tuple[Path, str]] = [(logs_root, "legacy")]
-    for env_dir in logs_root.iterdir():
-        if env_dir.is_dir():
-            csv_dirs.append((env_dir, env_dir.name))
+        for plot_path in sorted(plots_root.rglob("perclass_*.png")):
+            m = _TIMESTAMP_RE.search(plot_path.stem)
+            if m and m.group(1) in runs:
+                runs[m.group(1)].perclass_paths.append(plot_path)
 
-    for csv_dir, c_env in csv_dirs:
-        for csv_path in csv_dir.glob("batch_metrics_*.csv"):
-            m = _TIMESTAMP_RE.search(csv_path.stem)
-            if m:
-                key = f"{c_env}_{m.group(1)}"
-                if key in runs and runs[key].batch_csv_path is None:
-                    runs[key].batch_csv_path = csv_path
-        for csv_path in csv_dir.glob("epoch_metrics_*.csv"):
-            m = _TIMESTAMP_RE.search(csv_path.stem)
-            if m:
-                key = f"{c_env}_{m.group(1)}"
-                if key in runs and runs[key].epoch_csv_path is None:
-                    runs[key].epoch_csv_path = csv_path
-        for csv_path in csv_dir.glob("perclass_metrics_*.csv"):
-            m = _TIMESTAMP_RE.search(csv_path.stem)
-            if m:
-                key = f"{c_env}_{m.group(1)}"
-                if key in runs and runs[key].perclass_csv_path is None:
-                    runs[key].perclass_csv_path = csv_path
-        for csv_path in csv_dir.glob("confusion_matrix_*.csv"):
-            m = _TIMESTAMP_RE.search(csv_path.stem)
-            if m:
-                key = f"{c_env}_{m.group(1)}"
-                if key in runs and runs[key].confusion_matrix_csv_path is None:
-                    runs[key].confusion_matrix_csv_path = csv_path
+        for plot_path in sorted(plots_root.rglob("confusion_matrix_*.png")):
+            m = _TIMESTAMP_RE.search(plot_path.stem)
+            if m and m.group(1) in runs:
+                runs[m.group(1)].confusion_matrix_paths.append(plot_path)
+
+    # Attach CSV artifacts — scan recursively, match by timestamp
+    for csv_path in logs_root.rglob("batch_metrics_*.csv"):
+        m = _TIMESTAMP_RE.search(csv_path.stem)
+        if m and m.group(1) in runs and runs[m.group(1)].batch_csv_path is None:
+            runs[m.group(1)].batch_csv_path = csv_path
+
+    for csv_path in logs_root.rglob("epoch_metrics_*.csv"):
+        m = _TIMESTAMP_RE.search(csv_path.stem)
+        if m and m.group(1) in runs and runs[m.group(1)].epoch_csv_path is None:
+            runs[m.group(1)].epoch_csv_path = csv_path
+
+    for csv_path in logs_root.rglob("perclass_metrics_*.csv"):
+        m = _TIMESTAMP_RE.search(csv_path.stem)
+        if m and m.group(1) in runs and runs[m.group(1)].perclass_csv_path is None:
+            runs[m.group(1)].perclass_csv_path = csv_path
+
+    for csv_path in logs_root.rglob("confusion_matrix_*.csv"):
+        m = _TIMESTAMP_RE.search(csv_path.stem)
+        if m and m.group(1) in runs and runs[m.group(1)].confusion_matrix_csv_path is None:
+            runs[m.group(1)].confusion_matrix_csv_path = csv_path
 
     return sorted(runs.values(), key=lambda r: r.timestamp, reverse=True)
 
@@ -144,13 +146,7 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
 def discover_feasibility_csvs(root: Path = Path(".")) -> list[Path]:
     """Return all feasibility CSVs sorted by modification time (newest first)."""
     logs_root = root / "logs"
-    paths: list[Path] = []
     if not logs_root.exists():
-        return paths
-    # Legacy root
-    paths.extend(logs_root.glob("feasibility_*.csv"))
-    # Env subdirs
-    for env_dir in logs_root.iterdir():
-        if env_dir.is_dir():
-            paths.extend(env_dir.glob("feasibility_*.csv"))
+        return []
+    paths = list(logs_root.rglob("feasibility_*.csv"))
     return sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)

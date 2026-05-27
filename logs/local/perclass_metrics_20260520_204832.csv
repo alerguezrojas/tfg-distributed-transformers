@@ -1,0 +1,39 @@
+epoch,class_name,class_idx,f1,precision,recall
+1,Urban fabric,0,0.614342,0.683935,0.557603
+1,Industrial or commercial units,1,0.334213,0.596045,0.232208
+1,Arable land,2,0.758218,0.862949,0.676157
+1,Permanent crops,3,0.25346,0.606272,0.160221
+1,Pastures,4,0.593912,0.793063,0.474706
+1,Complex cultivation patterns,5,0.556161,0.597864,0.519897
+1,Land principally occupied by agriculture,6,0.0,0.0,0.0
+1,Agro-forestry areas,7,0.688504,0.643078,0.740836
+1,Broad-leaved forest,8,0.56206,0.661678,0.488513
+1,Coniferous forest,9,0.745275,0.763093,0.72827
+1,Mixed forest,10,0.706035,0.740396,0.674722
+1,Natural grassland and sparsely vegetated areas,11,0.13874,0.69697,0.077038
+1,"Moors, heathland and sclerophyllous vegetation",12,0.00831,0.355556,0.004204
+1,"Transitional woodland, shrub",13,0.555622,0.605702,0.51319
+1,"Beaches, dunes, sands",14,0.126362,0.878788,0.068075
+1,Inland wetlands,15,0.050613,0.825,0.026108
+1,Coastal wetlands,16,0.0,0.0,0.0
+1,Inland waters,17,0.628951,0.871906,0.491887
+1,Marine waters,18,0.899057,0.948752,0.854309
+2,Urban fabric,0,0.700695,0.730786,0.672984
+2,Industrial or commercial units,1,0.403782,0.665543,0.289802
+2,Arable land,2,0.811123,0.821047,0.801436
+2,Permanent crops,3,0.48413,0.650982,0.385359
+2,Pastures,4,0.688843,0.774119,0.62049
+2,Complex cultivation patterns,5,0.625343,0.610554,0.640867
+2,Land principally occupied by agriculture,6,0.0,0.0,0.0
+2,Agro-forestry areas,7,0.738874,0.656628,0.844673
+2,Broad-leaved forest,8,0.671663,0.684032,0.659734
+2,Coniferous forest,9,0.786522,0.85172,0.730596
+2,Mixed forest,10,0.759648,0.742965,0.777099
+2,Natural grassland and sparsely vegetated areas,11,0.37157,0.707419,0.251954
+2,"Moors, heathland and sclerophyllous vegetation",12,0.11798,0.578704,0.065686
+2,"Transitional woodland, shrub",13,0.517456,0.695606,0.411952
+2,"Beaches, dunes, sands",14,0.536111,0.656463,0.453052
+2,Inland wetlands,15,0.213917,0.828,0.122824
+2,Coastal wetlands,16,0.0,0.0,0.0
+2,Inland waters,17,0.715195,0.834634,0.62566
+2,Marine waters,18,0.924413,0.945369,0.904366
