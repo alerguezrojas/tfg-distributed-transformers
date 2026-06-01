@@ -1,4 +1,4 @@
-"""Streamlit web dashboard — Training Dashboard v3."""
+"""Streamlit web dashboard — Training Dashboard v5."""
 
 from __future__ import annotations
 
@@ -12,16 +12,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
+import plotly.express as px
 import streamlit as st
 from PIL import Image
 
 from src.web.batch_parser import parse_batch_csv
 from src.web.confusion_matrix_parser import get_matrix_for_epoch, parse_confusion_matrix_csv
+from src.web.dataset_stats import (
+    CLASS_NAMES, SPLIT_SIZES,
+    class_distribution_approximate, class_distribution_from_parquet,
+    cooccurrence_from_perclass, get_country_distribution,
+)
 from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv
 from src.web.log_parser import parse_log
+from src.web.model_explorer import (
+    ALL_FAMILIES, CURATED_MODELS, compare_models, get_model_stats,
+)
 from src.web.perclass_parser import parse_perclass_csv
 from src.web.run_registry import RunInfo, discover_feasibility_csvs, discover_runs
+from src.web.system_monitor import get_snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
 COLORS = ["#2563eb", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#64748b", "#ec4899", "#94a3b8"]
@@ -325,11 +335,13 @@ with st.sidebar:
 # ── Tabs ───────────────────────────────────────────────────────────────────────
 
 (
-    tab_overview, tab_curves, tab_perclass, tab_batch, tab_compare,
+    tab_overview, tab_system, tab_dataset, tab_models,
+    tab_curves, tab_perclass, tab_batch, tab_compare, tab_ddp,
     tab_feasibility, tab_time, tab_info,
     tab_launcher, tab_live,
 ) = st.tabs([
-    "Overview", "Curves", "Per-class", "Batch", "Compare",
+    "Overview", "System", "Dataset", "Models",
+    "Curves", "Per-class", "Batch", "Compare", "DDP Analysis",
     "Feasibility", "Time", "Info", "Launcher", "Live",
 ])
 
@@ -470,6 +482,481 @@ with tab_overview:
                     st.plotly_chart(fig_loss, use_container_width=True)
         except Exception:
             st.info("Could not render mini chart for this run.")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tab — System Monitor
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab_system:
+    st.markdown("## System monitor")
+    auto_ref = st.sidebar.toggle("System auto-refresh", key="sys_refresh", value=False)
+    ref_int = st.sidebar.slider("Refresh (s)", 2, 30, 5, key="sys_ref_int",
+                                disabled=not auto_ref)
+
+    snap = get_snapshot(disk_paths=["/", "/home", "/media"])
+
+    # ── CPU ──────────────────────────────────────────────────────────────────
+    st.markdown("### CPU")
+    sc1, sc2, sc3, sc4 = st.columns(4)
+    sc1.metric("Usage", f"{snap.cpu.usage_pct:.1f}%")
+    sc2.metric("Logical cores", snap.cpu.count_logical)
+    sc3.metric("Physical cores", snap.cpu.count_physical)
+    sc4.metric("Frequency", f"{snap.cpu.freq_mhz:.0f} MHz" if snap.cpu.freq_mhz else "—")
+    st.progress(snap.cpu.usage_pct / 100)
+
+    # ── RAM ──────────────────────────────────────────────────────────────────
+    st.markdown("### RAM")
+    sr1, sr2, sr3, sr4 = st.columns(4)
+    sr1.metric("Used", f"{snap.ram.used_gb:.1f} GB")
+    sr2.metric("Total", f"{snap.ram.total_gb:.1f} GB")
+    sr3.metric("Available", f"{snap.ram.available_gb:.1f} GB")
+    sr4.metric("Usage %", f"{snap.ram.percent:.1f}%")
+    st.progress(snap.ram.percent / 100)
+    if snap.ram.swap_total_gb > 0:
+        st.caption(
+            f"Swap: {snap.ram.swap_used_gb:.1f} / {snap.ram.swap_total_gb:.1f} GB"
+        )
+
+    # ── GPU ──────────────────────────────────────────────────────────────────
+    st.markdown("### GPU")
+    if snap.gpus:
+        for gpu in snap.gpus:
+            mem_pct = gpu.mem_used_mb / gpu.mem_total_mb * 100 if gpu.mem_total_mb else 0
+            g1, g2, g3, g4, g5 = st.columns(5)
+            g1.metric(f"GPU {gpu.index}", gpu.name[:28])
+            g2.metric("VRAM used", f"{gpu.mem_used_mb / 1024:.1f} GB")
+            g3.metric("VRAM total", f"{gpu.mem_total_mb / 1024:.1f} GB")
+            g4.metric("Utilization", f"{gpu.util_pct}%")
+            g5.metric("Temp", f"{gpu.temp_c}°C")
+            st.progress(mem_pct / 100,
+                        text=f"VRAM {gpu.mem_used_mb}/{gpu.mem_total_mb} MB ({mem_pct:.1f}%)")
+            if gpu.power_w is not None:
+                limit_str = f" / {gpu.power_limit_w:.0f} W" if gpu.power_limit_w else ""
+                st.caption(f"Power draw: {gpu.power_w:.1f} W{limit_str}")
+    else:
+        st.info("No GPU detected (nvidia-smi not available).")
+
+    # ── Disk ─────────────────────────────────────────────────────────────────
+    st.markdown("### Disk")
+    if snap.disks:
+        disk_cols = st.columns(len(snap.disks))
+        for col, disk in zip(disk_cols, snap.disks):
+            col.metric(disk.path, f"{disk.free_gb:.1f} GB free")
+            col.progress(disk.percent / 100,
+                         text=f"{disk.used_gb:.1f} / {disk.total_gb:.1f} GB ({disk.percent:.1f}%)")
+    else:
+        st.info("Could not read disk usage.")
+
+    # ── Network ──────────────────────────────────────────────────────────────
+    st.markdown("### Network (cumulative since boot)")
+    nn1, nn2 = st.columns(2)
+    nn1.metric("Sent", f"{snap.network.bytes_sent_mb / 1024:.2f} GB")
+    nn2.metric("Received", f"{snap.network.bytes_recv_mb / 1024:.2f} GB")
+
+    if auto_ref:
+        time.sleep(ref_int)
+        st.rerun()
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tab — Dataset Explorer
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab_dataset:
+    st.markdown("## Dataset Explorer — BigEarthNet-S2 v2.0")
+
+    # Try to load metadata from config paths
+    meta_path: Path | None = None
+    for candidate in [
+        "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet",
+        "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet",
+    ]:
+        if Path(candidate).exists():
+            meta_path = Path(candidate)
+            break
+
+    # ── Split sizes ───────────────────────────────────────────────────────────
+    st.markdown("### Dataset splits")
+    ds1, ds2, ds3, ds4 = st.columns(4)
+    ds1.metric("Train", f"{SPLIT_SIZES['train']:,}")
+    ds2.metric("Validation", f"{SPLIT_SIZES['val']:,}")
+    ds3.metric("Test", f"{SPLIT_SIZES['test']:,}")
+    total = sum(SPLIT_SIZES.values())
+    ds4.metric("Total patches", f"{total:,}")
+
+    fig_splits = go.Figure(go.Pie(
+        labels=list(SPLIT_SIZES.keys()),
+        values=list(SPLIT_SIZES.values()),
+        hole=0.4,
+        marker_colors=[COLORS[0], COLORS[2], COLORS[1]],
+    ))
+    fig_splits.update_layout(**_base_layout(220, "Split distribution"), showlegend=True)
+    st.plotly_chart(fig_splits, use_container_width=True)
+
+    # ── Class distribution ────────────────────────────────────────────────────
+    st.markdown("### Class distribution (training split)")
+    if meta_path:
+        dist_df = class_distribution_from_parquet(meta_path)
+        st.caption(f"Source: {meta_path}")
+    else:
+        dist_df = None
+        st.caption("metadata.parquet not found — using approximate statistics.")
+
+    if dist_df is None:
+        dist_df = class_distribution_approximate()
+
+    dist_df = dist_df.sort_values("train_count", ascending=True)
+    dist_df["color"] = dist_df["train_count"].apply(
+        lambda v: COLORS[3] if v < 5000 else (COLORS[1] if v < 15000 else COLORS[2])
+    )
+
+    fig_dist = go.Figure(go.Bar(
+        y=dist_df["class"], x=dist_df["train_count"],
+        orientation="h",
+        marker_color=dist_df["color"],
+        text=dist_df["train_count"].apply(lambda v: f"{v:,}"),
+        textposition="outside",
+    ))
+    fig_dist.update_layout(
+        **_base_layout(560, "Samples per class (train)"),
+        xaxis_title="Sample count", yaxis_title="",
+        margin=dict(l=230, r=80, t=40, b=40),
+    )
+    st.plotly_chart(fig_dist, use_container_width=True)
+    st.caption(
+        "Red = rare (<5K samples), Orange = moderate (<15K), Green = frequent. "
+        "Rare classes dominate the F1 macro ceiling."
+    )
+
+    # ── Class imbalance analysis ──────────────────────────────────────────────
+    st.markdown("### Class imbalance")
+    max_c = dist_df["train_count"].max()
+    min_c = dist_df["train_count"].min()
+    ratio = max_c / min_c if min_c > 0 else float("inf")
+    ci1, ci2, ci3 = st.columns(3)
+    ci1.metric("Most frequent class", dist_df.iloc[-1]["class"][:30])
+    ci2.metric("Rarest class", dist_df.iloc[0]["class"][:30])
+    ci3.metric("Imbalance ratio", f"{ratio:.1f}×")
+
+    # ── Country distribution ──────────────────────────────────────────────────
+    if meta_path:
+        country_counts = get_country_distribution(meta_path)
+        if country_counts is not None and not country_counts.empty:
+            st.markdown("### Country distribution (train)")
+            top_n = country_counts.head(15)
+            fig_c = px.bar(
+                x=top_n.values, y=top_n.index, orientation="h",
+                labels={"x": "Patches", "y": "Country"},
+                color=top_n.values,
+                color_continuous_scale="Blues",
+            )
+            fig_c.update_layout(**_base_layout(380, "Top countries by patch count"))
+            st.plotly_chart(fig_c, use_container_width=True)
+
+    # ── Per-class performance scatter ─────────────────────────────────────────
+    st.markdown("### Class difficulty vs frequency")
+    st.caption("Uses best available per-class CSV from any run.")
+
+    perclass_csvs_all = list(ROOT.rglob("perclass_metrics_*.csv"))
+    if perclass_csvs_all:
+        latest_pc = max(perclass_csvs_all, key=lambda p: p.stat().st_mtime)
+        pc_df = parse_perclass_csv(latest_pc)
+        if not pc_df.empty:
+            last_ep = pc_df["epoch"].max()
+            ep_pc = pc_df[pc_df["epoch"] == last_ep].copy()
+            ep_pc = ep_pc.merge(dist_df[["class", "train_count"]],
+                                left_on="class_name", right_on="class", how="left")
+            fig_sc = px.scatter(
+                ep_pc, x="train_count", y="f1",
+                text="class_name", color="f1",
+                color_continuous_scale="RdYlGn",
+                range_color=[0, 1],
+                labels={"train_count": "Training samples", "f1": "Val F1"},
+                title=f"F1 vs class frequency (epoch {last_ep})",
+            )
+            fig_sc.update_traces(textposition="top center", textfont_size=8)
+            fig_sc.update_layout(**_base_layout(440), showlegend=False)
+            st.plotly_chart(fig_sc, use_container_width=True)
+            st.caption(
+                "Classes with few training samples tend to have low F1. "
+                "Points near the bottom-left are the hardest to improve."
+            )
+    else:
+        st.info("No per-class CSV found. Run a training with `--layers confusion`.")
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tab — Model Explorer
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab_models:
+    st.markdown("## Model Explorer")
+    st.caption("Browse timm models, compare parameters and VRAM requirements.")
+
+    # ── Family selector ───────────────────────────────────────────────────────
+    col_fam, col_bs = st.columns([3, 1])
+    with col_fam:
+        selected_families = st.multiselect(
+            "Model families", ALL_FAMILIES, default=["ViT", "ResNet", "EfficientNet"],
+        )
+    with col_bs:
+        cmp_batch = st.selectbox("Batch size for VRAM estimate", [4, 8, 16, 32, 64, 128], index=3)
+
+    candidate_models = []
+    for fam in selected_families:
+        candidate_models.extend(CURATED_MODELS.get(fam, []))
+
+    extra_model = st.text_input(
+        "Add custom timm model (any valid ID)", placeholder="e.g. convnext_large"
+    )
+    if extra_model.strip():
+        candidate_models.append(extra_model.strip())
+
+    if not candidate_models:
+        st.info("Select at least one family.")
+    else:
+        with st.spinner("Loading model stats (cached after first run)…"):
+            rows = compare_models(candidate_models, [cmp_batch], num_classes=19)
+
+        if not rows:
+            st.warning("Could not load any model.")
+        else:
+            cmp_df = pd.DataFrame(rows)
+            vram_col = f"VRAM est. bs={cmp_batch} (GB)"
+
+            # Color VRAM column: green<4GB, orange 4-8, red>8
+            def _color_vram(v):
+                try:
+                    fv = float(v)
+                    if fv <= 4:
+                        return "background-color: #dcfce7"
+                    if fv <= 8:
+                        return "background-color: #fef9c3"
+                    return "background-color: #fee2e2"
+                except (ValueError, TypeError):
+                    return ""
+
+            styled_cmp = cmp_df.style
+            if vram_col in cmp_df.columns:
+                styled_cmp = styled_cmp.map(_color_vram, subset=[vram_col])
+            st.dataframe(styled_cmp, use_container_width=True, hide_index=True)
+            st.caption("Green = fits in 4 GB | Orange = 4–8 GB | Red = >8 GB (RTX 3060 Ti limit)")
+
+            # ── Bubble chart: params vs FLOPs, size=VRAM ─────────────────────
+            st.markdown("### Parameters vs FLOPs")
+            plot_df = cmp_df[cmp_df["FLOPs (MFLOPs)"] != "—"].copy()
+            if not plot_df.empty:
+                plot_df["FLOPs (MFLOPs)"] = pd.to_numeric(plot_df["FLOPs (MFLOPs)"], errors="coerce")
+                plot_df[vram_col] = pd.to_numeric(plot_df.get(vram_col, 0), errors="coerce").fillna(1)
+                fig_bubble = px.scatter(
+                    plot_df,
+                    x="FLOPs (MFLOPs)", y="Params (M)",
+                    size=vram_col, color="Family",
+                    text="Model", hover_name="Model",
+                    size_max=40,
+                    labels={"FLOPs (MFLOPs)": "FLOPs per image (MFLOPs)",
+                            "Params (M)": "Parameters (M)"},
+                )
+                fig_bubble.update_traces(textposition="top center", textfont_size=8)
+                fig_bubble.update_layout(**_base_layout(420, "Model complexity landscape"),
+                                         showlegend=True)
+                st.plotly_chart(fig_bubble, use_container_width=True)
+                st.caption("Bubble size = estimated VRAM at selected batch size.")
+
+            # ── VRAM bar chart by batch size ──────────────────────────────────
+            st.markdown("### VRAM requirements across batch sizes")
+            vram_models = candidate_models[:8]  # limit for readability
+            with st.spinner("Computing VRAM estimates…"):
+                vram_rows = compare_models(vram_models, [4, 8, 16, 32, 64, 128])
+
+            if vram_rows:
+                vram_df = pd.DataFrame(vram_rows)
+                vram_cols = [c for c in vram_df.columns if c.startswith("VRAM")]
+                fig_vram = go.Figure()
+                for col in vram_cols:
+                    bs_val = col.split("bs=")[1].split(" ")[0]
+                    fig_vram.add_trace(go.Bar(
+                        name=f"bs={bs_val}",
+                        x=vram_df["Model"],
+                        y=pd.to_numeric(vram_df[col], errors="coerce"),
+                    ))
+                fig_vram.add_hline(y=8, line_dash="dash", line_color="red",
+                                   annotation_text="RTX 3060 Ti (8 GB)")
+                fig_vram.add_hline(y=32, line_dash="dash", line_color="orange",
+                                   annotation_text="V100 (32 GB)")
+                fig_vram.update_layout(
+                    **_base_layout(380, "Estimated VRAM (GB) by batch size"),
+                    barmode="group",
+                    xaxis_tickangle=30,
+                    yaxis_title="GB",
+                )
+                st.plotly_chart(fig_vram, use_container_width=True)
+
+            # ── Quick launch integration ──────────────────────────────────────
+            st.markdown("### Quick launch")
+            selected_for_launch = st.selectbox(
+                "Select model to pre-fill Launcher", [r["Model"] for r in rows],
+            )
+            if selected_for_launch:
+                st.info(
+                    f"Go to the **Launcher** tab — the model `{selected_for_launch}` "
+                    f"is remembered. Paste it in the model field."
+                )
+                st.session_state["preselected_model"] = selected_for_launch
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tab — DDP Analysis
+# ═══════════════════════════════════════════════════════════════════════════════
+
+with tab_ddp:
+    st.markdown("## DDP Analysis — Single-GPU vs Distributed")
+    st.caption(
+        "Compares single-GPU and DDP runs of the same model to measure "
+        "actual speedup, efficiency, and scaling behaviour."
+    )
+
+    all_runs_ddp = _get_runs()
+    if not all_runs_ddp:
+        st.info("No runs found.")
+    else:
+        # Detect single vs ddp by path mode
+        single_runs = [r for r in all_runs_ddp if r.mode == "single"]
+        ddp_runs = [r for r in all_runs_ddp if r.mode == "ddp"]
+
+        da1, da2, da3 = st.columns(3)
+        da1.metric("Single-GPU runs", len(single_runs))
+        da2.metric("DDP runs", len(ddp_runs))
+        da3.metric("Total runs", len(all_runs_ddp))
+
+        if not ddp_runs:
+            st.info(
+                "No DDP runs yet. Launch a distributed training with "
+                "`scripts/train_ddp.py` — results will appear here automatically."
+            )
+        else:
+            st.markdown("### DDP runs")
+            ddp_rows = []
+            for r in ddp_runs:
+                try:
+                    ddf = _load_df(str(r.log_path),
+                                   str(r.epoch_csv_path) if r.epoch_csv_path else None)
+                    if ddf.empty:
+                        continue
+                    best_f1 = ddf["val_f1"].max() if "val_f1" in ddf.columns else float("nan")
+                    avg_epoch_s = ddf["epoch_time"].mean() if "epoch_time" in ddf.columns and ddf["epoch_time"].notna().any() else None
+                    ddp_rows.append({
+                        "Run": r.label[:50], "Model": r.model or "—",
+                        "Env": r.env, "Best Val F1": round(best_f1, 4),
+                        "Epochs": len(ddf),
+                        "Avg epoch (min)": round(avg_epoch_s / 60, 1) if avg_epoch_s else "—",
+                    })
+                except Exception:
+                    pass
+            if ddp_rows:
+                st.dataframe(pd.DataFrame(ddp_rows), use_container_width=True, hide_index=True)
+
+        # ── Speedup comparison ────────────────────────────────────────────────
+        if single_runs and ddp_runs:
+            st.markdown("### Speedup analysis")
+
+            col_s, col_d = st.columns(2)
+            with col_s:
+                single_lbl = st.selectbox(
+                    "Single-GPU run",
+                    [r.label for r in single_runs], key="ddp_single_sel",
+                )
+            with col_d:
+                ddp_lbl = st.selectbox(
+                    "DDP run", [r.label for r in ddp_runs], key="ddp_ddp_sel",
+                )
+
+            r_single = next(r for r in single_runs if r.label == single_lbl)
+            r_ddp = next(r for r in ddp_runs if r.label == ddp_lbl)
+
+            df_s = _load_df(str(r_single.log_path),
+                            str(r_single.epoch_csv_path) if r_single.epoch_csv_path else None)
+            df_d = _load_df(str(r_ddp.log_path),
+                            str(r_ddp.epoch_csv_path) if r_ddp.epoch_csv_path else None)
+
+            if not df_s.empty and not df_d.empty:
+                avg_s = df_s["epoch_time"].mean() if "epoch_time" in df_s.columns and df_s["epoch_time"].notna().any() else None
+                avg_d = df_d["epoch_time"].mean() if "epoch_time" in df_d.columns and df_d["epoch_time"].notna().any() else None
+
+                su1, su2, su3, su4 = st.columns(4)
+                su1.metric("Single-GPU epoch", f"{avg_s/60:.1f} min" if avg_s else "—")
+                su2.metric("DDP epoch", f"{avg_d/60:.1f} min" if avg_d else "—")
+                if avg_s and avg_d and avg_d > 0:
+                    speedup = avg_s / avg_d
+                    su3.metric("Actual speedup", f"{speedup:.2f}×")
+                    world_size_ddp = 2  # assume 2 GPUs by default
+                    efficiency = speedup / world_size_ddp * 100
+                    su4.metric("Scaling efficiency", f"{efficiency:.1f}%")
+
+                # F1 comparison overlay
+                fig_ddp_f1 = go.Figure()
+                if "val_f1" in df_s.columns:
+                    fig_ddp_f1.add_trace(go.Scatter(
+                        x=df_s["epoch"], y=df_s["val_f1"],
+                        name="Single-GPU Val F1", line=dict(color=COLORS[0], width=2),
+                    ))
+                if "val_f1" in df_d.columns:
+                    fig_ddp_f1.add_trace(go.Scatter(
+                        x=df_d["epoch"], y=df_d["val_f1"],
+                        name="DDP Val F1", line=dict(color=COLORS[2], width=2),
+                    ))
+                fig_ddp_f1.update_layout(
+                    **_base_layout(300, "Val F1: Single-GPU vs DDP"),
+                    xaxis_title="Epoch", yaxis_title="Val F1",
+                )
+                st.plotly_chart(fig_ddp_f1, use_container_width=True)
+
+                # Epoch time comparison
+                if avg_s and avg_d:
+                    fig_time_ddp = go.Figure()
+                    if "epoch_time" in df_s.columns:
+                        fig_time_ddp.add_trace(go.Scatter(
+                            x=df_s["epoch"], y=df_s["epoch_time"] / 60,
+                            name="Single-GPU", line=dict(color=COLORS[0], width=2),
+                        ))
+                    if "epoch_time" in df_d.columns:
+                        fig_time_ddp.add_trace(go.Scatter(
+                            x=df_d["epoch"], y=df_d["epoch_time"] / 60,
+                            name="DDP", line=dict(color=COLORS[2], width=2),
+                        ))
+                    fig_time_ddp.update_layout(
+                        **_base_layout(260, "Epoch time: Single-GPU vs DDP"),
+                        xaxis_title="Epoch", yaxis_title="Minutes",
+                    )
+                    st.plotly_chart(fig_time_ddp, use_container_width=True)
+
+                # Theoretical scaling chart
+                st.markdown("### Theoretical vs actual scaling")
+                world_sizes = [1, 2, 4, 8]
+                theoretical = [avg_s / ws for ws in world_sizes] if avg_s else []
+                if theoretical:
+                    fig_scale = go.Figure()
+                    fig_scale.add_trace(go.Scatter(
+                        x=world_sizes, y=[t / 60 for t in theoretical],
+                        name="Theoretical (100% efficiency)",
+                        line=dict(color=COLORS[4], width=2, dash="dash"),
+                        mode="lines+markers",
+                    ))
+                    if avg_d:
+                        fig_scale.add_trace(go.Scatter(
+                            x=[2], y=[avg_d / 60],
+                            name="Actual DDP (2 GPUs)",
+                            mode="markers",
+                            marker=dict(color=COLORS[2], size=14, symbol="star"),
+                        ))
+                    fig_scale.update_layout(
+                        **_base_layout(300, "Epoch time vs number of GPUs"),
+                        xaxis_title="Number of GPUs",
+                        yaxis_title="Minutes per epoch",
+                        xaxis=dict(tickvals=world_sizes),
+                    )
+                    st.plotly_chart(fig_scale, use_container_width=True)
+                    st.caption(
+                        "The gap between theoretical and actual reflects communication "
+                        "overhead, NFS bottleneck, and load imbalance."
+                    )
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tab 1 — Training Curves
@@ -963,6 +1450,38 @@ with tab_compare:
                 })
 
             st.dataframe(pd.DataFrame(summary_rows).set_index("Run"), use_container_width=True)
+            st.markdown("---")
+
+            # ── Radar chart of best-epoch metrics ─────────────────────────────
+            st.markdown("#### Best-epoch radar")
+            radar_metrics = ["val_f1", "train_f1", "val_acc", "val_prec", "val_rec"]
+            radar_fig = go.Figure()
+            for i, (lbl, cdf) in enumerate(compare_dfs):
+                vals = []
+                for m_col in radar_metrics:
+                    if m_col in cdf.columns and cdf[m_col].notna().any():
+                        # Use value at best val_f1 epoch
+                        best_idx = cdf["val_f1"].idxmax() if "val_f1" in cdf.columns else cdf.index[-1]
+                        vals.append(float(cdf.loc[best_idx, m_col]))
+                    else:
+                        vals.append(0.0)
+                vals_closed = vals + [vals[0]]
+                cats_closed = radar_metrics + [radar_metrics[0]]
+                radar_fig.add_trace(go.Scatterpolar(
+                    r=vals_closed, theta=cats_closed,
+                    fill="toself", name=lbl[:30],
+                    line=dict(color=COLORS[i % len(COLORS)]),
+                    opacity=0.6,
+                ))
+            radar_fig.update_layout(
+                polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+                showlegend=True,
+                height=360,
+                margin=dict(l=60, r=60, t=40, b=40),
+                paper_bgcolor="white",
+                title=dict(text="Metrics at best Val F1 epoch", font=dict(size=13)),
+            )
+            st.plotly_chart(radar_fig, use_container_width=True)
             st.markdown("---")
 
             metrics_to_compare = st.multiselect(
