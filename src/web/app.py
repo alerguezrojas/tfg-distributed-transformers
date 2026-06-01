@@ -353,8 +353,7 @@ with st.sidebar:
 
     st.markdown("---")
     st.markdown("**Live Monitor**")
-    live_mode = st.toggle("Auto-refresh", key="live_mode")
-    refresh_interval = st.slider("Interval (s)", 5, 60, 10, disabled=not live_mode)
+    refresh_interval = st.slider("Refresh interval (s)", 5, 60, 10)
 
 # ── Tabs ───────────────────────────────────────────────────────────────────────
 
@@ -517,73 +516,64 @@ with tab_overview:
 
 with tab_system:
     st.markdown("## System monitor")
-    auto_ref = st.sidebar.toggle("System auto-refresh", key="sys_refresh", value=False)
-    ref_int = st.sidebar.slider("Refresh (s)", 2, 30, 5, key="sys_ref_int",
-                                disabled=not auto_ref)
+    ref_int = st.sidebar.slider("System refresh (s)", 2, 30, 5, key="sys_ref_int")
 
-    snap = get_snapshot(disk_paths=["/", "/home", "/media"])
+    @st.fragment(run_every=ref_int)
+    def _system_panel():
+        snap = get_snapshot(disk_paths=["/", "/home", "/media"])
 
-    # ── CPU ──────────────────────────────────────────────────────────────────
-    st.markdown("### CPU")
-    sc1, sc2, sc3, sc4 = st.columns(4)
-    sc1.metric("Usage", f"{snap.cpu.usage_pct:.1f}%")
-    sc2.metric("Logical cores", snap.cpu.count_logical)
-    sc3.metric("Physical cores", snap.cpu.count_physical)
-    sc4.metric("Frequency", f"{snap.cpu.freq_mhz:.0f} MHz" if snap.cpu.freq_mhz else "—")
-    st.progress(snap.cpu.usage_pct / 100)
+        st.markdown("### CPU")
+        sc1, sc2, sc3, sc4 = st.columns(4)
+        sc1.metric("Usage", f"{snap.cpu.usage_pct:.1f}%")
+        sc2.metric("Logical cores", snap.cpu.count_logical)
+        sc3.metric("Physical cores", snap.cpu.count_physical)
+        sc4.metric("Frequency", f"{snap.cpu.freq_mhz:.0f} MHz" if snap.cpu.freq_mhz else "—")
+        st.progress(snap.cpu.usage_pct / 100)
 
-    # ── RAM ──────────────────────────────────────────────────────────────────
-    st.markdown("### RAM")
-    sr1, sr2, sr3, sr4 = st.columns(4)
-    sr1.metric("Used", f"{snap.ram.used_gb:.1f} GB")
-    sr2.metric("Total", f"{snap.ram.total_gb:.1f} GB")
-    sr3.metric("Available", f"{snap.ram.available_gb:.1f} GB")
-    sr4.metric("Usage %", f"{snap.ram.percent:.1f}%")
-    st.progress(snap.ram.percent / 100)
-    if snap.ram.swap_total_gb > 0:
-        st.caption(
-            f"Swap: {snap.ram.swap_used_gb:.1f} / {snap.ram.swap_total_gb:.1f} GB"
-        )
+        st.markdown("### RAM")
+        sr1, sr2, sr3, sr4 = st.columns(4)
+        sr1.metric("Used", f"{snap.ram.used_gb:.1f} GB")
+        sr2.metric("Total", f"{snap.ram.total_gb:.1f} GB")
+        sr3.metric("Available", f"{snap.ram.available_gb:.1f} GB")
+        sr4.metric("Usage %", f"{snap.ram.percent:.1f}%")
+        st.progress(snap.ram.percent / 100)
+        if snap.ram.swap_total_gb > 0:
+            st.caption(f"Swap: {snap.ram.swap_used_gb:.1f} / {snap.ram.swap_total_gb:.1f} GB")
 
-    # ── GPU ──────────────────────────────────────────────────────────────────
-    st.markdown("### GPU")
-    if snap.gpus:
-        for gpu in snap.gpus:
-            mem_pct = gpu.mem_used_mb / gpu.mem_total_mb * 100 if gpu.mem_total_mb else 0
-            g1, g2, g3, g4, g5 = st.columns(5)
-            g1.metric(f"GPU {gpu.index}", gpu.name[:28])
-            g2.metric("VRAM used", f"{gpu.mem_used_mb / 1024:.1f} GB")
-            g3.metric("VRAM total", f"{gpu.mem_total_mb / 1024:.1f} GB")
-            g4.metric("Utilization", f"{gpu.util_pct}%")
-            g5.metric("Temp", f"{gpu.temp_c}°C")
-            st.progress(mem_pct / 100,
-                        text=f"VRAM {gpu.mem_used_mb}/{gpu.mem_total_mb} MB ({mem_pct:.1f}%)")
-            if gpu.power_w is not None:
-                limit_str = f" / {gpu.power_limit_w:.0f} W" if gpu.power_limit_w else ""
-                st.caption(f"Power draw: {gpu.power_w:.1f} W{limit_str}")
-    else:
-        st.info("No GPU detected (nvidia-smi not available).")
+        st.markdown("### GPU")
+        if snap.gpus:
+            for gpu in snap.gpus:
+                mem_pct = gpu.mem_used_mb / gpu.mem_total_mb * 100 if gpu.mem_total_mb else 0
+                g1, g2, g3, g4, g5 = st.columns(5)
+                g1.metric(f"GPU {gpu.index}", gpu.name[:28])
+                g2.metric("VRAM used", f"{gpu.mem_used_mb / 1024:.1f} GB")
+                g3.metric("VRAM total", f"{gpu.mem_total_mb / 1024:.1f} GB")
+                g4.metric("Utilization", f"{gpu.util_pct}%")
+                g5.metric("Temp", f"{gpu.temp_c}°C")
+                st.progress(mem_pct / 100,
+                            text=f"VRAM {gpu.mem_used_mb}/{gpu.mem_total_mb} MB ({mem_pct:.1f}%)")
+                if gpu.power_w is not None:
+                    limit_str = f" / {gpu.power_limit_w:.0f} W" if gpu.power_limit_w else ""
+                    st.caption(f"Power draw: {gpu.power_w:.1f} W{limit_str}")
+        else:
+            st.info("No GPU detected (nvidia-smi not available).")
 
-    # ── Disk ─────────────────────────────────────────────────────────────────
-    st.markdown("### Disk")
-    if snap.disks:
-        disk_cols = st.columns(len(snap.disks))
-        for col, disk in zip(disk_cols, snap.disks):
-            col.metric(disk.path, f"{disk.free_gb:.1f} GB free")
-            col.progress(disk.percent / 100,
-                         text=f"{disk.used_gb:.1f} / {disk.total_gb:.1f} GB ({disk.percent:.1f}%)")
-    else:
-        st.info("Could not read disk usage.")
+        st.markdown("### Disk")
+        if snap.disks:
+            disk_cols = st.columns(len(snap.disks))
+            for col, disk in zip(disk_cols, snap.disks):
+                col.metric(disk.path, f"{disk.free_gb:.1f} GB free")
+                col.progress(disk.percent / 100,
+                             text=f"{disk.used_gb:.1f} / {disk.total_gb:.1f} GB ({disk.percent:.1f}%)")
+        else:
+            st.info("Could not read disk usage.")
 
-    # ── Network ──────────────────────────────────────────────────────────────
-    st.markdown("### Network (cumulative since boot)")
-    nn1, nn2 = st.columns(2)
-    nn1.metric("Sent", f"{snap.network.bytes_sent_mb / 1024:.2f} GB")
-    nn2.metric("Received", f"{snap.network.bytes_recv_mb / 1024:.2f} GB")
+        st.markdown("### Network (cumulative since boot)")
+        nn1, nn2 = st.columns(2)
+        nn1.metric("Sent", f"{snap.network.bytes_sent_mb / 1024:.2f} GB")
+        nn2.metric("Received", f"{snap.network.bytes_recv_mb / 1024:.2f} GB")
 
-    if auto_ref:
-        time.sleep(ref_int)
-        st.rerun()
+    _system_panel()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tab — Dataset Explorer
@@ -2201,6 +2191,7 @@ with tab_launcher:
 with tab_live:
     st.subheader("Live Monitor")
 
+    # Run selector lives outside the fragment so the user can change it freely
     now_ts = time.time()
     recent_runs = [
         r for r in runs
@@ -2214,60 +2205,60 @@ with tab_live:
         )
     else:
         live_labels = {r.label: r for r in recent_runs}
-        live_run = live_labels[
-            st.selectbox("Active run", list(live_labels.keys()), key="live_run_sel")
-        ]
+        live_sel = st.selectbox("Active run", list(live_labels.keys()), key="live_run_sel")
+        live_run = live_labels[live_sel]
 
-        gpu = _gpu_usage()
-        if gpu:
-            g1, g2, g3, g4 = st.columns(4)
-            g1.metric("GPU", gpu["name"])
-            g2.metric(
-                "VRAM",
-                f"{gpu['mem_used_mb']/1024:.1f} / {gpu['mem_total_mb']/1024:.1f} GB",
-            )
-            g3.metric("Utilization", f"{gpu['util_pct']}%")
-            g4.metric("Temperature", f"{gpu['temp_c']} °C")
-        else:
-            st.caption("GPU info unavailable (nvidia-smi not found).")
+        @st.fragment(run_every=refresh_interval)
+        def _live_panel(run: RunInfo):
+            _load_df.clear()
 
-        progress = _parse_log_progress(live_run.log_path)
-        if progress["epochs"] > 0:
-            pct = progress["epoch"] / progress["epochs"]
-            st.progress(pct, text=f"Epoch {progress['epoch']} / {progress['epochs']}")
-
-        if progress["last_val_f1"] is not None:
-            m1, m2 = st.columns(2)
-            m1.metric("Last Val F1", f"{progress['last_val_f1']:.4f}")
-            if progress["last_val_loss"] is not None:
-                m2.metric("Last Val Loss", f"{progress['last_val_loss']:.4f}")
-
-        if live_run.epoch_csv_path and live_run.epoch_csv_path.exists():
-            live_df = _load_df(str(live_run.log_path), str(live_run.epoch_csv_path))
-            if not live_df.empty:
-                fig_live = go.Figure()
-                if "val_f1" in live_df.columns:
-                    fig_live.add_trace(go.Scatter(
-                        x=live_df["epoch"], y=live_df["val_f1"],
-                        name="Val F1", mode="lines+markers",
-                        line=dict(color=COLORS[0], width=2), marker=dict(size=4),
-                    ))
-                if "val_loss" in live_df.columns:
-                    fig_live.add_trace(go.Scatter(
-                        x=live_df["epoch"], y=live_df["val_loss"],
-                        name="Val Loss", mode="lines+markers",
-                        line=dict(color=COLORS[1], width=2), marker=dict(size=4),
-                    ))
-                fig_live.update_layout(
-                    **_base_layout(280, "Metrics"),
-                    xaxis_title="Epoch",
+            gpu = _gpu_usage()
+            if gpu:
+                g1, g2, g3, g4 = st.columns(4)
+                g1.metric("GPU", gpu["name"])
+                g2.metric(
+                    "VRAM",
+                    f"{gpu['mem_used_mb']/1024:.1f} / {gpu['mem_total_mb']/1024:.1f} GB",
                 )
-                st.plotly_chart(fig_live, use_container_width=True)
+                g3.metric("Utilization", f"{gpu['util_pct']}%")
+                g4.metric("Temperature", f"{gpu['temp_c']} °C")
+            else:
+                st.caption("GPU info unavailable (nvidia-smi not found).")
 
-        st.subheader("Log tail")
-        st.code(_read_log_tail(live_run.log_path, n=40), language="text")
+            progress = _parse_log_progress(run.log_path)
+            if progress["epochs"] > 0:
+                pct = progress["epoch"] / progress["epochs"]
+                st.progress(pct, text=f"Epoch {progress['epoch']} / {progress['epochs']}")
 
-    if live_mode:
-        time.sleep(refresh_interval)
-        _load_df.clear()
-        st.rerun()
+            if progress["last_val_f1"] is not None:
+                m1, m2 = st.columns(2)
+                m1.metric("Last Val F1", f"{progress['last_val_f1']:.4f}")
+                if progress["last_val_loss"] is not None:
+                    m2.metric("Last Val Loss", f"{progress['last_val_loss']:.4f}")
+
+            if run.epoch_csv_path and run.epoch_csv_path.exists():
+                live_df = _load_df(str(run.log_path), str(run.epoch_csv_path))
+                if not live_df.empty:
+                    fig_live = go.Figure()
+                    if "val_f1" in live_df.columns:
+                        fig_live.add_trace(go.Scatter(
+                            x=live_df["epoch"], y=live_df["val_f1"],
+                            name="Val F1", mode="lines+markers",
+                            line=dict(color=COLORS[0], width=2), marker=dict(size=4),
+                        ))
+                    if "val_loss" in live_df.columns:
+                        fig_live.add_trace(go.Scatter(
+                            x=live_df["epoch"], y=live_df["val_loss"],
+                            name="Val Loss", mode="lines+markers",
+                            line=dict(color=COLORS[1], width=2), marker=dict(size=4),
+                        ))
+                    fig_live.update_layout(
+                        **_base_layout(280, "Metrics"),
+                        xaxis_title="Epoch",
+                    )
+                    st.plotly_chart(fig_live, use_container_width=True)
+
+            st.subheader("Log tail")
+            st.code(_read_log_tail(run.log_path, n=40), language="text")
+
+        _live_panel(live_run)
