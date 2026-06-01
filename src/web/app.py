@@ -324,13 +324,151 @@ with st.sidebar:
 # ── Tabs ───────────────────────────────────────────────────────────────────────
 
 (
-    tab_curves, tab_perclass, tab_batch, tab_compare,
+    tab_overview, tab_curves, tab_perclass, tab_batch, tab_compare,
     tab_feasibility, tab_time, tab_info,
     tab_launcher, tab_live,
 ) = st.tabs([
-    "Curves", "Per-class", "Batch", "Compare",
+    "Overview", "Curves", "Per-class", "Batch", "Compare",
     "Feasibility", "Time", "Info", "Launcher", "Live",
 ])
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Tab 0 — Overview
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# BigEarthNet-S2 class groups for confusion matrix coloring
+_CLASS_GROUPS = {
+    "Urban":       ([0, 1],         "#6b7280"),
+    "Agricultural":([ 2, 3, 4, 5, 6, 7], "#d97706"),
+    "Forest":      ([8, 9, 10, 13], "#16a34a"),
+    "Scrub/grass": ([11, 12],       "#84cc16"),
+    "Bare/coastal":([14],           "#92400e"),
+    "Wetlands":    ([15, 16],       "#0891b2"),
+    "Water":       ([17, 18],       "#1d4ed8"),
+}
+_CLASS_GROUP_OF: dict[int, str] = {
+    idx: name for name, (idxs, _) in _CLASS_GROUPS.items() for idx in idxs
+}
+_CLASS_GROUP_COLOR: dict[int, str] = {
+    idx: color for name, (idxs, color) in _CLASS_GROUPS.items() for idx in idxs
+}
+
+
+with tab_overview:
+    st.markdown("## Project overview")
+
+    # ── Global stats ──────────────────────────────────────────────────────────
+    total_runs = len(runs)
+    best_f1_global = float("-inf")
+    best_run_label = "—"
+    total_gpu_h = 0.0
+
+    for r in runs:
+        try:
+            df_r = _load_df(
+                str(r.log_path),
+                str(r.epoch_csv_path) if r.epoch_csv_path else None,
+            )
+            if not df_r.empty and "val_f1" in df_r.columns:
+                run_best = df_r["val_f1"].max()
+                if run_best > best_f1_global:
+                    best_f1_global = run_best
+                    best_run_label = r.label
+            if not df_r.empty and "epoch_time" in df_r.columns:
+                total_gpu_h += df_r["epoch_time"].sum() / 3600
+        except Exception:
+            pass
+
+    feasibility_csvs = _get_feasibility_csvs()
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("Total runs", total_runs)
+    c2.metric("Best Val F1", f"{best_f1_global:.4f}" if best_f1_global > float('-inf') else "—")
+    c3.metric("Best run", best_run_label[:30] if best_run_label != "—" else "—")
+    c4.metric("Total GPU time", f"{total_gpu_h:.1f} h")
+    c5.metric("Feasibility reports", len(feasibility_csvs))
+
+    st.markdown("---")
+
+    # ── Recent runs table ─────────────────────────────────────────────────────
+    st.markdown("### All runs")
+    overview_rows = []
+    for r in runs[:30]:
+        try:
+            df_r = _load_df(
+                str(r.log_path),
+                str(r.epoch_csv_path) if r.epoch_csv_path else None,
+            )
+            if df_r.empty or "val_f1" not in df_r.columns:
+                continue
+            run_best_f1 = df_r["val_f1"].max()
+            best_ep = int(df_r.loc[df_r["val_f1"].idxmax(), "epoch"])
+            n_ep = len(df_r)
+            dur_s = df_r["epoch_time"].sum() if "epoch_time" in df_r.columns else float("nan")
+            dur_str = f"{int(dur_s//3600)}h {int((dur_s%3600)//60)}m" if not pd.isna(dur_s) else "—"
+            energy_wh = df_r["energy_eval_wh"].sum() if "energy_eval_wh" in df_r.columns and df_r["energy_eval_wh"].notna().any() else None
+            overview_rows.append({
+                "Run": r.label[:55],
+                "Env": r.env,
+                "Model": r.model or "—",
+                "Trace": r.trace_mode,
+                "Epochs": n_ep,
+                "Best Val F1": round(run_best_f1, 4),
+                "Best epoch": best_ep,
+                "Duration": dur_str,
+                "Energy eval (Wh)": f"{energy_wh:.0f}" if energy_wh else "—",
+            })
+        except Exception:
+            pass
+
+    if overview_rows:
+        ov_df = pd.DataFrame(overview_rows)
+        st.dataframe(
+            ov_df.style.background_gradient(subset=["Best Val F1"], cmap="RdYlGn", vmin=0.4, vmax=0.75),
+            use_container_width=True, hide_index=True,
+        )
+    else:
+        st.info("No runs with parseable metrics found.")
+
+    # ── Mini training curve of selected run ───────────────────────────────────
+    if selected_run is not None:
+        st.markdown("---")
+        st.markdown(f"### Selected run: {selected_run.label}")
+        try:
+            df_sel = _load_df(
+                str(selected_run.log_path),
+                str(selected_run.epoch_csv_path) if selected_run.epoch_csv_path else None,
+            )
+            if not df_sel.empty and "val_f1" in df_sel.columns:
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    fig_mini = go.Figure()
+                    fig_mini.add_trace(go.Scatter(
+                        x=df_sel["epoch"], y=df_sel["train_f1"],
+                        name="Train F1", line=dict(color=COLORS[0], width=2),
+                    ))
+                    fig_mini.add_trace(go.Scatter(
+                        x=df_sel["epoch"], y=df_sel["val_f1"],
+                        name="Val F1", line=dict(color=COLORS[1], width=2),
+                    ))
+                    fig_mini.update_layout(**_base_layout(220, "F1 curve"),
+                                          xaxis_title="Epoch", yaxis_title="F1")
+                    st.plotly_chart(fig_mini, use_container_width=True)
+                with col_b:
+                    fig_loss = go.Figure()
+                    fig_loss.add_trace(go.Scatter(
+                        x=df_sel["epoch"], y=df_sel["train_loss"],
+                        name="Train loss", line=dict(color=COLORS[0], width=2),
+                    ))
+                    fig_loss.add_trace(go.Scatter(
+                        x=df_sel["epoch"], y=df_sel["val_loss"],
+                        name="Val loss", line=dict(color=COLORS[3], width=2),
+                    ))
+                    fig_loss.update_layout(**_base_layout(220, "Loss curve"),
+                                           xaxis_title="Epoch", yaxis_title="Loss")
+                    st.plotly_chart(fig_loss, use_container_width=True)
+        except Exception:
+            st.info("Could not render mini chart for this run.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Tab 1 — Training Curves
@@ -410,6 +548,67 @@ with tab_curves:
                 fig_et.update_layout(**_base_layout(240, "Time per epoch (min)"),
                                      xaxis_title="Epoch", yaxis_title="Minutes")
                 st.plotly_chart(fig_et, use_container_width=True)
+
+            # ── Energy charts ─────────────────────────────────────────────
+            has_energy = (
+                "energy_eval_wh" in df.columns and df["energy_eval_wh"].notna().any()
+            )
+            if has_energy:
+                st.markdown("#### Energy consumption")
+                e1, e2 = st.columns(2)
+                with e1:
+                    rows_e = []
+                    for _, row in df.iterrows():
+                        if pd.notna(row.get("energy_eval_wh")):
+                            rows_e.append({"epoch": row["epoch"],
+                                           "Eval (Wh)": row["energy_eval_wh"]})
+                        if pd.notna(row.get("energy_train_j")):
+                            rows_e[-1]["Train (Wh)"] = row["energy_train_j"] / 3600
+                    if rows_e:
+                        df_e = pd.DataFrame(rows_e)
+                        fig_e = go.Figure()
+                        if "Train (Wh)" in df_e.columns:
+                            fig_e.add_trace(go.Bar(
+                                x=df_e["epoch"], y=df_e["Train (Wh)"],
+                                name="Train", marker_color=COLORS[0], opacity=0.85,
+                            ))
+                        fig_e.add_trace(go.Bar(
+                            x=df_e["epoch"], y=df_e["Eval (Wh)"],
+                            name="Eval", marker_color=COLORS[1], opacity=0.85,
+                        ))
+                        fig_e.update_layout(
+                            **_base_layout(260, "Energy per epoch (Wh)"),
+                            barmode="group", xaxis_title="Epoch", yaxis_title="Wh",
+                        )
+                        st.plotly_chart(fig_e, use_container_width=True)
+
+                with e2:
+                    power_cols = []
+                    if "power_eval_w" in df.columns and df["power_eval_w"].notna().any():
+                        power_cols.append(("Eval power (W)", "power_eval_w", COLORS[1]))
+                    if "power_train_w" in df.columns and df["power_train_w"].notna().any():
+                        power_cols.append(("Train power (W)", "power_train_w", COLORS[0]))
+                    if power_cols:
+                        fig_p = go.Figure()
+                        for name, col, color in power_cols:
+                            fig_p.add_trace(go.Scatter(
+                                x=df["epoch"], y=df[col],
+                                name=name, mode="lines+markers",
+                                line=dict(color=color, width=2),
+                            ))
+                        fig_p.update_layout(
+                            **_base_layout(260, "Average GPU power per epoch (W)"),
+                            xaxis_title="Epoch", yaxis_title="Watts",
+                        )
+                        st.plotly_chart(fig_p, use_container_width=True)
+
+                total_eval_wh = df["energy_eval_wh"].sum() if "energy_eval_wh" in df.columns else 0
+                total_train_wh = df["energy_train_j"].sum() / 3600 if "energy_train_j" in df.columns and df["energy_train_j"].notna().any() else 0
+                ec1, ec2, ec3 = st.columns(3)
+                ec1.metric("Total eval energy", f"{total_eval_wh:.1f} Wh")
+                if total_train_wh > 0:
+                    ec2.metric("Total train energy", f"{total_train_wh:.1f} Wh")
+                    ec3.metric("Total energy", f"{total_eval_wh + total_train_wh:.1f} Wh")
 
             csv_bytes = df.to_csv(index=False).encode()
             st.download_button(
@@ -542,6 +741,7 @@ with tab_perclass:
                 pivot = get_matrix_for_epoch(cm_df, selected_cm_ep)
                 class_order = list(pivot.index)
                 z_norm = pivot.reindex(index=class_order, columns=class_order).values
+                n_classes = len(class_order)
 
                 if cm_mode == "Absolute":
                     row_sums = z_norm.sum(axis=1, keepdims=True)
@@ -554,6 +754,39 @@ with tab_perclass:
                     text = [[f"{v:.2f}" if v >= 0.05 else "" for v in row] for row in z_norm]
                     zmin, zmax, cb_title = 0, 1, "P(pred j | true i)"
 
+                # Build colored group shapes for the diagonal blocks
+                # Map class names → group color using class index
+                def _group_color_for_name(name: str) -> str:
+                    for group_name, (idxs, color) in _CLASS_GROUPS.items():
+                        for idx in idxs:
+                            if str(idx) in name or any(
+                                kw.lower() in name.lower()
+                                for kw in group_name.split("/")
+                            ):
+                                return color
+                    # fallback: match by position in class_order
+                    pos = class_order.index(name) if name in class_order else -1
+                    return _CLASS_GROUP_COLOR.get(pos, "#94a3b8")
+
+                shapes = []
+                # Draw colored rectangles on the diagonal per group
+                for group_name, (idxs, color) in _CLASS_GROUPS.items():
+                    positions = [
+                        i for i, cls in enumerate(class_order)
+                        if i in idxs
+                    ]
+                    if not positions:
+                        continue
+                    lo, hi = min(positions), max(positions)
+                    shapes.append(dict(
+                        type="rect",
+                        x0=lo - 0.5, x1=hi + 0.5,
+                        y0=lo - 0.5, y1=hi + 0.5,
+                        line=dict(color=color, width=2.5),
+                        fillcolor="rgba(0,0,0,0)",
+                        layer="above",
+                    ))
+
                 fig_cm = go.Figure(go.Heatmap(
                     z=z_plot, x=class_order, y=class_order,
                     colorscale="Blues", zmin=zmin, zmax=zmax,
@@ -564,13 +797,32 @@ with tab_perclass:
                 fig_cm.update_layout(
                     title=dict(text=f"Confusion matrix ({cm_mode.lower()}) — Epoch {selected_cm_ep}",
                                font=dict(size=13)),
-                    xaxis=dict(title="Predicted", tickangle=45, tickfont=dict(size=9)),
-                    yaxis=dict(title="True", tickfont=dict(size=9), autorange="reversed"),
-                    height=640, margin=dict(l=160, r=20, t=50, b=160),
+                    xaxis=dict(title="Predicted", tickangle=45, tickfont=dict(size=9),
+                               tickmode="array", tickvals=list(range(n_classes)),
+                               ticktext=class_order),
+                    yaxis=dict(title="True", tickfont=dict(size=9), autorange="reversed",
+                               tickmode="array", tickvals=list(range(n_classes)),
+                               ticktext=class_order),
+                    height=660, margin=dict(l=180, r=20, t=50, b=180),
                     paper_bgcolor="white",
+                    shapes=shapes,
                 )
                 st.plotly_chart(fig_cm, use_container_width=True)
-                st.caption("Diagonal = recall per class. Off-diagonal = confusion between classes.")
+
+                # Group legend
+                legend_html = " &nbsp; ".join(
+                    f'<span style="display:inline-block;width:12px;height:12px;'
+                    f'background:{color};border-radius:2px;margin-right:4px;vertical-align:middle"></span>'
+                    f'<span style="font-size:0.8rem">{name}</span>'
+                    for name, (_, color) in _CLASS_GROUPS.items()
+                )
+                st.markdown(
+                    f"<div style='margin-top:4px'>{legend_html}</div>"
+                    "<div style='font-size:0.75rem;color:#64748b;margin-top:4px'>"
+                    "Colored borders group classes by ecosystem type. "
+                    "Diagonal = recall per class.</div>",
+                    unsafe_allow_html=True,
+                )
 
             elif run.confusion_matrix_paths:
                 epoch_labels = [p.stem.split("_epoch")[-1] for p in run.confusion_matrix_paths]
