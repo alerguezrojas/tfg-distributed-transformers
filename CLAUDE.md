@@ -656,24 +656,47 @@ Misma config que v3 (`configs/train_cluster_v3.yaml`). Objetivo: verificar pynvm
 - Val loss mínima en epoch 4 (0.1487), empieza a divergir desde epoch 5 — igual que v3
 - Log: `logs/verode/train_14052026_145711.log` | Plot: `plots/verode/training_14052026_145711.png`
 
+### Clúster v4 — V100 32 GB, batch_size=64, versión actual del proyecto (completado 2026-05-27/28)
+
+Mismo config que v3/v3b (`configs/train_cluster_v3.yaml`). Primera ejecución con la nueva estructura de carpetas `{env}/{mode}/{model}/`. Flags: `--trace simple --layers plot confusion batch-monitor --fn energy timing`.
+
+| Epoch | Train F1 | Val F1 | Val Loss | Threshold óptimo | F1@threshold |
+|-------|----------|--------|----------|------------------|--------------|
+| 1  | 0.4254 | 0.5259 | 0.2108 | 0.30 | 0.5758 |
+| 2  | 0.5707 | 0.6097 | 0.1884 | 0.30 | 0.6338 |
+| 4  | 0.6826 | 0.6656 | 0.1765 | 0.35 | 0.6804 |
+| 6  | 0.7231 | 0.6731 | 0.1785 | 0.35 | 0.6827 |
+| 7  | 0.7484 | **0.6816** ← mejor | 0.1758 | 0.40 | 0.6852 |
+| 10 | 0.8093 | 0.6737 | 0.1849 | 0.40 | 0.6778 |
+| 17 | 0.8833 | 0.6697 | 0.2037 ← early stop | 0.30 | 0.6741 |
+
+- **Mejor Val F1: 0.6816** (epoch 7) — nuevo récord, +0.008 sobre v3 (variación aleatoria, mismo config)
+- **Con threshold óptimo 0.40:** F1=0.6852
+- **Early stopping** en epoch 17 (sin mejora desde epoch 7 — patience=10)
+- Duración: **~19h** (27 May 21:02 → 28 May 16:00) — ~66 min/epoch (45 train + 21 eval)
+- **Clase 6 completamente fallida** ("Land principally occupied by agriculture"): F1=0.000 — clase rara o ambigua que el modelo nunca predice; tira el F1 macro hacia abajo de forma desproporcionada
+- Mejores clases: Marine waters (0.975), Arable land (0.852), Coniferous forest (0.848)
+- Peores clases: Coastal wetlands (0.402), Industrial units (0.555), Natural grassland (0.549)
+- Log completo: `logs/verode/single/vit_base_patch16_224/train_27052026_210223.log`
+
 ### Comparativa de todas las ejecuciones en clúster
 
-| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) | v3 (label smoothing + mixup) | v3b (stack completo + energía) |
-|---|---|---|---|---|
-| **Config** | `train_cluster.yaml` | `train_cluster.yaml` + flags | `train_cluster_v3.yaml` | `train_cluster_v3.yaml` |
-| **Trace mode** | `--trace deep` | `--trace simple` | `--trace simple` | `--trace simple` |
-| **LLRD** | No | Sí (decay=0.75) | Sí (decay=0.75) | Sí (decay=0.75) |
-| **Warmup** | No | Sí (5 epochs) | Sí (5 epochs) | Sí (5 epochs) |
-| **Early stopping** | No | Sí (patience=10) | Sí (patience=10) | Sí (patience=10) |
-| **Label smoothing** | No | No | Sí (0.1) | Sí (0.1) |
-| **Mixup** | No | No | Sí (α=0.2) | Sí (α=0.2) |
-| **Dropout** | 0.1 | 0.1 | 0.3 | 0.3 |
-| **Weight decay** | 0.05 | 0.05 | 0.1 | 0.1 |
-| **Energía medida** | No | No | No | **Sí (~35 Wh/eval, ~100 W)** |
-| **Epochs ejecutados** | 30 | 17 | 16 | 15 |
-| **Duración** | ~45.8h | ~19h | **~18h** | ~17.3h |
-| **Mejor Val F1** | 0.6588 (epoch 28) | 0.6707 (epoch 7) | **0.6738 (epoch 6)** | 0.6708 (epoch 5) |
-| **Gap train-val en mejor epoch** | ~0.34 | ~0.11 | **~0.08** | ~0.07 |
+| | v1 (sin mejoras) | v2 (LLRD + warmup + early stop) | v3 (label smoothing + mixup) | v3b (stack completo + energía) | v4 (versión actual) |
+|---|---|---|---|---|---|
+| **Config** | `train_cluster.yaml` | `train_cluster.yaml` + flags | `train_cluster_v3.yaml` | `train_cluster_v3.yaml` | `train_cluster_v3.yaml` |
+| **Trace mode** | `--trace deep` | `--trace simple` | `--trace simple` | `--trace simple` | `--trace simple` |
+| **LLRD** | No | Sí (decay=0.75) | Sí (decay=0.75) | Sí (decay=0.75) | Sí (decay=0.75) |
+| **Warmup** | No | Sí (5 epochs) | Sí (5 epochs) | Sí (5 epochs) | Sí (5 epochs) |
+| **Early stopping** | No | Sí (patience=10) | Sí (patience=10) | Sí (patience=10) | Sí (patience=10) |
+| **Label smoothing** | No | No | Sí (0.1) | Sí (0.1) | Sí (0.1) |
+| **Mixup** | No | No | Sí (α=0.2) | Sí (α=0.2) | Sí (α=0.2) |
+| **Dropout** | 0.1 | 0.1 | 0.3 | 0.3 | 0.3 |
+| **Weight decay** | 0.05 | 0.05 | 0.1 | 0.1 | 0.1 |
+| **Energía medida** | No | No | No | Sí (~35 Wh/eval, ~100 W) | Sí (~35 Wh/eval, ~103 W) |
+| **Epochs ejecutados** | 30 | 17 | 16 | 15 | 17 |
+| **Duración** | ~45.8h | ~19h | **~18h** | ~17.3h | ~19h |
+| **Mejor Val F1** | 0.6588 (epoch 28) | 0.6707 (epoch 7) | 0.6738 (epoch 6) | 0.6708 (epoch 5) | **0.6816 (epoch 7)** |
+| **Gap train-val en mejor epoch** | ~0.34 | ~0.11 | ~0.08 | ~0.07 | **~0.13** |
 
 **Conclusiones v1 → v2:**
 - LLRD + warmup mejoraron Val F1 en +0.012 y aceleraron la convergencia (mejor epoch: 28 → 7)
@@ -686,8 +709,13 @@ Misma config que v3 (`configs/train_cluster_v3.yaml`). Objetivo: verificar pynvm
 - La reducción del gap train-val (0.11 → 0.08) confirma que la regularización adicional funciona
 - La convergencia al mejor epoch fue más rápida (epoch 7 → epoch 6)
 - El techo del dataset (~0.67-0.68 Val F1 a threshold=0.5) parece real — las clases raras limitan F1 macro
-- **Para inferencia usar threshold=0.35:** consistentemente mejora F1 en ~0.005-0.006 sobre threshold=0.5
-- El siguiente paso para mejorar resultados es DDP (más datos efectivos por epoch) o cambio de dataset split
+- **Para inferencia usar threshold=0.35-0.40:** consistentemente mejora F1 en ~0.004-0.006 sobre threshold=0.5
+- El siguiente paso para mejorar resultados es DDP (más datos efectivos por epoch) o tratar las clases raras
+
+**Conclusiones v3/v3b → v4:**
+- Mismo config, resultado ligeramente mejor (+0.008) por variación aleatoria — confirma que el techo está en ~0.68
+- La clase 6 ("Land principally occupied by agriculture") F1=0.0 es un hallazgo importante: una sola clase rara que el modelo no predice nunca puede tirar el F1 macro varios puntos
+- El gap train-val (0.13 en v4 vs 0.07 en v3b) es mayor probablemente por inicialización aleatoria diferente, no por regresión
 
 ---
 
@@ -823,6 +851,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Fix ZeroDivisionError scheduler (27/05/26):** `T_max = max(1, epochs - warmup_epochs)` en `builder.py` — evita división por cero cuando `epochs ≤ warmup_epochs`
 - [x] **Feasibility multi-modelo local (27/05/26):** vit_tiny, vit_small, vit_base, resnet50 con batch-sizes 16 y 32; trace-modes off y simple → 4 pares log/CSV en `logs/local/feasibility/`
 - [x] **Entrenamiento local vit_tiny 5 epochs (27/05/26):** Val F1=0.590 (epoch 5, mejorando en todos los epochs), ~11 min/epoch, stack completo (plot, hooks, confusion, batch-monitor, energy, timing) → `logs/local/single/vit_tiny_patch16_224/train_27052026_221827.log`
+- [x] **Entrenamiento clúster v4 (27-28/05/26):** vit_base, batch=64, config v3, Val F1=0.6816 (epoch 7) — nuevo récord; early stop epoch 17; clase 6 F1=0.000 detectada como caso problemático → `logs/verode/single/vit_base_patch16_224/train_27052026_210223.log`
 
 ### Pendiente
 - [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
