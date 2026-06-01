@@ -1,0 +1,75 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT
+  27/05/2026 21:00:05
+  Factor NFS aplicado: ×1.30  (I/O en red más lento)
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────
+  MODELO
+────────────────────────────────────────────────────────────────────────
+  Nombre:               vit_small_patch16_224
+  Parámetros totales:   21,672,979 (21.7M)
+  Parámetros train.:    21,672,979 (21.7M)
+  FLOPs/imagen:         79.2 MFLOPs
+  Memoria pesos:        87 MB
+  Gradientes:           87 MB
+  Estado AdamW:         173 MB
+  Total estático:       0.34 GB  (sin activaciones)
+
+────────────────────────────────────────────────────────────────────────
+  HARDWARE
+────────────────────────────────────────────────────────────────────────
+  GPU:                  Tesla V100-PCIE-32GB
+  VRAM total:           34.08 GB
+  VRAM libre:           29.75 GB
+
+────────────────────────────────────────────────────────────────────────
+  MEMORIA POR BATCH SIZE
+────────────────────────────────────────────────────────────────────────
+  Estática (pesos+grad+AdamW): 0.34 GB
+  Activaciones por imagen:     81.1 MB
+
+  Batch    Estática   Activac.   Total est.    Estado
+  ─────  ──────────  ─────────  ───────────  ────────
+     16      0.34 GB     1.27 GB       1.61 GB      ✓ OK
+     32      0.34 GB     2.53 GB       2.87 GB      ✓ OK
+     64      0.34 GB     5.07 GB       5.41 GB      ✓ OK
+    128      0.34 GB    10.14 GB      10.48 GB      ✓ OK
+
+────────────────────────────────────────────────────────────────────────
+  BENCHMARK  (8 batches sintéticos — sin I/O real)
+────────────────────────────────────────────────────────────────────────
+  Batch  Modo      s/batch(train)  imgs/s(train)  s/batch(eval)     VRAM
+  ─────  ────────  ──────────────  ─────────────  ─────────────  ───────
+     16  off              0.059s        271.4        0.018s   1.26 GB
+     16  simple           0.059s        271.5        0.018s   1.26 GB  (+0% vs off)
+     32  off              0.108s        294.9        0.035s   2.24 GB
+     32  simple           0.109s        294.2        0.035s   2.24 GB  (+0% vs off)
+     64  off              0.203s        315.9        0.067s   4.19 GB
+     64  simple           0.203s        315.8        0.067s   4.19 GB  (+0% vs off)
+    128  off              0.392s        326.8        0.132s   8.09 GB
+    128  simple           0.392s        326.9        0.132s   8.09 GB  (+0% vs off)
+
+────────────────────────────────────────────────────────────────────────
+  ESTIMACIONES  (train=237,871 | val=122,342 | NFS ×1.30)
+────────────────────────────────────────────────────────────────────────
+
+  30 epochs:
+  Batch  Modo      Train/epoch  Eval/epoch  Total/epoch       TOTAL
+  ─────  ────────  ───────────  ──────────  ───────────  ──────────
+     16  off            0h 18m      0h 02m       0h 21m     10h 59m
+     16  simple         0h 18m      0h 02m       0h 21m     10h 59m
+     32  off            0h 17m      0h 02m       0h 20m     10h 10m
+     32  simple         0h 17m      0h 02m       0h 20m     10h 12m
+     64  off            0h 16m      0h 02m       0h 19m      9h 32m
+     64  simple         0h 16m      0h 02m       0h 19m      9h 32m
+    128  off            0h 15m      0h 02m       0h 18m      9h 14m
+    128  simple         0h 15m      0h 02m       0h 18m      9h 14m
+
+────────────────────────────────────────────────────────────────────────
+  RECOMENDACIONES
+────────────────────────────────────────────────────────────────────────
+  ✓ Batch size óptimo:  128 (326.8 imgs/s en train)
+  → --trace off      para 30 epochs:  ~9h 14m  (train 0h 15m/epoch + eval 0h 02m/epoch)
+  → --trace simple   para 30 epochs:  ~9h 14m  (train 0h 15m/epoch + eval 0h 02m/epoch)
+

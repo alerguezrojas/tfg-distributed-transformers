@@ -1,0 +1,13 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,vit_base_patch16_224,85.81,200.8,Tesla V100-PCIE-32GB,34.08,25.71
+#model_mem,weight_mb,gradient_mb,optimizer_mb,activation_mb_per_image,total_static_mb
+#model_mem,343.3,343.3,686.5,162.2,1373.0
+batch_size,trace_mode,s_per_batch_train,imgs_per_s_train,s_per_batch_eval,imgs_per_s_eval,peak_vram_gb,oom,est_train_min_per_epoch,est_eval_min_per_epoch,est_total_min_per_epoch,est_total_h_30ep
+16,off,0.1709,93.6,0.052,307.9,3.01,no,42.4,6.6,49.0,24.49
+16,simple,0.1719,93.1,0.0534,299.6,3.02,no,42.6,6.8,49.4,24.7
+32,off,0.3371,94.9,0.1061,301.6,4.96,no,41.8,6.8,48.5,24.27
+32,simple,0.3369,95.0,0.1059,302.3,4.96,no,41.7,6.7,48.5,24.24
+64,off,0.6403,99.9,0.2043,313.3,8.83,no,39.7,6.5,46.2,23.09
+64,simple,0.6409,99.9,0.2047,312.6,8.83,no,39.7,6.5,46.2,23.11
+128,off,1.2812,99.9,0.412,310.7,16.55,no,39.7,6.6,46.2,23.12
+128,simple,1.2833,99.7,0.4128,310.1,16.55,no,39.7,6.6,46.3,23.16
