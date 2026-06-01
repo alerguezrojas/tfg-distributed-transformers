@@ -17,6 +17,7 @@ from PIL import Image
 
 from src.web.batch_parser import parse_batch_csv
 from src.web.confusion_matrix_parser import get_matrix_for_epoch, parse_confusion_matrix_csv
+from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv
 from src.web.log_parser import parse_log
 from src.web.perclass_parser import parse_perclass_csv
@@ -981,7 +982,9 @@ with tab_compare:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_feasibility:
-    subtab_report, subtab_run_feas = st.tabs(["Report", "Run check"])
+    subtab_report, subtab_compare_feas, subtab_run_feas = st.tabs(
+        ["Report", "Compare vs training", "Run check"]
+    )
 
     with subtab_report:
         feasibility_csvs = _get_feasibility_csvs()
@@ -1125,6 +1128,135 @@ with tab_feasibility:
                         ).round(2)
 
                     st.dataframe(est_df, use_container_width=True)
+
+    with subtab_compare_feas:
+        st.markdown("### Feasibility estimates vs actual training results")
+        st.caption(
+            "Select a feasibility report and a training run with the same model "
+            "to compare estimated vs measured values."
+        )
+
+        feasibility_csvs_cmp = _get_feasibility_csvs()
+        all_runs_cmp = _get_runs()
+
+        if not feasibility_csvs_cmp:
+            st.info("No feasibility CSVs found.")
+        elif not all_runs_cmp:
+            st.info("No training runs found.")
+        else:
+            cmp_col1, cmp_col2 = st.columns(2)
+            with cmp_col1:
+                csv_labels_cmp = {
+                    str(p): f"{p.parent.name}/{p.name}" for p in feasibility_csvs_cmp
+                }
+                sel_feas_cmp = st.selectbox(
+                    "Feasibility report",
+                    list(csv_labels_cmp.keys()),
+                    format_func=lambda p: csv_labels_cmp[p],
+                    key="cmp_feas_sel",
+                )
+                meta_cmp, feas_df_cmp = parse_feasibility_csv(Path(sel_feas_cmp))
+                model_feas = meta_cmp.get("model_name", "")
+
+                batch_sizes_available = []
+                if not feas_df_cmp.empty and "batch_size" in feas_df_cmp.columns:
+                    batch_sizes_available = sorted(
+                        feas_df_cmp["batch_size"].dropna().astype(int).unique().tolist()
+                    )
+                sel_bs = st.selectbox(
+                    "Batch size", batch_sizes_available, key="cmp_bs_sel",
+                ) if batch_sizes_available else None
+
+                trace_modes_available = []
+                if not feas_df_cmp.empty and "trace_mode" in feas_df_cmp.columns:
+                    trace_modes_available = sorted(feas_df_cmp["trace_mode"].unique().tolist())
+                sel_trace = st.selectbox(
+                    "Trace mode", trace_modes_available or ["simple"], key="cmp_trace_sel",
+                )
+
+                nfs_factor_cmp = float(meta_cmp.get("nfs_factor", 1.0) or 1.0)
+                st.caption(f"Model: **{model_feas or '—'}** | NFS factor: {nfs_factor_cmp:.2f}")
+
+            with cmp_col2:
+                run_labels_cmp = {r.label: r for r in all_runs_cmp}
+                # Pre-filter to runs with same model if possible
+                matching = [
+                    lbl for lbl, r in run_labels_cmp.items()
+                    if model_feas and r.model and model_feas in r.model
+                ]
+                default_run = matching[0] if matching else list(run_labels_cmp.keys())[0]
+                sel_run_cmp = st.selectbox(
+                    "Training run",
+                    list(run_labels_cmp.keys()),
+                    index=list(run_labels_cmp.keys()).index(default_run),
+                    key="cmp_run_sel",
+                )
+                run_cmp = run_labels_cmp[sel_run_cmp]
+                actual_df_cmp = _load_df(
+                    str(run_cmp.log_path),
+                    str(run_cmp.epoch_csv_path) if run_cmp.epoch_csv_path else None,
+                )
+
+            if sel_bs is not None and not actual_df_cmp.empty:
+                comparison = build_comparison(
+                    meta=meta_cmp,
+                    feas_df=feas_df_cmp,
+                    actual_df=actual_df_cmp,
+                    batch_size=int(sel_bs),
+                    trace_mode=sel_trace,
+                    nfs_factor=nfs_factor_cmp,
+                )
+                if comparison:
+                    cmp_table = comparison.to_dataframe()
+
+                    def _color_error(val: str) -> str:
+                        try:
+                            v = float(val.replace("%", "").replace("+", ""))
+                            if abs(v) <= 10:
+                                return "background-color: #dcfce7"
+                            if abs(v) <= 30:
+                                return "background-color: #fef9c3"
+                            return "background-color: #fee2e2"
+                        except (ValueError, AttributeError):
+                            return ""
+
+                    err_col = next(
+                        (c for c in cmp_table.columns if c == "Error %"), None
+                    )
+                    styled_cmp = cmp_table.style
+                    if err_col:
+                        styled_cmp = styled_cmp.map(_color_error, subset=[err_col])
+                    st.dataframe(styled_cmp, use_container_width=True, hide_index=True)
+
+                    st.caption(
+                        "Green = error ≤ 10% | Yellow = 10–30% | Red = > 30%. "
+                        "Feasibility uses synthetic batches (no real I/O) — "
+                        "NFS and data loading overhead explain most of the gap."
+                    )
+
+                    with st.expander("Interpretation guide"):
+                        st.markdown("""
+**Train time / epoch**: Estimated as `n_batches × s/batch × nfs_factor`.
+The synthetic benchmark does not read real images from disk, so NFS I/O is the
+main source of underestimation. Multiply by `nfs_factor` (1.3 for Verode) to compensate.
+
+**Eval time / epoch**: Estimated as `n_val_batches × s/batch_eval`.
+No NFS factor applied (eval is smaller and less I/O-bound in practice).
+
+**Train throughput (imgs/s)**: Measured on synthetic batches in GPU memory.
+Real throughput is lower due to data loading latency.
+
+**Peak VRAM**: Estimated as `static_mem + batch_size × activation_mb_per_img`.
+The formula gives a conservative upper bound; PyTorch's allocator is more efficient.
+
+**FLOPs / train epoch**: `FLOPs/image × N_train_images`.
+Theoretical compute — does not account for backward pass overhead (~2× forward).
+                        """)
+                else:
+                    st.warning(
+                        f"No matching feasibility row for batch_size={sel_bs}, "
+                        f"trace_mode={sel_trace}."
+                    )
 
     with subtab_run_feas:
         st.subheader("Run feasibility check")
