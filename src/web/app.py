@@ -203,10 +203,11 @@ def _overlay_fig(
     return fig
 
 
-def _base_layout(height: int = 320, title: str = "") -> dict:
+def _base_layout(height: int = 320, title: str = "", margin: dict | None = None) -> dict:
     return dict(
         title=dict(text=title, font=dict(size=13)),
-        height=height, margin=dict(l=50, r=16, t=36, b=40),
+        height=height,
+        margin=margin if margin is not None else dict(l=50, r=16, t=36, b=40),
         paper_bgcolor="white", plot_bgcolor="#f8fafc",
         xaxis=dict(gridcolor="#e2e8f0"), yaxis=dict(gridcolor="#e2e8f0"),
     )
@@ -644,9 +645,8 @@ with tab_dataset:
         textposition="outside",
     ))
     fig_dist.update_layout(
-        **_base_layout(560, "Samples per class (train)"),
+        **_base_layout(560, "Samples per class (train)", margin=dict(l=230, r=80, t=40, b=40)),
         xaxis_title="Sample count", yaxis_title="",
-        margin=dict(l=230, r=80, t=40, b=40),
     )
     st.plotly_chart(fig_dist, use_container_width=True)
     st.caption(
@@ -977,8 +977,8 @@ with tab_ddp:
                         **_base_layout(300, "Epoch time vs number of GPUs"),
                         xaxis_title="Number of GPUs",
                         yaxis_title="Minutes per epoch",
-                        xaxis=dict(tickvals=world_sizes),
                     )
+                    fig_scale.update_xaxes(tickvals=world_sizes)
                     st.plotly_chart(fig_scale, use_container_width=True)
                     st.caption(
                         "The gap between theoretical and actual reflects communication "
