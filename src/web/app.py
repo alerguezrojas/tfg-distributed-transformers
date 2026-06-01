@@ -639,8 +639,8 @@ with tab_dataset:
     fig_dist = go.Figure(go.Bar(
         y=dist_df["class"], x=dist_df["train_count"],
         orientation="h",
-        marker_color=dist_df["color"],
-        text=dist_df["train_count"].apply(lambda v: f"{v:,}"),
+        marker_color=dist_df["color"].tolist(),
+        text=dist_df["train_count"].apply(lambda v: f"{v:,}").tolist(),
         textposition="outside",
     ))
     fig_dist.update_layout(
