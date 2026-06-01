@@ -106,6 +106,29 @@ def _get_feasibility_csvs() -> list[Path]:
     return discover_feasibility_csvs(ROOT)
 
 
+def _safe_max(series: "pd.Series") -> float:
+    """Return max of series, NaN if all values are NA."""
+    valid = series.dropna()
+    return float(valid.max()) if not valid.empty else float("nan")
+
+
+def _safe_idxmax(series: "pd.Series"):
+    """Return idxmax of series, None if all values are NA."""
+    valid = series.dropna()
+    return valid.idxmax() if not valid.empty else None
+
+
+def _safe_val_at_best(df: "pd.DataFrame", metric_col: str, target_col: str):
+    """Return value of target_col at the row where metric_col is maximum."""
+    if metric_col not in df.columns or target_col not in df.columns:
+        return None
+    idx = _safe_idxmax(df[metric_col])
+    if idx is None:
+        return None
+    v = df.loc[idx, target_col]
+    return None if pd.isna(v) else v
+
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -383,12 +406,13 @@ with tab_overview:
                 str(r.epoch_csv_path) if r.epoch_csv_path else None,
             )
             if not df_r.empty and "val_f1" in df_r.columns:
-                run_best = df_r["val_f1"].max()
-                if run_best > best_f1_global:
+                run_best = _safe_max(df_r["val_f1"])
+                if not pd.isna(run_best) and run_best > best_f1_global:
                     best_f1_global = run_best
                     best_run_label = r.label
             if not df_r.empty and "epoch_time" in df_r.columns:
-                total_gpu_h += df_r["epoch_time"].sum() / 3600
+                s = df_r["epoch_time"].dropna().sum()
+                total_gpu_h += float(s) / 3600
         except Exception:
             pass
 
@@ -414,10 +438,13 @@ with tab_overview:
             )
             if df_r.empty or "val_f1" not in df_r.columns:
                 continue
-            run_best_f1 = df_r["val_f1"].max()
-            best_ep = int(df_r.loc[df_r["val_f1"].idxmax(), "epoch"])
+            run_best_f1 = _safe_max(df_r["val_f1"])
+            if pd.isna(run_best_f1):
+                continue
+            best_ep_v = _safe_val_at_best(df_r, "val_f1", "epoch")
+            best_ep = int(best_ep_v) if best_ep_v is not None else "—"
             n_ep = len(df_r)
-            dur_s = df_r["epoch_time"].sum() if "epoch_time" in df_r.columns else float("nan")
+            dur_s = df_r["epoch_time"].dropna().sum() if "epoch_time" in df_r.columns else float("nan")
             dur_str = f"{int(dur_s//3600)}h {int((dur_s%3600)//60)}m" if not pd.isna(dur_s) else "—"
             energy_wh = df_r["energy_eval_wh"].sum() if "energy_eval_wh" in df_r.columns and df_r["energy_eval_wh"].notna().any() else None
             overview_rows.append({
@@ -840,8 +867,8 @@ with tab_ddp:
                                    str(r.epoch_csv_path) if r.epoch_csv_path else None)
                     if ddf.empty:
                         continue
-                    best_f1 = ddf["val_f1"].max() if "val_f1" in ddf.columns else float("nan")
-                    avg_epoch_s = ddf["epoch_time"].mean() if "epoch_time" in ddf.columns and ddf["epoch_time"].notna().any() else None
+                    best_f1 = _safe_max(ddf["val_f1"]) if "val_f1" in ddf.columns else float("nan")
+                    avg_epoch_s = ddf["epoch_time"].dropna().mean() if "epoch_time" in ddf.columns and ddf["epoch_time"].notna().any() else None
                     ddp_rows.append({
                         "Run": r.label[:50], "Model": r.model or "—",
                         "Env": r.env, "Best Val F1": round(best_f1, 4),
@@ -975,10 +1002,11 @@ with tab_curves:
             st.error("Could not parse any epochs from the selected run.")
         else:
             n_epochs = len(df)
-            best_f1 = df["val_f1"].max() if "val_f1" in df.columns else float("nan")
-            best_epoch = int(df.loc[df["val_f1"].idxmax(), "epoch"]) if not pd.isna(best_f1) else "—"
+            best_f1 = _safe_max(df["val_f1"]) if "val_f1" in df.columns else float("nan")
+            _best_ep_v = _safe_val_at_best(df, "val_f1", "epoch")
+            best_epoch = int(_best_ep_v) if _best_ep_v is not None else "—"
             best_thresh_f1 = (
-                df["f1_at_threshold"].max()
+                _safe_max(df["f1_at_threshold"])
                 if "f1_at_threshold" in df.columns and df["f1_at_threshold"].notna().any()
                 else None
             )
@@ -1425,15 +1453,12 @@ with tab_compare:
             summary_rows = []
             for lbl, r in compare_runs:
                 cdf = next(d for l, d in compare_dfs if l == lbl[:30])
-                best_f1_c = cdf["val_f1"].max() if ("val_f1" in cdf.columns and not cdf.empty) else float("nan")
-                if not pd.isna(best_f1_c):
-                    idx_c = cdf["val_f1"].idxmax()
-                    best_ep_c = int(cdf.loc[idx_c, "epoch"]) if not pd.isna(idx_c) else "—"
-                else:
-                    best_ep_c = "—"
+                best_f1_c = _safe_max(cdf["val_f1"]) if ("val_f1" in cdf.columns and not cdf.empty) else float("nan")
+                _best_ep_c_v = _safe_val_at_best(cdf, "val_f1", "epoch")
+                best_ep_c = int(_best_ep_c_v) if _best_ep_c_v is not None else "—"
                 _last = cdf["val_f1"].dropna() if ("val_f1" in cdf.columns and not cdf.empty) else pd.Series(dtype=float)
                 final_f1_c = _last.iloc[-1] if not _last.empty else float("nan")
-                total_s_c = cdf["epoch_time"].sum() if "epoch_time" in cdf.columns else float("nan")
+                total_s_c = cdf["epoch_time"].dropna().sum() if "epoch_time" in cdf.columns else float("nan")
                 dur_c = (
                     f"{int(total_s_c//3600)}h {int((total_s_c%3600)//60)}m"
                     if not pd.isna(total_s_c) else "—"
@@ -1459,12 +1484,8 @@ with tab_compare:
             for i, (lbl, cdf) in enumerate(compare_dfs):
                 vals = []
                 for m_col in radar_metrics:
-                    if m_col in cdf.columns and cdf[m_col].notna().any():
-                        # Use value at best val_f1 epoch
-                        best_idx = cdf["val_f1"].idxmax() if "val_f1" in cdf.columns else cdf.index[-1]
-                        vals.append(float(cdf.loc[best_idx, m_col]))
-                    else:
-                        vals.append(0.0)
+                    v = _safe_val_at_best(cdf, "val_f1", m_col)
+                    vals.append(float(v) if v is not None else 0.0)
                 vals_closed = vals + [vals[0]]
                 cats_closed = radar_metrics + [radar_metrics[0]]
                 radar_fig.add_trace(go.Scatterpolar(
@@ -1981,11 +2002,9 @@ with tab_info:
             str(run.epoch_csv_path) if run.epoch_csv_path else None,
         )
         n_ep_i = len(df_info)
-        best_f1_i = df_info["val_f1"].max() if "val_f1" in df_info.columns else float("nan")
-        best_ep_i = (
-            int(df_info.loc[df_info["val_f1"].idxmax(), "epoch"])
-            if not pd.isna(best_f1_i) else "—"
-        )
+        best_f1_i = _safe_max(df_info["val_f1"]) if "val_f1" in df_info.columns else float("nan")
+        _best_ep_i_v = _safe_val_at_best(df_info, "val_f1", "epoch")
+        best_ep_i = int(_best_ep_i_v) if _best_ep_i_v is not None else "—"
 
         col_m, col_f = st.columns(2)
 
