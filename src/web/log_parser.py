@@ -13,6 +13,11 @@ _SIMPLE_METRIC = re.compile(r"\s+(loss|f1|accuracy)\s+train=([0-9.]+)\s+val=([0-
 _SIMPLE_PRECISION = re.compile(r"\s+precision\s+val=([0-9.]+)")
 _SIMPLE_RECALL = re.compile(r"\s+recall\s+val=([0-9.]+)")
 _SIMPLE_ETA = re.compile(r"ETA:.*?\(([0-9.]+)s/epoch")
+_SIMPLE_THRESHOLD = re.compile(r"threshold óptimo=([0-9.]+),\s*F1=([0-9.]+)")
+_ENERGY_TRAIN = re.compile(r"\[energy\] Trainer\.train_epoch:\s+([0-9.]+)\s+J\s+\([0-9.]+ Wh\)\s+potencia media\s+([0-9.]+) W")
+_ENERGY_EVAL = re.compile(r"\[energy\] Trainer\.eval_epoch:\s+([0-9.]+)\s+J\s+\(([0-9.]+) Wh\)\s+potencia media\s+([0-9.]+) W")
+_TIMED_TRAIN = re.compile(r"\[timed\] Trainer\.train_epoch:\s+([0-9.]+)s")
+_TIMED_EVAL = re.compile(r"\[timed\] Trainer\.eval_epoch:\s+([0-9.]+)s")
 
 # ── Deep-trace patterns ───────────────────────────────────────────────────────
 _DEEP_RESUMEN = re.compile(
@@ -31,8 +36,14 @@ _LEGACY_LINE = re.compile(
     r"time=([0-9.]+)s"
 )
 
-_COLS = ["epoch", "train_loss", "val_loss", "train_f1", "val_f1",
-         "train_acc", "val_acc", "val_prec", "val_rec", "epoch_time"]
+_COLS = [
+    "epoch", "train_loss", "val_loss", "train_f1", "val_f1",
+    "train_acc", "val_acc", "val_prec", "val_rec", "epoch_time",
+    "optimal_threshold", "f1_at_threshold",
+    "energy_train_j", "energy_eval_j", "energy_eval_wh",
+    "power_train_w", "power_eval_w",
+    "time_train_s", "time_eval_s",
+]
 
 
 def parse_log(log_path: Path) -> pd.DataFrame:
@@ -84,6 +95,35 @@ def _parse_simple(text: str) -> pd.DataFrame:
         m = _SIMPLE_ETA.search(line)
         if m:
             cur["epoch_time"] = float(m.group(1))
+            continue
+
+        m = _SIMPLE_THRESHOLD.search(line)
+        if m:
+            cur["optimal_threshold"] = float(m.group(1))
+            cur["f1_at_threshold"] = float(m.group(2))
+            continue
+
+        m = _ENERGY_TRAIN.search(line)
+        if m:
+            cur["energy_train_j"] = float(m.group(1))
+            cur["power_train_w"] = float(m.group(2))
+            continue
+
+        m = _ENERGY_EVAL.search(line)
+        if m:
+            cur["energy_eval_j"] = float(m.group(1))
+            cur["energy_eval_wh"] = float(m.group(2))
+            cur["power_eval_w"] = float(m.group(3))
+            continue
+
+        m = _TIMED_TRAIN.search(line)
+        if m:
+            cur["time_train_s"] = float(m.group(1))
+            continue
+
+        m = _TIMED_EVAL.search(line)
+        if m:
+            cur["time_eval_s"] = float(m.group(1))
 
     if cur:
         rows.append(cur)
