@@ -1,0 +1,70 @@
+# Configuración para DDP heterogéneo — GPU (verode21 V100) + CPU (verode16/18)
+#
+# Estrategia: repartir la carga proporcionalmente a la capacidad de cómputo.
+#   - rank 0 (verode21, V100): compute_weight=16, batch_size=64 → procesa ~94% de los datos
+#   - rank 1 (verode16/18, CPU): compute_weight=1, batch_size=4 → procesa ~6% de los datos
+#
+# Los pesos (compute_weight) deben reflejar la velocidad real de cada nodo.
+# Puedes estimarlos del feasibility checker:
+#   - V100 batch=64: ~100 imgs/s
+#   - CPU (verode16, M2090 equiv): ~6 imgs/s estimado → ratio ≈ 16:1
+#
+# Lanzar (desde login node en tmux, ambas terminales a la vez):
+#   # Terminal 1 — verode21 (GPU, rank 0):
+#   ssh verode21
+#   cd ~/tfg-distributed-transformers
+#   .venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=0 \
+#     --master_addr=verode21 --master_port=29501 \
+#     scripts/train_heterogeneous_ddp.py \
+#     --config configs/train_heterogeneous_ddp.yaml --trace simple
+#
+#   # Terminal 2 — verode16 (CPU, rank 1):
+#   ssh verode16
+#   cd ~/tfg-distributed-transformers
+#   .venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=1 \
+#     --master_addr=verode21 --master_port=29501 \
+#     scripts/train_heterogeneous_ddp.py \
+#     --config configs/train_heterogeneous_ddp.yaml --trace simple
+#
+# IMPORTANTE: el backend debe ser "gloo" (soporta CPU y GPU).
+# NCCL requiere CUDA en todos los procesos — no funciona con CPU ranks.
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet"
+  num_workers: 0        # 0 en los nodos CPU para evitar problemas de multiprocessing
+
+model:
+  name: "vit_base_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.3
+
+training:
+  epochs: 30
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.1
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  label_smoothing: 0.1
+  mixup_alpha: 0.2
+  early_stopping_patience: 10
+  log_batch_every: 100
+
+distributed:
+  backend: "gloo"           # gloo soporta CPU y GPU — necesario para nodos heterogéneos
+  ranks:
+    - device: "cuda"        # rank 0: verode21 (V100)
+      batch_size: 64
+      compute_weight: 16    # recibe 16/(16+1) ≈ 94% de los datos por step
+    - device: "cpu"         # rank 1: verode16 o verode18 (CPU)
+      batch_size: 4
+      compute_weight: 1     # recibe 1/(16+1) ≈ 6% de los datos por step
+
+checkpoint:
+  dir: "checkpoints/verode"
+
+output:
+  env: "verode"
