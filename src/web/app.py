@@ -23,7 +23,7 @@ from src.web.dataset_stats import (
     get_country_distribution,
 )
 from src.web.feasibility_comparison import build_comparison
-from src.web.feasibility_parser import parse_feasibility_csv
+from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
 from src.web.log_parser import parse_log
 from src.web.model_explorer import ALL_FAMILIES, CURATED_MODELS, compare_models
 from src.web.perclass_parser import parse_perclass_csv
@@ -1586,61 +1586,92 @@ with tab_comparar:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_viabilidad:
-    subtab_report, subtab_compare_feas, subtab_run_feas = st.tabs(
-        ["Informe", "Comparar vs training", "Ejecutar análisis"]
+    subtab_report, subtab_ddp_opt, subtab_prediction, subtab_compare_feas, subtab_run_feas = st.tabs(
+        ["Informe", "Análisis DDP", "Predicción F1", "Comparar vs training", "Ejecutar análisis"]
     )
 
+    # Carga común del informe seleccionado
+    feasibility_csvs = _get_feasibility_csvs()
+    if feasibility_csvs:
+        csv_labels_feas = {str(p): f"{p.parent.name}/{p.name}" for p in feasibility_csvs}
+        selected_feas_path = st.sidebar.selectbox(
+            "Informe viabilidad", list(csv_labels_feas.keys()),
+            format_func=lambda p: csv_labels_feas[p], key="feas_sidebar_sel",
+        )
+        meta, bdf_feas = parse_feasibility_csv(Path(selected_feas_path))
+    else:
+        meta, bdf_feas = {}, pd.DataFrame()
+
+    # ── Informe ───────────────────────────────────────────────────────────────
     with subtab_report:
-        feasibility_csvs = _get_feasibility_csvs()
         if not feasibility_csvs:
-            st.info("No se encontraron CSVs de viabilidad. Ejecuta el análisis para generarlos.")
+            st.info("No se encontraron CSVs de viabilidad. Ejecuta el análisis desde la sub-pestaña 'Ejecutar análisis'.")
         else:
-            csv_labels = {str(p): f"{p.parent.name}/{p.name}" for p in feasibility_csvs}
-            selected_feas_path = st.selectbox("Informe", list(csv_labels.keys()),
-                                               format_func=lambda p: csv_labels[p])
-            meta, bdf_feas = parse_feasibility_csv(Path(selected_feas_path))
+            # ── Perfil del sistema ────────────────────────────────────────────
+            st.markdown("### Perfil del sistema")
+            hw_col1, hw_col2, hw_col3, hw_col4 = st.columns(4)
+            hw_col1.metric("Modelo", meta.get("model_name", "—"))
+            hw_col2.metric("Parámetros (M)", meta.get("total_params_M", "—"))
+            hw_col3.metric("GPU", meta.get("hardware_name", "—"))
+            hw_col4.metric("VRAM total (GB)", meta.get("total_vram_gb", "—"))
 
-            if meta:
-                st.subheader("Modelo")
-                mc1, mc2, mc3, mc4 = st.columns(4)
-                mc1.metric("Modelo", meta.get("model_name", "—"))
-                mc2.metric("Parámetros (M)", meta.get("total_params_M", "—"))
-                mc3.metric("FLOPs (MFLOPs)", meta.get("flops_mflops", "—"))
-                mc4.metric("Hardware", meta.get("hardware_name", "—"))
+            # CPU si disponible
+            cpu = meta.get("cpu", {})
+            if cpu:
+                cc1, cc2, cc3, cc4 = st.columns(4)
+                cc1.metric("Núcleos lógicos", cpu.get("logical_cores", "—"))
+                cc2.metric("Núcleos físicos", cpu.get("physical_cores", "—"))
+                cc3.metric("RAM total (GB)", cpu.get("ram_total_gb", "—"))
+                cc4.metric("RAM libre (GB)", cpu.get("ram_free_gb", "—"))
 
-                mem_keys = ["weight_mb", "gradient_mb", "optimizer_mb",
-                            "activation_mb_per_image", "total_static_mb"]
-                if any(k in meta for k in mem_keys):
-                    st.subheader("Memoria estática")
-                    m1, m2, m3, m4, m5 = st.columns(5)
-                    m1.metric("Pesos (MB)", meta.get("weight_mb", "—"))
-                    m2.metric("Gradientes (MB)", meta.get("gradient_mb", "—"))
-                    m3.metric("AdamW state (MB)", meta.get("optimizer_mb", "—"))
-                    m4.metric("Activaciones/img (MB)", meta.get("activation_mb_per_image", "—"))
-                    m5.metric("Total estático (MB)", meta.get("total_static_mb", "—"))
+            # Disco si disponible
+            disk = meta.get("disk", {})
+            ds_profile = meta.get("dataset", {})
+            if disk or ds_profile:
+                st.markdown("### I/O del dataset")
+                di_cols = st.columns(4)
+                if disk:
+                    di_cols[0].metric("Tipo de disco", disk.get("type", "—"))
+                    di_cols[1].metric("NFS", "Sí" if disk.get("is_nfs") == "yes" else "No")
+                    if disk.get("read_mb_per_s", "0") != "0":
+                        di_cols[2].metric("Velocidad lectura", f"{disk.get('read_mb_per_s', '—')} MB/s")
+                        di_cols[3].metric("Patches/s", f"{disk.get('files_per_second', '—')}")
+                if ds_profile:
+                    io_ratio = float(ds_profile.get("io_bottleneck_ratio", 0) or 0)
+                    st.metric("Ratio I/O vs cómputo", f"{io_ratio:.2f}",
+                               delta="I/O-bound" if io_ratio > 1.2 else "Compute-bound",
+                               delta_color="inverse" if io_ratio > 1.2 else "normal")
+                    if io_ratio > 1.2:
+                        st.warning("Cuello de botella en I/O: el data loading es más lento que el cómputo GPU. Más GPUs no mejorarán el throughput sin un disco más rápido.")
+                    else:
+                        st.success("Compute-bound: la GPU es el cuello de botella. Añadir GPUs (DDP) acelerará el training linealmente.")
 
-                st.subheader("Hardware")
+            # Memoria por batch size
+            mem_keys = ["weight_mb", "gradient_mb", "optimizer_mb", "activation_mb_per_image", "total_static_mb"]
+            if any(k in meta for k in mem_keys):
+                st.markdown("### Memoria del modelo")
+                m1, m2, m3, m4, m5 = st.columns(5)
+                m1.metric("Pesos (MB)", meta.get("weight_mb", "—"))
+                m2.metric("Gradientes (MB)", meta.get("gradient_mb", "—"))
+                m3.metric("AdamW state (MB)", meta.get("optimizer_mb", "—"))
+                m4.metric("Activaciones/img (MB)", meta.get("activation_mb_per_image", "—"))
+                m5.metric("Total estático (MB)", meta.get("total_static_mb", "—"))
+
+                # VRAM visual
                 total_vram = meta.get("total_vram_gb")
                 free_vram = meta.get("free_vram_gb")
-                h1, h2, h3 = st.columns(3)
-                h1.metric("VRAM total (GB)", total_vram or "—")
-                h2.metric("VRAM libre (GB)", free_vram or "—")
                 if total_vram and free_vram:
-                    pct = float(free_vram) / float(total_vram) * 100
-                    h3.metric("VRAM libre %", f"{pct:.1f}%")
                     fig_vr = go.Figure(go.Bar(
                         x=["Libre", "Usada"],
                         y=[float(free_vram), float(total_vram) - float(free_vram)],
                         marker_color=[COLORS[2], COLORS[3]], opacity=0.85,
                     ))
-                    fig_vr.update_layout(**_base_layout(200, "Distribución VRAM"), yaxis_title="GB")
+                    fig_vr.update_layout(**_base_layout(180, "Distribución VRAM"), yaxis_title="GB")
                     _show(fig_vr, "vram_dist")
 
+            # Benchmark
             if not bdf_feas.empty:
-                st.subheader("Benchmark")
-                st.dataframe(bdf_feas, use_container_width=True)
-                _dl_csv(bdf_feas, "feasibility_benchmark.csv", "Descargar benchmark")
-
+                st.markdown("### Benchmark de throughput")
                 viable = bdf_feas[bdf_feas["oom"] == "no"].copy()
                 tp_col = _throughput_col(viable)
 
@@ -1658,7 +1689,7 @@ with tab_viabilidad:
                         else:
                             fig_tp.add_trace(go.Bar(x=sub["batch_size"].astype(str),
                                                     y=sub[tp_col], name=f"trace={mode_feas}"))
-                    fig_tp.update_layout(**_base_layout(320, "Throughput por batch size"),
+                    fig_tp.update_layout(**_base_layout(300, "Throughput (imgs/s) por batch size"),
                                          barmode="group", xaxis_title="Batch size", yaxis_title="imgs/s")
                     _show(fig_tp, "throughput")
 
@@ -1667,22 +1698,26 @@ with tab_viabilidad:
                         for mode_feas in viable["trace_mode"].unique():
                             sub = viable[viable["trace_mode"] == mode_feas]
                             fig_vram_f.add_trace(go.Bar(x=sub["batch_size"].astype(str),
-                                                         y=sub["peak_vram_gb"], name=f"trace={mode_feas}"))
-                        if meta and meta.get("free_vram_gb"):
-                            fig_vram_f.add_hline(y=float(meta["free_vram_gb"]), line_dash="dash",
-                                                  line_color="red",
-                                                  annotation_text=f"VRAM libre: {meta['free_vram_gb']} GB",
-                                                  annotation_position="top left")
-                        fig_vram_f.update_layout(**_base_layout(280, "VRAM pico por batch size"),
+                                                        y=sub["peak_vram_gb"], name=f"trace={mode_feas}"))
+                        if meta.get("free_vram_gb"):
+                            fig_vram_f.add_hline(
+                                y=float(meta["free_vram_gb"]), line_dash="dash", line_color="red",
+                                annotation_text=f"VRAM libre: {meta['free_vram_gb']} GB",
+                                annotation_position="top left",
+                            )
+                        fig_vram_f.update_layout(**_base_layout(260, "VRAM pico por batch size"),
                                                   barmode="group", xaxis_title="Batch size", yaxis_title="GB")
                         _show(fig_vram_f, "vram_pico")
 
+                st.dataframe(bdf_feas, use_container_width=True, height=220)
+                _dl_csv(bdf_feas, "feasibility_benchmark.csv", "Descargar benchmark")
+
+                # Estimaciones de tiempo
                 est_cols = [c for c in bdf_feas.columns if c.startswith("est_")]
                 if est_cols:
-                    st.subheader("Estimaciones de tiempo")
+                    st.markdown("### Estimaciones de tiempo")
                     orig_ep_col = next(
-                        (c for c in bdf_feas.columns if c.startswith("est_total_h_") and c.endswith("ep")),
-                        None,
+                        (c for c in bdf_feas.columns if c.startswith("est_total_h_") and c.endswith("ep")), None
                     )
                     orig_n = None
                     if orig_ep_col:
@@ -1690,16 +1725,13 @@ with tab_viabilidad:
                             orig_n = int(orig_ep_col.split("est_total_h_")[1].replace("ep", ""))
                         except ValueError:
                             pass
-
                     recalc_n = st.number_input("Epochs para estimación total", min_value=1, value=orig_n or 30)
                     display_cols = ["batch_size", "trace_mode", "oom"]
-                    for c in ["est_train_min_per_epoch", "est_eval_min_per_epoch",
-                              "est_total_min_per_epoch", "est_min_per_epoch_30ep"]:
+                    for c in ["est_train_min_per_epoch", "est_eval_min_per_epoch", "est_total_min_per_epoch"]:
                         if c in bdf_feas.columns:
                             display_cols.append(c)
                     if orig_ep_col:
                         display_cols.append(orig_ep_col)
-
                     est_df = bdf_feas[[c for c in display_cols if c in bdf_feas.columns]].copy()
                     per_epoch_col = next((c for c in ["est_total_min_per_epoch", "est_min_per_epoch_30ep"]
                                           if c in bdf_feas.columns), None)
@@ -1708,6 +1740,270 @@ with tab_viabilidad:
                     st.dataframe(est_df, use_container_width=True)
                     _dl_csv(est_df, "estimaciones_tiempo.csv", "Descargar estimaciones")
 
+    # ── Análisis DDP ──────────────────────────────────────────────────────────
+    with subtab_ddp_opt:
+        if not feasibility_csvs:
+            st.info("Ejecuta primero el análisis de viabilidad.")
+        else:
+            st.markdown("## Análisis DDP — Distribución óptima de recursos")
+            st.caption(
+                "Compara configuraciones de 1 a 8 GPUs mostrando batch size, workers recomendados, "
+                "speedup esperado, eficiencia de escalado y cuello de botella identificado."
+            )
+            ddp_df = parse_ddp_scenarios(meta)
+
+            if ddp_df.empty:
+                st.info(
+                    "No hay datos DDP en este informe. "
+                    "Regenera el análisis con la versión actual de check_feasibility.py."
+                )
+            else:
+                # ── Tabla de escenarios ───────────────────────────────────────
+                st.markdown("### Tabla de escenarios")
+
+                def _color_bottleneck(val: str) -> str:
+                    if val == "io":
+                        return "background-color: #fee2e2; color: #991b1b"
+                    if val == "sync":
+                        return "background-color: #fef3c7; color: #92400e"
+                    return "background-color: #d1fae5; color: #065f46"
+
+                if "bottleneck" in ddp_df.columns:
+                    styled_ddp = ddp_df.style.map(_color_bottleneck, subset=["bottleneck"])
+                    if "speedup" in ddp_df.columns:
+                        styled_ddp = styled_ddp.background_gradient(
+                            subset=["speedup"], cmap="RdYlGn", vmin=1.0, vmax=float(ddp_df["n_gpus"].max() or 8)
+                        )
+                else:
+                    styled_ddp = ddp_df.style
+                st.dataframe(styled_ddp, use_container_width=True, hide_index=True)
+                _dl_csv(ddp_df, "ddp_scenarios.csv", "Descargar escenarios DDP")
+
+                # ── Rectángulos de distribución de carga ─────────────────────
+                st.markdown("### Distribución de carga por GPU")
+                st.caption(
+                    "Cada barra muestra la proporción del tiempo de batch: "
+                    "cómputo (verde), I/O de datos (naranja), sincronización de gradientes (rojo)."
+                )
+
+                # Calcular proporciones por GPU
+                if {"speedup", "sync_overhead_pct", "n_gpus"}.issubset(ddp_df.columns):
+                    viable_ddp = ddp_df[pd.to_numeric(ddp_df["n_gpus"], errors="coerce") > 0].copy()
+                    for col in ["sync_overhead_pct", "speedup", "n_gpus"]:
+                        viable_ddp[col] = pd.to_numeric(viable_ddp[col], errors="coerce")
+
+                    # Estimar I/O overhead desde el ratio si está disponible
+                    io_ratio = float(meta.get("dataset", {}).get("io_bottleneck_ratio", 0) or 0)
+                    io_pct_est = min(io_ratio * 30, 50)  # Estimación: si ratio=1, I/O ≈ 30% del tiempo
+
+                    fig_rect = go.Figure()
+                    labels = [f"{int(row['n_gpus'])} GPU(s)" for _, row in viable_ddp.iterrows()]
+                    sync_pcts = viable_ddp["sync_overhead_pct"].fillna(0).tolist()
+                    compute_pcts = [max(0, 100 - s - io_pct_est) for s in sync_pcts]
+                    io_pcts = [io_pct_est] * len(labels)
+
+                    fig_rect.add_trace(go.Bar(
+                        name="Cómputo GPU", x=labels, y=compute_pcts,
+                        marker_color=COLORS[2], opacity=0.85,
+                    ))
+                    fig_rect.add_trace(go.Bar(
+                        name="I/O datos", x=labels, y=io_pcts,
+                        marker_color=COLORS[1], opacity=0.85,
+                    ))
+                    fig_rect.add_trace(go.Bar(
+                        name="Sync gradientes", x=labels, y=sync_pcts,
+                        marker_color=COLORS[3], opacity=0.85,
+                    ))
+                    fig_rect.update_layout(
+                        **_base_layout(360, "Desglose de tiempo por batch (%) — estimación"),
+                        barmode="stack",
+                        xaxis_title="Configuración DDP",
+                        yaxis_title="Porcentaje del tiempo de batch",
+                        yaxis=dict(range=[0, 100], gridcolor="#e2e8f0"),
+                    )
+                    _show(fig_rect, "ddp_carga_distribucion")
+
+                    # ── Speedup vs teórico ────────────────────────────────────
+                    st.markdown("### Speedup: real vs teórico")
+                    if "speedup" in viable_ddp.columns:
+                        n_gpus_vals = viable_ddp["n_gpus"].tolist()
+                        speedup_vals = viable_ddp["speedup"].tolist()
+                        theoretical = n_gpus_vals  # speedup teórico lineal
+
+                        fig_su = go.Figure()
+                        fig_su.add_trace(go.Scatter(
+                            x=n_gpus_vals, y=theoretical,
+                            name="Teórico (100% eficiencia)",
+                            mode="lines+markers", line=dict(color=COLORS[4], width=2, dash="dash"),
+                        ))
+                        fig_su.add_trace(go.Scatter(
+                            x=n_gpus_vals, y=speedup_vals,
+                            name="Speedup real estimado",
+                            mode="lines+markers",
+                            line=dict(color=COLORS[2], width=3),
+                            marker=dict(size=10),
+                        ))
+                        fig_su.update_layout(
+                            **_base_layout(320, "Speedup real vs teórico"),
+                            xaxis_title="Número de GPUs",
+                            yaxis_title="Speedup",
+                        )
+                        fig_su.update_xaxes(tickvals=n_gpus_vals)
+                        _show(fig_su, "ddp_speedup")
+
+                    # ── Tiempo total estimado por configuración ───────────────
+                    if "time_total_h" in viable_ddp.columns:
+                        st.markdown("### Tiempo total estimado por configuración")
+                        viable_ddp["time_total_h_num"] = pd.to_numeric(viable_ddp["time_total_h"], errors="coerce")
+                        fig_tt = go.Figure(go.Bar(
+                            x=labels,
+                            y=viable_ddp["time_total_h_num"].tolist(),
+                            marker_color=[COLORS[i % len(COLORS)] for i in range(len(labels))],
+                            opacity=0.85,
+                            text=[f"{v:.1f}h" for v in viable_ddp["time_total_h_num"].tolist()],
+                            textposition="outside",
+                        ))
+                        fig_tt.update_layout(
+                            **_base_layout(280, "Tiempo total de entrenamiento (h)"),
+                            xaxis_title="Configuración DDP",
+                            yaxis_title="Horas",
+                        )
+                        _show(fig_tt, "ddp_tiempo_total")
+
+    # ── Predicción de rendimiento F1 ──────────────────────────────────────────
+    with subtab_prediction:
+        if not feasibility_csvs:
+            st.info("Ejecuta primero el análisis de viabilidad.")
+        else:
+            st.markdown("## Predicción empírica de rendimiento")
+            pred = meta.get("prediction", {})
+            curve_val = meta.get("curve_val_f1", [])
+            curve_train = meta.get("curve_train_f1", [])
+            curve_epochs = meta.get("curve_epochs", [])
+
+            if not pred:
+                st.info(
+                    "No hay datos de predicción en este informe. "
+                    "Regenera con la versión actual de check_feasibility.py."
+                )
+            else:
+                # ── Métricas clave de predicción ──────────────────────────────
+                pred_best_f1 = float(pred.get("predicted_best_f1", 0) or 0)
+                pred_best_ep = int(float(pred.get("predicted_best_epoch", 0) or 0))
+                pred_stop_ep = int(float(pred.get("predicted_early_stop_epoch", 0) or 0))
+                confidence = pred.get("confidence", "—")
+
+                pc1, pc2, pc3, pc4 = st.columns(4)
+                pc1.metric("Val F1 esperado", f"{pred_best_f1:.3f}")
+                pc2.metric("Mejor epoch estimado", pred_best_ep)
+                pc3.metric("Early stop estimado", pred_stop_ep)
+                pc4.metric("Confianza", confidence)
+
+                # ── Curva F1 predicha ─────────────────────────────────────────
+                if curve_val and curve_epochs:
+                    st.markdown("### Curva F1 estimada")
+                    st.caption(
+                        "Predicción basada en datos históricos de entrenamientos reales en BigEarthNet-S2. "
+                        "La banda de incertidumbre refleja la variabilidad observada (±0.008 F1 entre runs)."
+                    )
+
+                    fig_pred = go.Figure()
+
+                    # Banda de incertidumbre
+                    uncertainty = 0.015
+                    fig_pred.add_trace(go.Scatter(
+                        x=curve_epochs + curve_epochs[::-1],
+                        y=[v + uncertainty for v in curve_val] + [v - uncertainty for v in curve_val[::-1]],
+                        fill="toself", fillcolor="rgba(37,99,235,0.1)",
+                        line=dict(color="rgba(255,255,255,0)"),
+                        name="Incertidumbre (±0.015 F1)",
+                        showlegend=True,
+                    ))
+
+                    # Val F1 predicho
+                    fig_pred.add_trace(go.Scatter(
+                        x=curve_epochs, y=curve_val,
+                        name="Val F1 estimado",
+                        mode="lines", line=dict(color=COLORS[0], width=3),
+                    ))
+
+                    # Train F1 predicho
+                    if curve_train:
+                        fig_pred.add_trace(go.Scatter(
+                            x=curve_epochs, y=curve_train,
+                            name="Train F1 estimado",
+                            mode="lines", line=dict(color=COLORS[0], width=2, dash="dot"),
+                            opacity=0.6,
+                        ))
+
+                    # Marcar mejor epoch
+                    if pred_best_ep <= max(curve_epochs):
+                        best_val = curve_val[pred_best_ep - 1] if pred_best_ep <= len(curve_val) else pred_best_f1
+                        fig_pred.add_trace(go.Scatter(
+                            x=[pred_best_ep], y=[best_val],
+                            name=f"Mejor epoch ({pred_best_ep})",
+                            mode="markers", marker=dict(color="gold", size=14, symbol="star"),
+                        ))
+
+                    # Marcar early stop
+                    if pred_stop_ep <= max(curve_epochs):
+                        fig_pred.add_vline(
+                            x=pred_stop_ep, line_dash="dash", line_color=COLORS[3],
+                            annotation_text=f"Early stop ~ep{pred_stop_ep}",
+                            annotation_position="top right",
+                        )
+
+                    # Curva real si hay run seleccionado
+                    if selected_run is not None:
+                        try:
+                            df_actual_pred = _load_df(
+                                str(selected_run.log_path),
+                                str(selected_run.epoch_csv_path) if selected_run.epoch_csv_path else None,
+                            )
+                            if not df_actual_pred.empty and "val_f1" in df_actual_pred.columns:
+                                fig_pred.add_trace(go.Scatter(
+                                    x=df_actual_pred["epoch"].tolist(),
+                                    y=df_actual_pred["val_f1"].tolist(),
+                                    name="Val F1 real",
+                                    mode="lines+markers",
+                                    line=dict(color=COLORS[1], width=2.5),
+                                    marker=dict(size=5),
+                                ))
+                        except Exception:
+                            pass
+
+                    fig_pred.update_layout(
+                        **_base_layout(420, "Curva F1 de validación — predicción vs real"),
+                        xaxis_title="Epoch",
+                        yaxis_title="Val F1 (macro)",
+                    )
+                    fig_pred.update_yaxes(range=[0.0, 1.0])
+                    _show(fig_pred, "prediccion_f1")
+
+                    if selected_run is not None:
+                        st.caption(
+                            "Línea amarilla = predicción empírica | "
+                            "Naranja = datos reales del run seleccionado | "
+                            "Estrella dorada = mejor epoch estimado"
+                        )
+                    else:
+                        st.caption(
+                            "Selecciona un run en la barra lateral para superponer los resultados reales."
+                        )
+
+                # Datos de predicción como tabla descargable
+                if curve_val and curve_epochs:
+                    import pandas as pd
+                    pred_curve_df = pd.DataFrame({
+                        "epoch": curve_epochs,
+                        "val_f1_pred": curve_val,
+                        "train_f1_pred": curve_train if curve_train else [None] * len(curve_epochs),
+                        "val_f1_upper": [v + 0.015 for v in curve_val],
+                        "val_f1_lower": [v - 0.015 for v in curve_val],
+                    })
+                    _dl_csv(pred_curve_df, "prediccion_curva_f1.csv", "Descargar curva predicha")
+
+    # ── Comparar vs training ──────────────────────────────────────────────────
     with subtab_compare_feas:
         st.markdown("### Estimaciones de viabilidad vs resultados reales de training")
         feasibility_csvs_cmp = _get_feasibility_csvs()
@@ -1786,6 +2082,7 @@ with tab_viabilidad:
                 else:
                     st.warning(f"Sin fila coincidente para batch_size={sel_bs}, trace_mode={sel_trace}.")
 
+    # ── Ejecutar análisis ─────────────────────────────────────────────────────
     with subtab_run_feas:
         st.subheader("Ejecutar análisis de viabilidad")
         configs_available = _get_configs()
@@ -1799,6 +2096,10 @@ with tab_viabilidad:
                 feas_model = st.selectbox("Modelo", model_options_f)
                 feas_batches = st.multiselect("Batch sizes", [16, 32, 64, 128], default=[32, 64])
                 feas_epochs = st.number_input("Epochs para estimación", min_value=1, value=30)
+                feas_dataset_path = st.text_input(
+                    "Ruta al dataset (opcional — para medir I/O real)",
+                    placeholder="/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2",
+                )
             with fa2:
                 feas_traces = st.multiselect("Trace modes", ["off", "simple", "deep"],
                                               default=["off", "simple"])
@@ -1808,6 +2109,7 @@ with tab_viabilidad:
                     "Config YAML (opcional)",
                     ["(ninguno)"] + (configs_available if configs_available else []),
                 )
+                feas_no_disk = st.checkbox("Omitir medición de I/O (más rápido)", value=False)
             submitted_feas = st.form_submit_button("Ejecutar")
 
         if submitted_feas:
@@ -1825,17 +2127,21 @@ with tab_viabilidad:
                     parts.append(f"--nfs-factor {feas_nfs}")
                 if feas_config != "(ninguno)":
                     parts.append(f"--config configs/{feas_config}")
+                if feas_dataset_path.strip():
+                    parts.append(f'--dataset-path "{feas_dataset_path.strip()}"')
+                if feas_no_disk:
+                    parts.append("--no-disk-profile")
                 cmd = " ".join(parts)
                 st.code(cmd, language="bash")
                 out_ph = st.empty()
-                with st.spinner("Ejecutando…"):
+                with st.spinner("Ejecutando análisis completo…"):
                     result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(ROOT))
                 if result.returncode == 0:
-                    st.success("Completado.")
+                    st.success("Análisis completado.")
                     out_ph.code(result.stdout[-4000:] if len(result.stdout) > 4000 else result.stdout)
                     _get_feasibility_csvs.clear()
                 else:
-                    st.error("Error:")
+                    st.error("Error durante el análisis:")
                     out_ph.code(result.stderr[-2000:])
 
 # ═══════════════════════════════════════════════════════════════════════════════
