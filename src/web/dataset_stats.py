@@ -64,22 +64,37 @@ SPLIT_SIZES = {"train": 237_871, "val": 122_342, "test": 119_825}
 
 
 def class_distribution_from_parquet(parquet_path: Path) -> pd.DataFrame | None:
-    """Load class distribution from metadata.parquet if available."""
+    """Load class distribution from metadata.parquet if available.
+
+    BigEarthNet metadata stores labels as numpy ndarrays (not lists), and the
+    train split is named "train". We explode every label across all train
+    patches and count occurrences vectorised for speed.
+    """
     if not parquet_path.exists():
         return None
     try:
-        df = pd.read_parquet(parquet_path)
+        df = pd.read_parquet(parquet_path, columns=["labels", "split"])
         if "labels" not in df.columns or "split" not in df.columns:
             return None
 
         train_df = df[df["split"] == "train"]
-        rows = []
-        for cls in CLASS_NAMES:
-            count = train_df["labels"].apply(
-                lambda x: cls in x if isinstance(x, (list, set)) else False
-            ).sum()
-            rows.append({"class": cls, "train_count": int(count)})
-        return pd.DataFrame(rows)
+        if train_df.empty:
+            return None
+
+        # labels is an ndarray per row → flatten all into one long list
+        all_labels: list[str] = []
+        for arr in train_df["labels"]:
+            if arr is not None:
+                all_labels.extend(list(arr))
+
+        counts = pd.Series(all_labels).value_counts()
+        rows = [{"class": cls, "train_count": int(counts.get(cls, 0))}
+                for cls in CLASS_NAMES]
+        result = pd.DataFrame(rows)
+        # If everything is zero something went wrong → signal fallback
+        if result["train_count"].sum() == 0:
+            return None
+        return result
     except Exception:
         return None
 
@@ -120,3 +135,66 @@ def get_country_distribution(parquet_path: Path) -> pd.Series | None:
         return df[df["split"] == "train"]["country"].value_counts()
     except Exception:
         return None
+
+
+def find_example_patches(
+    parquet_path: Path, class_name: str, n: int = 4, split: str = "train"
+) -> list[str]:
+    """Return up to n patch_ids whose labels contain class_name.
+
+    Used by the dashboard to display example RGB images per class.
+    """
+    if not parquet_path.exists():
+        return []
+    try:
+        df = pd.read_parquet(parquet_path, columns=["patch_id", "labels", "split"])
+        df = df[df["split"] == split]
+        matches = []
+        for patch_id, arr in zip(df["patch_id"], df["labels"]):
+            if arr is not None and class_name in list(arr):
+                matches.append(patch_id)
+                if len(matches) >= n * 3:  # gather extra to allow random choice
+                    break
+        if len(matches) > n:
+            import random
+            matches = random.sample(matches, n)
+        return matches[:n]
+    except Exception:
+        return []
+
+
+def load_rgb_image(root: Path, patch_id: str) -> "np.ndarray | None":
+    """Load a patch's RGB proxy (B04, B03, B02) as an (H, W, 3) uint8 array.
+
+    Applies a percentile stretch for display (Sentinel-2 reflectance is dark
+    by default). Returns None if the TIF files are not reachable.
+    """
+    try:
+        import rasterio
+    except ImportError:
+        return None
+
+    # patch dir: root/scene_id/patch_id/  where scene_id = patch_id sin _row_col
+    scene_id = "_".join(patch_id.rsplit("_", 2)[:-2])
+    patch_dir = Path(root) / scene_id / patch_id
+    if not patch_dir.exists():
+        return None
+
+    bands = []
+    for band in ("B04", "B03", "B02"):
+        tif = patch_dir / f"{patch_id}_{band}.tif"
+        if not tif.exists():
+            return None
+        try:
+            with rasterio.open(tif) as src:
+                bands.append(src.read(1).astype(np.float32))
+        except Exception:
+            return None
+
+    img = np.stack(bands, axis=-1)
+    # Percentile stretch per image for visibility (2nd–98th percentile)
+    lo, hi = np.percentile(img, 2), np.percentile(img, 98)
+    if hi <= lo:
+        hi = lo + 1.0
+    img = np.clip((img - lo) / (hi - lo), 0, 1)
+    return (img * 255).astype(np.uint8)
