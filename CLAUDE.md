@@ -824,7 +824,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
   - `decorators/confusion.py`: `ConfusionMatrixDecorator` — CSVs de per-class y confusion matrix (sin PNGs; el dashboard genera las gráficas)
-  - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running loss por batch
+  - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running_loss, batch_loss (instantánea) y lr por batch; `--batch-log-every N` controla granularidad
   - `decorators/metric_reporters.py`: `LossReporter`, `F1Reporter`, `AccuracyReporter`, `PrecisionRecallReporter`
   - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom` — rutean a logger
   - `builder.py`: `TrainingSessionBuilder` — fluent API para montar el stack completo
@@ -864,12 +864,14 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Entrenamiento clúster v4 (27-28/05/26):** vit_base, batch=64, config v3, Val F1=0.6816 (epoch 7) — nuevo récord; early stop epoch 17; clase 6 F1=0.000 detectada como caso problemático → `logs/verode/single/vit_base_patch16_224/train_27052026_210223.log`
 - [x] **Eliminación de PNGs del training (02/06/26):** `ConfusionMatrixDecorator` y `PlottingDecorator` ya no generan archivos PNG (matplotlib eliminado); solo generan CSVs. `RunInfo` limpiado — sin `plot_path`, `perclass_paths` ni `confusion_matrix_paths`. `.gitignore` añade `plots/**/*.png` (15 MB de PNGs históricos fuera de git). Feature: `feature/no-png-output`.
 - [x] **Dashboard web v6 — español + pantalla inicio grid + descarga (02/06/26):** `app.py` reescrito en español (tecnicismos en inglés); pestaña **Inicio** rediseñada como pantalla principal con cuadrícula (métricas globales, mini curvas, sistema, por clase, tabla runs); helper `_show()` activa barra de herramientas Plotly con descarga PNG en todas las gráficas; helper `_dl_csv()` añade botones "Descargar CSV" en todas las tablas; eliminadas referencias rotas a atributos PNG inexistentes de RunInfo. 14 pestañas: Inicio / Sistema / Dataset / Modelos / Curvas / Por clase / Batch / Comparar / Análisis DDP / Viabilidad / Tiempo / Información / Lanzador / En vivo. Feature: `feature/web-dashboard-es`.
-- [x] **Suite de tests ampliada a 132 (02/06/26):** `tests/integration/test_no_png_output.py` (5 tests, verifica que los decoradores no generan PNGs), `tests/integration/test_web_dashboard_es.py` (21 tests, verifica sintaxis, traducción, helpers, ausencia de refs PNG, config de descarga, secciones del grid).
+- [x] **Suite de tests ampliada a 132 (02/06/26):** `tests/integration/test_no_png_output.py` (5 tests), `tests/integration/test_web_dashboard_es.py` (21 tests).
+- [x] **Batch monitor v2 (02/06/26):** Firma del hook extendida a `(epoch, batch_idx, n_batches, running_loss, batch_loss, lr)`. `BatchMonitorDecorator` ahora registra también la loss instantánea del batch y el LR actual. `log_every=1` por defecto (antes 50). Nuevo flag `--batch-log-every N` en ambos scripts de entrenamiento. Pestaña Batch con 3 sub-tabs: "Por epoch" (selector de métrica, MA, detección picos), "Historia global" (eje x = batch global con límites de epoch), "Learning rate" (curva LR completa con escala log automática). Feature: `feature/batch-live-metrics`. 10 tests nuevos.
+- [x] **Feasibility checker v3 (02/06/26):** Perfilado completo del sistema (CPU cores/RAM, GPU compute capability, tipo de disco, detección NFS, medición I/O real con patches TIFF). `DatasetProfiler` calcula `io_bottleneck_ratio` para detectar si el entrenamiento es I/O-bound o compute-bound. `PerformancePredictor` genera curva F1 val+train predicha con banda de incertidumbre (±0.015 F1) basada en datos históricos reales. `DDPOptimizer` calcula speedup real (≠ lineal) incluyendo overhead de sincronización de gradientes, eficiencia por tipo de red (NVLink/PCIe/NFS/Ethernet), y recomienda batch_per_gpu + num_workers. CSV v3 ampliado con bloques `#cpu`, `#disk`, `#dataset`, `#prediction`, `#curve_*`, `#ddp`. Pestaña Viabilidad con 5 sub-tabs: Informe, Análisis DDP (rectángulos de % cómputo/I/O/sync), Predicción F1, Comparar vs training, Ejecutar análisis. Feature: `feature/feasibility-v3`. 20 tests nuevos.
+- [x] **Suite de tests en 161 (02/06/26).**
 
 ### Pendiente
 - [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
-- [ ] Proyección multi-GPU en feasibility checker (estimación de throughput con N GPUs)
-- [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP
+- [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP real
 
 ---
 
