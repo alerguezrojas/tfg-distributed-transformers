@@ -383,6 +383,39 @@ multi-nodo y la sincronización de gradientes funcionan antes de tener hardware 
 
 - `configs/train_ddp_verode.yaml` — batch_size=64 **por GPU** (global batch = 128 con 2 GPUs), backend NCCL, para V100.
 - `configs/train_ddp_cpu_test.yaml` — batch_size=4, backend **gloo**, `pretrained=false`, 1 epoch. Valida infraestructura multi-nodo sin GPU compatible.
+- `configs/train_heterogeneous_ddp.yaml` — DDP heterogéneo verode21 (V100, batch=64, weight=16) + verode16/18 (CPU, batch=4, weight=1). Backend **gloo**. Label smoothing + mixup v3.
+
+### DDP heterogéneo — verode21 (GPU) + verode16 (CPU)
+
+```bash
+# Primero hacer git pull en ambos nodos:
+# ssh verode21 && cd ~/tfg-distributed-transformers && git pull origin main
+# ssh verode16 && cd ~/tfg-distributed-transformers && git pull origin main
+
+# Terminal 1 — verode21 (V100, rank 0):
+ssh verode21
+cd ~/tfg-distributed-transformers
+.venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=0 \
+  --master_addr=verode21 --master_port=29500 \
+  scripts/train_heterogeneous_ddp.py \
+  --config configs/train_heterogeneous_ddp.yaml \
+  --trace simple --layers confusion batch-monitor --fn energy
+
+# Terminal 2 — verode16 (CPU, rank 1):
+ssh verode16
+cd ~/tfg-distributed-transformers
+.venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=1 \
+  --master_addr=verode21 --master_port=29500 \
+  scripts/train_heterogeneous_ddp.py \
+  --config configs/train_heterogeneous_ddp.yaml \
+  --trace simple --layers confusion batch-monitor --fn energy
+```
+
+**Cómo funciona:**
+- `HeterogeneousDistributedSampler` da a rank 0 (GPU) ≈94% del dataset y a rank 1 (CPU) ≈6%, proporcionalmente a sus compute_weights (16:1)
+- `HeterogeneousDDPTrainer` normaliza los gradientes por el batch global real: `loss = criterion_sum / global_batch_size` → gradiente matemáticamente correcto aunque los batch sizes sean distintos
+- Solo rank 0 (GPU) escribe logs, CSVs y checkpoints
+- Los artefactos van a `logs/verode/ddp_hetero/vit_base_patch16_224/`
 
 ---
 
@@ -868,10 +901,11 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Batch monitor v2 (02/06/26):** Firma del hook extendida a `(epoch, batch_idx, n_batches, running_loss, batch_loss, lr)`. `BatchMonitorDecorator` ahora registra también la loss instantánea del batch y el LR actual. `log_every=1` por defecto (antes 50). Nuevo flag `--batch-log-every N` en ambos scripts de entrenamiento. Pestaña Batch con 3 sub-tabs: "Por epoch" (selector de métrica, MA, detección picos), "Historia global" (eje x = batch global con límites de epoch), "Learning rate" (curva LR completa con escala log automática). Feature: `feature/batch-live-metrics`. 10 tests nuevos.
 - [x] **Feasibility checker v3 (02/06/26):** Perfilado completo del sistema (CPU cores/RAM, GPU compute capability, tipo de disco, detección NFS, medición I/O real con patches TIFF). `DatasetProfiler` calcula `io_bottleneck_ratio` para detectar si el entrenamiento es I/O-bound o compute-bound. `PerformancePredictor` genera curva F1 val+train predicha con banda de incertidumbre (±0.015 F1) basada en datos históricos reales. `DDPOptimizer` calcula speedup real (≠ lineal) incluyendo overhead de sincronización de gradientes, eficiencia por tipo de red (NVLink/PCIe/NFS/Ethernet), y recomienda batch_per_gpu + num_workers. CSV v3 ampliado con bloques `#cpu`, `#disk`, `#dataset`, `#prediction`, `#curve_*`, `#ddp`. Pestaña Viabilidad con 5 sub-tabs: Informe, Análisis DDP (rectángulos de % cómputo/I/O/sync), Predicción F1, Comparar vs training, Ejecutar análisis. Feature: `feature/feasibility-v3`. 20 tests nuevos.
 - [x] **Suite de tests en 161 (02/06/26).**
+- [x] **DDP heterogéneo corregido y listo (02/06/26):** 3 bugs críticos resueltos: (1) `mixup_batch` devuelve 2 valores, no 4; (2) doble DDP-wrapping eliminado — el builder crea `HeterogeneousDDPTrainer` directamente vía `with_heterogeneous_ddp()`; (3) batch hooks no disparaban — ahora `HeterogeneousDDPTrainer.train_epoch` llama a `self._batch_hooks` con la firma v2. Nuevos métodos en builder: `with_heterogeneous_ddp(local_bs)` y `with_output_mode(mode)`. `train_heterogeneous_ddp.py` reescrito limpio, sin `_find_core/_rewrap`. 11 tests nuevos. **172 tests en verde.** Feature: `feature/fix-heterogeneous-ddp`.
 
 ### Pendiente
-- [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
-- [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP real
+- [ ] **Primer training distribuido heterogéneo en Verode:** verode21 (V100, rank 0) + verode16 (CPU, rank 1). Ver comandos en la sección DDP heterogéneo.
+- [ ] Comparar throughput single-GPU vs heterogéneo para cuantificar speedup real
 
 ---
 
