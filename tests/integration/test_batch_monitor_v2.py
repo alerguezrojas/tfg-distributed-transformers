@@ -30,13 +30,13 @@ def _make_trainer(tmp_dir: Path) -> Trainer:
 
 
 def test_hook_receives_six_arguments():
-    """El hook recibe (epoch, batch_idx, n_batches, running_loss, batch_loss, lr)."""
+    """El hook recibe (epoch, batch_idx, n_batches, metrics: dict)."""
     with tempfile.TemporaryDirectory() as tmp:
         trainer = _make_trainer(Path(tmp))
         received = []
         trainer.register_batch_hook(
-            lambda ep, bi, nb, rl, bl, lr: received.append(
-                {"ep": ep, "bi": bi, "nb": nb, "rl": rl, "bl": bl, "lr": lr}
+            lambda ep, bi, nb, met: received.append(
+                {"ep": ep, "bi": bi, "nb": nb, **met}
             )
         )
         trainer.train_epoch(_tiny_loader())
@@ -45,15 +45,18 @@ def test_hook_receives_six_arguments():
     first = received[0]
     assert first["ep"] == 1
     assert first["bi"] == 1
-    assert isinstance(first["bl"], float)
+    assert isinstance(first["batch_loss"], float)
     assert first["lr"] > 0.0
+    assert "batch_f1" in first
+    assert "batch_acc" in first
+    assert "batch_prec" in first
 
 
 # ── CSV format ────────────────────────────────────────────────────────────────
 
 
 def test_batch_monitor_csv_has_new_columns():
-    """El CSV de batch_monitor v2 debe tener batch_loss y lr."""
+    """El CSV de batch_monitor v3 debe tener batch_loss, lr, batch_f1, batch_acc, batch_prec."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         trainer = _make_trainer(tmp_path)
@@ -63,11 +66,13 @@ def test_batch_monitor_csv_has_new_columns():
         monitor.train_epoch(_tiny_loader())
 
         df = pd.read_csv(monitor.batch_csv_path)
-        assert "batch_loss" in df.columns, "Falta columna batch_loss"
-        assert "lr" in df.columns, "Falta columna lr"
-        assert df["batch_loss"].notna().all(), "batch_loss no debe tener NaN"
-        assert df["lr"].notna().all(), "lr no debe tener NaN"
+        for col in ("batch_loss", "lr", "batch_f1", "batch_acc", "batch_prec"):
+            assert col in df.columns, f"Falta columna {col}"
+            assert df[col].notna().all(), f"{col} no debe tener NaN"
         assert (df["lr"] > 0).all(), "lr debe ser > 0"
+        # F1/acc/prec deben estar en [0, 1]
+        for col in ("batch_f1", "batch_acc", "batch_prec"):
+            assert df[col].between(0, 1).all(), f"{col} debe estar en [0,1]"
 
 
 def test_batch_monitor_log_every_1_logs_every_batch():
@@ -132,7 +137,7 @@ def test_batch_parser_handles_legacy_csv():
 
 
 def test_batch_parser_handles_v2_csv():
-    """parse_batch_csv lee correctamente el formato v2."""
+    """parse_batch_csv lee el formato v2 (sin f1/acc/prec) rellenando NaN."""
     with tempfile.TemporaryDirectory() as tmp:
         v2_path = Path(tmp) / "v2_batch.csv"
         v2_path.write_text(
@@ -143,7 +148,40 @@ def test_batch_parser_handles_v2_csv():
         df = parse_batch_csv(v2_path)
         assert df["batch_loss"].notna().all()
         assert df["lr"].notna().all()
+        # Columnas v3 ausentes → NaN
+        assert "batch_f1" in df.columns
+        assert df["batch_f1"].isna().all()
         assert df["global_batch"].tolist() == [1, 2]
+
+
+def test_batch_parser_handles_v3_csv():
+    """parse_batch_csv lee el formato v3 con f1/acc/prec por batch."""
+    with tempfile.TemporaryDirectory() as tmp:
+        v3_path = Path(tmp) / "v3_batch.csv"
+        v3_path.write_text(
+            "epoch,batch,n_batches,running_loss,batch_loss,lr,batch_f1,batch_acc,batch_prec\n"
+            "1,1,4,0.5,0.5,0.001,0.42,0.88,0.55\n"
+            "1,2,4,0.45,0.40,0.001,0.48,0.90,0.60\n"
+        )
+        df = parse_batch_csv(v3_path)
+        assert df["batch_f1"].notna().all()
+        assert df["batch_acc"].notna().all()
+        assert df["batch_prec"].notna().all()
+        assert df["batch_f1"].tolist() == [0.42, 0.48]
+
+
+def test_batch_monitor_csv_metrics_in_range():
+    """Las métricas F1/acc/prec del CSV deben estar en [0,1]."""
+    with tempfile.TemporaryDirectory() as tmp:
+        tmp_path = Path(tmp)
+        trainer = _make_trainer(tmp_path)
+        monitor = BatchMonitorDecorator(
+            trainer, log_every=1, output_dir=str(tmp_path), timestamp="rng"
+        )
+        monitor.train_epoch(_tiny_loader())
+        df = parse_batch_csv(monitor.batch_csv_path)
+        for col in ("batch_f1", "batch_acc", "batch_prec"):
+            assert df[col].between(0, 1).all(), f"{col} fuera de [0,1]"
 
 
 def test_batch_parser_global_batch_computation():

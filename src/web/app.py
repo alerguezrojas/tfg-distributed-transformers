@@ -1400,6 +1400,25 @@ with tab_batch:
         has_batch_loss = "batch_loss" in bdf.columns and bdf["batch_loss"].notna().any()
         has_lr = "lr" in bdf.columns and bdf["lr"].notna().any()
 
+        # Mapa de métricas disponibles por batch → etiqueta legible
+        _BATCH_METRIC_LABELS = {
+            "running_loss": "Loss media acumulada",
+            "batch_loss": "Loss instantánea por batch",
+            "batch_f1": "F1 (macro) por batch",
+            "batch_acc": "Accuracy por batch",
+            "batch_prec": "Precision (macro) por batch",
+        }
+
+        def _available_batch_metrics() -> list[str]:
+            opts = ["running_loss"]
+            for col in ("batch_loss", "batch_f1", "batch_acc", "batch_prec"):
+                if col in bdf.columns and bdf[col].notna().any():
+                    opts.append(col)
+            return opts
+
+        def _is_loss_metric(m: str) -> bool:
+            return "loss" in m
+
         if bdf.empty:
             st.warning("El CSV de batch está vacío.")
         else:
@@ -1423,14 +1442,10 @@ with tab_batch:
                         default=list(epochs_available_b[-min(3, len(epochs_available_b)):]),
                     )
                 with col_met:
-                    metric_options = ["running_loss"]
-                    if has_batch_loss:
-                        metric_options.append("batch_loss")
-                    batch_metric = st.selectbox("Métrica", metric_options,
-                                                format_func=lambda m: {
-                                                    "running_loss": "Loss media acumulada",
-                                                    "batch_loss": "Loss instantánea por batch",
-                                                }.get(m, m))
+                    batch_metric = st.selectbox(
+                        "Métrica", _available_batch_metrics(),
+                        format_func=lambda m: _BATCH_METRIC_LABELS.get(m, m),
+                    )
                 with col_ma:
                     ma_window = st.slider("Media móvil (batches)", 0, 200, 10,
                                           help="0 = desactivado")
@@ -1471,13 +1486,16 @@ with tab_batch:
                                     legendgroup=f"ep{ep}", showlegend=False,
                                 ))
 
-                    y_label = "Loss media" if batch_metric == "running_loss" else "Loss instantánea"
+                    y_label = _BATCH_METRIC_LABELS.get(batch_metric, batch_metric)
                     fig_b.update_layout(
-                        **_base_layout(420, f"{y_label} por batch"),
+                        **_base_layout(420, f"{y_label}"),
                         xaxis_title="Batch dentro del epoch",
                         yaxis_title=y_label,
                     )
-                    _show(fig_b, "batch_loss_por_epoch")
+                    # Las métricas F1/acc/prec van en [0,1]
+                    if not _is_loss_metric(batch_metric):
+                        fig_b.update_yaxes(range=[0, 1])
+                    _show(fig_b, f"batch_{batch_metric}_por_epoch")
                     sel_bdf = bdf[bdf["epoch"].isin(selected_epochs_b)]
                     _dl_csv(sel_bdf, "batch_metrics_sel.csv", "Descargar datos seleccionados")
 
@@ -1493,12 +1511,8 @@ with tab_batch:
                 col_gm, col_gma = st.columns([2, 2])
                 with col_gm:
                     global_metric = st.selectbox(
-                        "Métrica global",
-                        ["running_loss"] + (["batch_loss"] if has_batch_loss else []),
-                        format_func=lambda m: {
-                            "running_loss": "Loss media acumulada",
-                            "batch_loss": "Loss instantánea",
-                        }.get(m, m),
+                        "Métrica global", _available_batch_metrics(),
+                        format_func=lambda m: _BATCH_METRIC_LABELS.get(m, m),
                         key="global_metric_sel",
                     )
                 with col_gma:
@@ -1533,12 +1547,14 @@ with tab_batch:
                             annotation_font_size=9,
                         )
 
-                    y_label_g = "Loss media" if global_metric == "running_loss" else "Loss instantánea"
+                    y_label_g = _BATCH_METRIC_LABELS.get(global_metric, global_metric)
                     fig_g.update_layout(
                         **_base_layout(420, f"{y_label_g} — historia completa"),
                         xaxis_title="Batch global",
                         yaxis_title=y_label_g,
                     )
+                    if not _is_loss_metric(global_metric):
+                        fig_g.update_yaxes(range=[0, 1])
                     _show(fig_g, "batch_historia_global")
                     _dl_csv(bdf, "batch_metrics_completo.csv", "Descargar historia completa")
 
