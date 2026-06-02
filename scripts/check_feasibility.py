@@ -1166,7 +1166,7 @@ class ReportFormatter:
             ])
             for r in report.results:
                 est = (estimator.estimate(r, report.dataset_train, report.dataset_val,
-                                          target_epochs, report.nfs_factor, mi=mi)
+                                          target_epochs, report.nfs_factor, model_info=mi)
                        if not r.oom else None)
                 writer.writerow([
                     r.batch_size, r.trace_mode,
