@@ -1,11 +1,13 @@
-"""BatchMonitorDecorator — batch-level loss monitoring with CSV export.
+"""BatchMonitorDecorator — monitorización a nivel de batch con exportación CSV.
 
-Registers a lightweight callback on the inner Trainer's batch hook system
-instead of reimplementing train_epoch. This eliminates the DRY violation
-that previously existed when duplicating the full training loop.
+Registra un callback en el sistema de hooks del Trainer en lugar de reimplementar
+train_epoch, eliminando la duplicación del bucle.
 
-CSV format: epoch, batch, n_batches, running_loss
-Output: logs/{env}/{mode}/{model}/batch_metrics_{timestamp}.csv
+Formato CSV: epoch, batch, n_batches, running_loss, batch_loss, lr
+Salida: logs/{env}/{mode}/{model}/batch_metrics_{timestamp}.csv
+
+Retrocompatibilidad: los CSVs generados antes de esta versión solo tienen
+running_loss. batch_parser.py maneja ambos formatos.
 """
 
 from pathlib import Path
@@ -15,42 +17,60 @@ from src.training.base_trainer import BaseTrainer
 
 
 class BatchMonitorDecorator(TrainerDecorator):
-    """Aspect decorator that logs running train loss every N batches to a CSV.
+    """Aspecto que registra métricas de entrenamiento cada N batches en un CSV.
 
-    Activates with --layers batch-monitor.
-    Compatible with all --trace modes and all other aspect decorators.
+    Activar con --layers batch-monitor.
+    Compatible con todos los --trace modes y demás decoradores.
+
+    Columnas del CSV:
+        epoch        — número de epoch
+        batch        — índice de batch dentro del epoch (1-based)
+        n_batches    — total de batches en el epoch
+        running_loss — loss media acumulada desde el inicio del epoch
+        batch_loss   — loss instantánea de este batch específico
+        lr           — learning rate actual (primer param group)
     """
 
     def __init__(
         self,
         trainer: BaseTrainer,
-        log_every: int = 50,
+        log_every: int = 1,
         output_dir: str = "logs",
         timestamp: str = "",
     ):
         super().__init__(trainer)
-        self._log_every = log_every
+        self._log_every = max(1, log_every)
         csv_name = f"batch_metrics_{timestamp}.csv" if timestamp else "batch_metrics.csv"
         self._csv_path = Path(output_dir) / csv_name
         self._csv_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self._csv_path, "w") as f:
-            f.write("epoch,batch,n_batches,running_loss\n")
+            f.write("epoch,batch,n_batches,running_loss,batch_loss,lr\n")
 
-        # Register hook on the innermost Trainer — no loop duplication needed
         self._register_hook()
 
     def _register_hook(self) -> None:
-        """Walk the decorator stack and register our callback on the core Trainer."""
+        """Recorre el stack de decoradores y registra el callback en el Trainer central."""
         inner = self._trainer
         while hasattr(inner, "_trainer"):
             inner = inner._trainer
         if hasattr(inner, "register_batch_hook"):
             inner.register_batch_hook(self._on_batch)
 
-    def _on_batch(self, epoch: int, batch_idx: int, n_batches: int, running_loss: float) -> None:
-        if batch_idx % self._log_every == 0:
+    def _on_batch(
+        self,
+        epoch: int,
+        batch_idx: int,
+        n_batches: int,
+        running_loss: float,
+        batch_loss: float = 0.0,
+        lr: float = 0.0,
+    ) -> None:
+        if batch_idx % self._log_every == 0 or batch_idx == n_batches:
             with open(self._csv_path, "a") as f:
-                f.write(f"{epoch},{batch_idx},{n_batches},{running_loss:.6f}\n")
+                f.write(
+                    f"{epoch},{batch_idx},{n_batches},"
+                    f"{running_loss:.6f},{batch_loss:.6f},{lr:.8f}\n"
+                )
 
     @property
     def batch_csv_path(self) -> Path:

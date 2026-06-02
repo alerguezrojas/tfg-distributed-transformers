@@ -82,6 +82,7 @@ class TrainingSessionBuilder:
         self._fn: list[str] = []
         self._metrics: list[str] = ["loss", "f1", "accuracy", "precision_recall"]
         self._inspect: set[str] | None = None        # None → not active
+        self._batch_log_every: int | None = None     # None → use cfg or default
 
     # ── Fluent configuration API ─────────────────────────────────────────────
 
@@ -117,6 +118,11 @@ class TrainingSessionBuilder:
         """Enable modular inspection features (activates DeepTracingDecorator):
         'model-summary', 'grad-monitor', 'batch-table', 'anomalies'."""
         self._inspect = set(features)
+        return self
+
+    def with_batch_log_every(self, n: int) -> "TrainingSessionBuilder":
+        """Log batch metrics every N batches (default: 1 = every batch)."""
+        self._batch_log_every = max(1, n)
         return self
 
     # ── Build ────────────────────────────────────────────────────────────────
@@ -227,9 +233,14 @@ class TrainingSessionBuilder:
         if "hooks" in self._layers:
             inner = LayerHooksDecorator(inner)
         if "batch-monitor" in self._layers:
+            # Priority: CLI --batch-log-every > config log_batch_every > default 1
+            log_every = (
+                self._batch_log_every
+                or cfg["training"].get("log_batch_every", 1)
+            )
             inner = BatchMonitorDecorator(
                 inner,
-                log_every=cfg["training"].get("log_batch_every", 50),
+                log_every=log_every,
                 output_dir=str(log_dir),
                 timestamp=self._timestamp,
             )
