@@ -123,6 +123,9 @@ class TrainingSessionBuilder:
 
     def build(self) -> BaseTrainer:
         """Assemble and return the fully configured trainer stack."""
+        from src.training.config_validator import validate_config
+        validate_config(self._cfg)
+
         cfg = self._cfg
 
         # ── Model ────────────────────────────────────────────────────────────
