@@ -71,6 +71,7 @@ class BenchmarkResult:
     images_per_second_eval: float
     peak_vram_gb: float
     oom: bool = False
+    avg_power_w: float = 0.0          # GPU average power during train benchmark (W)
 
 
 @dataclass
@@ -180,7 +181,7 @@ class Benchmarker:
 
         batches = self._make_batches(batch_size)
         try:
-            sec_train, sec_eval, peak_vram = self._benchmark(batches, trace_mode)
+            sec_train, sec_eval, peak_vram, avg_power = self._benchmark(batches, trace_mode)
             return BenchmarkResult(
                 batch_size=batch_size,
                 trace_mode=trace_mode,
@@ -189,6 +190,7 @@ class Benchmarker:
                 images_per_second_train=batch_size / sec_train if sec_train > 0 else 0.0,
                 images_per_second_eval=batch_size / sec_eval if sec_eval > 0 else 0.0,
                 peak_vram_gb=peak_vram,
+                avg_power_w=avg_power,
             )
         except torch.cuda.OutOfMemoryError:
             torch.cuda.empty_cache()
@@ -210,7 +212,8 @@ class Benchmarker:
             for _ in range(n)
         ]
 
-    def _benchmark(self, batches: list, trace_mode: str) -> tuple[float, float, float]:
+    def _benchmark(self, batches: list, trace_mode: str) -> tuple[float, float, float, float]:
+        """Returns (sec_per_batch_train, sec_per_batch_eval, peak_vram_gb, avg_power_w)."""
         hooks: list = []
         if trace_mode == "deep":
             hooks = self._register_deep_hooks()
@@ -223,15 +226,25 @@ class Benchmarker:
         for images, labels in batches[:self.N_WARMUP]:
             self._train_step(images, labels)
 
-        # Measure train
+        # Measure train + sample GPU power
+        power_samples: list[float] = []
+        pynvml_handle = self._get_pynvml_handle()
+
         if self._device.type == "cuda":
             torch.cuda.synchronize()
         t0 = time.perf_counter()
         for images, labels in batches[self.N_WARMUP:]:
             self._train_step(images, labels)
+            if pynvml_handle is not None:
+                try:
+                    import pynvml
+                    power_samples.append(pynvml.nvmlDeviceGetPowerUsage(pynvml_handle) / 1000.0)
+                except Exception:
+                    pass
         if self._device.type == "cuda":
             torch.cuda.synchronize()
         sec_train = (time.perf_counter() - t0) / self.N_MEASURE
+        avg_power = sum(power_samples) / len(power_samples) if power_samples else 0.0
 
         # Measure eval (forward only)
         self._model.eval()
@@ -249,7 +262,16 @@ class Benchmarker:
         for h in hooks:
             h.remove()
 
-        return sec_train, sec_eval, peak_vram
+        return sec_train, sec_eval, peak_vram, avg_power
+
+    @staticmethod
+    def _get_pynvml_handle():
+        try:
+            import pynvml
+            pynvml.nvmlInit()
+            return pynvml.nvmlDeviceGetHandleByIndex(0)
+        except Exception:
+            return None
 
     def _train_step(self, images: torch.Tensor, labels: torch.Tensor):
         images = images.to(self._device)
@@ -297,10 +319,9 @@ class Benchmarker:
 # ──────────────────────────────────────────────────────────────
 
 class TimeEstimator:
-    """Converts per-batch timings into full training time estimates.
+    """Converts per-batch timings into full training time and resource estimates.
 
-    Takes into account both train and eval phases, plus an optional
-    NFS overhead factor for networked filesystems (e.g. Verode cluster).
+    Estimates include: time, energy, FLOPs, optimizer steps, and DDP projections.
     """
 
     def estimate(
@@ -310,24 +331,62 @@ class TimeEstimator:
         dataset_val: int,
         epochs: int,
         nfs_factor: float = 1.0,
+        model_info: "ModelInfo | None" = None,
     ) -> Optional[dict]:
-        """Returns dict with train/eval/total per epoch and full total, or None if OOM."""
+        """Returns comprehensive estimate dict, or None if OOM."""
         if result.oom or result.images_per_second_train == 0:
             return None
 
-        train_batches = dataset_train / result.batch_size
-        eval_batches = dataset_val / result.batch_size
+        import math
+        train_batches = math.ceil(dataset_train / result.batch_size)
+        eval_batches  = math.ceil(dataset_val  / result.batch_size)
 
-        sec_train = train_batches * result.seconds_per_batch_train * nfs_factor
-        sec_eval = eval_batches * result.seconds_per_batch_eval * nfs_factor
-        sec_epoch = sec_train + sec_eval
-        sec_total = sec_epoch * epochs
+        sec_train  = train_batches * result.seconds_per_batch_train * nfs_factor
+        sec_eval   = eval_batches  * result.seconds_per_batch_eval
+        sec_epoch  = sec_train + sec_eval
+        sec_total  = sec_epoch * epochs
+
+        # Energy (Wh) = power (W) × time (h)
+        energy_train_wh_epoch = 0.0
+        energy_eval_wh_epoch  = 0.0
+        if result.avg_power_w > 0:
+            energy_train_wh_epoch = result.avg_power_w * sec_train / 3600
+            # Eval is forward-only, roughly 40% power of train
+            energy_eval_wh_epoch  = result.avg_power_w * 0.4 * sec_eval / 3600
+
+        # FLOPs per epoch (GFLOPs) = FLOPs/image × N_images / 1e9
+        # Train: forward + backward ≈ 3× forward; eval: forward only
+        flops_train_gflops = 0.0
+        flops_eval_gflops  = 0.0
+        if model_info and model_info.flops_per_image_mflops:
+            flops_img = model_info.flops_per_image_mflops / 1000  # → GFLOPs/image
+            flops_train_gflops = flops_img * 3 * dataset_train    # ×3 for forward+2×backward
+            flops_eval_gflops  = flops_img * dataset_val
+
+        # Optimizer steps per epoch
+        optimizer_steps = train_batches
+
+        # DDP theoretical projection (linear scaling, efficiency ≈ 85% for GPU-GPU)
+        ddp_eff = 0.85
+        ddp_projections = {}
+        for n_gpus in (2, 4, 8):
+            speedup = n_gpus * ddp_eff
+            ddp_projections[n_gpus] = sec_total / speedup
 
         return {
             "train_per_epoch": sec_train,
             "eval_per_epoch": sec_eval,
             "total_per_epoch": sec_epoch,
             "total": sec_total,
+            "energy_train_wh_per_epoch": energy_train_wh_epoch,
+            "energy_eval_wh_per_epoch": energy_eval_wh_epoch,
+            "energy_total_wh": (energy_train_wh_epoch + energy_eval_wh_epoch) * epochs,
+            "flops_train_gflops_per_epoch": flops_train_gflops,
+            "flops_eval_gflops_per_epoch": flops_eval_gflops,
+            "optimizer_steps_per_epoch": optimizer_steps,
+            "ddp_total_2gpu_h": ddp_projections[2] / 3600,
+            "ddp_total_4gpu_h": ddp_projections[4] / 3600,
+            "ddp_total_8gpu_h": ddp_projections[8] / 3600,
         }
 
     @staticmethod
@@ -469,6 +528,7 @@ class ReportFormatter:
     def _estimates_section(self, report: FeasibilityReport):
         estimator = TimeEstimator()
         nfs = report.nfs_factor
+        mi = report.model_info
         self._emit(f"\n{'─'*self.W}")
         label = f"train={report.dataset_train:,} | val={report.dataset_val:,}"
         if nfs != 1.0:
@@ -488,12 +548,20 @@ class ReportFormatter:
                 if est is None:
                     self._emit(f"  {r.batch_size:>5}  {r.trace_mode:<8}  {'OOM':>11}  {'—':>10}  {'—':>11}  {'—':>10}")
                 else:
+                    energy_str = ""
+                    if est.get("energy_train_wh_per_epoch"):
+                        e_tot = est["energy_train_wh_per_epoch"] + est["energy_eval_wh_per_epoch"]
+                        energy_str = f"  ~{e_tot:.1f} Wh/epoch"
+                    ddp2_str = ""
+                    if est.get("ddp_total_2gpu_h"):
+                        ddp2_str = f"  [DDP×2: ~{est['ddp_total_2gpu_h']:.1f}h]"
                     self._emit(
                         f"  {r.batch_size:>5}  {r.trace_mode:<8}  "
                         f"{TimeEstimator.format_time(est['train_per_epoch']):>11}  "
                         f"{TimeEstimator.format_time(est['eval_per_epoch']):>10}  "
                         f"{TimeEstimator.format_time(est['total_per_epoch']):>11}  "
                         f"{TimeEstimator.format_time(est['total']):>10}"
+                        f"{energy_str}{ddp2_str}"
                     )
 
     def _recommendations_section(self, report: FeasibilityReport):
@@ -515,7 +583,7 @@ class ReportFormatter:
         for mode in report.trace_modes:
             r = next((x for x in report.results if x.batch_size == best.batch_size and x.trace_mode == mode), None)
             if r and not r.oom:
-                est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs, nfs)
+                est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs, nfs, model_info=report.model_info)
                 if est:
                     self._emit(
                         f"  → --trace {mode:<8} para {target_epochs} epochs: "
@@ -582,13 +650,21 @@ class ReportFormatter:
                 "batch_size", "trace_mode",
                 "s_per_batch_train", "imgs_per_s_train",
                 "s_per_batch_eval", "imgs_per_s_eval",
-                "peak_vram_gb", "oom",
+                "peak_vram_gb", "avg_power_w", "oom",
                 "est_train_min_per_epoch", "est_eval_min_per_epoch",
                 "est_total_min_per_epoch",
                 f"est_total_h_{target_epochs}ep",
+                "est_energy_train_wh_per_epoch", "est_energy_eval_wh_per_epoch",
+                "est_energy_total_wh",
+                "flops_train_gflops_per_epoch", "flops_eval_gflops_per_epoch",
+                "optimizer_steps_per_epoch",
+                f"est_ddp_2gpu_h_{target_epochs}ep",
+                f"est_ddp_4gpu_h_{target_epochs}ep",
             ])
             for r in report.results:
-                est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs) if not r.oom else None
+                est = (estimator.estimate(r, report.dataset_train, report.dataset_val,
+                                          target_epochs, model_info=mi)
+                       if not r.oom else None)
                 writer.writerow([
                     r.batch_size,
                     r.trace_mode,
@@ -597,11 +673,20 @@ class ReportFormatter:
                     round(r.seconds_per_batch_eval, 4) if not r.oom else "",
                     round(r.images_per_second_eval, 1) if not r.oom else "",
                     round(r.peak_vram_gb, 2) if not r.oom else "",
+                    round(r.avg_power_w, 1) if not r.oom and r.avg_power_w > 0 else "",
                     "yes" if r.oom else "no",
                     round(est["train_per_epoch"] / 60, 1) if est else "",
                     round(est["eval_per_epoch"] / 60, 1) if est else "",
                     round(est["total_per_epoch"] / 60, 1) if est else "",
                     round(est["total"] / 3600, 2) if est else "",
+                    round(est["energy_train_wh_per_epoch"], 2) if est and est["energy_train_wh_per_epoch"] else "",
+                    round(est["energy_eval_wh_per_epoch"], 2) if est and est["energy_eval_wh_per_epoch"] else "",
+                    round(est["energy_total_wh"], 1) if est and est["energy_total_wh"] else "",
+                    round(est["flops_train_gflops_per_epoch"], 1) if est and est["flops_train_gflops_per_epoch"] else "",
+                    round(est["flops_eval_gflops_per_epoch"], 1) if est and est["flops_eval_gflops_per_epoch"] else "",
+                    est["optimizer_steps_per_epoch"] if est else "",
+                    round(est["ddp_total_2gpu_h"], 2) if est else "",
+                    round(est["ddp_total_4gpu_h"], 2) if est else "",
                 ])
 
         print(f"  → CSV guardado: {csv_path}")
