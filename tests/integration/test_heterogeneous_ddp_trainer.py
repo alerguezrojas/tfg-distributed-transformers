@@ -127,15 +127,15 @@ def test_train_epoch_increments_current_epoch():
 
 
 def test_batch_hooks_are_called():
-    """Los batch hooks deben recibir (epoch, batch_idx, n_batches, running_loss, batch_loss, lr)."""
+    """Los batch hooks deben recibir (epoch, batch_idx, n_batches, metrics: dict)."""
     _init_gloo()
     try:
         with tempfile.TemporaryDirectory() as tmp:
             trainer = _make_hetero_trainer(Path(tmp), local_batch_size=4)
             received = []
             trainer.register_batch_hook(
-                lambda ep, bi, nb, rl, bl, lr: received.append(
-                    {"ep": ep, "bi": bi, "nb": nb, "rl": rl, "bl": bl, "lr": lr}
+                lambda ep, bi, nb, met: received.append(
+                    {"ep": ep, "bi": bi, "nb": nb, **met}
                 )
             )
             trainer.train_epoch(_tiny_loader(n=8, bs=4))  # 2 batches
@@ -143,25 +143,28 @@ def test_batch_hooks_are_called():
             assert len(received) == 2
             assert received[0]["ep"] == 1
             assert received[0]["bi"] == 1
-            assert isinstance(received[0]["bl"], float)
+            assert isinstance(received[0]["batch_loss"], float)
             assert received[0]["lr"] > 0
+            assert "batch_f1" in received[0]
     finally:
         _destroy_gloo()
 
 
-def test_batch_hooks_have_correct_signature_with_six_args():
-    """La firma del hook debe ser compatible con la v2 de BatchMonitorDecorator."""
+def test_batch_hooks_pass_metrics_dict():
+    """El dict de métricas del hook contiene loss, lr, f1, acc, prec por batch."""
     _init_gloo()
     try:
         with tempfile.TemporaryDirectory() as tmp:
             trainer = _make_hetero_trainer(Path(tmp))
-            # Hook con firma antigua (4 args) no debe crashear pero puede ignorar los extra
-            calls_4 = []
+            metrics_seen = []
             trainer.register_batch_hook(
-                lambda ep, bi, nb, rl, *rest: calls_4.append(ep)
+                lambda ep, bi, nb, met: metrics_seen.append(met)
             )
             trainer.train_epoch(_tiny_loader())
-            assert len(calls_4) > 0
+            assert len(metrics_seen) > 0
+            m0 = metrics_seen[0]
+            for key in ("running_loss", "batch_loss", "lr", "batch_f1", "batch_acc", "batch_prec"):
+                assert key in m0, f"Falta {key} en el dict de métricas"
     finally:
         _destroy_gloo()
 

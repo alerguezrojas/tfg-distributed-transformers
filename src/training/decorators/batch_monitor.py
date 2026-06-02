@@ -3,11 +3,11 @@
 Registra un callback en el sistema de hooks del Trainer en lugar de reimplementar
 train_epoch, eliminando la duplicación del bucle.
 
-Formato CSV: epoch, batch, n_batches, running_loss, batch_loss, lr
+Formato CSV: epoch, batch, n_batches, running_loss, batch_loss, lr, batch_f1, batch_acc, batch_prec
 Salida: logs/{env}/{mode}/{model}/batch_metrics_{timestamp}.csv
 
-Retrocompatibilidad: los CSVs generados antes de esta versión solo tienen
-running_loss. batch_parser.py maneja ambos formatos.
+El hook recibe un dict de métricas; batch_parser.py maneja todos los
+formatos (legacy con solo running_loss, v2 con batch_loss/lr, v3 con f1/acc/prec).
 """
 
 from pathlib import Path
@@ -44,7 +44,7 @@ class BatchMonitorDecorator(TrainerDecorator):
         self._csv_path = Path(output_dir) / csv_name
         self._csv_path.parent.mkdir(parents=True, exist_ok=True)
         with open(self._csv_path, "w") as f:
-            f.write("epoch,batch,n_batches,running_loss,batch_loss,lr\n")
+            f.write("epoch,batch,n_batches,running_loss,batch_loss,lr,batch_f1,batch_acc,batch_prec\n")
 
         self._register_hook()
 
@@ -61,15 +61,20 @@ class BatchMonitorDecorator(TrainerDecorator):
         epoch: int,
         batch_idx: int,
         n_batches: int,
-        running_loss: float,
-        batch_loss: float = 0.0,
-        lr: float = 0.0,
+        metrics: dict,
     ) -> None:
         if batch_idx % self._log_every == 0 or batch_idx == n_batches:
+            running_loss = metrics.get("running_loss", 0.0)
+            batch_loss = metrics.get("batch_loss", 0.0)
+            lr = metrics.get("lr", 0.0)
+            batch_f1 = metrics.get("batch_f1", float("nan"))
+            batch_acc = metrics.get("batch_acc", float("nan"))
+            batch_prec = metrics.get("batch_prec", float("nan"))
             with open(self._csv_path, "a") as f:
                 f.write(
                     f"{epoch},{batch_idx},{n_batches},"
-                    f"{running_loss:.6f},{batch_loss:.6f},{lr:.8f}\n"
+                    f"{running_loss:.6f},{batch_loss:.6f},{lr:.8f},"
+                    f"{batch_f1:.6f},{batch_acc:.6f},{batch_prec:.6f}\n"
                 )
 
     @property
