@@ -31,6 +31,23 @@ class RunInfo:
     perclass_csv_path: Path | None = None
 
     @property
+    def sort_key(self) -> str:
+        """Clave de orden cronológico (YYYYMMDD_HHMMSS).
+
+        Los timestamps se escriben como DDMMYYYY_HHMMSS (formato actual) o
+        YYYYMMDD_HHMMSS (legacy). Ordenar el string crudo NO es cronológico
+        para el formato DDMMYYYY ('27052026' > '02062026' aunque mayo < junio).
+        Esta propiedad normaliza ambos a YYYYMMDD_HHMMSS para un orden correcto.
+        """
+        ts = self.timestamp
+        time_part = ts[9:15] if len(ts) >= 15 else "000000"
+        if len(ts) >= 8 and int(ts[4:8]) >= 2000:  # DDMMYYYY
+            yyyymmdd = f"{ts[4:8]}{ts[2:4]}{ts[:2]}"
+        else:                                        # legacy YYYYMMDD
+            yyyymmdd = ts[:8]
+        return f"{yyyymmdd}_{time_part}"
+
+    @property
     def label(self) -> str:
         ts = self.timestamp
         if int(ts[4:8]) >= 2000:  # DDMMYYYY
@@ -106,7 +123,7 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
         if m and m.group(1) in runs and runs[m.group(1)].confusion_matrix_csv_path is None:
             runs[m.group(1)].confusion_matrix_csv_path = csv_path
 
-    return sorted(runs.values(), key=lambda r: r.timestamp, reverse=True)
+    return sorted(runs.values(), key=lambda r: r.sort_key, reverse=True)
 
 
 def discover_feasibility_csvs(root: Path = Path(".")) -> list[Path]:
