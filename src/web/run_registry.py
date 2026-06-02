@@ -1,8 +1,11 @@
-"""Discovers and indexes training runs from logs/, plots/, and checkpoints/.
+"""Descubre e indexa runs de entrenamiento desde logs/.
 
-Scans recursively under logs/ and plots/ so it handles both the legacy flat
-structure (logs/{env}/train_*.log) and the new deep structure
+Escanea recursivamente para manejar tanto la estructura antigua plana
+(logs/{env}/train_*.log) como la nueva profunda
 (logs/{env}/{mode}/{model}/train_*.log).
+
+Solo indexa CSVs — los PNGs ya no se generan durante el entrenamiento.
+El dashboard web genera todas las gráficas de forma interactiva desde los CSVs.
 """
 
 from __future__ import annotations
@@ -19,12 +22,9 @@ class RunInfo:
     timestamp: str
     log_path: Path
     trace_mode: str
-    env: str = "local"          # "local" or "verode"
-    mode: str = "single"        # "single" or "ddp"
-    model: str = ""             # model name slug, e.g. "vit_tiny_patch16_224"
-    plot_path: Path | None = None
-    perclass_paths: list[Path] = field(default_factory=list)
-    confusion_matrix_paths: list[Path] = field(default_factory=list)
+    env: str = "local"
+    mode: str = "single"
+    model: str = ""
     confusion_matrix_csv_path: Path | None = None
     batch_csv_path: Path | None = None
     epoch_csv_path: Path | None = None
@@ -33,8 +33,6 @@ class RunInfo:
     @property
     def label(self) -> str:
         ts = self.timestamp
-        # Detect format: DDMMYYYY has a 4-digit year at positions 4-8 (>= 2000)
-        # YYYYMMDD (legacy) has a 4-digit year at positions 0-4.
         if int(ts[4:8]) >= 2000:  # DDMMYYYY
             date = f"{ts[:2]}/{ts[2:4]}/{ts[4:8]}"
         else:                      # legacy YYYYMMDD
@@ -49,36 +47,25 @@ class RunInfo:
 
 
 def _env_mode_model_from_path(log_path: Path, logs_root: Path) -> tuple[str, str, str]:
-    """Extract (env, mode, model) from a log path relative to logs_root."""
     try:
         parts = log_path.relative_to(logs_root).parts
     except ValueError:
         return "unknown", "single", ""
-
     if len(parts) >= 4:
-        # New structure: logs/{env}/{mode}/{model}/train_*.log
         return parts[0], parts[1], parts[2]
     elif len(parts) == 2:
-        # Old structure: logs/{env}/train_*.log
         return parts[0], "single", ""
-    else:
-        # Legacy root: logs/train_*.log
-        return "legacy", "single", ""
+    return "legacy", "single", ""
 
 
 def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
-    """Scan logs/ recursively for training runs.
-
-    Returns list sorted by timestamp descending.
-    """
+    """Escanea logs/ recursivamente y devuelve runs ordenados por timestamp desc."""
     logs_root = root / "logs"
-    plots_root = root / "plots"
     runs: dict[str, RunInfo] = {}
 
     if not logs_root.exists():
         return []
 
-    # Discover all train logs recursively
     for log_path in logs_root.rglob("train_*.log"):
         name = log_path.stem
         if name in ("train", "train_legacy", "train_local"):
@@ -89,37 +76,16 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
         ts = m.group(1)
         is_deep = "deep" in name
         env, mode, model = _env_mode_model_from_path(log_path, logs_root)
-
         runs[ts] = RunInfo(
             timestamp=ts,
             log_path=log_path,
             trace_mode="deep" if is_deep else "simple",
-            env=env,
-            mode=mode,
-            model=model,
+            env=env, mode=mode, model=model,
         )
 
     if not runs:
         return []
 
-    # Attach plots — scan recursively, match by timestamp
-    if plots_root.exists():
-        for plot_path in plots_root.rglob("training_*.png"):
-            m = _TIMESTAMP_RE.search(plot_path.stem)
-            if m and m.group(1) in runs:
-                runs[m.group(1)].plot_path = plot_path
-
-        for plot_path in sorted(plots_root.rglob("perclass_*.png")):
-            m = _TIMESTAMP_RE.search(plot_path.stem)
-            if m and m.group(1) in runs:
-                runs[m.group(1)].perclass_paths.append(plot_path)
-
-        for plot_path in sorted(plots_root.rglob("confusion_matrix_*.png")):
-            m = _TIMESTAMP_RE.search(plot_path.stem)
-            if m and m.group(1) in runs:
-                runs[m.group(1)].confusion_matrix_paths.append(plot_path)
-
-    # Attach CSV artifacts — scan recursively, match by timestamp
     for csv_path in logs_root.rglob("batch_metrics_*.csv"):
         m = _TIMESTAMP_RE.search(csv_path.stem)
         if m and m.group(1) in runs and runs[m.group(1)].batch_csv_path is None:
@@ -144,7 +110,7 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
 
 
 def discover_feasibility_csvs(root: Path = Path(".")) -> list[Path]:
-    """Return all feasibility CSVs sorted by modification time (newest first)."""
+    """Devuelve todos los CSVs de viabilidad ordenados por fecha de modificación."""
     logs_root = root / "logs"
     if not logs_root.exists():
         return []
