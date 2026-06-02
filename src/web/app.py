@@ -1819,8 +1819,8 @@ with tab_viabilidad:
                         barmode="stack",
                         xaxis_title="Configuración DDP",
                         yaxis_title="Porcentaje del tiempo de batch",
-                        yaxis=dict(range=[0, 100], gridcolor="#e2e8f0"),
                     )
+                    fig_rect.update_yaxes(range=[0, 100])
                     _show(fig_rect, "ddp_carga_distribucion")
 
                     # ── Speedup vs teórico ────────────────────────────────────
