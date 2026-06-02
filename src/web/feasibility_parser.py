@@ -51,7 +51,8 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
         "s_per_batch", "imgs_per_s",                          # legacy
         "s_per_batch_train", "imgs_per_s_train",              # new
         "s_per_batch_eval", "imgs_per_s_eval",                # new
-        "peak_vram_gb",
+        "peak_vram_gb", "avg_power_w",
+        "optimizer_steps_per_epoch",
     ]
     for col in numeric_cols:
         if col in df.columns:
@@ -59,6 +60,11 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
 
     for col in df.columns:
         if col.startswith("est_"):
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    # Normalize all est_ and flops_ and energy_ numeric columns
+    for col in df.columns:
+        if col.startswith(("est_", "flops_", "energy_", "ddp_")):
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # Normalize meta numeric fields
