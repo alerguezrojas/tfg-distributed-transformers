@@ -203,6 +203,64 @@ def build_comparison(
         unit="GB",
     ))
 
+    # ── Energy ───────────────────────────────────────────────────────────────
+    est_energy_train = _safe_float(frow.get("est_energy_train_wh_per_epoch"))
+    act_energy_eval_wh = (
+        actual_df["energy_eval_wh"].mean() if "energy_eval_wh" in actual_df.columns
+        and actual_df["energy_eval_wh"].notna().any() else None
+    )
+    avg_power = _safe_float(frow.get("avg_power_w"))
+    if est_energy_train is not None or act_energy_eval_wh is not None:
+        formula_energy = (
+            f"{avg_power:.0f}W × train_time_h × 1Wh"
+            if avg_power else "avg_power_w × time_h"
+        )
+        rows.append(ComparisonRow(
+            metric="Energy train / epoch",
+            formula=formula_energy,
+            estimated=est_energy_train,
+            actual=None,  # training logs have eval energy, not train
+            unit="Wh",
+        ))
+        if act_energy_eval_wh is not None:
+            est_energy_eval = _safe_float(frow.get("est_energy_eval_wh_per_epoch"))
+            rows.append(ComparisonRow(
+                metric="Energy eval / epoch",
+                formula=f"{avg_power:.0f}W × 0.4 × eval_time_h" if avg_power else "power × eval_time_h",
+                estimated=est_energy_eval,
+                actual=act_energy_eval_wh,
+                unit="Wh",
+            ))
+
+    # ── Optimizer steps ──────────────────────────────────────────────────────
+    est_steps = _safe_float(frow.get("optimizer_steps_per_epoch"))
+    if est_steps is not None and n_train_batches:
+        rows.append(ComparisonRow(
+            metric="Optimizer steps / epoch",
+            formula=f"⌈{_N_TRAIN}/{batch_size}⌉ = {n_train_batches}",
+            estimated=est_steps,
+            actual=float(n_train_batches),
+            unit="steps",
+        ))
+
+    # ── DDP projection ───────────────────────────────────────────────────────
+    est_total_h = _safe_float(frow.get(next(
+        (c for c in (frow.index if hasattr(frow, 'index') else [])
+         if c.startswith("est_total_h_")), None
+    ))) if hasattr(frow, 'index') else None
+    est_ddp2 = _safe_float(frow.get(next(
+        (c for c in (frow.index if hasattr(frow, 'index') else [])
+         if c.startswith("est_ddp_2gpu_h_")), None
+    ))) if hasattr(frow, 'index') else None
+    if est_ddp2 is not None:
+        rows.append(ComparisonRow(
+            metric="DDP ×2 GPU total (est.)",
+            formula="total_time / (2 × 0.85_efficiency)",
+            estimated=est_ddp2,
+            actual=None,
+            unit="h",
+        ))
+
     # ── Complexity / FLOPs ───────────────────────────────────────────────────
     if flops and n_train_batches and batch_size:
         total_gflops = flops * _N_TRAIN / 1000  # MFLOPs × N / 1000 → GFLOPs
