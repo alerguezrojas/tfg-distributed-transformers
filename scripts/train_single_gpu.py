@@ -68,6 +68,8 @@ def parse_args():
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
     parser.add_argument("--batch-size", type=int, help="Override training.batch_size")
     parser.add_argument("--model", type=str, help="Override model name (any timm ID)")
+    parser.add_argument("--resume", type=str, default=None, metavar="CHECKPOINT",
+                        help="Path to checkpoint .pt file to resume training from")
     parser.add_argument(
         "--trace", choices=["off", "simple", "deep"], default="simple",
         help="Logging controller mode",
@@ -156,6 +158,21 @@ def main():
         builder = builder.with_inspect(*args.inspect)
 
     trainer = builder.build()
+
+    # Checkpoint resume
+    if args.resume:
+        # Walk the decorator stack to the core Trainer
+        inner = trainer
+        while hasattr(inner, "_trainer"):
+            inner = inner._trainer
+        if hasattr(inner, "load_checkpoint"):
+            ckpt = inner.load_checkpoint(args.resume)
+            resumed_epoch = ckpt.get("epoch", 0)
+            remaining = cfg["training"]["epochs"] - resumed_epoch
+            print(f"Resumiendo desde epoch {resumed_epoch} — quedan {remaining} epochs")
+            cfg["training"]["epochs"] = remaining
+        else:
+            print("WARN: trainer no soporta load_checkpoint, ignorando --resume")
 
     # Print summary after build (model already instantiated inside builder)
     model_name = args.model or cfg["model"]["name"]
