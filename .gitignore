@@ -1,6 +1,10 @@
 # Model checkpoints — exclude large .pt files
 checkpoints/**/*.pt
 
+# Training PNGs — el dashboard web genera gráficas interactivas desde los CSVs
+# Los PNGs ya no se generan durante el entrenamiento; si quedan locales, no los rastreamos
+plots/**/*.png
+
 
 
 # Byte-compiled / optimized / DLL files
