@@ -383,6 +383,39 @@ multi-nodo y la sincronización de gradientes funcionan antes de tener hardware 
 
 - `configs/train_ddp_verode.yaml` — batch_size=64 **por GPU** (global batch = 128 con 2 GPUs), backend NCCL, para V100.
 - `configs/train_ddp_cpu_test.yaml` — batch_size=4, backend **gloo**, `pretrained=false`, 1 epoch. Valida infraestructura multi-nodo sin GPU compatible.
+- `configs/train_heterogeneous_ddp.yaml` — DDP heterogéneo verode21 (V100, batch=64, weight=16) + verode16/18 (CPU, batch=4, weight=1). Backend **gloo**. Label smoothing + mixup v3.
+
+### DDP heterogéneo — verode21 (GPU) + verode16 (CPU)
+
+```bash
+# Primero hacer git pull en ambos nodos:
+# ssh verode21 && cd ~/tfg-distributed-transformers && git pull origin main
+# ssh verode16 && cd ~/tfg-distributed-transformers && git pull origin main
+
+# Terminal 1 — verode21 (V100, rank 0):
+ssh verode21
+cd ~/tfg-distributed-transformers
+.venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=0 \
+  --master_addr=verode21 --master_port=29500 \
+  scripts/train_heterogeneous_ddp.py \
+  --config configs/train_heterogeneous_ddp.yaml \
+  --trace simple --layers confusion batch-monitor --fn energy
+
+# Terminal 2 — verode16 (CPU, rank 1):
+ssh verode16
+cd ~/tfg-distributed-transformers
+.venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=1 \
+  --master_addr=verode21 --master_port=29500 \
+  scripts/train_heterogeneous_ddp.py \
+  --config configs/train_heterogeneous_ddp.yaml \
+  --trace simple --layers confusion batch-monitor --fn energy
+```
+
+**Cómo funciona:**
+- `HeterogeneousDistributedSampler` da a rank 0 (GPU) ≈94% del dataset y a rank 1 (CPU) ≈6%, proporcionalmente a sus compute_weights (16:1)
+- `HeterogeneousDDPTrainer` normaliza los gradientes por el batch global real: `loss = criterion_sum / global_batch_size` → gradiente matemáticamente correcto aunque los batch sizes sean distintos
+- Solo rank 0 (GPU) escribe logs, CSVs y checkpoints
+- Los artefactos van a `logs/verode/ddp_hetero/vit_base_patch16_224/`
 
 ---
 
@@ -392,10 +425,14 @@ multi-nodo y la sincronización de gradientes funcionan antes de tener hardware 
 
 Arquitectura (patrón Facade + SRP):
 - `ModelAnalyzer` — FLOPs, parámetros, memoria estática
-- `HardwareProbe` — VRAM disponible
+- `HardwareProbe` — GPU (VRAM, compute capability) + CPU (cores, RAM)
+- `DiskProbe` / `DatasetProfiler` — tipo de disco, NFS, I/O real, `io_bottleneck_ratio`
 - `Benchmarker` — throughput real por (batch_size, trace_mode)
 - `TimeEstimator` — convierte throughput en estimaciones de tiempo
-- `ReportFormatter` — imprime el informe + escribe CSV estructurado
+- `DDPOptimizer` — escenarios 1/2/4/8 GPUs, speedup real, cuello de botella
+- `PerformancePredictor` — predicción F1 empírica (datos históricos)
+- `ConvergenceStudy` (`src/training/convergence_study.py`) — **estudio empírico real**: LR range test + mini-training de convergencia con datos reales + gradient noise scale
+- `ReportFormatter` — imprime el informe + escribe CSV estructurado (bloques `#meta`, `#cpu`, `#disk`, `#dataset`, `#prediction`, `#curve_*`, `#ddp`, `#study_*`)
 - `FeasibilityChecker` — Facade que coordina todo
 
 ```bash
@@ -406,7 +443,9 @@ uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off
 uv run python scripts/check_feasibility.py --batch-sizes 64 --nfs-factor 1.3
 # Override de modelo (uno o varios separados por espacio)
 uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
-uv run python scripts/check_feasibility.py --model vit_tiny_patch16_224 vit_small_patch16_224 vit_base_patch16_224 resnet50 --batch-sizes 16 32 64 128
+# Estudio empírico REAL (mini-training + LR range test + gradient noise) — más lento (~3-8 min)
+uv run python scripts/check_feasibility.py --model vit_base_patch16_224 --batch-sizes 64 \
+  --dataset-path ~/datasets/bigearthnet/BigEarthNet-S2 --convergence-study --study-steps 80
 ```
 
 Genera dos artefactos en `logs/{env}/`:
@@ -750,9 +789,10 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 ```
 src/web/
   __init__.py
-  app.py                    # Streamlit entrypoint — 9 tabs
+  app.py                    # Streamlit entrypoint — 14 tabs (v6, UI en español)
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
-                            # RunInfo con env, mode, model, epoch/perclass/batch CSV paths
+                            # RunInfo con env, mode, model, epoch/perclass/batch/confusion CSV paths
+                            # (sin referencias a PNGs — eliminadas en v6)
   log_parser.py             # parsea logs --trace simple y --trace deep → DataFrame (fallback)
   batch_parser.py           # lee batch_metrics_*.csv → DataFrame por batch
   perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
@@ -767,21 +807,30 @@ uv run streamlit run src/web/app.py
 # Abre http://localhost:8501
 ```
 
-### Tabs
+### Tabs (v6 — UI en español, tecnicismos en inglés)
 
-| Tab | Contenido |
-|-----|-----------|
-| Curves | Curvas de F1/loss/accuracy; metric cards; epoch time chart; descarga CSV |
-| Per-class | Tabla ranking de clases + tendencia multi-clase + confusion matrix (normalizada/absoluta) |
-| Batch | Running loss por batch con moving average y detección de picos |
-| Compare | Superpone hasta 4 runs; tabla resumen comparativa |
-| Feasibility | Benchmark VRAM/throughput; estimaciones; lanzar feasibility check desde la web |
-| Time | Tiempo real por epoch vs estimación; tendencia lineal; warmup detection |
-| Info | Config YAML, anomaly log, dataset info, log completo con buscador |
-| Launcher | Lanzar entrenamientos single-GPU o feasibility check con output en tiempo real |
-| Live | Monitor en vivo: epoch progress, GPU usage, últimas líneas del log, auto-refresh |
+| Pestaña | Contenido |
+|---------|-----------|
+| **Inicio** | **Pantalla principal con cuadrícula:** 5 métricas globales, run seleccionado (cards + mini curvas), estado del sistema (GPU/CPU/RAM), top 5 mejores/peores clases, tabla de todos los runs con descarga |
+| Sistema | Monitor del sistema con auto-refresh: CPU, RAM, GPU (VRAM, utilización, temperatura, potencia), disco, red |
+| Dataset | Distribución de splits y clases, desbalance, países, scatter F1 vs frecuencia |
+| Modelos | Explorador timm: tabla comparativa VRAM/FLOPs, bubble chart, VRAM por batch size |
+| Curvas | F1/loss/accuracy/prec-rec; tiempo por epoch; energía (Wh); descarga CSV |
+| Por clase | Tabla ranking + gráfica barras; tendencia multi-clase; confusion matrix heatmap 19×19 |
+| Batch | Running loss por batch con moving average y detección de picos; descarga CSV |
+| Comparar | Superpone hasta 4 runs; radar de métricas; overlay de curvas; descarga comparativa |
+| Análisis DDP | Single-GPU vs DDP: speedup, eficiencia, escalado teórico vs real |
+| Viabilidad | 6 sub-tabs: Informe (perfil sistema, I/O, benchmark, estimaciones) · **Estudio real** (LR range test, curva de convergencia medida, gradient noise) · Análisis DDP · Predicción F1 · Comparar vs training · Ejecutar análisis |
+| Tiempo | Tiempo real por epoch vs estimación; tendencia lineal; warmup detection |
+| Información | Config YAML, detección de anomalías, log completo con buscador |
+| Lanzador | Lanzar entrenamientos single-GPU o DDP con output en tiempo real |
+| En vivo | Monitor en vivo: progress bar, GPU, último Val F1/Loss, gráfica, cola del log |
 
-Descubre runs recursivamente en toda la estructura `logs/` (tanto flat legacy como profunda env/mode/model).
+**Descarga en todas las pestañas:**
+- Gráficas Plotly: ícono de cámara en la barra de herramientas → descarga PNG (escala 2×, client-side)
+- Tablas: botón "Descargar CSV" en cada tabla principal
+
+Descubre runs recursivamente en `logs/` (estructura flat legacy y profunda env/mode/model).
 Compatible con `--trace simple`, `--trace deep` y logs legacy.
 
 ---
@@ -813,8 +862,8 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Entrenamiento single-GPU: `Trainer` + LLRD + warmup + cosine scheduler + checkpoints
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
-  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — barras F1/prec/rec por clase + heatmap 19×19 normalizado
-  - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running loss por batch
+  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — CSVs de per-class y confusion matrix (sin PNGs; el dashboard genera las gráficas)
+  - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running_loss, batch_loss (instantánea) y lr por batch; `--batch-log-every N` controla granularidad
   - `decorators/metric_reporters.py`: `LossReporter`, `F1Reporter`, `AccuracyReporter`, `PrecisionRecallReporter`
   - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom` — rutean a logger
   - `builder.py`: `TrainingSessionBuilder` — fluent API para montar el stack completo
@@ -824,7 +873,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Flags `--trace / --layers / --fn / --metrics / --inspect / --model` en script de entrenamiento
 - [x] Inspección modular: `--inspect model-summary batch-table grad-monitor anomalies`
 - [x] Early stopping: `patience` configurable en `EpochController`
-- [x] Log con timestamp (DDMMYYYY) a fichero en `logs/{env}/{mode}/{model}/` + gráficas PNG en `plots/{env}/{mode}/{model}/`
+- [x] Log con timestamp (DDMMYYYY) a fichero en `logs/{env}/{mode}/{model}/` (ya no se generan PNGs — el dashboard web genera las gráficas de forma interactiva desde los CSVs)
 - [x] `check_feasibility.py`: benchmark train+eval por separado, `--nfs-factor`, auto-save log + CSV en `logs/{env}/feasibility/`
 - [x] Entrenamiento local: 30 epochs, Val F1=0.6586 (01-02/05/26) → `logs/local/train_legacy.log`
 - [x] Test local stack completo: 1 epoch vit_tiny, Val F1=0.4457 (11/05/26)
@@ -842,7 +891,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Fix DDPTrainer con 1 GPU (21/05/26):** `TrainingSessionBuilder` usa `distributed=True` en vez de `world_size>1`; `torchrun --nproc_per_node=1` ahora usa `DDPTrainer` real
 - [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
 - [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
-- [x] **Heatmap 19×19 de confusión — CSV + Plotly interactivo (26/05/26):** `ConfusionMatrixDecorator` genera `confusion_matrix_TIMESTAMP.csv`; `confusion_matrix_parser.py` lee el CSV; sub-tab muestra heatmap Plotly interactivo con hover y selector de epoch; fallback a PNG
+- [x] **Heatmap 19×19 de confusión — CSV + Plotly interactivo (26/05/26):** `ConfusionMatrixDecorator` genera `confusion_matrix_TIMESTAMP.csv`; `confusion_matrix_parser.py` lee el CSV; sub-tab muestra heatmap Plotly interactivo con hover y selector de epoch
 - [x] **Web dashboard v3 (27/05/26):** 9 tabs, interfaz profesional sin emojis; Launcher (lanzar entrenamientos con output en tiempo real); Live Monitor (auto-refresh, GPU via nvidia-smi); mejoras en todas las pestañas (moving average, comparativa multi-run, anomaly detection, etc.)
 - [x] **Gestión de carpetas y gitignore (27/05/26):** estructura `{env}/{mode}/{model}/` para logs, plots y checkpoints; feasibility en `{env}/feasibility/`; `run_registry.py` con rglob; `RunInfo` añade `mode` y `model`; `.gitignore` corregido — todos los CSVs y logs bajo `logs/` se commitean
 - [x] Diagrama de clases v3: RunInfo con mode/model, web con 9 tabs, confusion_matrix_parser (27/05/26)
@@ -852,11 +901,22 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Feasibility multi-modelo local (27/05/26):** vit_tiny, vit_small, vit_base, resnet50 con batch-sizes 16 y 32; trace-modes off y simple → 4 pares log/CSV en `logs/local/feasibility/`
 - [x] **Entrenamiento local vit_tiny 5 epochs (27/05/26):** Val F1=0.590 (epoch 5, mejorando en todos los epochs), ~11 min/epoch, stack completo (plot, hooks, confusion, batch-monitor, energy, timing) → `logs/local/single/vit_tiny_patch16_224/train_27052026_221827.log`
 - [x] **Entrenamiento clúster v4 (27-28/05/26):** vit_base, batch=64, config v3, Val F1=0.6816 (epoch 7) — nuevo récord; early stop epoch 17; clase 6 F1=0.000 detectada como caso problemático → `logs/verode/single/vit_base_patch16_224/train_27052026_210223.log`
+- [x] **Eliminación de PNGs del training (02/06/26):** `ConfusionMatrixDecorator` y `PlottingDecorator` ya no generan archivos PNG (matplotlib eliminado); solo generan CSVs. `RunInfo` limpiado — sin `plot_path`, `perclass_paths` ni `confusion_matrix_paths`. `.gitignore` añade `plots/**/*.png` (15 MB de PNGs históricos fuera de git). Feature: `feature/no-png-output`.
+- [x] **Dashboard web v6 — español + pantalla inicio grid + descarga (02/06/26):** `app.py` reescrito en español (tecnicismos en inglés); pestaña **Inicio** rediseñada como pantalla principal con cuadrícula (métricas globales, mini curvas, sistema, por clase, tabla runs); helper `_show()` activa barra de herramientas Plotly con descarga PNG en todas las gráficas; helper `_dl_csv()` añade botones "Descargar CSV" en todas las tablas; eliminadas referencias rotas a atributos PNG inexistentes de RunInfo. 14 pestañas: Inicio / Sistema / Dataset / Modelos / Curvas / Por clase / Batch / Comparar / Análisis DDP / Viabilidad / Tiempo / Información / Lanzador / En vivo. Feature: `feature/web-dashboard-es`.
+- [x] **Suite de tests ampliada a 132 (02/06/26):** `tests/integration/test_no_png_output.py` (5 tests), `tests/integration/test_web_dashboard_es.py` (21 tests).
+- [x] **Batch monitor v2 (02/06/26):** Firma del hook extendida a `(epoch, batch_idx, n_batches, running_loss, batch_loss, lr)`. `BatchMonitorDecorator` ahora registra también la loss instantánea del batch y el LR actual. `log_every=1` por defecto (antes 50). Nuevo flag `--batch-log-every N` en ambos scripts de entrenamiento. Pestaña Batch con 3 sub-tabs: "Por epoch" (selector de métrica, MA, detección picos), "Historia global" (eje x = batch global con límites de epoch), "Learning rate" (curva LR completa con escala log automática). Feature: `feature/batch-live-metrics`. 10 tests nuevos.
+- [x] **Feasibility checker v3 (02/06/26):** Perfilado completo del sistema (CPU cores/RAM, GPU compute capability, tipo de disco, detección NFS, medición I/O real con patches TIFF). `DatasetProfiler` calcula `io_bottleneck_ratio` para detectar si el entrenamiento es I/O-bound o compute-bound. `PerformancePredictor` genera curva F1 val+train predicha con banda de incertidumbre (±0.015 F1) basada en datos históricos reales. `DDPOptimizer` calcula speedup real (≠ lineal) incluyendo overhead de sincronización de gradientes, eficiencia por tipo de red (NVLink/PCIe/NFS/Ethernet), y recomienda batch_per_gpu + num_workers. CSV v3 ampliado con bloques `#cpu`, `#disk`, `#dataset`, `#prediction`, `#curve_*`, `#ddp`. Pestaña Viabilidad con 5 sub-tabs: Informe, Análisis DDP (rectángulos de % cómputo/I/O/sync), Predicción F1, Comparar vs training, Ejecutar análisis. Feature: `feature/feasibility-v3`. 20 tests nuevos.
+- [x] **Suite de tests en 161 (02/06/26).**
+- [x] **DDP heterogéneo corregido y listo (02/06/26):** 3 bugs críticos resueltos: (1) `mixup_batch` devuelve 2 valores, no 4; (2) doble DDP-wrapping eliminado — el builder crea `HeterogeneousDDPTrainer` directamente vía `with_heterogeneous_ddp()`; (3) batch hooks no disparaban — ahora `HeterogeneousDDPTrainer.train_epoch` llama a `self._batch_hooks` con la firma v2. Nuevos métodos en builder: `with_heterogeneous_ddp(local_bs)` y `with_output_mode(mode)`. `train_heterogeneous_ddp.py` reescrito limpio, sin `_find_core/_rewrap`. 11 tests nuevos. **172 tests en verde.** Feature: `feature/fix-heterogeneous-ddp`.
+- [x] **Smoke test local + verificación web con Playwright (02/06/26):** feasibility v3 + training vit_tiny 5 epochs (Val F1=0.6292). Verificación visual del dashboard con Playwright + Chrome del sistema → detectó y corrigió 2 bugs: `yaxis` duplicado en la gráfica DDP (rompía todo el dashboard) y orden cronológico de runs (`RunInfo.sort_key` normaliza DDMMYYYY → YYYYMMDD). Features: `feature/fix-chronological-sort`.
+- [x] **Tab Dataset arreglado + imágenes por clase (03/06/26):** bug del ndarray en `class_distribution_from_parquet` (las labels de BigEarthNet son ndarray, el `isinstance(x,(list,set))` daba 0 a todo → gráfica vacía); ahora se aplanan y cuentan vectorizado. Escalado de todas las gráficas del tab corregido (márgenes, alturas, automargin). Nueva sección de **imágenes de ejemplo por clase** (`find_example_patches` + `load_rgb_image` cargan bandas B04/B03/B02 con rasterio + stretch de percentiles). Fix del nombre de GPU cortado en Inicio. 11 tests. Feature: `feature/dataset-tab-fixes`.
+- [x] **Métricas por batch F1/accuracy/precision (03/06/26):** el batch hook pasa ahora un dict de métricas `(epoch, batch_idx, n_batches, metrics)` en vez de args posicionales. `Trainer` y `HeterogeneousDDPTrainer` computan F1/accuracy/precision por batch. CSV `batch_metrics` v3 con columnas `batch_f1`, `batch_acc`, `batch_prec`. El tab Batch ofrece selector de métrica (loss/F1/accuracy/precision) con eje [0,1] para las no-loss. Feature: `feature/batch-metrics-full`.
+- [x] **Feasibility v4 — estudio empírico real (03/06/26):** nuevo módulo `src/training/convergence_study.py` (`ConvergenceStudy`): (1) LR range test (Smith 2017) que barre LRs y mide la loss → recomienda LR óptimo; (2) mini-training real de N steps con datos reales → ajusta power law `loss=a·t⁻ᵇ+c` (con suavizado) → extrapola loss/F1/plateau; (3) gradient noise scale (McCandlish 2018) → batch size crítico. Flags `--convergence-study --study-steps N`. Sub-tab "Estudio real" en la web con las 3 gráficas. La predicción empírica histórica se mantiene en "Predicción F1" para comparar medido vs histórico. Verificado con vit_tiny + SSD: LR sugerido 8.86e-05, throughput real 410 img/s, R² 0.74. Feature: `feature/feasibility-study`.
+- [x] **Suite de tests en 212 (03/06/26):** +11 dataset, +14 convergencia, +6 parser estudio, +7 sort cronológico, +5 batch metrics.
 
 ### Pendiente
-- [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
-- [ ] Proyección multi-GPU en feasibility checker (estimación de throughput con N GPUs)
-- [ ] Comparar throughput single-GPU vs multi-GPU para cuantificar speedup DDP
+- [ ] **Primer training distribuido heterogéneo en Verode:** verode21 (V100, rank 0) + verode16 (CPU, rank 1). Ver comandos en la sección DDP heterogéneo.
+- [ ] Comparar throughput single-GPU vs heterogéneo para cuantificar speedup real
 
 ---
 
