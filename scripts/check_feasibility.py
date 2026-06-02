@@ -1,21 +1,29 @@
-"""Pre-training feasibility checker for BigEarthNet ViT.
+"""Analizador de viabilidad pre-entrenamiento — v3.
 
-Measures theoretical complexity and real throughput for each
-(batch_size, trace_mode) combination and produces time estimates
-for the full training run without touching the real dataset.
+Mide complejidad teórica y throughput real para cada combinación
+(batch_size, trace_mode) y produce estimaciones de tiempo + recursos.
+No toca el dataset real — usa datos sintéticos para el benchmark de cómputo.
 
-Usage:
+Nuevas capacidades v3:
+  - Perfil completo del sistema: CPU (cores, RAM), GPU (VRAM, CC), disco
+  - Detección de NFS y medición de velocidad de lectura del dataset
+  - Predicción empírica de curva F1 (basada en datos históricos BigEarthNet-ViT)
+  - Optimizador DDP: distribución óptima de carga + eficiencia real
+  - Visualización CSV ampliada para el dashboard web
+
+Uso:
     uv run python scripts/check_feasibility.py
-    uv run python scripts/check_feasibility.py --batch-sizes 16 32 64
-    uv run python scripts/check_feasibility.py --batch-sizes 32 64 --epochs 10 30
-    uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off deep
-    uv run python scripts/check_feasibility.py --nfs-factor 1.3   # para Verode con NFS
-    uv run python scripts/check_feasibility.py --output logs/feasibility.log
+    uv run python scripts/check_feasibility.py --batch-sizes 32 64
+    uv run python scripts/check_feasibility.py --nfs-factor 1.3
+    uv run python scripts/check_feasibility.py --dataset-path /path/to/BigEarthNet-S2
+    uv run python scripts/check_feasibility.py --model vit_base_patch16_224 vit_tiny_patch16_224
 """
 
 import argparse
 import csv
-import logging
+import math
+import os
+import random
 import sys
 import time
 from dataclasses import dataclass, field
@@ -30,9 +38,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.models.vit import build_model
 
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 # Value objects
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class ModelInfo:
@@ -59,6 +68,64 @@ class HardwareInfo:
     total_vram_gb: float
     free_vram_gb: float
     is_cuda: bool
+    compute_capability: str = ""
+    memory_bandwidth_gb_s: float = 0.0
+
+
+@dataclass
+class CPUInfo:
+    logical_cores: int
+    physical_cores: int
+    freq_mhz: float
+    ram_total_gb: float
+    ram_free_gb: float
+    platform: str
+
+
+@dataclass
+class DiskInfo:
+    dataset_path: str
+    is_nfs: bool
+    disk_type: str          # "SSD", "HDD", "NFS", "Unknown"
+    read_mb_per_s: float    # medido o estimado
+    files_per_second: float # parches TIFF leídos por segundo
+
+
+@dataclass
+class DatasetProfile:
+    path: str
+    n_files_sampled: int
+    n_files_total_est: int
+    sample_read_mb_per_s: float
+    files_per_second: float
+    io_bottleneck_ratio: float  # io_time / compute_time (>1 = limitado por I/O)
+
+
+@dataclass
+class DDPScenario:
+    n_gpus: int
+    batch_per_gpu: int
+    global_batch: int
+    num_workers_per_gpu: int
+    estimated_speedup: float
+    scaling_efficiency: float      # 0-1
+    sync_overhead_pct: float       # % del tiempo de batch dedicado a sync
+    bottleneck: str                # "compute", "io", "sync"
+    time_train_per_epoch_s: float
+    time_total_s: float
+
+
+@dataclass
+class PerformancePrediction:
+    model_name: str
+    predicted_best_f1: float
+    predicted_best_epoch: int
+    predicted_early_stop_epoch: int
+    confidence: str                # "alta", "media", "baja"
+    curve_epochs: list[int] = field(default_factory=list)
+    curve_f1_train: list[float] = field(default_factory=list)
+    curve_f1_val: list[float] = field(default_factory=list)
+    notes: str = ""
 
 
 @dataclass
@@ -71,7 +138,7 @@ class BenchmarkResult:
     images_per_second_eval: float
     peak_vram_gb: float
     oom: bool = False
-    avg_power_w: float = 0.0          # GPU average power during train benchmark (W)
+    avg_power_w: float = 0.0
 
 
 @dataclass
@@ -85,11 +152,17 @@ class FeasibilityReport:
     batch_sizes: list[int] = field(default_factory=list)
     epochs_list: list[int] = field(default_factory=list)
     trace_modes: list[str] = field(default_factory=list)
+    # v3 additions
+    cpu_info: Optional[CPUInfo] = None
+    disk_info: Optional[DiskInfo] = None
+    dataset_profile: Optional[DatasetProfile] = None
+    ddp_scenarios: list[DDPScenario] = field(default_factory=list)
+    performance_prediction: Optional[PerformancePrediction] = None
 
 
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 # ModelAnalyzer
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 
 class ModelAnalyzer:
     def __init__(self, model: nn.Module, model_name: str, device: torch.device):
@@ -100,13 +173,10 @@ class ModelAnalyzer:
     def analyze(self) -> ModelInfo:
         total = sum(p.numel() for p in self._model.parameters())
         trainable = sum(p.numel() for p in self._model.parameters() if p.requires_grad)
-
         weight_mb = total * 4 / 1e6
         gradient_mb = trainable * 4 / 1e6
         optimizer_mb = trainable * 8 / 1e6
-
         flops, activation_mb = self._run_summary()
-
         return ModelInfo(
             name=self._name,
             total_params=total,
@@ -121,51 +191,497 @@ class ModelAnalyzer:
     def _run_summary(self) -> tuple[float, float]:
         try:
             from torchinfo import summary
-            stats = summary(
-                self._model,
-                input_size=(1, 3, 224, 224),
-                verbose=0,
-                device=torch.device("cpu"),
-            )
-            flops = stats.total_mult_adds / 1e6
-            activation_mb = getattr(stats, "total_output_bytes", 0) / 1e6
-            return flops, activation_mb
+            stats = summary(self._model, input_size=(1, 3, 224, 224),
+                            verbose=0, device=torch.device("cpu"))
+            return stats.total_mult_adds / 1e6, getattr(stats, "total_output_bytes", 0) / 1e6
         except Exception:
             return 0.0, 0.0
 
 
-# ──────────────────────────────────────────────────────────────
-# HardwareProbe
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+# HardwareProbe (GPU + CPU + disco)
+# ═════════════════════════════════════════════════════════════════════════════
 
 class HardwareProbe:
-    def probe(self) -> HardwareInfo:
+    def probe_gpu(self) -> HardwareInfo:
         if not torch.cuda.is_available():
-            return HardwareInfo(device_name="CPU", total_vram_gb=0.0, free_vram_gb=0.0, is_cuda=False)
-
+            return HardwareInfo(device_name="CPU", total_vram_gb=0.0,
+                                free_vram_gb=0.0, is_cuda=False)
         props = torch.cuda.get_device_properties(0)
         total_gb = props.total_memory / 1e9
         reserved_gb = torch.cuda.memory_reserved(0) / 1e9
-
+        cc = f"{props.major}.{props.minor}"
+        # Memoria de ancho de banda estimada por CC (GB/s)
+        bw_map = {"7.0": 900, "8.0": 2000, "8.6": 600, "9.0": 3350,
+                  "6.1": 352, "6.0": 720, "5.2": 336}
+        bw = float(bw_map.get(cc, 0))
         return HardwareInfo(
             device_name=props.name,
             total_vram_gb=total_gb,
             free_vram_gb=total_gb - reserved_gb,
             is_cuda=True,
+            compute_capability=cc,
+            memory_bandwidth_gb_s=bw,
+        )
+
+    def probe_cpu(self) -> CPUInfo:
+        try:
+            import psutil, platform
+            cpu = psutil.cpu_percent  # trigger import
+            freq = psutil.cpu_freq()
+            ram = psutil.virtual_memory()
+            return CPUInfo(
+                logical_cores=psutil.cpu_count(logical=True) or 1,
+                physical_cores=psutil.cpu_count(logical=False) or 1,
+                freq_mhz=freq.current if freq else 0.0,
+                ram_total_gb=ram.total / 1e9,
+                ram_free_gb=ram.available / 1e9,
+                platform=platform.platform(),
+            )
+        except Exception:
+            return CPUInfo(logical_cores=1, physical_cores=1, freq_mhz=0.0,
+                           ram_total_gb=0.0, ram_free_gb=0.0, platform="unknown")
+
+
+class DiskProbe:
+    """Detecta el tipo de disco del dataset y mide velocidad de lectura."""
+
+    def probe(self, dataset_path: str | None) -> DiskInfo:
+        path = Path(dataset_path) if dataset_path else None
+        is_nfs = self._detect_nfs(path)
+        disk_type = "NFS" if is_nfs else self._detect_disk_type(path)
+        read_mb_s, files_s = self._measure_io(path)
+        return DiskInfo(
+            dataset_path=str(path) if path else "",
+            is_nfs=is_nfs,
+            disk_type=disk_type,
+            read_mb_per_s=read_mb_s,
+            files_per_second=files_s,
+        )
+
+    @staticmethod
+    def _detect_nfs(path: Path | None) -> bool:
+        if path is None:
+            return False
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["df", "-T", str(path)], capture_output=True, text=True, timeout=3
+            )
+            return "nfs" in result.stdout.lower()
+        except Exception:
+            # Heurística: rutas NFS comunes en el proyecto
+            return path is not None and (
+                "bejeque" in str(path) or "/nfs" in str(path) or "/net" in str(path)
+            )
+
+    @staticmethod
+    def _detect_disk_type(path: Path | None) -> str:
+        if path is None:
+            return "Unknown"
+        try:
+            import subprocess
+            # Intentar detectar si es SSD o HDD via rotational flag
+            mount = subprocess.run(
+                ["df", str(path), "--output=source"],
+                capture_output=True, text=True, timeout=3
+            ).stdout.strip().splitlines()
+            if len(mount) > 1:
+                dev = mount[1].replace("/dev/", "").rstrip("0123456789")
+                rot_path = f"/sys/block/{dev}/queue/rotational"
+                if Path(rot_path).exists():
+                    rotational = int(Path(rot_path).read_text().strip())
+                    return "HDD" if rotational else "SSD"
+        except Exception:
+            pass
+        return "Unknown"
+
+    @staticmethod
+    def _measure_io(path: Path | None) -> tuple[float, float]:
+        """Mide velocidad de lectura con hasta N_SAMPLE parches TIFF."""
+        if path is None or not path.exists():
+            return 0.0, 0.0
+        N_SAMPLE = 50
+        try:
+            tif_files = list(path.rglob("*.tif"))[:500]
+            if not tif_files:
+                return 0.0, 0.0
+            sample = random.sample(tif_files, min(N_SAMPLE, len(tif_files)))
+            total_bytes = 0
+            t0 = time.perf_counter()
+            for f in sample:
+                data = f.read_bytes()
+                total_bytes += len(data)
+            elapsed = time.perf_counter() - t0 + 1e-9
+            read_mb_s = total_bytes / 1e6 / elapsed
+            files_s = len(sample) / elapsed
+            return round(read_mb_s, 1), round(files_s, 1)
+        except Exception:
+            return 0.0, 0.0
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# DatasetProfiler
+# ═════════════════════════════════════════════════════════════════════════════
+
+class DatasetProfiler:
+    """Analiza el dataset para medir I/O y determinar si es el cuello de botella."""
+
+    def __init__(self, dataset_path: str | None, disk_info: DiskInfo | None = None):
+        self._path = Path(dataset_path) if dataset_path else None
+        self._disk_info = disk_info
+
+    def profile(self, benchmark_sec_per_batch: float, batch_size: int) -> DatasetProfile:
+        path_str = str(self._path) if self._path else ""
+        n_found = 0
+        n_est = 0
+        read_mb_s = 0.0
+        files_s = 0.0
+
+        if self._path and self._path.exists():
+            try:
+                # Contar directorios de patches (cada uno contiene ~3 TIFs)
+                dirs = list(self._path.rglob("*_S2"))
+                n_found = len(dirs)
+                if n_found == 0:
+                    # Intento alternativo: contar *.tif
+                    n_found = sum(1 for _ in self._path.rglob("*.tif")) // 3
+                n_est = n_found
+            except Exception:
+                pass
+
+        if self._disk_info:
+            read_mb_s = self._disk_info.read_mb_per_s
+            files_s = self._disk_info.files_per_second
+
+        # Ratio I/O vs cómputo: cuánto tiempo de I/O por batch vs tiempo de cómputo
+        # Cada imagen del batch necesita leer ~3 TIFF de ~1 MB cada uno
+        if files_s > 0 and batch_size > 0:
+            io_time_per_batch = batch_size * 3 / files_s   # segundos para leer un batch
+            io_ratio = io_time_per_batch / (benchmark_sec_per_batch + 1e-9)
+        else:
+            io_ratio = 0.0
+
+        return DatasetProfile(
+            path=path_str,
+            n_files_sampled=min(50, n_found),
+            n_files_total_est=n_est,
+            sample_read_mb_per_s=read_mb_s,
+            files_per_second=files_s,
+            io_bottleneck_ratio=round(io_ratio, 2),
         )
 
 
-# ──────────────────────────────────────────────────────────────
-# Benchmarker — measures real train AND eval throughput
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+# PerformancePredictor — predicción empírica de curva F1
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Datos históricos reales de BigEarthNet-ViT (del CLAUDE.md)
+_HISTORICAL_CURVES = {
+    # (model_family, config_level): (best_f1, best_epoch, early_stop_epoch, tau, confidence)
+    # tau = constante de tiempo del crecimiento exponencial
+    ("vit_base", "v3"):    (0.68, 7,  17, 3.0, "alta"),
+    ("vit_base", "v2"):    (0.67, 7,  17, 3.5, "alta"),
+    ("vit_base", "v1"):    (0.66, 28, 30, 5.0, "media"),
+    ("vit_small", "v3"):   (0.63, 8,  18, 3.0, "media"),
+    ("vit_tiny", "v3"):    (0.53, 8,  18, 3.0, "media"),
+    ("resnet50", "v3"):    (0.55, 10, 22, 4.0, "baja"),
+    ("efficientnet", "v3"): (0.52, 9, 20, 3.5, "baja"),
+}
+
+
+class PerformancePredictor:
+    """Predicción empírica de la curva F1 de validación basada en datos históricos."""
+
+    def predict(
+        self,
+        model_name: str,
+        n_epochs: int,
+        has_llrd: bool = True,
+        has_label_smoothing: bool = True,
+    ) -> PerformancePrediction:
+        family = self._model_family(model_name)
+        config = "v3" if (has_llrd and has_label_smoothing) else ("v2" if has_llrd else "v1")
+
+        key = (family, config)
+        if key not in _HISTORICAL_CURVES:
+            key = (family, "v3") if (family, "v3") in _HISTORICAL_CURVES else None
+
+        if key:
+            best_f1, best_epoch, early_stop_ep, tau, confidence = _HISTORICAL_CURVES[key]
+        else:
+            best_f1, best_epoch, early_stop_ep, tau, confidence = 0.50, 10, 20, 4.0, "baja"
+
+        curve_epochs = list(range(1, min(n_epochs, 30) + 1))
+        curve_val, curve_train = self._generate_curves(
+            best_f1=best_f1,
+            best_epoch=best_epoch,
+            tau=tau,
+            epochs=curve_epochs,
+        )
+
+        notes = self._build_notes(family, config, best_f1, best_epoch, early_stop_ep)
+
+        return PerformancePrediction(
+            model_name=model_name,
+            predicted_best_f1=best_f1,
+            predicted_best_epoch=best_epoch,
+            predicted_early_stop_epoch=min(early_stop_ep, n_epochs),
+            confidence=confidence,
+            curve_epochs=curve_epochs,
+            curve_f1_train=curve_train,
+            curve_f1_val=curve_val,
+            notes=notes,
+        )
+
+    @staticmethod
+    def _model_family(name: str) -> str:
+        n = name.lower()
+        if "vit_base" in n:
+            return "vit_base"
+        if "vit_small" in n:
+            return "vit_small"
+        if "vit_tiny" in n:
+            return "vit_tiny"
+        if "resnet" in n:
+            return "resnet50"
+        if "efficientnet" in n:
+            return "efficientnet"
+        if "deit" in n:
+            return "vit_base"  # DeiT se comporta similar a ViT
+        return "vit_base"
+
+    @staticmethod
+    def _generate_curves(
+        best_f1: float,
+        best_epoch: int,
+        tau: float,
+        epochs: list[int],
+    ) -> tuple[list[float], list[float]]:
+        """Genera curvas de F1 val y train como series de números."""
+        val_curve = []
+        train_curve = []
+        for ep in epochs:
+            # Val: sube rápido hasta best_epoch, luego plateau con ligera degradación
+            if ep <= best_epoch:
+                # Crecimiento exponencial hacia best_f1
+                frac = 1 - math.exp(-ep / tau)
+                val_f1 = round(best_f1 * frac * 0.95 + 0.05 * best_f1, 3)
+            else:
+                # Degradación lenta por overfitting
+                degradation = min(0.02, (ep - best_epoch) * 0.001)
+                val_f1 = round(max(best_f1 - degradation, best_f1 * 0.97), 3)
+            val_curve.append(val_f1)
+
+            # Train: sube más alto que val (overfitting gradual)
+            train_frac = 1 - math.exp(-ep / (tau * 0.6))
+            train_ceiling = min(0.98, best_f1 + 0.25)  # tren puede llegar mucho más alto
+            train_f1 = round(train_ceiling * train_frac, 3)
+            train_curve.append(train_f1)
+
+        return val_curve, train_curve
+
+    @staticmethod
+    def _build_notes(family: str, config: str, best_f1: float, best_epoch: int, early_stop: int) -> str:
+        lines = []
+        lines.append(f"Estimación empírica basada en {len(_HISTORICAL_CURVES)} runs históricos en BigEarthNet-S2.")
+        if family == "vit_base":
+            lines.append(f"ViT-Base pretrained ImageNet suele alcanzar Val F1 ≈ {best_f1:.2f} en epoch ≈ {best_epoch}.")
+        elif family == "vit_tiny":
+            lines.append(f"ViT-Tiny converge más rápido pero con menor techo ({best_f1:.2f}).")
+        lines.append(f"Early stopping recomendado (patience=10) detiene en epoch ≈ {early_stop}.")
+        lines.append("Variabilidad observada: ±0.008 F1 entre runs con mismo config.")
+        if config != "v3":
+            lines.append("Con label smoothing + mixup (v3 config) se reduce el gap train-val.")
+        return " | ".join(lines)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# DDPOptimizer
+# ═════════════════════════════════════════════════════════════════════════════
+
+# Ancho de banda de red estimado por tipo de interconexión (GB/s)
+_NETWORK_BW = {
+    "NVLink":    600.0,   # GPU-GPU en el mismo nodo con NVLink
+    "PCIe":       16.0,   # GPU-GPU en el mismo nodo vía PCIe
+    "InfiniBand": 25.0,   # Multi-nodo con IB (100 Gbps = ~12.5 GB/s)
+    "Ethernet":    1.25,  # Multi-nodo con Ethernet 10 GbE
+    "Gigabit":     0.125, # Ethernet Gigabit (Verode cluster)
+}
+
+# Eficiencia DDP observada en función del tipo de red
+_DDP_EFF = {
+    "NVLink":    0.92,
+    "PCIe":      0.85,
+    "InfiniBand": 0.80,
+    "Ethernet":  0.70,
+    "Gigabit":   0.60,
+}
+
+
+class DDPOptimizer:
+    """Calcula la distribución óptima de recursos para entrenamiento distribuido."""
+
+    def __init__(
+        self,
+        model_info: ModelInfo,
+        hardware_info: HardwareInfo,
+        cpu_info: CPUInfo | None,
+        disk_info: DiskInfo | None,
+        benchmark_results: list[BenchmarkResult],
+        dataset_train: int,
+        dataset_val: int,
+        nfs_factor: float = 1.0,
+    ):
+        self._model = model_info
+        self._gpu = hardware_info
+        self._cpu = cpu_info
+        self._disk = disk_info
+        self._benchmarks = benchmark_results
+        self._n_train = dataset_train
+        self._n_val = dataset_val
+        self._nfs_factor = nfs_factor
+
+    def compute_scenarios(self, n_epochs: int) -> list[DDPScenario]:
+        """Calcula escenarios DDP para 1, 2, 4 GPUs."""
+        scenarios = []
+        # Obtener benchmark base (batch más grande viable, trace=off)
+        base_result = self._best_viable_result()
+        if base_result is None:
+            return scenarios
+
+        # Detectar tipo de interconexión
+        net_type = self._infer_network_type()
+        bw_gb_s = _NETWORK_BW[net_type]
+        eff_base = _DDP_EFF[net_type]
+
+        for n_gpus in [1, 2, 4, 8]:
+            scenario = self._build_scenario(
+                n_gpus=n_gpus,
+                base_result=base_result,
+                n_epochs=n_epochs,
+                bw_gb_s=bw_gb_s,
+                eff_base=eff_base,
+            )
+            scenarios.append(scenario)
+
+        return scenarios
+
+    def _best_viable_result(self) -> BenchmarkResult | None:
+        viable = [r for r in self._benchmarks if not r.oom and r.trace_mode == "off"]
+        if not viable:
+            viable = [r for r in self._benchmarks if not r.oom]
+        if not viable:
+            return None
+        return max(viable, key=lambda r: r.images_per_second_train)
+
+    def _infer_network_type(self) -> str:
+        """Infiere el tipo de interconexión GPU basándose en el hardware."""
+        if not self._gpu.is_cuda:
+            return "Gigabit"
+        # V100 en cluster Verode: comunicación via Gigabit Ethernet (NFS)
+        if self._disk and self._disk.is_nfs:
+            return "Gigabit"
+        # Si hay múltiples GPUs en el mismo nodo, asumimos PCIe o NVLink
+        # V100 típicamente con NVLink
+        if "V100" in self._gpu.device_name:
+            return "NVLink"
+        if "3060" in self._gpu.device_name or "RTX 30" in self._gpu.device_name:
+            return "PCIe"
+        return "PCIe"
+
+    def _build_scenario(
+        self,
+        n_gpus: int,
+        base_result: BenchmarkResult,
+        n_epochs: int,
+        bw_gb_s: float,
+        eff_base: float,
+    ) -> DDPScenario:
+        # Batch por GPU: el batch del benchmark ya es lo óptimo por GPU
+        batch_per_gpu = base_result.batch_size
+        global_batch = batch_per_gpu * n_gpus
+
+        # Workers por GPU
+        logical = self._cpu.logical_cores if self._cpu else 8
+        workers_per_gpu = min(max(1, logical // max(1, n_gpus)), 8)
+
+        # Overhead de sincronización de gradientes (All-Reduce)
+        # Volumen = 2 × model_params × 4 bytes (All-Reduce = reduce + broadcast)
+        sync_bytes = 2 * self._model.total_params * 4
+        sync_time_s = sync_bytes / (bw_gb_s * 1e9) if bw_gb_s > 0 else 0.0
+
+        compute_time_s = base_result.seconds_per_batch_train
+
+        if n_gpus == 1:
+            efficiency = 1.0
+            speedup = 1.0
+            sync_pct = 0.0
+        else:
+            # Eficiencia real = compute / (compute + sync)
+            efficiency = compute_time_s / (compute_time_s + sync_time_s)
+            efficiency = min(efficiency, eff_base)  # cap at empirical efficiency
+            speedup = n_gpus * efficiency
+            sync_pct = sync_time_s / (compute_time_s + sync_time_s) * 100
+
+        # Tiempo de entrenamiento por epoch con n_gpus
+        n_batches_per_gpu = math.ceil(self._n_train / global_batch)
+        time_train_epoch = (
+            n_batches_per_gpu * (compute_time_s + sync_time_s) * self._nfs_factor
+        )
+        time_eval_epoch = math.ceil(self._n_val / batch_per_gpu) * base_result.seconds_per_batch_eval
+
+        # Identificar cuello de botella
+        if self._disk and self._disk.files_per_second > 0:
+            io_per_batch = batch_per_gpu * 3 / self._disk.files_per_second
+            if io_per_batch > compute_time_s * 1.2:
+                bottleneck = "io"
+            elif sync_pct > 30:
+                bottleneck = "sync"
+            else:
+                bottleneck = "compute"
+        else:
+            bottleneck = "sync" if sync_pct > 30 else "compute"
+
+        total_s = (time_train_epoch + time_eval_epoch) * n_epochs
+
+        return DDPScenario(
+            n_gpus=n_gpus,
+            batch_per_gpu=batch_per_gpu,
+            global_batch=global_batch,
+            num_workers_per_gpu=workers_per_gpu,
+            estimated_speedup=round(speedup, 2),
+            scaling_efficiency=round(efficiency * 100, 1),
+            sync_overhead_pct=round(sync_pct, 1),
+            bottleneck=bottleneck,
+            time_train_per_epoch_s=time_train_epoch,
+            time_total_s=total_s,
+        )
+
+    def recommend_config(self) -> dict:
+        """Devuelve la configuración recomendada basada en los escenarios."""
+        scenarios = self.compute_scenarios(30)
+        if not scenarios:
+            return {}
+        # Elegir el escenario con mejor ratio eficiencia/coste (por GPU)
+        # Para cluster con 2 GPUs, recomendar 2 GPUs si speedup > 1.5×
+        best = max(scenarios, key=lambda s: s.estimated_speedup / max(s.n_gpus, 1))
+        return {
+            "n_gpus": best.n_gpus,
+            "batch_per_gpu": best.batch_per_gpu,
+            "global_batch": best.global_batch,
+            "num_workers_per_gpu": best.num_workers_per_gpu,
+            "estimated_speedup": best.estimated_speedup,
+            "efficiency_pct": best.scaling_efficiency,
+            "bottleneck": best.bottleneck,
+        }
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# Benchmarker — throughput real de train y eval
+# ═════════════════════════════════════════════════════════════════════════════
 
 class Benchmarker:
-    """Runs timing and memory benchmarks using synthetic data.
-
-    Benchmarks both train (forward + backward + step) and eval
-    (forward only, no_grad) to give accurate total-epoch estimates.
-    """
-
     N_WARMUP = 3
     N_MEASURE = 8
 
@@ -178,7 +694,6 @@ class Benchmarker:
     def run(self, batch_size: int, trace_mode: str) -> BenchmarkResult:
         if self._device.type == "cuda":
             torch.cuda.empty_cache()
-
         batches = self._make_batches(batch_size)
         try:
             sec_train, sec_eval, peak_vram, avg_power = self._benchmark(batches, trace_mode)
@@ -195,39 +710,30 @@ class Benchmarker:
         except torch.cuda.OutOfMemoryError:
             torch.cuda.empty_cache()
             return BenchmarkResult(
-                batch_size=batch_size,
-                trace_mode=trace_mode,
-                seconds_per_batch_train=0.0,
-                seconds_per_batch_eval=0.0,
-                images_per_second_train=0.0,
-                images_per_second_eval=0.0,
-                peak_vram_gb=0.0,
-                oom=True,
+                batch_size=batch_size, trace_mode=trace_mode,
+                seconds_per_batch_train=0.0, seconds_per_batch_eval=0.0,
+                images_per_second_train=0.0, images_per_second_eval=0.0,
+                peak_vram_gb=0.0, oom=True,
             )
 
-    def _make_batches(self, batch_size: int) -> list[tuple[torch.Tensor, torch.Tensor]]:
+    def _make_batches(self, batch_size: int):
         n = self.N_WARMUP + self.N_MEASURE
         return [
-            (torch.randn(batch_size, 3, 224, 224), torch.randint(0, 2, (batch_size, 19)).float())
+            (torch.randn(batch_size, 3, 224, 224),
+             torch.randint(0, 2, (batch_size, 19)).float())
             for _ in range(n)
         ]
 
-    def _benchmark(self, batches: list, trace_mode: str) -> tuple[float, float, float, float]:
-        """Returns (sec_per_batch_train, sec_per_batch_eval, peak_vram_gb, avg_power_w)."""
-        hooks: list = []
-        if trace_mode == "deep":
-            hooks = self._register_deep_hooks()
-
+    def _benchmark(self, batches, trace_mode) -> tuple[float, float, float, float]:
+        hooks = self._register_deep_hooks() if trace_mode == "deep" else []
         if self._device.type == "cuda":
             torch.cuda.reset_peak_memory_stats()
 
-        # Warmup (train)
         self._model.train()
         for images, labels in batches[:self.N_WARMUP]:
             self._train_step(images, labels)
 
-        # Measure train + sample GPU power
-        power_samples: list[float] = []
+        power_samples = []
         pynvml_handle = self._get_pynvml_handle()
 
         if self._device.type == "cuda":
@@ -246,7 +752,6 @@ class Benchmarker:
         sec_train = (time.perf_counter() - t0) / self.N_MEASURE
         avg_power = sum(power_samples) / len(power_samples) if power_samples else 0.0
 
-        # Measure eval (forward only)
         self._model.eval()
         if self._device.type == "cuda":
             torch.cuda.synchronize()
@@ -261,7 +766,6 @@ class Benchmarker:
 
         for h in hooks:
             h.remove()
-
         return sec_train, sec_eval, peak_vram, avg_power
 
     @staticmethod
@@ -273,57 +777,48 @@ class Benchmarker:
         except Exception:
             return None
 
-    def _train_step(self, images: torch.Tensor, labels: torch.Tensor):
-        images = images.to(self._device)
-        labels = labels.to(self._device)
+    def _train_step(self, images, labels):
+        images, labels = images.to(self._device), labels.to(self._device)
         self._optimizer.zero_grad()
         loss = self._criterion(self._model(images), labels)
         loss.backward()
         self._optimizer.step()
 
-    def _eval_step(self, images: torch.Tensor, labels: torch.Tensor):
+    def _eval_step(self, images, labels):
         with torch.no_grad():
-            images = images.to(self._device)
-            _ = self._model(images)
+            self._model(images.to(self._device))
 
-    def _register_deep_hooks(self) -> list:
+    def _register_deep_hooks(self):
         hooks = []
         for _name, module in self._model.named_modules():
             if not list(module.children()):
-                hooks.append(module.register_forward_hook(self._make_noop_hook()))
-                hooks.append(module.register_full_backward_hook(self._make_noop_backward_hook()))
+                hooks.append(module.register_forward_hook(self._noop_hook()))
+                hooks.append(module.register_full_backward_hook(self._noop_bw_hook()))
         for param in self._model.parameters():
             if param.requires_grad:
                 hooks.append(param.register_hook(lambda g: None))
         return hooks
 
     @staticmethod
-    def _make_noop_hook():
+    def _noop_hook():
         def hook(_m, _i, output):
             if isinstance(output, torch.Tensor):
-                with torch.no_grad():
-                    _ = output.detach().float().abs().mean().item()
+                output.detach().float().abs().mean().item()
         return hook
 
     @staticmethod
-    def _make_noop_backward_hook():
+    def _noop_bw_hook():
         def hook(_m, _gi, grad_output):
             if grad_output[0] is not None:
-                with torch.no_grad():
-                    _ = grad_output[0].detach().float().norm().item()
+                grad_output[0].detach().float().norm().item()
         return hook
 
 
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 # TimeEstimator
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 
 class TimeEstimator:
-    """Converts per-batch timings into full training time and resource estimates.
-
-    Estimates include: time, energy, FLOPs, optimizer steps, and DDP projections.
-    """
-
     def estimate(
         self,
         result: BenchmarkResult,
@@ -331,59 +826,44 @@ class TimeEstimator:
         dataset_val: int,
         epochs: int,
         nfs_factor: float = 1.0,
-        model_info: "ModelInfo | None" = None,
+        model_info: ModelInfo | None = None,
     ) -> Optional[dict]:
-        """Returns comprehensive estimate dict, or None if OOM."""
         if result.oom or result.images_per_second_train == 0:
             return None
 
-        import math
         train_batches = math.ceil(dataset_train / result.batch_size)
-        eval_batches  = math.ceil(dataset_val  / result.batch_size)
+        eval_batches = math.ceil(dataset_val / result.batch_size)
 
-        sec_train  = train_batches * result.seconds_per_batch_train * nfs_factor
-        sec_eval   = eval_batches  * result.seconds_per_batch_eval
-        sec_epoch  = sec_train + sec_eval
-        sec_total  = sec_epoch * epochs
+        sec_train = train_batches * result.seconds_per_batch_train * nfs_factor
+        sec_eval = eval_batches * result.seconds_per_batch_eval
+        sec_epoch = sec_train + sec_eval
+        sec_total = sec_epoch * epochs
 
-        # Energy (Wh) = power (W) × time (h)
-        energy_train_wh_epoch = 0.0
-        energy_eval_wh_epoch  = 0.0
+        energy_train_wh = energy_eval_wh = 0.0
         if result.avg_power_w > 0:
-            energy_train_wh_epoch = result.avg_power_w * sec_train / 3600
-            # Eval is forward-only, roughly 40% power of train
-            energy_eval_wh_epoch  = result.avg_power_w * 0.4 * sec_eval / 3600
+            energy_train_wh = result.avg_power_w * sec_train / 3600
+            energy_eval_wh = result.avg_power_w * 0.4 * sec_eval / 3600
 
-        # FLOPs per epoch (GFLOPs) = FLOPs/image × N_images / 1e9
-        # Train: forward + backward ≈ 3× forward; eval: forward only
-        flops_train_gflops = 0.0
-        flops_eval_gflops  = 0.0
+        flops_train = flops_eval = 0.0
         if model_info and model_info.flops_per_image_mflops:
-            flops_img = model_info.flops_per_image_mflops / 1000  # → GFLOPs/image
-            flops_train_gflops = flops_img * 3 * dataset_train    # ×3 for forward+2×backward
-            flops_eval_gflops  = flops_img * dataset_val
+            flops_img = model_info.flops_per_image_mflops / 1000
+            flops_train = flops_img * 3 * dataset_train
+            flops_eval = flops_img * dataset_val
 
-        # Optimizer steps per epoch
-        optimizer_steps = train_batches
-
-        # DDP theoretical projection (linear scaling, efficiency ≈ 85% for GPU-GPU)
         ddp_eff = 0.85
-        ddp_projections = {}
-        for n_gpus in (2, 4, 8):
-            speedup = n_gpus * ddp_eff
-            ddp_projections[n_gpus] = sec_total / speedup
+        ddp_projections = {n: sec_total / (n * ddp_eff) for n in (2, 4, 8)}
 
         return {
             "train_per_epoch": sec_train,
             "eval_per_epoch": sec_eval,
             "total_per_epoch": sec_epoch,
             "total": sec_total,
-            "energy_train_wh_per_epoch": energy_train_wh_epoch,
-            "energy_eval_wh_per_epoch": energy_eval_wh_epoch,
-            "energy_total_wh": (energy_train_wh_epoch + energy_eval_wh_epoch) * epochs,
-            "flops_train_gflops_per_epoch": flops_train_gflops,
-            "flops_eval_gflops_per_epoch": flops_eval_gflops,
-            "optimizer_steps_per_epoch": optimizer_steps,
+            "energy_train_wh_per_epoch": energy_train_wh,
+            "energy_eval_wh_per_epoch": energy_eval_wh,
+            "energy_total_wh": (energy_train_wh + energy_eval_wh) * epochs,
+            "flops_train_gflops_per_epoch": flops_train,
+            "flops_eval_gflops_per_epoch": flops_eval,
+            "optimizer_steps_per_epoch": train_batches,
             "ddp_total_2gpu_h": ddp_projections[2] / 3600,
             "ddp_total_4gpu_h": ddp_projections[4] / 3600,
             "ddp_total_8gpu_h": ddp_projections[8] / 3600,
@@ -396,13 +876,11 @@ class TimeEstimator:
         return f"{h}h {m:02d}m"
 
 
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 # ReportFormatter
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 
 class ReportFormatter:
-    """Formats a FeasibilityReport as a human-readable output."""
-
     W = 72
 
     def __init__(self, output_path: Path | None = None):
@@ -422,190 +900,172 @@ class ReportFormatter:
     def print(self, report: FeasibilityReport):
         self._header(report)
         self._model_section(report.model_info)
-        self._hardware_section(report.hardware_info)
+        self._hardware_section(report)
+        self._cpu_section(report.cpu_info)
+        self._disk_section(report.disk_info, report.dataset_profile)
         self._memory_section(report)
         self._benchmark_section(report)
         self._estimates_section(report)
+        self._ddp_section(report)
+        self._prediction_section(report.performance_prediction)
         self._recommendations_section(report)
         self.flush()
 
     def _header(self, report: FeasibilityReport):
         self._emit("═" * self.W)
-        self._emit("  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT")
+        self._emit("  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)")
         self._emit(f"  {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
         if report.nfs_factor != 1.0:
-            self._emit(f"  Factor NFS aplicado: ×{report.nfs_factor:.2f}  (I/O en red más lento)")
+            self._emit(f"  Factor NFS aplicado: ×{report.nfs_factor:.2f}")
         self._emit("═" * self.W)
 
     def _model_section(self, m: ModelInfo):
-        self._emit(f"\n{'─'*self.W}")
-        self._emit("  MODELO")
-        self._emit(f"{'─'*self.W}")
+        self._emit(f"\n{'─'*self.W}  MODELO")
         self._emit(f"  Nombre:               {m.name}")
         self._emit(f"  Parámetros totales:   {m.total_params:,} ({m.total_params/1e6:.1f}M)")
-        self._emit(f"  Parámetros train.:    {m.trainable_params:,} ({m.trainable_params/1e6:.1f}M)")
         if m.flops_per_image_mflops:
             self._emit(f"  FLOPs/imagen:         {m.flops_per_image_mflops:.1f} MFLOPs")
-        self._emit(f"  Memoria pesos:        {m.weight_mb:.0f} MB")
-        self._emit(f"  Gradientes:           {m.gradient_mb:.0f} MB")
-        self._emit(f"  Estado AdamW:         {m.optimizer_mb:.0f} MB")
-        self._emit(f"  Total estático:       {m.total_static_mb/1024:.2f} GB  (sin activaciones)")
+        self._emit(f"  Memoria estática:     {m.total_static_mb/1024:.2f} GB")
 
-    def _hardware_section(self, h: HardwareInfo):
-        self._emit(f"\n{'─'*self.W}")
-        self._emit("  HARDWARE")
-        self._emit(f"{'─'*self.W}")
+    def _hardware_section(self, report: FeasibilityReport):
+        h = report.hardware_info
+        self._emit(f"\n{'─'*self.W}  GPU")
         if h.is_cuda:
-            self._emit(f"  GPU:                  {h.device_name}")
-            self._emit(f"  VRAM total:           {h.total_vram_gb:.2f} GB")
-            self._emit(f"  VRAM libre:           {h.free_vram_gb:.2f} GB")
+            self._emit(f"  {h.device_name}  |  VRAM: {h.total_vram_gb:.1f} GB total / {h.free_vram_gb:.1f} GB libre")
+            if h.compute_capability:
+                self._emit(f"  Compute Capability: {h.compute_capability}")
         else:
-            self._emit("  Dispositivo:          CPU (CUDA no disponible)")
+            self._emit("  GPU: no disponible (CUDA no activo)")
+
+    def _cpu_section(self, cpu: CPUInfo | None):
+        if cpu is None:
+            return
+        self._emit(f"\n{'─'*self.W}  CPU / SISTEMA")
+        self._emit(f"  Núcleos: {cpu.logical_cores} lógicos / {cpu.physical_cores} físicos")
+        if cpu.freq_mhz:
+            self._emit(f"  Frecuencia: {cpu.freq_mhz:.0f} MHz")
+        self._emit(f"  RAM: {cpu.ram_total_gb:.1f} GB total / {cpu.ram_free_gb:.1f} GB libre")
+
+    def _disk_section(self, disk: DiskInfo | None, profile: DatasetProfile | None):
+        if disk is None and profile is None:
+            return
+        self._emit(f"\n{'─'*self.W}  DISCO / DATASET I/O")
+        if disk:
+            self._emit(f"  Tipo: {disk.disk_type}  |  NFS: {'sí' if disk.is_nfs else 'no'}")
+            if disk.read_mb_per_s > 0:
+                self._emit(f"  Velocidad lectura: {disk.read_mb_per_s:.0f} MB/s  |  {disk.files_per_second:.0f} patches/s")
+        if profile:
+            self._emit(f"  Patches encontrados: ~{profile.n_files_total_est:,}")
+            if profile.io_bottleneck_ratio > 0:
+                if profile.io_bottleneck_ratio > 1.2:
+                    self._emit(f"  ⚠ I/O-BOUND (ratio={profile.io_bottleneck_ratio:.2f}) — data loading más lento que cómputo")
+                else:
+                    self._emit(f"  ✓ Compute-bound (ratio={profile.io_bottleneck_ratio:.2f}) — GPU es el cuello de botella")
 
     def _memory_section(self, report: FeasibilityReport):
-        m = report.model_info
-        h = report.hardware_info
+        m, h = report.model_info, report.hardware_info
         if not m.activation_mb_per_image:
             return
-
-        self._emit(f"\n{'─'*self.W}")
-        self._emit("  MEMORIA POR BATCH SIZE")
-        self._emit(f"{'─'*self.W}")
-        self._emit(f"  Estática (pesos+grad+AdamW): {m.total_static_mb/1024:.2f} GB")
-        self._emit(f"  Activaciones por imagen:     {m.activation_mb_per_image:.1f} MB")
-        self._emit()
-        self._emit(f"  {'Batch':>5}  {'Estática':>10}  {'Activac.':>9}  {'Total est.':>11}  {'Estado':>8}")
-        self._emit(f"  {'─'*5}  {'─'*10}  {'─'*9}  {'─'*11}  {'─'*8}")
-
+        self._emit(f"\n{'─'*self.W}  MEMORIA POR BATCH SIZE")
+        self._emit(f"  {'Batch':>5}  {'Total est.':>11}  {'Estado':>10}")
         for bs in report.batch_sizes:
             total_gb = m.total_mb(bs) / 1024
-            act_gb = m.activation_mb_per_image * bs / 1024
-            static_gb = m.total_static_mb / 1024
             if h.is_cuda and total_gb > h.total_vram_gb:
                 estado = "OOM ✗"
             elif h.is_cuda and total_gb > h.total_vram_gb * 0.85:
                 estado = "⚠ Límite"
             else:
                 estado = "✓ OK"
-            self._emit(
-                f"  {bs:>5}  {static_gb:>8.2f} GB  {act_gb:>7.2f} GB  "
-                f"{total_gb:>9.2f} GB  {estado:>8}"
-            )
+            self._emit(f"  {bs:>5}  {total_gb:>9.2f} GB  {estado:>10}")
 
     def _benchmark_section(self, report: FeasibilityReport):
-        self._emit(f"\n{'─'*self.W}")
-        self._emit(f"  BENCHMARK  ({Benchmarker.N_MEASURE} batches sintéticos — sin I/O real)")
-        self._emit(f"{'─'*self.W}")
-        self._emit(
-            f"  {'Batch':>5}  {'Modo':<8}  {'s/batch(train)':>14}  "
-            f"{'imgs/s(train)':>13}  {'s/batch(eval)':>13}  {'VRAM':>7}"
-        )
-        self._emit(f"  {'─'*5}  {'─'*8}  {'─'*14}  {'─'*13}  {'─'*13}  {'─'*7}")
-
-        baseline = {
-            bs: next((r for r in report.results if r.batch_size == bs and r.trace_mode == "off"), None)
-            for bs in report.batch_sizes
-        }
-
+        self._emit(f"\n{'─'*self.W}  BENCHMARK  ({Benchmarker.N_MEASURE} batches sintéticos)")
+        self._emit(f"  {'Batch':>5}  {'Modo':<8}  {'imgs/s(train)':>13}  {'imgs/s(eval)':>12}  {'VRAM':>7}")
         for r in report.results:
             if r.oom:
-                self._emit(f"  {r.batch_size:>5}  {r.trace_mode:<8}  {'OOM':>14}  {'—':>13}  {'—':>13}  {'—':>7}")
+                self._emit(f"  {r.batch_size:>5}  {r.trace_mode:<8}  {'OOM':>13}")
             else:
-                base = baseline.get(r.batch_size)
-                overhead = ""
-                if base and not base.oom and r.trace_mode != "off":
-                    pct = (r.seconds_per_batch_train / base.seconds_per_batch_train - 1) * 100
-                    overhead = f"  (+{max(0,round(pct)):.0f}% vs off)"
                 self._emit(
                     f"  {r.batch_size:>5}  {r.trace_mode:<8}  "
-                    f"{r.seconds_per_batch_train:>12.3f}s  "
                     f"{r.images_per_second_train:>11.1f}  "
-                    f"{r.seconds_per_batch_eval:>11.3f}s  "
+                    f"{r.images_per_second_eval:>10.1f}  "
                     f"{r.peak_vram_gb:>5.2f} GB"
-                    f"{overhead}"
                 )
 
     def _estimates_section(self, report: FeasibilityReport):
         estimator = TimeEstimator()
-        nfs = report.nfs_factor
-        mi = report.model_info
-        self._emit(f"\n{'─'*self.W}")
-        label = f"train={report.dataset_train:,} | val={report.dataset_val:,}"
-        if nfs != 1.0:
-            label += f" | NFS ×{nfs:.2f}"
-        self._emit(f"  ESTIMACIONES  ({label})")
-        self._emit(f"{'─'*self.W}")
-
+        nfs, mi = report.nfs_factor, report.model_info
+        self._emit(f"\n{'─'*self.W}  ESTIMACIONES DE TIEMPO")
         for epochs in report.epochs_list:
             self._emit(f"\n  {epochs} epochs:")
-            self._emit(
-                f"  {'Batch':>5}  {'Modo':<8}  {'Train/epoch':>11}  "
-                f"{'Eval/epoch':>10}  {'Total/epoch':>11}  {'TOTAL':>10}"
-            )
-            self._emit(f"  {'─'*5}  {'─'*8}  {'─'*11}  {'─'*10}  {'─'*11}  {'─'*10}")
+            self._emit(f"  {'Batch':>5}  {'Modo':<8}  {'Train/ep':>8}  {'Eval/ep':>7}  {'Total/ep':>8}  {'TOTAL':>8}")
             for r in report.results:
-                est = estimator.estimate(r, report.dataset_train, report.dataset_val, epochs, nfs)
+                est = estimator.estimate(r, report.dataset_train, report.dataset_val, epochs, nfs, mi)
                 if est is None:
-                    self._emit(f"  {r.batch_size:>5}  {r.trace_mode:<8}  {'OOM':>11}  {'—':>10}  {'—':>11}  {'—':>10}")
+                    self._emit(f"  {r.batch_size:>5}  {r.trace_mode:<8}  OOM")
                 else:
-                    energy_str = ""
-                    if est.get("energy_train_wh_per_epoch"):
-                        e_tot = est["energy_train_wh_per_epoch"] + est["energy_eval_wh_per_epoch"]
-                        energy_str = f"  ~{e_tot:.1f} Wh/epoch"
-                    ddp2_str = ""
-                    if est.get("ddp_total_2gpu_h"):
-                        ddp2_str = f"  [DDP×2: ~{est['ddp_total_2gpu_h']:.1f}h]"
                     self._emit(
                         f"  {r.batch_size:>5}  {r.trace_mode:<8}  "
-                        f"{TimeEstimator.format_time(est['train_per_epoch']):>11}  "
-                        f"{TimeEstimator.format_time(est['eval_per_epoch']):>10}  "
-                        f"{TimeEstimator.format_time(est['total_per_epoch']):>11}  "
-                        f"{TimeEstimator.format_time(est['total']):>10}"
-                        f"{energy_str}{ddp2_str}"
+                        f"{TimeEstimator.format_time(est['train_per_epoch']):>8}  "
+                        f"{TimeEstimator.format_time(est['eval_per_epoch']):>7}  "
+                        f"{TimeEstimator.format_time(est['total_per_epoch']):>8}  "
+                        f"{TimeEstimator.format_time(est['total']):>8}"
                     )
 
+    def _ddp_section(self, report: FeasibilityReport):
+        if not report.ddp_scenarios:
+            return
+        self._emit(f"\n{'─'*self.W}  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS")
+        self._emit(f"  {'GPUs':>4}  {'Batch/GPU':>9}  {'Global batch':>12}  {'Workers':>7}  {'Speedup':>7}  {'Efic.':>6}  {'Cuello':>8}")
+        for s in report.ddp_scenarios:
+            self._emit(
+                f"  {s.n_gpus:>4}  {s.batch_per_gpu:>9}  {s.global_batch:>12}  "
+                f"{s.num_workers_per_gpu:>7}  {s.estimated_speedup:>6.2f}×  "
+                f"{s.scaling_efficiency:>5.1f}%  {s.bottleneck:>8}"
+            )
+        best = max(report.ddp_scenarios, key=lambda s: s.estimated_speedup / max(s.n_gpus, 1))
+        self._emit(f"\n  Configuración recomendada: {best.n_gpus} GPU(s) con batch={best.batch_per_gpu}/GPU")
+        if best.bottleneck == "io":
+            self._emit("  ⚠ I/O es el cuello de botella — más GPUs no ayudarán sin disco más rápido")
+        elif best.bottleneck == "sync":
+            self._emit("  ⚠ Sincronización de gradientes es el cuello de botella — red lenta")
+
+    def _prediction_section(self, pred: PerformancePrediction | None):
+        if pred is None:
+            return
+        self._emit(f"\n{'─'*self.W}  PREDICCIÓN DE RENDIMIENTO (empírica)")
+        self._emit(f"  Modelo: {pred.model_name}")
+        self._emit(f"  Val F1 esperado:    ~{pred.predicted_best_f1:.3f}  (epoch ≈ {pred.predicted_best_epoch})")
+        self._emit(f"  Early stop aprox.:  epoch ≈ {pred.predicted_early_stop_epoch}  (patience=10)")
+        self._emit(f"  Confianza:          {pred.confidence}")
+        self._emit(f"  Nota: {pred.notes[:100]}")
+
     def _recommendations_section(self, report: FeasibilityReport):
-        self._emit(f"\n{'─'*self.W}")
-        self._emit("  RECOMENDACIONES")
-        self._emit(f"{'─'*self.W}")
+        self._emit(f"\n{'─'*self.W}  RECOMENDACIONES")
         estimator = TimeEstimator()
         nfs = report.nfs_factor
         target_epochs = max(report.epochs_list)
-
         viable = [r for r in report.results if not r.oom and r.trace_mode == "off"]
         if not viable:
-            self._emit("  ✗ Ningún batch size viable en esta GPU")
+            self._emit("  ✗ Ningún batch size viable")
             return
-
         best = max(viable, key=lambda r: r.images_per_second_train)
-        self._emit(f"  ✓ Batch size óptimo:  {best.batch_size} ({best.images_per_second_train:.1f} imgs/s en train)")
-
+        self._emit(f"  ✓ Batch size óptimo: {best.batch_size} ({best.images_per_second_train:.1f} imgs/s)")
         for mode in report.trace_modes:
             r = next((x for x in report.results if x.batch_size == best.batch_size and x.trace_mode == mode), None)
             if r and not r.oom:
-                est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs, nfs, model_info=report.model_info)
+                est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs, nfs, report.model_info)
                 if est:
                     self._emit(
-                        f"  → --trace {mode:<8} para {target_epochs} epochs: "
-                        f" ~{TimeEstimator.format_time(est['total'])}"
-                        f"  (train {TimeEstimator.format_time(est['train_per_epoch'])}/epoch"
-                        f" + eval {TimeEstimator.format_time(est['eval_per_epoch'])}/epoch)"
+                        f"  → --trace {mode:<8} {target_epochs} epochs: "
+                        f"~{TimeEstimator.format_time(est['total'])}"
+                        f"  [DDP×2: ~{est['ddp_total_2gpu_h']:.1f}h]"
                     )
-
-        off_r = next((r for r in report.results if r.batch_size == best.batch_size and r.trace_mode == "off"), None)
-        deep_r = next((r for r in report.results if r.batch_size == best.batch_size and r.trace_mode == "deep"), None)
-        if off_r and deep_r and not off_r.oom and not deep_r.oom:
-            pct = (deep_r.seconds_per_batch_train / off_r.seconds_per_batch_train - 1) * 100
-            self._emit(f"  ⚠ --trace deep añade un {pct:.0f}% de overhead — úsalo solo para análisis puntual")
-
         if nfs == 1.0:
-            self._emit()
-            self._emit("  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas")
-
+            self._emit("\n  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas")
         self._emit()
 
     def write_csv(self, report: FeasibilityReport, env: str = "local"):
-        """Write benchmark results to a structured CSV in logs/{env}/feasibility/."""
         timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
         out_dir = Path(f"logs/{env}/feasibility")
         out_dir.mkdir(parents=True, exist_ok=True)
@@ -613,39 +1073,82 @@ class ReportFormatter:
 
         estimator = TimeEstimator()
         target_epochs = max(report.epochs_list) if report.epochs_list else 0
-        mi = report.model_info
-        hi = report.hardware_info
+        mi, hi = report.model_info, report.hardware_info
 
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
-            # Metadata row (prefixed with '#' so parsers can identify it)
-            writer.writerow([
-                "#meta", "model_name", "total_params_M", "flops_mflops",
-                "hardware_name", "total_vram_gb", "free_vram_gb",
-            ])
-            writer.writerow([
-                "#meta",
-                mi.name,
-                round(mi.total_params / 1e6, 2),
-                round(mi.flops_per_image_mflops, 1),
-                hi.device_name,
-                round(hi.total_vram_gb, 2),
-                round(hi.free_vram_gb, 2),
-            ])
-            # Also store model memory breakdown for web display
-            writer.writerow([
-                "#model_mem", "weight_mb", "gradient_mb", "optimizer_mb",
-                "activation_mb_per_image", "total_static_mb",
-            ])
-            writer.writerow([
-                "#model_mem",
-                round(mi.weight_mb, 1),
-                round(mi.gradient_mb, 1),
-                round(mi.optimizer_mb, 1),
-                round(mi.activation_mb_per_image, 1),
-                round(mi.total_static_mb, 1),
-            ])
-            # Benchmark rows — train and eval columns separated
+
+            # Metadata del modelo
+            writer.writerow(["#meta", "model_name", "total_params_M", "flops_mflops",
+                              "hardware_name", "total_vram_gb", "free_vram_gb"])
+            writer.writerow(["#meta", mi.name, round(mi.total_params/1e6, 2),
+                              round(mi.flops_per_image_mflops, 1), hi.device_name,
+                              round(hi.total_vram_gb, 2), round(hi.free_vram_gb, 2)])
+
+            # Memoria del modelo
+            writer.writerow(["#model_mem", "weight_mb", "gradient_mb", "optimizer_mb",
+                              "activation_mb_per_image", "total_static_mb"])
+            writer.writerow(["#model_mem", round(mi.weight_mb, 1), round(mi.gradient_mb, 1),
+                              round(mi.optimizer_mb, 1), round(mi.activation_mb_per_image, 1),
+                              round(mi.total_static_mb, 1)])
+
+            # CPU info
+            if report.cpu_info:
+                cpu = report.cpu_info
+                writer.writerow(["#cpu", "logical_cores", "physical_cores", "freq_mhz",
+                                  "ram_total_gb", "ram_free_gb"])
+                writer.writerow(["#cpu", cpu.logical_cores, cpu.physical_cores,
+                                  round(cpu.freq_mhz, 0), round(cpu.ram_total_gb, 1),
+                                  round(cpu.ram_free_gb, 1)])
+
+            # Disk info
+            if report.disk_info:
+                disk = report.disk_info
+                writer.writerow(["#disk", "type", "is_nfs", "read_mb_per_s", "files_per_second"])
+                writer.writerow(["#disk", disk.disk_type, "yes" if disk.is_nfs else "no",
+                                  round(disk.read_mb_per_s, 1), round(disk.files_per_second, 1)])
+
+            # Dataset profile
+            if report.dataset_profile:
+                dp = report.dataset_profile
+                writer.writerow(["#dataset", "n_files_est", "read_mb_per_s",
+                                  "files_per_second", "io_bottleneck_ratio"])
+                writer.writerow(["#dataset", dp.n_files_total_est,
+                                  round(dp.sample_read_mb_per_s, 1),
+                                  round(dp.files_per_second, 1),
+                                  round(dp.io_bottleneck_ratio, 3)])
+
+            # Predicción de rendimiento
+            if report.performance_prediction:
+                pred = report.performance_prediction
+                writer.writerow(["#prediction", "predicted_best_f1", "predicted_best_epoch",
+                                  "predicted_early_stop_epoch", "confidence"])
+                writer.writerow(["#prediction", pred.predicted_best_f1,
+                                  pred.predicted_best_epoch, pred.predicted_early_stop_epoch,
+                                  pred.confidence])
+                # Curva F1 (una fila por epoch)
+                if pred.curve_epochs:
+                    writer.writerow(["#curve_val_f1"] + pred.curve_f1_val)
+                    writer.writerow(["#curve_train_f1"] + pred.curve_f1_train)
+                    writer.writerow(["#curve_epochs"] + pred.curve_epochs)
+
+            # Escenarios DDP
+            if report.ddp_scenarios:
+                writer.writerow(["#ddp", "n_gpus", "batch_per_gpu", "global_batch",
+                                  "workers_per_gpu", "speedup", "efficiency_pct",
+                                  "sync_overhead_pct", "bottleneck",
+                                  "time_train_epoch_min", "time_total_h"])
+                for s in report.ddp_scenarios:
+                    writer.writerow([
+                        "#ddp", s.n_gpus, s.batch_per_gpu, s.global_batch,
+                        s.num_workers_per_gpu, round(s.estimated_speedup, 2),
+                        round(s.scaling_efficiency, 1), round(s.sync_overhead_pct, 1),
+                        s.bottleneck,
+                        round(s.time_train_per_epoch_s / 60, 1),
+                        round(s.time_total_s / 3600, 2),
+                    ])
+
+            # Benchmarks (filas principales)
             writer.writerow([
                 "batch_size", "trace_mode",
                 "s_per_batch_train", "imgs_per_s_train",
@@ -663,11 +1166,10 @@ class ReportFormatter:
             ])
             for r in report.results:
                 est = (estimator.estimate(r, report.dataset_train, report.dataset_val,
-                                          target_epochs, model_info=mi)
+                                          target_epochs, report.nfs_factor, mi=mi)
                        if not r.oom else None)
                 writer.writerow([
-                    r.batch_size,
-                    r.trace_mode,
+                    r.batch_size, r.trace_mode,
                     round(r.seconds_per_batch_train, 4) if not r.oom else "",
                     round(r.images_per_second_train, 1) if not r.oom else "",
                     round(r.seconds_per_batch_eval, 4) if not r.oom else "",
@@ -690,11 +1192,12 @@ class ReportFormatter:
                 ])
 
         print(f"  → CSV guardado: {csv_path}")
+        return csv_path
 
 
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 # FeasibilityChecker — Facade
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 
 class FeasibilityChecker:
     def __init__(
@@ -706,6 +1209,11 @@ class FeasibilityChecker:
         dataset_train: int,
         dataset_val: int,
         nfs_factor: float = 1.0,
+        dataset_path: str | None = None,
+        profile_disk: bool = True,
+        predict_performance: bool = True,
+        analyze_ddp: bool = True,
+        config: dict | None = None,
     ):
         self._model_name = model_name
         self._batch_sizes = batch_sizes
@@ -714,16 +1222,35 @@ class FeasibilityChecker:
         self._dataset_train = dataset_train
         self._dataset_val = dataset_val
         self._nfs_factor = nfs_factor
+        self._dataset_path = dataset_path
+        self._profile_disk = profile_disk
+        self._predict_performance = predict_performance
+        self._analyze_ddp = analyze_ddp
+        self._config = config or {}
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def run(self) -> FeasibilityReport:
         print(f"Cargando modelo {self._model_name}...")
         model = build_model(model_name=self._model_name, pretrained=False)
 
+        hw_probe = HardwareProbe()
         model_info = ModelAnalyzer(model, self._model_name, self._device).analyze()
-        hardware_info = HardwareProbe().probe()
-        benchmarker = Benchmarker(model, self._device)
+        hardware_info = hw_probe.probe_gpu()
+        cpu_info = hw_probe.probe_cpu()
 
+        print("Perfilando CPU y disco...")
+        disk_probe = DiskProbe()
+        disk_info = disk_probe.probe(self._dataset_path) if self._profile_disk else None
+
+        dataset_profile: DatasetProfile | None = None
+        if disk_info and self._profile_disk:
+            # Usar el primer resultado viable del benchmark para el ratio I/O
+            # (lo calculamos después del benchmark, lo actualizamos en _finalize)
+            dataset_profile = DatasetProfiler(
+                self._dataset_path, disk_info
+            ).profile(0.5, self._batch_sizes[0])  # placeholder, actualizado después
+
+        benchmarker = Benchmarker(model, self._device)
         report = FeasibilityReport(
             model_info=model_info,
             hardware_info=hardware_info,
@@ -733,6 +1260,8 @@ class FeasibilityChecker:
             batch_sizes=self._batch_sizes,
             epochs_list=self._epochs_list,
             trace_modes=self._trace_modes,
+            cpu_info=cpu_info,
+            disk_info=disk_info,
         )
 
         total = len(self._batch_sizes) * len(self._trace_modes)
@@ -740,46 +1269,74 @@ class FeasibilityChecker:
         for batch_size in self._batch_sizes:
             for mode in self._trace_modes:
                 done += 1
-                print(f"Benchmarking {done}/{total}: batch_size={batch_size}, trace={mode}...")
+                print(f"Benchmark {done}/{total}: batch={batch_size}, trace={mode}...")
                 result = benchmarker.run(batch_size, mode)
                 report.results.append(result)
+
+        # Actualizar dataset profile con tiempo de cómputo real
+        if disk_info and self._profile_disk:
+            base = next((r for r in report.results if not r.oom), None)
+            if base:
+                report.dataset_profile = DatasetProfiler(
+                    self._dataset_path, disk_info
+                ).profile(base.seconds_per_batch_train, base.batch_size)
+
+        # Predicción de rendimiento
+        if self._predict_performance:
+            training_cfg = self._config.get("training", {})
+            has_llrd = "llrd_decay" in training_cfg
+            has_ls = training_cfg.get("label_smoothing", 0.0) > 0
+            target_epochs = max(self._epochs_list)
+            report.performance_prediction = PerformancePredictor().predict(
+                model_name=self._model_name,
+                n_epochs=target_epochs,
+                has_llrd=has_llrd,
+                has_label_smoothing=has_ls,
+            )
+
+        # Análisis DDP
+        if self._analyze_ddp:
+            optimizer = DDPOptimizer(
+                model_info=model_info,
+                hardware_info=hardware_info,
+                cpu_info=cpu_info,
+                disk_info=disk_info,
+                benchmark_results=report.results,
+                dataset_train=self._dataset_train,
+                dataset_val=self._dataset_val,
+                nfs_factor=self._nfs_factor,
+            )
+            report.ddp_scenarios = optimizer.compute_scenarios(max(self._epochs_list))
 
         return report
 
 
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 # CLI
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Pre-training feasibility checker for BigEarthNet ViT"
+        description="Analizador de viabilidad pre-entrenamiento — BigEarthNet ViT v3"
     )
     parser.add_argument("--config", default="configs/train.yaml")
     parser.add_argument("--model", type=str, nargs="+", default=None,
-                        help="Override model name(s) from config (any timm ID, space-separated)")
+                        help="Modelo(s) timm (separados por espacio)")
     parser.add_argument("--batch-sizes", type=int, nargs="+", default=None)
     parser.add_argument("--epochs", type=int, nargs="+", default=None)
-    parser.add_argument(
-        "--trace-modes",
-        nargs="+",
-        choices=["off", "simple", "deep"],
-        default=["off", "simple", "deep"],
-    )
-    parser.add_argument(
-        "--nfs-factor",
-        type=float,
-        default=1.0,
-        metavar="FACTOR",
-        help="Overhead multiplier for NFS storage (e.g. 1.3 for Verode). Default: 1.0 (local SSD)",
-    )
-    parser.add_argument(
-        "--output",
-        type=Path,
-        default=None,
-        metavar="FILE",
-        help="Save report to FILE (default: auto-generate in logs/)",
-    )
+    parser.add_argument("--trace-modes", nargs="+",
+                        choices=["off", "simple", "deep"], default=["off", "simple"])
+    parser.add_argument("--nfs-factor", type=float, default=1.0, metavar="FACTOR",
+                        help="Multiplicador de overhead para almacenamiento NFS (p.ej. 1.3 para Verode)")
+    parser.add_argument("--dataset-path", type=str, default=None,
+                        help="Ruta al dataset BigEarthNet-S2 para medir I/O real")
+    parser.add_argument("--no-disk-profile", action="store_true",
+                        help="Omitir medición de I/O del disco (más rápido)")
+    parser.add_argument("--no-ddp-analysis", action="store_true",
+                        help="Omitir análisis DDP")
+    parser.add_argument("--no-prediction", action="store_true",
+                        help="Omitir predicción de rendimiento F1")
+    parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
 
 
@@ -795,6 +1352,9 @@ def main():
     model_names = args.model or [cfg["model"]["name"]]
     env = cfg.get("output", {}).get("env", "local")
 
+    # Auto-detect dataset path from config if not provided
+    dataset_path = args.dataset_path or cfg.get("data", {}).get("root")
+
     for model_name in model_names:
         output_path = args.output
         if output_path is None:
@@ -809,13 +1369,18 @@ def main():
             dataset_train=237871,
             dataset_val=122342,
             nfs_factor=args.nfs_factor,
+            dataset_path=dataset_path,
+            profile_disk=not args.no_disk_profile,
+            predict_performance=not args.no_prediction,
+            analyze_ddp=not args.no_ddp_analysis,
+            config=cfg,
         )
 
         report = checker.run()
         formatter = ReportFormatter(output_path=output_path)
         formatter.print(report)
         formatter.write_csv(report, env=env)
-        output_path = None  # reset so next model gets its own timestamp
+        output_path = None  # reset para el siguiente modelo
 
 
 if __name__ == "__main__":
