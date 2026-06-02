@@ -20,6 +20,15 @@ class Trainer(BaseTrainer):
 
     Pure training logic — no logging or printing.
     Wrap with an OOP decorator or apply Python @ decorators to its methods.
+
+    Batch hooks
+    -----------
+    Register callables via ``register_batch_hook(fn)`` to receive a
+    notification after every training batch without reimplementing the loop:
+
+        fn(epoch: int, batch_idx: int, n_batches: int, running_loss: float)
+
+    BatchMonitorDecorator uses this mechanism instead of duplicating train_epoch.
     """
 
     def __init__(
@@ -40,31 +49,32 @@ class Trainer(BaseTrainer):
         self.device = device
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        # Model returns raw logits (no sigmoid) — BCEWithLogitsLoss applies sigmoid internally.
         self.criterion = criterion if criterion is not None else nn.BCEWithLogitsLoss()
-        # None = no clipping; positive float = clip gradient norm before optimizer.step()
         self.grad_clip = grad_clip
-        # Label smoothing: targets 0→ls/2, 1→1-ls/2. Set 0.0 to disable.
         self.label_smoothing = label_smoothing
-        # Mixup alpha: Beta distribution param. Set 0.0 to disable.
         self.mixup_alpha = mixup_alpha
+        self._current_epoch: int = 0
+        self._batch_hooks: list = []
+
+    def register_batch_hook(self, fn) -> None:
+        """Register a callable called after every training batch."""
+        self._batch_hooks.append(fn)
 
     def train_epoch(self, loader: DataLoader) -> dict:
         self.model.train()
+        self._current_epoch += 1
         total_loss = 0.0
         all_preds: list[torch.Tensor] = []
         all_labels: list[torch.Tensor] = []
         start = time.time()
+        n_batches = len(loader)
 
-        for images, labels in loader:
+        for batch_idx, (images, labels) in enumerate(loader, 1):
             images = images.to(self.device)
             labels = labels.to(self.device)
 
-            # Mixup augmentation (50% probability per batch)
             if self.mixup_alpha > 0.0 and random.random() < 0.5:
                 images, labels = mixup_batch(images, labels, self.mixup_alpha)
-
-            # Label smoothing: shift hard targets away from 0 and 1
             if self.label_smoothing > 0.0:
                 labels = labels * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
 
@@ -78,11 +88,15 @@ class Trainer(BaseTrainer):
 
             total_loss += loss.item()
             with torch.no_grad():
-                # Threshold at 0.5 for train metrics (labels may be soft due to mixup/smoothing)
                 hard_labels = (labels > 0.5).long()
                 preds = (torch.sigmoid(logits) > 0.5).long()
                 all_preds.append(preds.cpu())
                 all_labels.append(hard_labels.cpu())
+
+            if self._batch_hooks:
+                running_loss = total_loss / batch_idx
+                for hook in self._batch_hooks:
+                    hook(self._current_epoch, batch_idx, n_batches, running_loss)
 
         if self.scheduler:
             self.scheduler.step()
@@ -91,7 +105,7 @@ class Trainer(BaseTrainer):
         all_labels_t = torch.cat(all_labels)
 
         return {
-            "loss": total_loss / len(loader),
+            "loss": total_loss / n_batches,
             "f1": m.f1_score(all_preds_t, all_labels_t),
             "accuracy": m.accuracy(all_preds_t, all_labels_t),
             "time": time.time() - start,
@@ -144,12 +158,29 @@ class Trainer(BaseTrainer):
 
     def save_checkpoint(self, epoch: int, metrics: dict):
         path = self.checkpoint_dir / f"checkpoint_epoch_{epoch:03d}.pt"
-        torch.save({
+        state = {
             "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
-            "metrics": metrics,
-        }, path)
+            "metrics": {k: v for k, v in metrics.items() if not k.startswith("_")},
+        }
+        if self.scheduler is not None:
+            state["scheduler_state_dict"] = self.scheduler.state_dict()
+        torch.save(state, path)
+
+    def load_checkpoint(self, path: str | Path) -> dict:
+        """Restore model, optimizer and scheduler from a checkpoint file.
+
+        Returns the checkpoint dict (contains 'epoch' and 'metrics').
+        """
+        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        self.model.load_state_dict(ckpt["model_state_dict"])
+        self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+        if "scheduler_state_dict" in ckpt and self.scheduler is not None:
+            self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+        resumed_epoch = ckpt.get("epoch", 0)
+        self._current_epoch = resumed_epoch
+        return ckpt
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         best_f1 = 0.0
