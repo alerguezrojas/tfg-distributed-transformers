@@ -750,9 +750,10 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 ```
 src/web/
   __init__.py
-  app.py                    # Streamlit entrypoint — 9 tabs
+  app.py                    # Streamlit entrypoint — 14 tabs (v6, UI en español)
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
-                            # RunInfo con env, mode, model, epoch/perclass/batch CSV paths
+                            # RunInfo con env, mode, model, epoch/perclass/batch/confusion CSV paths
+                            # (sin referencias a PNGs — eliminadas en v6)
   log_parser.py             # parsea logs --trace simple y --trace deep → DataFrame (fallback)
   batch_parser.py           # lee batch_metrics_*.csv → DataFrame por batch
   perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
@@ -767,21 +768,30 @@ uv run streamlit run src/web/app.py
 # Abre http://localhost:8501
 ```
 
-### Tabs
+### Tabs (v6 — UI en español, tecnicismos en inglés)
 
-| Tab | Contenido |
-|-----|-----------|
-| Curves | Curvas de F1/loss/accuracy; metric cards; epoch time chart; descarga CSV |
-| Per-class | Tabla ranking de clases + tendencia multi-clase + confusion matrix (normalizada/absoluta) |
-| Batch | Running loss por batch con moving average y detección de picos |
-| Compare | Superpone hasta 4 runs; tabla resumen comparativa |
-| Feasibility | Benchmark VRAM/throughput; estimaciones; lanzar feasibility check desde la web |
-| Time | Tiempo real por epoch vs estimación; tendencia lineal; warmup detection |
-| Info | Config YAML, anomaly log, dataset info, log completo con buscador |
-| Launcher | Lanzar entrenamientos single-GPU o feasibility check con output en tiempo real |
-| Live | Monitor en vivo: epoch progress, GPU usage, últimas líneas del log, auto-refresh |
+| Pestaña | Contenido |
+|---------|-----------|
+| **Inicio** | **Pantalla principal con cuadrícula:** 5 métricas globales, run seleccionado (cards + mini curvas), estado del sistema (GPU/CPU/RAM), top 5 mejores/peores clases, tabla de todos los runs con descarga |
+| Sistema | Monitor del sistema con auto-refresh: CPU, RAM, GPU (VRAM, utilización, temperatura, potencia), disco, red |
+| Dataset | Distribución de splits y clases, desbalance, países, scatter F1 vs frecuencia |
+| Modelos | Explorador timm: tabla comparativa VRAM/FLOPs, bubble chart, VRAM por batch size |
+| Curvas | F1/loss/accuracy/prec-rec; tiempo por epoch; energía (Wh); descarga CSV |
+| Por clase | Tabla ranking + gráfica barras; tendencia multi-clase; confusion matrix heatmap 19×19 |
+| Batch | Running loss por batch con moving average y detección de picos; descarga CSV |
+| Comparar | Superpone hasta 4 runs; radar de métricas; overlay de curvas; descarga comparativa |
+| Análisis DDP | Single-GPU vs DDP: speedup, eficiencia, escalado teórico vs real |
+| Viabilidad | Benchmark VRAM/throughput; estimaciones de tiempo; comparar vs training real; ejecutar análisis |
+| Tiempo | Tiempo real por epoch vs estimación; tendencia lineal; warmup detection |
+| Información | Config YAML, detección de anomalías, log completo con buscador |
+| Lanzador | Lanzar entrenamientos single-GPU o DDP con output en tiempo real |
+| En vivo | Monitor en vivo: progress bar, GPU, último Val F1/Loss, gráfica, cola del log |
 
-Descubre runs recursivamente en toda la estructura `logs/` (tanto flat legacy como profunda env/mode/model).
+**Descarga en todas las pestañas:**
+- Gráficas Plotly: ícono de cámara en la barra de herramientas → descarga PNG (escala 2×, client-side)
+- Tablas: botón "Descargar CSV" en cada tabla principal
+
+Descubre runs recursivamente en `logs/` (estructura flat legacy y profunda env/mode/model).
 Compatible con `--trace simple`, `--trace deep` y logs legacy.
 
 ---
@@ -813,7 +823,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Entrenamiento single-GPU: `Trainer` + LLRD + warmup + cosine scheduler + checkpoints
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
-  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — barras F1/prec/rec por clase + heatmap 19×19 normalizado
+  - `decorators/confusion.py`: `ConfusionMatrixDecorator` — CSVs de per-class y confusion matrix (sin PNGs; el dashboard genera las gráficas)
   - `decorators/batch_monitor.py`: `BatchMonitorDecorator` — CSV con running loss por batch
   - `decorators/metric_reporters.py`: `LossReporter`, `F1Reporter`, `AccuracyReporter`, `PrecisionRecallReporter`
   - `fn_decorators.py`: `@timed`, `@log_call`, `@measure_energy`, `@retry_on_cuda_oom` — rutean a logger
@@ -824,7 +834,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Flags `--trace / --layers / --fn / --metrics / --inspect / --model` en script de entrenamiento
 - [x] Inspección modular: `--inspect model-summary batch-table grad-monitor anomalies`
 - [x] Early stopping: `patience` configurable en `EpochController`
-- [x] Log con timestamp (DDMMYYYY) a fichero en `logs/{env}/{mode}/{model}/` + gráficas PNG en `plots/{env}/{mode}/{model}/`
+- [x] Log con timestamp (DDMMYYYY) a fichero en `logs/{env}/{mode}/{model}/` (ya no se generan PNGs — el dashboard web genera las gráficas de forma interactiva desde los CSVs)
 - [x] `check_feasibility.py`: benchmark train+eval por separado, `--nfs-factor`, auto-save log + CSV en `logs/{env}/feasibility/`
 - [x] Entrenamiento local: 30 epochs, Val F1=0.6586 (01-02/05/26) → `logs/local/train_legacy.log`
 - [x] Test local stack completo: 1 epoch vit_tiny, Val F1=0.4457 (11/05/26)
@@ -842,7 +852,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Fix DDPTrainer con 1 GPU (21/05/26):** `TrainingSessionBuilder` usa `distributed=True` en vez de `world_size>1`; `torchrun --nproc_per_node=1` ahora usa `DDPTrainer` real
 - [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
 - [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
-- [x] **Heatmap 19×19 de confusión — CSV + Plotly interactivo (26/05/26):** `ConfusionMatrixDecorator` genera `confusion_matrix_TIMESTAMP.csv`; `confusion_matrix_parser.py` lee el CSV; sub-tab muestra heatmap Plotly interactivo con hover y selector de epoch; fallback a PNG
+- [x] **Heatmap 19×19 de confusión — CSV + Plotly interactivo (26/05/26):** `ConfusionMatrixDecorator` genera `confusion_matrix_TIMESTAMP.csv`; `confusion_matrix_parser.py` lee el CSV; sub-tab muestra heatmap Plotly interactivo con hover y selector de epoch
 - [x] **Web dashboard v3 (27/05/26):** 9 tabs, interfaz profesional sin emojis; Launcher (lanzar entrenamientos con output en tiempo real); Live Monitor (auto-refresh, GPU via nvidia-smi); mejoras en todas las pestañas (moving average, comparativa multi-run, anomaly detection, etc.)
 - [x] **Gestión de carpetas y gitignore (27/05/26):** estructura `{env}/{mode}/{model}/` para logs, plots y checkpoints; feasibility en `{env}/feasibility/`; `run_registry.py` con rglob; `RunInfo` añade `mode` y `model`; `.gitignore` corregido — todos los CSVs y logs bajo `logs/` se commitean
 - [x] Diagrama de clases v3: RunInfo con mode/model, web con 9 tabs, confusion_matrix_parser (27/05/26)
@@ -852,6 +862,9 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Feasibility multi-modelo local (27/05/26):** vit_tiny, vit_small, vit_base, resnet50 con batch-sizes 16 y 32; trace-modes off y simple → 4 pares log/CSV en `logs/local/feasibility/`
 - [x] **Entrenamiento local vit_tiny 5 epochs (27/05/26):** Val F1=0.590 (epoch 5, mejorando en todos los epochs), ~11 min/epoch, stack completo (plot, hooks, confusion, batch-monitor, energy, timing) → `logs/local/single/vit_tiny_patch16_224/train_27052026_221827.log`
 - [x] **Entrenamiento clúster v4 (27-28/05/26):** vit_base, batch=64, config v3, Val F1=0.6816 (epoch 7) — nuevo récord; early stop epoch 17; clase 6 F1=0.000 detectada como caso problemático → `logs/verode/single/vit_base_patch16_224/train_27052026_210223.log`
+- [x] **Eliminación de PNGs del training (02/06/26):** `ConfusionMatrixDecorator` y `PlottingDecorator` ya no generan archivos PNG (matplotlib eliminado); solo generan CSVs. `RunInfo` limpiado — sin `plot_path`, `perclass_paths` ni `confusion_matrix_paths`. `.gitignore` añade `plots/**/*.png` (15 MB de PNGs históricos fuera de git). Feature: `feature/no-png-output`.
+- [x] **Dashboard web v6 — español + pantalla inicio grid + descarga (02/06/26):** `app.py` reescrito en español (tecnicismos en inglés); pestaña **Inicio** rediseñada como pantalla principal con cuadrícula (métricas globales, mini curvas, sistema, por clase, tabla runs); helper `_show()` activa barra de herramientas Plotly con descarga PNG en todas las gráficas; helper `_dl_csv()` añade botones "Descargar CSV" en todas las tablas; eliminadas referencias rotas a atributos PNG inexistentes de RunInfo. 14 pestañas: Inicio / Sistema / Dataset / Modelos / Curvas / Por clase / Batch / Comparar / Análisis DDP / Viabilidad / Tiempo / Información / Lanzador / En vivo. Feature: `feature/web-dashboard-es`.
+- [x] **Suite de tests ampliada a 132 (02/06/26):** `tests/integration/test_no_png_output.py` (5 tests, verifica que los decoradores no generan PNGs), `tests/integration/test_web_dashboard_es.py` (21 tests, verifica sintaxis, traducción, helpers, ausencia de refs PNG, config de descarga, secciones del grid).
 
 ### Pendiente
 - [ ] DDP real en Verode con 2 GPUs: `torchrun --nproc_per_node=2` y medir speedup vs single-GPU
