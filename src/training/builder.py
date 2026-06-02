@@ -83,6 +83,8 @@ class TrainingSessionBuilder:
         self._metrics: list[str] = ["loss", "f1", "accuracy", "precision_recall"]
         self._inspect: set[str] | None = None        # None → not active
         self._batch_log_every: int | None = None     # None → use cfg or default
+        self._hetero_local_batch_size: int | None = None  # None → standard DDPTrainer
+        self._output_mode: str | None = None         # None → "ddp"/"single" por defecto
 
     # ── Fluent configuration API ─────────────────────────────────────────────
 
@@ -123,6 +125,24 @@ class TrainingSessionBuilder:
     def with_batch_log_every(self, n: int) -> "TrainingSessionBuilder":
         """Log batch metrics every N batches (default: 1 = every batch)."""
         self._batch_log_every = max(1, n)
+        return self
+
+    def with_heterogeneous_ddp(self, local_batch_size: int) -> "TrainingSessionBuilder":
+        """Usa HeterogeneousDDPTrainer para clústeres mixtos GPU+CPU.
+
+        En lugar de DDPTrainer (batch uniforme), crea HeterogeneousDDPTrainer
+        que normaliza los gradientes por el batch global real (suma de todos los ranks).
+        Requiere que el builder tenga distributed=True.
+        """
+        self._hetero_local_batch_size = max(1, local_batch_size)
+        return self
+
+    def with_output_mode(self, mode: str) -> "TrainingSessionBuilder":
+        """Override del nombre de modo en las rutas de salida (logs/, plots/, checkpoints/).
+
+        Útil para diferenciar ddp_hetero de ddp en el árbol de artefactos.
+        """
+        self._output_mode = mode
         return self
 
     # ── Build ────────────────────────────────────────────────────────────────
@@ -180,7 +200,7 @@ class TrainingSessionBuilder:
 
         # ── Output paths (env/mode/model — needed for checkpoint_dir) ─────────
         env = cfg.get("output", {}).get("env", "local")
-        mode = "ddp" if self._distributed else "single"
+        mode = self._output_mode or ("ddp" if self._distributed else "single")
         model_slug = model_name.replace("/", "_")
 
         # ── Base Trainer ──────────────────────────────────────────────────────
@@ -188,7 +208,22 @@ class TrainingSessionBuilder:
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / mode / model_slug)
-        if self._distributed:
+        if self._distributed and self._hetero_local_batch_size is not None:
+            from src.training.heterogeneous_ddp_trainer import HeterogeneousDDPTrainer
+            base = HeterogeneousDDPTrainer(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                device=self._device,
+                checkpoint_dir=checkpoint_dir,
+                grad_clip=grad_clip,
+                label_smoothing=label_smoothing,
+                mixup_alpha=mixup_alpha,
+                rank=self._rank,
+                world_size=self._world_size,
+                local_batch_size=self._hetero_local_batch_size,
+            )
+        elif self._distributed:
             from src.training.ddp_trainer import DDPTrainer
             base = DDPTrainer(
                 model=model,

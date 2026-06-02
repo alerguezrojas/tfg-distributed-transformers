@@ -1,41 +1,36 @@
-"""HeterogeneousDDPTrainer — DDP trainer for mixed-hardware clusters.
+"""HeterogeneousDDPTrainer — DDP para clústeres heterogéneos GPU+CPU.
 
-Extends DDPTrainer to handle ranks with different batch sizes correctly.
+Extiende DDPTrainer para manejar correctamente batch sizes diferentes por rank.
 
-Problem with standard DDP + unequal batch sizes
--------------------------------------------------
-Standard DDP averages gradients across all ranks with equal weight.  If rank 0
-has batch_size=64 and rank 1 has batch_size=4, averaging their losses equally
-over-weights rank 1's noisy gradient (1/2 weight instead of the correct 4/68).
+Problema con DDP estándar + batch sizes distintos
+--------------------------------------------------
+DDP promedia gradientes entre todos los ranks con igual peso. Si rank 0
+tiene batch_size=64 y rank 1 tiene batch_size=4, promediar sus losses
+con igual peso sobrepondera al rank 1 (1/2 en lugar del correcto 4/68).
 
-Correct solution: weighted gradient normalization
--------------------------------------------------
-Each rank scales its loss by:
+Solución: normalización de gradientes por batch global
+-------------------------------------------------------
+Cada rank escala su loss por:
 
-    scale_r = (local_batch_size × world_size) / global_batch_size
+    scale = (local_batch_size × world_size) / global_batch_size
 
-where  global_batch_size = Σ local_batch_size_i  (sum over all ranks, gathered
-via all_reduce at the start of each batch).
+donde global_batch_size = Σ local_batch_size_i (suma sobre todos los ranks,
+obtenida via all_reduce al inicio de cada batch).
 
-After DDP's built-in AVG all_reduce of gradients, the result equals the
-gradient that would be computed on the concatenated global mini-batch.
+Equivalentemente, cada rank computa la loss como suma (no media) y divide
+por el batch global total. Después del all_reduce de DDP, el resultado es
+el gradiente que se calcularía sobre el mini-batch global concatenado.
 
-Equivalently, instead of:
-    loss = criterion(logits, labels)          # mean over local batch
-we compute:
-    loss = criterion_sum(logits, labels)       # sum over local batch
-    loss = loss / global_batch_size            # divide by global total
+Backend: gloo — soporta CPU y GPU. NCCL requiere CUDA en todos los ranks.
 
-This is what this trainer does inside train_epoch.
-
-Launch with torchrun (gloo backend, mixed GPU+CPU):
-    # Node 0 — verode21 (V100 GPU):
+Lanzar con torchrun (gloo backend, nodos mixtos GPU+CPU):
+    # Nodo GPU (verode21, rank 0):
     torchrun --nnodes=2 --nproc_per_node=1 --node_rank=0 \\
       --master_addr=verode21 --master_port=29500 \\
       scripts/train_heterogeneous_ddp.py \\
       --config configs/train_heterogeneous_ddp.yaml --trace simple
 
-    # Node 1 — verode16 (CPU):
+    # Nodo CPU (verode16, rank 1):
     torchrun --nnodes=2 --nproc_per_node=1 --node_rank=1 \\
       --master_addr=verode21 --master_port=29500 \\
       scripts/train_heterogeneous_ddp.py \\
@@ -44,75 +39,84 @@ Launch with torchrun (gloo backend, mixed GPU+CPU):
 
 from __future__ import annotations
 
+import time
+
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 
 from src.training.ddp_trainer import DDPTrainer
 from src.training import metrics as m
+from src.training.augmentations import mixup_batch
+
+
+def _smooth(labels: torch.Tensor, smoothing: float) -> torch.Tensor:
+    return labels * (1 - smoothing) + smoothing / 2
 
 
 class HeterogeneousDDPTrainer(DDPTrainer):
-    """DDP trainer that handles heterogeneous batch sizes across ranks.
+    """DDP trainer que maneja batch sizes heterogéneos entre ranks.
 
-    Parameters
+    Parámetros
     ----------
-    local_batch_size: Number of samples this rank processes per step.
-                      Needed for correct gradient weighting.
-    All other parameters: inherited from DDPTrainer / Trainer.
+    local_batch_size:
+        Número de muestras que procesa este rank por step.
+        Necesario para la ponderación correcta del gradiente.
+    Resto de parámetros: heredados de DDPTrainer / Trainer.
     """
 
     def __init__(self, *args, local_batch_size: int, **kwargs):
         super().__init__(*args, **kwargs)
         self.local_batch_size = local_batch_size
-        # Replace criterion with sum reduction for manual normalization
+        # Criterio con reducción sum para normalización manual
         self._criterion_sum = nn.BCEWithLogitsLoss(reduction="sum")
 
-    # ── Override train_epoch for weighted gradient normalization ──────────────
+    # ── train_epoch con normalización de gradientes ────────────────────────────
 
     def train_epoch(self, loader: DataLoader) -> dict:
         self._epoch += 1
+        self._current_epoch += 1  # requerido para batch hooks y checkpoints
+
         if hasattr(loader.sampler, "set_epoch"):
             loader.sampler.set_epoch(self._epoch)
 
         self.model.train()
         total_loss = 0.0
         all_preds: list[torch.Tensor] = []
-        all_labels: list[torch.Tensor] = []
+        all_labels_list: list[torch.Tensor] = []
+        start = time.time()
+        n_batches = len(loader)
 
-        for images, labels in loader:
+        for batch_idx, (images, labels) in enumerate(loader, 1):
             images = images.to(self.device)
             labels = labels.to(self.device)
-
             step_bs = labels.shape[0]
 
-            # Gather global batch size across all ranks
+            # All-reduce del batch size real para obtener el global de este step
             bs_tensor = torch.tensor(float(step_bs), device=self.device)
             dist.all_reduce(bs_tensor, op=dist.ReduceOp.SUM)
             global_bs = bs_tensor.item()
 
             self.optimizer.zero_grad()
 
-            # Apply mixup if configured
+            # Mixup: devuelve (mixed_images, mixed_labels) — dos valores
             if self.mixup_alpha > 0 and torch.rand(1).item() < 0.5:
-                from src.training.augmentations import mixup_batch
-                images, labels_a, labels_b, lam = mixup_batch(images, labels, self.mixup_alpha)
-                logits = self.model(images)
-                loss_sum = (
-                    self._criterion_sum(logits, _smooth(labels_a, self.label_smoothing)) * lam
-                    + self._criterion_sum(logits, _smooth(labels_b, self.label_smoothing)) * (1 - lam)
-                )
+                images, labels_mixed = mixup_batch(images, labels, self.mixup_alpha)
+                labels_for_loss = _smooth(labels_mixed, self.label_smoothing)
+                labels_for_metrics = labels > 0.5  # usar labels originales para métricas
             else:
-                if self.label_smoothing > 0:
-                    labels = _smooth(labels, self.label_smoothing)
-                logits = self.model(images)
-                loss_sum = self._criterion_sum(logits, labels)
+                labels_for_loss = (
+                    _smooth(labels, self.label_smoothing)
+                    if self.label_smoothing > 0 else labels
+                )
+                labels_for_metrics = labels
 
-            # Normalize by global batch size (correct weighted gradient)
+            logits = self.model(images)
+
+            # loss_sum / global_bs = gradiente correcto ponderado por batch global
+            loss_sum = self._criterion_sum(logits, labels_for_loss)
             loss = loss_sum / global_bs
-
             loss.backward()
 
             if self.grad_clip is not None:
@@ -120,31 +124,33 @@ class HeterogeneousDDPTrainer(DDPTrainer):
 
             self.optimizer.step()
 
-            # Track (use mean loss for reporting)
-            total_loss += (loss_sum.detach().item() / step_bs)
+            batch_loss = loss_sum.detach().item() / step_bs  # mean para logging
+            total_loss += batch_loss
 
             with torch.no_grad():
                 preds = (torch.sigmoid(logits.detach()) >= 0.5).cpu()
                 all_preds.append(preds)
-                # Store original labels (before smoothing) for metrics
-                all_labels.append((labels.detach() >= 0.5).cpu())
+                all_labels_list.append((labels_for_metrics.detach() >= 0.5).cpu())
+
+            # Batch hooks — necesario para BatchMonitorDecorator
+            if self._batch_hooks:
+                running_loss = total_loss / batch_idx
+                lr = self.optimizer.param_groups[0]["lr"]
+                for hook in self._batch_hooks:
+                    hook(self._current_epoch, batch_idx, n_batches,
+                         running_loss, batch_loss, lr)
 
         if self.scheduler is not None:
             self.scheduler.step()
 
-        n_batches = len(loader)
-        avg_loss = total_loss / n_batches if n_batches > 0 else 0.0
         preds_t = torch.cat(all_preds)
-        labels_t = torch.cat(all_labels)
+        labels_t = torch.cat(all_labels_list)
 
         return {
-            "loss": avg_loss,
+            "loss": total_loss / n_batches if n_batches > 0 else 0.0,
             "f1": m.f1_score(preds_t, labels_t),
             "accuracy": m.accuracy(preds_t, labels_t),
+            "time": time.time() - start,
             "_preds": preds_t,
             "_labels": labels_t,
         }
-
-
-def _smooth(labels: torch.Tensor, smoothing: float) -> torch.Tensor:
-    return labels * (1 - smoothing) + smoothing / 2
