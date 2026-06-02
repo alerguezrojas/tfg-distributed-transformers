@@ -26,7 +26,11 @@ class Trainer(BaseTrainer):
     Register callables via ``register_batch_hook(fn)`` to receive a
     notification after every training batch without reimplementing the loop:
 
-        fn(epoch: int, batch_idx: int, n_batches: int, running_loss: float)
+        fn(epoch, batch_idx, n_batches, running_loss, batch_loss, lr)
+
+    - running_loss: average loss over all batches so far in the epoch
+    - batch_loss:   loss of this specific batch (instantaneous)
+    - lr:           current learning rate (first param group)
 
     BatchMonitorDecorator uses this mechanism instead of duplicating train_epoch.
     """
@@ -95,8 +99,11 @@ class Trainer(BaseTrainer):
 
             if self._batch_hooks:
                 running_loss = total_loss / batch_idx
+                batch_loss = loss.item()
+                lr = self.optimizer.param_groups[0]["lr"]
                 for hook in self._batch_hooks:
-                    hook(self._current_epoch, batch_idx, n_batches, running_loss)
+                    hook(self._current_epoch, batch_idx, n_batches,
+                         running_loss, batch_loss, lr)
 
         if self.scheduler:
             self.scheduler.step()

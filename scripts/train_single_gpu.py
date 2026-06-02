@@ -91,6 +91,13 @@ def parse_args():
         help="Python @ decorators to apply to train_epoch / eval_epoch",
     )
     parser.add_argument(
+        "--batch-log-every", type=int, default=None, metavar="N",
+        help=(
+            "Log batch metrics every N batches when --layers batch-monitor is active. "
+            "Default 1 (every batch). Use larger values (50, 100) to reduce CSV size."
+        ),
+    )
+    parser.add_argument(
         "--metrics", nargs="*",
         choices=["loss", "f1", "accuracy", "precision_recall"],
         default=["loss", "f1", "accuracy", "precision_recall"],
@@ -156,6 +163,8 @@ def main():
         builder = builder.with_model(args.model)
     if args.inspect is not None:
         builder = builder.with_inspect(*args.inspect)
+    if args.batch_log_every is not None:
+        builder = builder.with_batch_log_every(args.batch_log_every)
 
     trainer = builder.build()
 

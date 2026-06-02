@@ -79,11 +79,16 @@ class TestTrainer:
         if not hasattr(trainer, "register_batch_hook"):
             pytest.skip("register_batch_hook not in this branch")
         calls = []
-        trainer.register_batch_hook(lambda ep, bi, nb, rl: calls.append((ep, bi)))
+        # Nueva firma: (epoch, batch_idx, n_batches, running_loss, batch_loss, lr)
+        trainer.register_batch_hook(
+            lambda ep, bi, nb, rl, bl, lr: calls.append((ep, bi, bl, lr))
+        )
         trainer.train_epoch(_tiny_loader(batch_size=4))
         assert len(calls) == 4
-        assert calls[0][0] == 1
-        assert calls[0][1] == 1
+        assert calls[0][0] == 1   # epoch
+        assert calls[0][1] == 1   # batch_idx
+        assert isinstance(calls[0][2], float)  # batch_loss
+        assert calls[0][3] > 0    # lr > 0
 
     def test_current_epoch_increments(self, tmp_path):
         from src.training.trainer import Trainer
