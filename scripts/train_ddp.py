@@ -67,6 +67,10 @@ def parse_args():
         default=["loss", "f1", "accuracy", "precision_recall"],
         help="Metric reporters (only active for --trace off/simple on rank 0)",
     )
+    parser.add_argument(
+        "--batch-log-every", type=int, default=None, metavar="N",
+        help="Log batch metrics every N batches (default 1). Applies only to rank 0.",
+    )
     return parser.parse_args()
 
 
@@ -158,6 +162,8 @@ def main():
     )
     if args.model:
         builder = builder.with_model(args.model)
+    if args.batch_log_every is not None:
+        builder = builder.with_batch_log_every(args.batch_log_every)
 
     trainer = builder.build()
 

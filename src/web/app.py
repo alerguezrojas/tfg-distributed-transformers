@@ -1294,58 +1294,209 @@ with tab_batch:
     if selected_run is None:
         st.info("Selecciona un run en la barra lateral.")
     elif not run.batch_csv_path:
-        st.info("Sin CSV de nivel de batch para este run. Usa `--layers batch-monitor` para generarlo.")
+        st.info(
+            "Sin CSV de nivel de batch para este run. "
+            "Usa `--layers batch-monitor` para generarlo. "
+            "Con `--batch-log-every 1` obtienes un registro por cada batch individual."
+        )
     else:
-        bdf = _load_batch(str(run.batch_csv_path))
-        epochs_available_b = sorted(bdf["epoch"].unique())
+        # ── Sub-pestañas: por epoch | historia global | learning rate ─────────
+        subtab_by_ep, subtab_global, subtab_lr = st.tabs(
+            ["Por epoch", "Historia global", "Learning rate"]
+        )
 
-        col_ep, col_ma = st.columns([3, 2])
-        with col_ep:
-            selected_epochs_b = st.multiselect("Epochs", epochs_available_b,
-                                                default=list(epochs_available_b[:3]))
-        with col_ma:
-            ma_window = st.slider("Ventana de media móvil (batches)", 0, 200, 20,
-                                   help="0 = desactivado")
+        # Carga con TTL corto para que el live refresh funcione
+        @st.cache_data(ttl=5)
+        def _load_batch_live(p: str) -> pd.DataFrame:
+            return _load_batch(p)
 
-        if not bdf.empty:
-            st.caption(f"Batches por epoch: {int(bdf['n_batches'].iloc[0])}")
+        bdf = _load_batch_live(str(run.batch_csv_path))
+        has_batch_loss = "batch_loss" in bdf.columns and bdf["batch_loss"].notna().any()
+        has_lr = "lr" in bdf.columns and bdf["lr"].notna().any()
 
-        if selected_epochs_b:
-            fig_b = go.Figure()
-            for i, ep in enumerate(selected_epochs_b):
-                subset = bdf[bdf["epoch"] == ep].copy()
-                color = COLORS[i % len(COLORS)]
-                fig_b.add_trace(go.Scatter(
-                    x=subset["batch"], y=subset["running_loss"],
-                    name=f"Epoch {ep}", mode="lines",
-                    line=dict(color=color, width=1), opacity=0.4, legendgroup=f"ep{ep}",
-                ))
-                if ma_window > 0 and len(subset) >= ma_window:
-                    ma = subset["running_loss"].rolling(ma_window, center=True).mean()
-                    fig_b.add_trace(go.Scatter(
-                        x=subset["batch"], y=ma,
-                        name=f"Epoch {ep} MA{ma_window}", mode="lines",
-                        line=dict(color=color, width=2.5), legendgroup=f"ep{ep}",
-                    ))
-                    mean_l = subset["running_loss"].mean()
-                    std_l = subset["running_loss"].std()
-                    spikes = subset[subset["running_loss"] > mean_l + 2 * std_l]
-                    if not spikes.empty:
+        if bdf.empty:
+            st.warning("El CSV de batch está vacío.")
+        else:
+            epochs_available_b = sorted(bdf["epoch"].unique())
+            n_batches_total = int(bdf["n_batches"].iloc[0]) if not bdf.empty else "—"
+
+            # Resumen rápido
+            bc1, bc2, bc3, bc4 = st.columns(4)
+            bc1.metric("Epochs registrados", len(epochs_available_b))
+            bc2.metric("Batches por epoch", n_batches_total)
+            bc3.metric("Total registros", len(bdf))
+            if has_lr:
+                bc4.metric("LR inicial", f"{bdf['lr'].iloc[0]:.2e}")
+
+            # ── Tab: por epoch ────────────────────────────────────────────────
+            with subtab_by_ep:
+                col_ep, col_met, col_ma = st.columns([2, 2, 2])
+                with col_ep:
+                    selected_epochs_b = st.multiselect(
+                        "Epochs", epochs_available_b,
+                        default=list(epochs_available_b[-min(3, len(epochs_available_b)):]),
+                    )
+                with col_met:
+                    metric_options = ["running_loss"]
+                    if has_batch_loss:
+                        metric_options.append("batch_loss")
+                    batch_metric = st.selectbox("Métrica", metric_options,
+                                                format_func=lambda m: {
+                                                    "running_loss": "Loss media acumulada",
+                                                    "batch_loss": "Loss instantánea por batch",
+                                                }.get(m, m))
+                with col_ma:
+                    ma_window = st.slider("Media móvil (batches)", 0, 200, 10,
+                                          help="0 = desactivado")
+
+                if selected_epochs_b and batch_metric in bdf.columns:
+                    fig_b = go.Figure()
+                    for i, ep in enumerate(selected_epochs_b):
+                        subset = bdf[bdf["epoch"] == ep].copy().sort_values("batch")
+                        color = COLORS[i % len(COLORS)]
+
+                        # Línea base (semitransparente)
                         fig_b.add_trace(go.Scatter(
-                            x=spikes["batch"], y=spikes["running_loss"],
-                            name=f"Pico Ep{ep}", mode="markers",
-                            marker=dict(color="red", size=7, symbol="x"),
-                            legendgroup=f"ep{ep}", showlegend=False,
+                            x=subset["batch"], y=subset[batch_metric],
+                            name=f"Ep {ep}", mode="lines",
+                            line=dict(color=color, width=1), opacity=0.35,
+                            legendgroup=f"ep{ep}",
                         ))
 
-            fig_b.update_layout(**_base_layout(400, "Loss en ejecución por batch"),
-                                xaxis_title="Batch", yaxis_title="Running loss")
-            _show(fig_b, "batch_loss")
-            sel_bdf = bdf[bdf["epoch"].isin(selected_epochs_b)]
-            _dl_csv(sel_bdf, "batch_metrics_sel.csv", "Descargar datos de batch")
+                        if ma_window > 1 and len(subset) >= ma_window:
+                            ma = subset[batch_metric].rolling(ma_window, center=True).mean()
+                            fig_b.add_trace(go.Scatter(
+                                x=subset["batch"], y=ma,
+                                name=f"Ep {ep} MA{ma_window}", mode="lines",
+                                line=dict(color=color, width=2.5),
+                                legendgroup=f"ep{ep}",
+                            ))
 
-            with st.expander("Datos en bruto"):
-                st.dataframe(sel_bdf, use_container_width=True)
+                        # Detección de picos
+                        mean_l = subset[batch_metric].mean()
+                        std_l = subset[batch_metric].std()
+                        if not pd.isna(std_l) and std_l > 0:
+                            spikes = subset[subset[batch_metric] > mean_l + 2.5 * std_l]
+                            if not spikes.empty:
+                                fig_b.add_trace(go.Scatter(
+                                    x=spikes["batch"], y=spikes[batch_metric],
+                                    name=f"Pico Ep{ep}", mode="markers",
+                                    marker=dict(color="red", size=7, symbol="x"),
+                                    legendgroup=f"ep{ep}", showlegend=False,
+                                ))
+
+                    y_label = "Loss media" if batch_metric == "running_loss" else "Loss instantánea"
+                    fig_b.update_layout(
+                        **_base_layout(420, f"{y_label} por batch"),
+                        xaxis_title="Batch dentro del epoch",
+                        yaxis_title=y_label,
+                    )
+                    _show(fig_b, "batch_loss_por_epoch")
+                    sel_bdf = bdf[bdf["epoch"].isin(selected_epochs_b)]
+                    _dl_csv(sel_bdf, "batch_metrics_sel.csv", "Descargar datos seleccionados")
+
+                    with st.expander("Datos en bruto"):
+                        st.dataframe(sel_bdf, use_container_width=True)
+
+            # ── Tab: historia global (eje x = batch global) ───────────────────
+            with subtab_global:
+                st.markdown(
+                    "Vista completa de toda la historia de entrenamiento en un solo eje. "
+                    "Las líneas verticales marcan los límites de epoch."
+                )
+                col_gm, col_gma = st.columns([2, 2])
+                with col_gm:
+                    global_metric = st.selectbox(
+                        "Métrica global",
+                        ["running_loss"] + (["batch_loss"] if has_batch_loss else []),
+                        format_func=lambda m: {
+                            "running_loss": "Loss media acumulada",
+                            "batch_loss": "Loss instantánea",
+                        }.get(m, m),
+                        key="global_metric_sel",
+                    )
+                with col_gma:
+                    gma_window = st.slider("Media móvil (batches globales)", 0, 500, 50,
+                                           help="0 = desactivado", key="global_ma")
+
+                if global_metric in bdf.columns:
+                    all_sorted = bdf.sort_values("global_batch")
+                    fig_g = go.Figure()
+
+                    # Serie completa (semitransparente)
+                    fig_g.add_trace(go.Scatter(
+                        x=all_sorted["global_batch"], y=all_sorted[global_metric],
+                        name="Datos", mode="lines",
+                        line=dict(color=COLORS[0], width=1), opacity=0.3,
+                    ))
+
+                    if gma_window > 1 and len(all_sorted) >= gma_window:
+                        gma = all_sorted[global_metric].rolling(gma_window, center=True).mean()
+                        fig_g.add_trace(go.Scatter(
+                            x=all_sorted["global_batch"], y=gma,
+                            name=f"MA{gma_window}", mode="lines",
+                            line=dict(color=COLORS[0], width=2.5),
+                        ))
+
+                    # Líneas verticales por epoch
+                    epoch_boundaries = bdf.groupby("epoch")["global_batch"].max()
+                    for ep, gb in epoch_boundaries.items():
+                        fig_g.add_vline(
+                            x=gb, line_dash="dot", line_color="#94a3b8", line_width=1,
+                            annotation_text=f"E{ep}", annotation_position="top",
+                            annotation_font_size=9,
+                        )
+
+                    y_label_g = "Loss media" if global_metric == "running_loss" else "Loss instantánea"
+                    fig_g.update_layout(
+                        **_base_layout(420, f"{y_label_g} — historia completa"),
+                        xaxis_title="Batch global",
+                        yaxis_title=y_label_g,
+                    )
+                    _show(fig_g, "batch_historia_global")
+                    _dl_csv(bdf, "batch_metrics_completo.csv", "Descargar historia completa")
+
+            # ── Tab: learning rate ────────────────────────────────────────────
+            with subtab_lr:
+                if not has_lr:
+                    st.info(
+                        "No hay datos de learning rate. "
+                        "Requiere `--layers batch-monitor` con la versión actual del BatchMonitorDecorator."
+                    )
+                else:
+                    lr_sorted = bdf.sort_values("global_batch").dropna(subset=["lr"])
+                    fig_lr = go.Figure()
+                    fig_lr.add_trace(go.Scatter(
+                        x=lr_sorted["global_batch"], y=lr_sorted["lr"],
+                        name="Learning rate", mode="lines",
+                        line=dict(color=COLORS[2], width=2),
+                    ))
+
+                    # Marcar boundaries de epoch
+                    epoch_boundaries_lr = bdf.groupby("epoch")["global_batch"].max()
+                    for ep, gb in epoch_boundaries_lr.items():
+                        fig_lr.add_vline(
+                            x=gb, line_dash="dot", line_color="#94a3b8", line_width=1,
+                            annotation_text=f"E{ep}", annotation_position="top",
+                            annotation_font_size=9,
+                        )
+
+                    fig_lr.update_layout(
+                        **_base_layout(380, "Evolución del learning rate"),
+                        xaxis_title="Batch global",
+                        yaxis_title="Learning rate",
+                    )
+                    # Escala log si el rango es grande
+                    lr_range = lr_sorted["lr"].max() / (lr_sorted["lr"].min() + 1e-12)
+                    if lr_range > 100:
+                        fig_lr.update_yaxes(type="log")
+                    _show(fig_lr, "learning_rate")
+
+                    # Stats de LR
+                    lr_col1, lr_col2, lr_col3 = st.columns(3)
+                    lr_col1.metric("LR inicial", f"{lr_sorted['lr'].iloc[0]:.2e}")
+                    lr_col2.metric("LR final", f"{lr_sorted['lr'].iloc[-1]:.2e}")
+                    lr_col3.metric("LR mínimo", f"{lr_sorted['lr'].min():.2e}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # COMPARAR
