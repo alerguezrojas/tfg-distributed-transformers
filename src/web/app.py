@@ -20,7 +20,7 @@ from src.web.confusion_matrix_parser import get_matrix_for_epoch, parse_confusio
 from src.web.dataset_stats import (
     CLASS_NAMES, SPLIT_SIZES,
     class_distribution_approximate, class_distribution_from_parquet,
-    get_country_distribution,
+    get_country_distribution, find_example_patches, load_rgb_image,
 )
 from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
@@ -96,6 +96,27 @@ def _get_runs() -> list[RunInfo]:
 @st.cache_data(ttl=60)
 def _get_feasibility_csvs() -> list[Path]:
     return discover_feasibility_csvs(ROOT)
+
+
+# ── Cargadores de dataset con caché ─────────────────────────────────────────────
+
+
+@st.cache_data(ttl=600)
+def _load_class_distribution(parquet_str: str) -> pd.DataFrame | None:
+    """Distribución de clases cacheada (itera ~237K filas, lento)."""
+    return class_distribution_from_parquet(Path(parquet_str))
+
+
+@st.cache_data(ttl=600)
+def _load_example_images(parquet_str: str, root_str: str, class_name: str, n: int = 4):
+    """Carga n imágenes RGB de ejemplo para una clase, cacheadas."""
+    patches = find_example_patches(Path(parquet_str), class_name, n=n)
+    images = []
+    for pid in patches:
+        img = load_rgb_image(Path(root_str), pid)
+        if img is not None:
+            images.append((pid, img))
+    return images
 
 
 # ── Helpers generales ──────────────────────────────────────────────────────────
@@ -517,8 +538,11 @@ with tab_inicio:
     gpu_home = _gpu_usage()
 
     if gpu_home:
+        # Nombre completo de la GPU como encabezado (evita el truncado en st.metric)
+        gpu_name_clean = gpu_home["name"].replace("NVIDIA GeForce ", "").replace("NVIDIA ", "")
+        st.markdown(f"**GPU:** {gpu_home['name']}")
         gc1, gc2, gc3, gc4 = st.columns(4)
-        gc1.metric("GPU", gpu_home["name"][:22])
+        gc1.metric("Modelo", gpu_name_clean)
         gc2.metric("VRAM", f"{gpu_home['mem_used_mb']/1024:.1f} / {gpu_home['mem_total_mb']/1024:.1f} GB")
         gc3.metric("Utilización GPU", f"{gpu_home['util_pct']}%")
         gc4.metric("Temperatura", f"{gpu_home['temp_c']} °C")
@@ -701,35 +725,45 @@ with tab_dataset:
             break
 
     st.markdown("### Splits del dataset")
-    ds1, ds2, ds3, ds4 = st.columns(4)
-    ds1.metric("Train", f"{SPLIT_SIZES['train']:,}")
-    ds2.metric("Validación", f"{SPLIT_SIZES['val']:,}")
-    ds3.metric("Test", f"{SPLIT_SIZES['test']:,}")
-    ds4.metric("Total patches", f"{sum(SPLIT_SIZES.values()):,}")
+    split_col, pie_col = st.columns([1, 1])
+    with split_col:
+        ds1, ds2 = st.columns(2)
+        ds1.metric("Train", f"{SPLIT_SIZES['train']:,}")
+        ds2.metric("Validación", f"{SPLIT_SIZES['val']:,}")
+        ds3, ds4 = st.columns(2)
+        ds3.metric("Test", f"{SPLIT_SIZES['test']:,}")
+        ds4.metric("Total patches", f"{sum(SPLIT_SIZES.values()):,}")
+    with pie_col:
+        fig_splits = go.Figure(go.Pie(
+            labels=["Train", "Validación", "Test"],
+            values=list(SPLIT_SIZES.values()),
+            hole=0.45,
+            marker_colors=[COLORS[0], COLORS[2], COLORS[1]],
+            textinfo="label+percent",
+        ))
+        fig_splits.update_layout(
+            **_base_layout(260, "Distribución de splits", margin=dict(l=10, r=10, t=40, b=10)),
+            showlegend=False,
+        )
+        _show(fig_splits, "splits")
 
-    fig_splits = go.Figure(go.Pie(
-        labels=list(SPLIT_SIZES.keys()),
-        values=list(SPLIT_SIZES.values()),
-        hole=0.4,
-        marker_colors=[COLORS[0], COLORS[2], COLORS[1]],
-    ))
-    fig_splits.update_layout(**_base_layout(220, "Distribución de splits"), showlegend=True)
-    _show(fig_splits, "splits")
-
+    # ── Distribución de clases ─────────────────────────────────────────────────
     st.markdown("### Distribución de clases (split de train)")
+    dist_df = None
     if meta_path:
-        dist_df = class_distribution_from_parquet(meta_path)
-        st.caption(f"Fuente: {meta_path}")
-    else:
-        dist_df = None
-        st.caption("metadata.parquet no encontrado — usando estadísticas aproximadas.")
-
+        dist_df = _load_class_distribution(str(meta_path))
+        if dist_df is not None:
+            st.caption(f"Fuente: {meta_path.name} (conteo real de etiquetas multi-label)")
+        else:
+            st.caption("No se pudo leer el parquet — usando estadísticas aproximadas.")
     if dist_df is None:
         dist_df = class_distribution_approximate()
+        if not meta_path:
+            st.caption("metadata.parquet no encontrado — usando estadísticas aproximadas.")
 
-    dist_df = dist_df.sort_values("train_count", ascending=True)
+    dist_df = dist_df.sort_values("train_count", ascending=True).reset_index(drop=True)
     dist_df["color"] = dist_df["train_count"].apply(
-        lambda v: COLORS[3] if v < 5000 else (COLORS[1] if v < 15000 else COLORS[2])
+        lambda v: COLORS[3] if v < 10000 else (COLORS[1] if v < 40000 else COLORS[2])
     )
     fig_dist = go.Figure(go.Bar(
         y=dist_df["class"], x=dist_df["train_count"],
@@ -737,14 +771,19 @@ with tab_dataset:
         marker_color=dist_df["color"].tolist(),
         text=dist_df["train_count"].apply(lambda v: f"{v:,}").tolist(),
         textposition="outside",
+        cliponaxis=False,
     ))
     fig_dist.update_layout(
-        **_base_layout(560, "Muestras por clase (train)", margin=dict(l=230, r=80, t=40, b=40)),
-        xaxis_title="Número de muestras", yaxis_title="",
+        **_base_layout(620, "Muestras por clase (train)", margin=dict(l=300, r=90, t=40, b=40)),
+        xaxis_title="Número de muestras (multi-label)", yaxis_title="",
     )
+    fig_dist.update_yaxes(tickfont=dict(size=11), automargin=True)
+    max_x = dist_df["train_count"].max()
+    fig_dist.update_xaxes(range=[0, max_x * 1.15])
     _show(fig_dist, "distribucion_clases")
     st.caption(
-        "Rojo = clase rara (<5K muestras), Naranja = moderada (<15K), Verde = frecuente. "
+        "Rojo = clase rara (<10K), Naranja = moderada (<40K), Verde = frecuente. "
+        "Al ser multi-label, la suma de etiquetas supera el número de patches. "
         "Las clases raras limitan el techo de F1 macro."
     )
 
@@ -753,25 +792,68 @@ with tab_dataset:
     min_c = dist_df["train_count"].min()
     ratio = max_c / min_c if min_c > 0 else float("inf")
     ci1, ci2, ci3 = st.columns(3)
-    ci1.metric("Clase más frecuente", dist_df.iloc[-1]["class"][:30])
-    ci2.metric("Clase más rara", dist_df.iloc[0]["class"][:30])
+    ci1.metric("Clase más frecuente", dist_df.iloc[-1]["class"][:28],
+               f"{int(max_c):,}")
+    ci2.metric("Clase más rara", dist_df.iloc[0]["class"][:28],
+               f"{int(min_c):,}")
     ci3.metric("Ratio de desbalance", f"{ratio:.1f}×")
+    _dl_csv(dist_df[["class", "train_count"]], "distribucion_clases.csv",
+            "Descargar distribución")
 
+    # ── Imágenes de ejemplo por clase ──────────────────────────────────────────
+    st.markdown("### Imágenes de ejemplo por clase")
+    if not meta_path:
+        st.info("Requiere acceso al dataset (metadata.parquet no encontrado).")
+    else:
+        # Ruta al directorio raíz del dataset (junto al parquet)
+        ds_root = meta_path.parent / "BigEarthNet-S2"
+        if not ds_root.exists():
+            st.info(f"Directorio del dataset no encontrado en {ds_root}.")
+        else:
+            sel_class = st.selectbox(
+                "Clase", CLASS_NAMES,
+                index=CLASS_NAMES.index("Marine waters") if "Marine waters" in CLASS_NAMES else 0,
+            )
+            with st.spinner("Cargando imágenes RGB del dataset…"):
+                examples = _load_example_images(str(meta_path), str(ds_root), sel_class, n=4)
+            if examples:
+                st.caption(
+                    "Proxy RGB (bandas Sentinel-2 B04/B03/B02) con stretch de percentiles "
+                    "para visibilidad. Cada patch es 120×120 px (~1.2 km²)."
+                )
+                img_cols = st.columns(len(examples))
+                for col, (pid, img) in zip(img_cols, examples):
+                    col.image(img, caption=pid.split("_")[-2] + "_" + pid.split("_")[-1],
+                              use_container_width=True)
+            else:
+                st.warning(
+                    f"No se pudieron cargar imágenes para '{sel_class}'. "
+                    "¿Está el dataset completo y accesible?"
+                )
+
+    # ── País ───────────────────────────────────────────────────────────────────
     if meta_path:
         country_counts = get_country_distribution(meta_path)
         if country_counts is not None and not country_counts.empty:
             st.markdown("### Distribución por país (train)")
-            top_n = country_counts.head(15)
-            fig_c = px.bar(
+            top_n = country_counts.head(15).sort_values(ascending=True)
+            fig_c = go.Figure(go.Bar(
                 x=top_n.values, y=top_n.index, orientation="h",
-                labels={"x": "Patches", "y": "País"},
-                color=top_n.values, color_continuous_scale="Blues",
+                marker_color=COLORS[0], opacity=0.85,
+                text=[f"{v:,}" for v in top_n.values], textposition="outside",
+                cliponaxis=False,
+            ))
+            fig_c.update_layout(
+                **_base_layout(420, "Top 15 países por número de patches",
+                               margin=dict(l=120, r=80, t=40, b=40)),
+                xaxis_title="Patches", yaxis_title="",
             )
-            fig_c.update_layout(**_base_layout(380, "Top países por número de patches"))
+            fig_c.update_xaxes(range=[0, top_n.values.max() * 1.15])
             _show(fig_c, "paises")
 
+    # ── Dificultad vs frecuencia ───────────────────────────────────────────────
     st.markdown("### Dificultad por clase vs frecuencia")
-    st.caption("Usa el CSV de per-class más reciente disponible.")
+    st.caption("Cruza la frecuencia de cada clase con su F1 de validación (CSV per-class más reciente).")
     perclass_csvs_all = sorted(ROOT.rglob("perclass_metrics_*.csv"),
                                key=lambda p: p.stat().st_mtime, reverse=True)
     if perclass_csvs_all:
@@ -788,8 +870,12 @@ with tab_dataset:
                 labels={"train_count": "Muestras de entrenamiento", "f1": "Val F1"},
                 title=f"F1 vs frecuencia de clase (epoch {last_ep})",
             )
-            fig_sc.update_traces(textposition="top center", textfont_size=8)
-            fig_sc.update_layout(**_base_layout(440), showlegend=False)
+            fig_sc.update_traces(textposition="top center", textfont_size=9)
+            fig_sc.update_layout(
+                **_base_layout(480, margin=dict(l=60, r=40, t=40, b=50)),
+                showlegend=False,
+            )
+            fig_sc.update_yaxes(range=[-0.05, 1.05])
             _show(fig_sc, "f1_vs_frecuencia")
             st.caption(
                 "Las clases con pocas muestras tienden a tener F1 bajo. "
