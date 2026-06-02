@@ -129,16 +129,22 @@ class HeterogeneousDDPTrainer(DDPTrainer):
 
             with torch.no_grad():
                 preds = (torch.sigmoid(logits.detach()) >= 0.5).cpu()
+                labels_metrics = (labels_for_metrics.detach() >= 0.5).cpu()
                 all_preds.append(preds)
-                all_labels_list.append((labels_for_metrics.detach() >= 0.5).cpu())
+                all_labels_list.append(labels_metrics)
 
             # Batch hooks — necesario para BatchMonitorDecorator
             if self._batch_hooks:
-                running_loss = total_loss / batch_idx
-                lr = self.optimizer.param_groups[0]["lr"]
+                batch_metrics = {
+                    "running_loss": total_loss / batch_idx,
+                    "batch_loss": batch_loss,
+                    "lr": self.optimizer.param_groups[0]["lr"],
+                    "batch_f1": m.f1_score(preds.long(), labels_metrics.long()),
+                    "batch_acc": m.accuracy(preds.long(), labels_metrics.long()),
+                    "batch_prec": m.precision(preds.long(), labels_metrics.long()),
+                }
                 for hook in self._batch_hooks:
-                    hook(self._current_epoch, batch_idx, n_batches,
-                         running_loss, batch_loss, lr)
+                    hook(self._current_epoch, batch_idx, n_batches, batch_metrics)
 
         if self.scheduler is not None:
             self.scheduler.step()

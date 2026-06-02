@@ -158,6 +158,8 @@ class FeasibilityReport:
     dataset_profile: Optional[DatasetProfile] = None
     ddp_scenarios: list[DDPScenario] = field(default_factory=list)
     performance_prediction: Optional[PerformancePrediction] = None
+    # v4: estudio empírico real (mini-training + LR range + gradient noise)
+    study_report: object = None  # StudyReport | None (evita import circular)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -908,6 +910,7 @@ class ReportFormatter:
         self._estimates_section(report)
         self._ddp_section(report)
         self._prediction_section(report.performance_prediction)
+        self._study_section(report)
         self._recommendations_section(report)
         self.flush()
 
@@ -1040,6 +1043,36 @@ class ReportFormatter:
         self._emit(f"  Confianza:          {pred.confidence}")
         self._emit(f"  Nota: {pred.notes[:100]}")
 
+    def _study_section(self, report: FeasibilityReport):
+        study = report.study_report
+        if study is None:
+            return
+        self._emit(f"\n{'─'*self.W}  ESTUDIO EMPÍRICO DE CONVERGENCIA (medido)")
+
+        if getattr(study, "lr_range", None):
+            lr = study.lr_range
+            self._emit("  LR range test:")
+            self._emit(f"    LR sugerido (mayor descenso): {lr.suggested_lr:.2e}")
+            self._emit(f"    LR del mínimo de loss:        {lr.min_loss_lr:.2e}")
+            if lr.diverged_lr:
+                self._emit(f"    LR de divergencia:            {lr.diverged_lr:.2e}")
+
+        if getattr(study, "convergence", None):
+            cv = study.convergence
+            self._emit("  Convergencia (mini-training real):")
+            self._emit(f"    Steps medidos:        {len(cv.steps)}  |  throughput {cv.measured_imgs_per_s:.1f} imgs/s")
+            self._emit(f"    Ajuste loss=a·t^-b+c: a={cv.fit_a:.3f}, b={cv.fit_b:.3f}, c={cv.fit_c:.3f}  (R²={cv.r_squared:.3f})")
+            self._emit(f"    Loss extrapolada 1 epoch:  {cv.extrapolated_loss_1ep:.4f}")
+            self._emit(f"    Loss extrapolada final:    {cv.extrapolated_loss_final:.4f}")
+            self._emit(f"    Val F1 estimado (medido):  ~{cv.extrapolated_best_f1:.3f}")
+            self._emit(f"    Plateau estimado:          epoch ≈ {cv.epochs_to_plateau}")
+
+        if getattr(study, "gradient_noise", None):
+            gn = study.gradient_noise
+            self._emit("  Gradient noise scale:")
+            self._emit(f"    Norma gradiente: {gn.grad_norm_mean:.3f} ± {gn.grad_norm_std:.3f}  (CV={gn.cv:.3f})")
+            self._emit(f"    Batch size sugerido: {gn.suggested_batch_size}  (noise scale ≈ {gn.noise_scale:.1f})")
+
     def _recommendations_section(self, report: FeasibilityReport):
         self._emit(f"\n{'─'*self.W}  RECOMENDACIONES")
         estimator = TimeEstimator()
@@ -1148,6 +1181,39 @@ class ReportFormatter:
                         round(s.time_total_s / 3600, 2),
                     ])
 
+            # Estudio empírico de convergencia (v4)
+            study = report.study_report
+            if study is not None:
+                lr = getattr(study, "lr_range", None)
+                cv = getattr(study, "convergence", None)
+                gn = getattr(study, "gradient_noise", None)
+                if lr is not None:
+                    writer.writerow(["#study_lr", "suggested_lr", "min_loss_lr", "diverged_lr"])
+                    writer.writerow(["#study_lr", f"{lr.suggested_lr:.3e}",
+                                      f"{lr.min_loss_lr:.3e}",
+                                      f"{lr.diverged_lr:.3e}" if lr.diverged_lr else ""])
+                    writer.writerow(["#study_lr_curve_lrs"] + [f"{x:.3e}" for x in lr.lrs])
+                    writer.writerow(["#study_lr_curve_losses"] + [round(x, 5) for x in lr.losses])
+                if cv is not None:
+                    writer.writerow(["#study_conv", "fit_a", "fit_b", "fit_c", "r_squared",
+                                      "loss_1ep", "loss_final", "best_f1", "epochs_to_plateau",
+                                      "measured_imgs_per_s"])
+                    writer.writerow(["#study_conv", round(cv.fit_a, 5), round(cv.fit_b, 5),
+                                      round(cv.fit_c, 5), round(cv.r_squared, 4),
+                                      round(cv.extrapolated_loss_1ep, 5),
+                                      round(cv.extrapolated_loss_final, 5),
+                                      round(cv.extrapolated_best_f1, 4),
+                                      cv.epochs_to_plateau, round(cv.measured_imgs_per_s, 1)])
+                    writer.writerow(["#study_conv_steps"] + cv.steps)
+                    writer.writerow(["#study_conv_losses"] + [round(x, 5) for x in cv.losses])
+                    writer.writerow(["#study_conv_f1s"] + [round(x, 5) for x in cv.f1s])
+                if gn is not None:
+                    writer.writerow(["#study_grad", "grad_norm_mean", "grad_norm_std",
+                                      "noise_scale", "suggested_batch_size", "cv"])
+                    writer.writerow(["#study_grad", round(gn.grad_norm_mean, 5),
+                                      round(gn.grad_norm_std, 5), round(gn.noise_scale, 2),
+                                      gn.suggested_batch_size, round(gn.cv, 4)])
+
             # Benchmarks (filas principales)
             writer.writerow([
                 "batch_size", "trace_mode",
@@ -1214,6 +1280,8 @@ class FeasibilityChecker:
         predict_performance: bool = True,
         analyze_ddp: bool = True,
         config: dict | None = None,
+        convergence_study: bool = False,
+        study_steps: int = 60,
     ):
         self._model_name = model_name
         self._batch_sizes = batch_sizes
@@ -1227,6 +1295,8 @@ class FeasibilityChecker:
         self._predict_performance = predict_performance
         self._analyze_ddp = analyze_ddp
         self._config = config or {}
+        self._convergence_study = convergence_study
+        self._study_steps = study_steps
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def run(self) -> FeasibilityReport:
@@ -1308,7 +1378,79 @@ class FeasibilityChecker:
             )
             report.ddp_scenarios = optimizer.compute_scenarios(max(self._epochs_list))
 
+        # Estudio empírico de convergencia (mini-training real)
+        if self._convergence_study:
+            report.study_report = self._run_convergence_study(model)
+
         return report
+
+    def _model_family(self) -> str:
+        n = self._model_name.lower()
+        for fam in ("vit_base", "vit_small", "vit_tiny", "resnet", "efficientnet"):
+            if fam in n:
+                return "resnet50" if fam == "resnet" else fam
+        return "vit_base"
+
+    def _build_real_loader(self, batch_size: int):
+        """Construye un DataLoader del dataset real para el estudio.
+
+        Devuelve None si el dataset no está disponible (se hace fallback a sintético).
+        """
+        data_cfg = self._config.get("data", {})
+        root = data_cfg.get("root")
+        metadata = data_cfg.get("metadata")
+        if not root or not metadata:
+            return None
+        if not (Path(root).exists() and Path(metadata).exists()):
+            return None
+        try:
+            from src.data.dataset import BigEarthNetDataset, get_transforms
+            from torch.utils.data import DataLoader
+            ds = BigEarthNetDataset(root, metadata, split="train",
+                                    transform=get_transforms("train"))
+            return DataLoader(ds, batch_size=batch_size, shuffle=True,
+                              num_workers=data_cfg.get("num_workers", 2),
+                              pin_memory=(self._device.type == "cuda"))
+        except Exception as exc:
+            print(f"  [aviso] no se pudo construir loader real: {exc}")
+            return None
+
+    def _build_synthetic_loader(self, batch_size: int):
+        """Loader sintético de respaldo si el dataset no está disponible."""
+        from torch.utils.data import DataLoader, TensorDataset
+        n = batch_size * (self._study_steps + 25)
+        x = torch.randn(n, 3, 224, 224)
+        y = torch.randint(0, 2, (n, 19)).float()
+        return DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
+
+    def _run_convergence_study(self, model):
+        from src.training.convergence_study import ConvergenceStudy
+
+        # Elegir el batch viable más grande para el estudio
+        viable_bs = [r.batch_size for r in []]  # placeholder
+        batch_size = min(self._batch_sizes)  # conservador (menos VRAM)
+        lr = float(self._config.get("training", {}).get("lr", 1e-4))
+        target_epochs = max(self._epochs_list)
+
+        loader = self._build_real_loader(batch_size)
+        source = "datos reales"
+        if loader is None:
+            loader = self._build_synthetic_loader(batch_size)
+            source = "datos sintéticos (dataset no disponible)"
+
+        print(f"Estudio de convergencia ({self._study_steps} steps, batch={batch_size}, {source})…")
+        study = ConvergenceStudy(self._device, self._model_family())
+        try:
+            report = study.run_full_study(
+                model, loader, lr=lr, batch_size=batch_size,
+                n_train_images=self._dataset_train, n_epochs_target=target_epochs,
+                n_steps=self._study_steps,
+            )
+            report.notes += f" Fuente: {source}."
+            return report
+        except Exception as exc:
+            print(f"  [aviso] estudio de convergencia falló: {exc}")
+            return None
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1336,6 +1478,11 @@ def parse_args():
                         help="Omitir análisis DDP")
     parser.add_argument("--no-prediction", action="store_true",
                         help="Omitir predicción de rendimiento F1")
+    parser.add_argument("--convergence-study", action="store_true",
+                        help="Ejecuta un mini-training REAL: LR range test + curva de "
+                             "convergencia medida + gradient noise scale (más lento, ~3-8 min)")
+    parser.add_argument("--study-steps", type=int, default=60,
+                        help="Número de steps del mini-training de convergencia (default 60)")
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
 
@@ -1374,6 +1521,8 @@ def main():
             predict_performance=not args.no_prediction,
             analyze_ddp=not args.no_ddp_analysis,
             config=cfg,
+            convergence_study=args.convergence_study,
+            study_steps=args.study_steps,
         )
 
         report = checker.run()

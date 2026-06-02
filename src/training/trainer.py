@@ -26,11 +26,15 @@ class Trainer(BaseTrainer):
     Register callables via ``register_batch_hook(fn)`` to receive a
     notification after every training batch without reimplementing the loop:
 
-        fn(epoch, batch_idx, n_batches, running_loss, batch_loss, lr)
+        fn(epoch, batch_idx, n_batches, metrics: dict)
 
-    - running_loss: average loss over all batches so far in the epoch
-    - batch_loss:   loss of this specific batch (instantaneous)
-    - lr:           current learning rate (first param group)
+    where ``metrics`` contains:
+        running_loss — average loss over all batches so far in the epoch
+        batch_loss   — loss of this specific batch (instantaneous)
+        lr           — current learning rate (first param group)
+        batch_f1     — macro F1 of this batch (indicative; post-mixup labels)
+        batch_acc    — sample accuracy of this batch
+        batch_prec   — macro precision of this batch
 
     BatchMonitorDecorator uses this mechanism instead of duplicating train_epoch.
     """
@@ -94,16 +98,22 @@ class Trainer(BaseTrainer):
             with torch.no_grad():
                 hard_labels = (labels > 0.5).long()
                 preds = (torch.sigmoid(logits) > 0.5).long()
-                all_preds.append(preds.cpu())
-                all_labels.append(hard_labels.cpu())
+                preds_cpu = preds.cpu()
+                hard_labels_cpu = hard_labels.cpu()
+                all_preds.append(preds_cpu)
+                all_labels.append(hard_labels_cpu)
 
             if self._batch_hooks:
-                running_loss = total_loss / batch_idx
-                batch_loss = loss.item()
-                lr = self.optimizer.param_groups[0]["lr"]
+                batch_metrics = {
+                    "running_loss": total_loss / batch_idx,
+                    "batch_loss": loss.item(),
+                    "lr": self.optimizer.param_groups[0]["lr"],
+                    "batch_f1": m.f1_score(preds_cpu, hard_labels_cpu),
+                    "batch_acc": m.accuracy(preds_cpu, hard_labels_cpu),
+                    "batch_prec": m.precision(preds_cpu, hard_labels_cpu),
+                }
                 for hook in self._batch_hooks:
-                    hook(self._current_epoch, batch_idx, n_batches,
-                         running_loss, batch_loss, lr)
+                    hook(self._current_epoch, batch_idx, n_batches, batch_metrics)
 
         if self.scheduler:
             self.scheduler.step()

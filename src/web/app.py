@@ -20,7 +20,7 @@ from src.web.confusion_matrix_parser import get_matrix_for_epoch, parse_confusio
 from src.web.dataset_stats import (
     CLASS_NAMES, SPLIT_SIZES,
     class_distribution_approximate, class_distribution_from_parquet,
-    get_country_distribution,
+    get_country_distribution, find_example_patches, load_rgb_image,
 )
 from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
@@ -96,6 +96,27 @@ def _get_runs() -> list[RunInfo]:
 @st.cache_data(ttl=60)
 def _get_feasibility_csvs() -> list[Path]:
     return discover_feasibility_csvs(ROOT)
+
+
+# ── Cargadores de dataset con caché ─────────────────────────────────────────────
+
+
+@st.cache_data(ttl=600)
+def _load_class_distribution(parquet_str: str) -> pd.DataFrame | None:
+    """Distribución de clases cacheada (itera ~237K filas, lento)."""
+    return class_distribution_from_parquet(Path(parquet_str))
+
+
+@st.cache_data(ttl=600)
+def _load_example_images(parquet_str: str, root_str: str, class_name: str, n: int = 4):
+    """Carga n imágenes RGB de ejemplo para una clase, cacheadas."""
+    patches = find_example_patches(Path(parquet_str), class_name, n=n)
+    images = []
+    for pid in patches:
+        img = load_rgb_image(Path(root_str), pid)
+        if img is not None:
+            images.append((pid, img))
+    return images
 
 
 # ── Helpers generales ──────────────────────────────────────────────────────────
@@ -517,8 +538,11 @@ with tab_inicio:
     gpu_home = _gpu_usage()
 
     if gpu_home:
+        # Nombre completo de la GPU como encabezado (evita el truncado en st.metric)
+        gpu_name_clean = gpu_home["name"].replace("NVIDIA GeForce ", "").replace("NVIDIA ", "")
+        st.markdown(f"**GPU:** {gpu_home['name']}")
         gc1, gc2, gc3, gc4 = st.columns(4)
-        gc1.metric("GPU", gpu_home["name"][:22])
+        gc1.metric("Modelo", gpu_name_clean)
         gc2.metric("VRAM", f"{gpu_home['mem_used_mb']/1024:.1f} / {gpu_home['mem_total_mb']/1024:.1f} GB")
         gc3.metric("Utilización GPU", f"{gpu_home['util_pct']}%")
         gc4.metric("Temperatura", f"{gpu_home['temp_c']} °C")
@@ -701,35 +725,45 @@ with tab_dataset:
             break
 
     st.markdown("### Splits del dataset")
-    ds1, ds2, ds3, ds4 = st.columns(4)
-    ds1.metric("Train", f"{SPLIT_SIZES['train']:,}")
-    ds2.metric("Validación", f"{SPLIT_SIZES['val']:,}")
-    ds3.metric("Test", f"{SPLIT_SIZES['test']:,}")
-    ds4.metric("Total patches", f"{sum(SPLIT_SIZES.values()):,}")
+    split_col, pie_col = st.columns([1, 1])
+    with split_col:
+        ds1, ds2 = st.columns(2)
+        ds1.metric("Train", f"{SPLIT_SIZES['train']:,}")
+        ds2.metric("Validación", f"{SPLIT_SIZES['val']:,}")
+        ds3, ds4 = st.columns(2)
+        ds3.metric("Test", f"{SPLIT_SIZES['test']:,}")
+        ds4.metric("Total patches", f"{sum(SPLIT_SIZES.values()):,}")
+    with pie_col:
+        fig_splits = go.Figure(go.Pie(
+            labels=["Train", "Validación", "Test"],
+            values=list(SPLIT_SIZES.values()),
+            hole=0.45,
+            marker_colors=[COLORS[0], COLORS[2], COLORS[1]],
+            textinfo="label+percent",
+        ))
+        fig_splits.update_layout(
+            **_base_layout(260, "Distribución de splits", margin=dict(l=10, r=10, t=40, b=10)),
+            showlegend=False,
+        )
+        _show(fig_splits, "splits")
 
-    fig_splits = go.Figure(go.Pie(
-        labels=list(SPLIT_SIZES.keys()),
-        values=list(SPLIT_SIZES.values()),
-        hole=0.4,
-        marker_colors=[COLORS[0], COLORS[2], COLORS[1]],
-    ))
-    fig_splits.update_layout(**_base_layout(220, "Distribución de splits"), showlegend=True)
-    _show(fig_splits, "splits")
-
+    # ── Distribución de clases ─────────────────────────────────────────────────
     st.markdown("### Distribución de clases (split de train)")
+    dist_df = None
     if meta_path:
-        dist_df = class_distribution_from_parquet(meta_path)
-        st.caption(f"Fuente: {meta_path}")
-    else:
-        dist_df = None
-        st.caption("metadata.parquet no encontrado — usando estadísticas aproximadas.")
-
+        dist_df = _load_class_distribution(str(meta_path))
+        if dist_df is not None:
+            st.caption(f"Fuente: {meta_path.name} (conteo real de etiquetas multi-label)")
+        else:
+            st.caption("No se pudo leer el parquet — usando estadísticas aproximadas.")
     if dist_df is None:
         dist_df = class_distribution_approximate()
+        if not meta_path:
+            st.caption("metadata.parquet no encontrado — usando estadísticas aproximadas.")
 
-    dist_df = dist_df.sort_values("train_count", ascending=True)
+    dist_df = dist_df.sort_values("train_count", ascending=True).reset_index(drop=True)
     dist_df["color"] = dist_df["train_count"].apply(
-        lambda v: COLORS[3] if v < 5000 else (COLORS[1] if v < 15000 else COLORS[2])
+        lambda v: COLORS[3] if v < 10000 else (COLORS[1] if v < 40000 else COLORS[2])
     )
     fig_dist = go.Figure(go.Bar(
         y=dist_df["class"], x=dist_df["train_count"],
@@ -737,14 +771,19 @@ with tab_dataset:
         marker_color=dist_df["color"].tolist(),
         text=dist_df["train_count"].apply(lambda v: f"{v:,}").tolist(),
         textposition="outside",
+        cliponaxis=False,
     ))
     fig_dist.update_layout(
-        **_base_layout(560, "Muestras por clase (train)", margin=dict(l=230, r=80, t=40, b=40)),
-        xaxis_title="Número de muestras", yaxis_title="",
+        **_base_layout(620, "Muestras por clase (train)", margin=dict(l=300, r=90, t=40, b=40)),
+        xaxis_title="Número de muestras (multi-label)", yaxis_title="",
     )
+    fig_dist.update_yaxes(tickfont=dict(size=11), automargin=True)
+    max_x = dist_df["train_count"].max()
+    fig_dist.update_xaxes(range=[0, max_x * 1.15])
     _show(fig_dist, "distribucion_clases")
     st.caption(
-        "Rojo = clase rara (<5K muestras), Naranja = moderada (<15K), Verde = frecuente. "
+        "Rojo = clase rara (<10K), Naranja = moderada (<40K), Verde = frecuente. "
+        "Al ser multi-label, la suma de etiquetas supera el número de patches. "
         "Las clases raras limitan el techo de F1 macro."
     )
 
@@ -753,25 +792,68 @@ with tab_dataset:
     min_c = dist_df["train_count"].min()
     ratio = max_c / min_c if min_c > 0 else float("inf")
     ci1, ci2, ci3 = st.columns(3)
-    ci1.metric("Clase más frecuente", dist_df.iloc[-1]["class"][:30])
-    ci2.metric("Clase más rara", dist_df.iloc[0]["class"][:30])
+    ci1.metric("Clase más frecuente", dist_df.iloc[-1]["class"][:28],
+               f"{int(max_c):,}")
+    ci2.metric("Clase más rara", dist_df.iloc[0]["class"][:28],
+               f"{int(min_c):,}")
     ci3.metric("Ratio de desbalance", f"{ratio:.1f}×")
+    _dl_csv(dist_df[["class", "train_count"]], "distribucion_clases.csv",
+            "Descargar distribución")
 
+    # ── Imágenes de ejemplo por clase ──────────────────────────────────────────
+    st.markdown("### Imágenes de ejemplo por clase")
+    if not meta_path:
+        st.info("Requiere acceso al dataset (metadata.parquet no encontrado).")
+    else:
+        # Ruta al directorio raíz del dataset (junto al parquet)
+        ds_root = meta_path.parent / "BigEarthNet-S2"
+        if not ds_root.exists():
+            st.info(f"Directorio del dataset no encontrado en {ds_root}.")
+        else:
+            sel_class = st.selectbox(
+                "Clase", CLASS_NAMES,
+                index=CLASS_NAMES.index("Marine waters") if "Marine waters" in CLASS_NAMES else 0,
+            )
+            with st.spinner("Cargando imágenes RGB del dataset…"):
+                examples = _load_example_images(str(meta_path), str(ds_root), sel_class, n=4)
+            if examples:
+                st.caption(
+                    "Proxy RGB (bandas Sentinel-2 B04/B03/B02) con stretch de percentiles "
+                    "para visibilidad. Cada patch es 120×120 px (~1.2 km²)."
+                )
+                img_cols = st.columns(len(examples))
+                for col, (pid, img) in zip(img_cols, examples):
+                    col.image(img, caption=pid.split("_")[-2] + "_" + pid.split("_")[-1],
+                              use_container_width=True)
+            else:
+                st.warning(
+                    f"No se pudieron cargar imágenes para '{sel_class}'. "
+                    "¿Está el dataset completo y accesible?"
+                )
+
+    # ── País ───────────────────────────────────────────────────────────────────
     if meta_path:
         country_counts = get_country_distribution(meta_path)
         if country_counts is not None and not country_counts.empty:
             st.markdown("### Distribución por país (train)")
-            top_n = country_counts.head(15)
-            fig_c = px.bar(
+            top_n = country_counts.head(15).sort_values(ascending=True)
+            fig_c = go.Figure(go.Bar(
                 x=top_n.values, y=top_n.index, orientation="h",
-                labels={"x": "Patches", "y": "País"},
-                color=top_n.values, color_continuous_scale="Blues",
+                marker_color=COLORS[0], opacity=0.85,
+                text=[f"{v:,}" for v in top_n.values], textposition="outside",
+                cliponaxis=False,
+            ))
+            fig_c.update_layout(
+                **_base_layout(420, "Top 15 países por número de patches",
+                               margin=dict(l=120, r=80, t=40, b=40)),
+                xaxis_title="Patches", yaxis_title="",
             )
-            fig_c.update_layout(**_base_layout(380, "Top países por número de patches"))
+            fig_c.update_xaxes(range=[0, top_n.values.max() * 1.15])
             _show(fig_c, "paises")
 
+    # ── Dificultad vs frecuencia ───────────────────────────────────────────────
     st.markdown("### Dificultad por clase vs frecuencia")
-    st.caption("Usa el CSV de per-class más reciente disponible.")
+    st.caption("Cruza la frecuencia de cada clase con su F1 de validación (CSV per-class más reciente).")
     perclass_csvs_all = sorted(ROOT.rglob("perclass_metrics_*.csv"),
                                key=lambda p: p.stat().st_mtime, reverse=True)
     if perclass_csvs_all:
@@ -788,8 +870,12 @@ with tab_dataset:
                 labels={"train_count": "Muestras de entrenamiento", "f1": "Val F1"},
                 title=f"F1 vs frecuencia de clase (epoch {last_ep})",
             )
-            fig_sc.update_traces(textposition="top center", textfont_size=8)
-            fig_sc.update_layout(**_base_layout(440), showlegend=False)
+            fig_sc.update_traces(textposition="top center", textfont_size=9)
+            fig_sc.update_layout(
+                **_base_layout(480, margin=dict(l=60, r=40, t=40, b=50)),
+                showlegend=False,
+            )
+            fig_sc.update_yaxes(range=[-0.05, 1.05])
             _show(fig_sc, "f1_vs_frecuencia")
             st.caption(
                 "Las clases con pocas muestras tienden a tener F1 bajo. "
@@ -1314,6 +1400,25 @@ with tab_batch:
         has_batch_loss = "batch_loss" in bdf.columns and bdf["batch_loss"].notna().any()
         has_lr = "lr" in bdf.columns and bdf["lr"].notna().any()
 
+        # Mapa de métricas disponibles por batch → etiqueta legible
+        _BATCH_METRIC_LABELS = {
+            "running_loss": "Loss media acumulada",
+            "batch_loss": "Loss instantánea por batch",
+            "batch_f1": "F1 (macro) por batch",
+            "batch_acc": "Accuracy por batch",
+            "batch_prec": "Precision (macro) por batch",
+        }
+
+        def _available_batch_metrics() -> list[str]:
+            opts = ["running_loss"]
+            for col in ("batch_loss", "batch_f1", "batch_acc", "batch_prec"):
+                if col in bdf.columns and bdf[col].notna().any():
+                    opts.append(col)
+            return opts
+
+        def _is_loss_metric(m: str) -> bool:
+            return "loss" in m
+
         if bdf.empty:
             st.warning("El CSV de batch está vacío.")
         else:
@@ -1337,14 +1442,10 @@ with tab_batch:
                         default=list(epochs_available_b[-min(3, len(epochs_available_b)):]),
                     )
                 with col_met:
-                    metric_options = ["running_loss"]
-                    if has_batch_loss:
-                        metric_options.append("batch_loss")
-                    batch_metric = st.selectbox("Métrica", metric_options,
-                                                format_func=lambda m: {
-                                                    "running_loss": "Loss media acumulada",
-                                                    "batch_loss": "Loss instantánea por batch",
-                                                }.get(m, m))
+                    batch_metric = st.selectbox(
+                        "Métrica", _available_batch_metrics(),
+                        format_func=lambda m: _BATCH_METRIC_LABELS.get(m, m),
+                    )
                 with col_ma:
                     ma_window = st.slider("Media móvil (batches)", 0, 200, 10,
                                           help="0 = desactivado")
@@ -1385,13 +1486,16 @@ with tab_batch:
                                     legendgroup=f"ep{ep}", showlegend=False,
                                 ))
 
-                    y_label = "Loss media" if batch_metric == "running_loss" else "Loss instantánea"
+                    y_label = _BATCH_METRIC_LABELS.get(batch_metric, batch_metric)
                     fig_b.update_layout(
-                        **_base_layout(420, f"{y_label} por batch"),
+                        **_base_layout(420, f"{y_label}"),
                         xaxis_title="Batch dentro del epoch",
                         yaxis_title=y_label,
                     )
-                    _show(fig_b, "batch_loss_por_epoch")
+                    # Las métricas F1/acc/prec van en [0,1]
+                    if not _is_loss_metric(batch_metric):
+                        fig_b.update_yaxes(range=[0, 1])
+                    _show(fig_b, f"batch_{batch_metric}_por_epoch")
                     sel_bdf = bdf[bdf["epoch"].isin(selected_epochs_b)]
                     _dl_csv(sel_bdf, "batch_metrics_sel.csv", "Descargar datos seleccionados")
 
@@ -1407,12 +1511,8 @@ with tab_batch:
                 col_gm, col_gma = st.columns([2, 2])
                 with col_gm:
                     global_metric = st.selectbox(
-                        "Métrica global",
-                        ["running_loss"] + (["batch_loss"] if has_batch_loss else []),
-                        format_func=lambda m: {
-                            "running_loss": "Loss media acumulada",
-                            "batch_loss": "Loss instantánea",
-                        }.get(m, m),
+                        "Métrica global", _available_batch_metrics(),
+                        format_func=lambda m: _BATCH_METRIC_LABELS.get(m, m),
                         key="global_metric_sel",
                     )
                 with col_gma:
@@ -1447,12 +1547,14 @@ with tab_batch:
                             annotation_font_size=9,
                         )
 
-                    y_label_g = "Loss media" if global_metric == "running_loss" else "Loss instantánea"
+                    y_label_g = _BATCH_METRIC_LABELS.get(global_metric, global_metric)
                     fig_g.update_layout(
                         **_base_layout(420, f"{y_label_g} — historia completa"),
                         xaxis_title="Batch global",
                         yaxis_title=y_label_g,
                     )
+                    if not _is_loss_metric(global_metric):
+                        fig_g.update_yaxes(range=[0, 1])
                     _show(fig_g, "batch_historia_global")
                     _dl_csv(bdf, "batch_metrics_completo.csv", "Descargar historia completa")
 
@@ -1586,8 +1688,10 @@ with tab_comparar:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_viabilidad:
-    subtab_report, subtab_ddp_opt, subtab_prediction, subtab_compare_feas, subtab_run_feas = st.tabs(
-        ["Informe", "Análisis DDP", "Predicción F1", "Comparar vs training", "Ejecutar análisis"]
+    (subtab_report, subtab_study, subtab_ddp_opt, subtab_prediction,
+     subtab_compare_feas, subtab_run_feas) = st.tabs(
+        ["Informe", "Estudio real", "Análisis DDP", "Predicción F1",
+         "Comparar vs training", "Ejecutar análisis"]
     )
 
     # Carga común del informe seleccionado
@@ -1739,6 +1843,133 @@ with tab_viabilidad:
                         est_df[f"est_total_h_{recalc_n}ep"] = (bdf_feas[per_epoch_col] * recalc_n / 60).round(2)
                     st.dataframe(est_df, use_container_width=True)
                     _dl_csv(est_df, "estimaciones_tiempo.csv", "Descargar estimaciones")
+
+    # ── Estudio empírico real (mini-training + LR range + gradient noise) ──────
+    with subtab_study:
+        if not feasibility_csvs:
+            st.info("Ejecuta primero el análisis de viabilidad.")
+        else:
+            study = meta.get("study")
+            if not study:
+                st.info(
+                    "Este informe no incluye estudio empírico. Para generarlo, ejecuta el "
+                    "análisis con `--convergence-study` (mini-training real con LR range test "
+                    "y gradient noise scale)."
+                )
+            else:
+                st.markdown("## Estudio empírico de convergencia")
+                st.caption(
+                    "Mediciones reales en esta máquina mediante un mini-training corto, "
+                    "no extrapolación de datos históricos."
+                )
+
+                # ── LR range test ──────────────────────────────────────────────
+                lr_data = study.get("lr", {})
+                lr_lrs = study.get("lr_curve_lrs", [])
+                lr_losses = study.get("lr_curve_losses", [])
+                if lr_data and lr_lrs and lr_losses:
+                    st.markdown("### LR range test")
+                    sug = float(lr_data.get("suggested_lr", 0) or 0)
+                    minl = float(lr_data.get("min_loss_lr", 0) or 0)
+                    lr1, lr2, lr3 = st.columns(3)
+                    lr1.metric("LR sugerido", f"{sug:.2e}")
+                    lr2.metric("LR mín. loss", f"{minl:.2e}")
+                    div = lr_data.get("diverged_lr", "")
+                    lr3.metric("LR divergencia", f"{float(div):.2e}" if div else "—")
+
+                    fig_lr = go.Figure()
+                    fig_lr.add_trace(go.Scatter(
+                        x=lr_lrs, y=lr_losses, mode="lines+markers",
+                        line=dict(color=COLORS[0], width=2), name="Loss",
+                    ))
+                    if sug > 0:
+                        fig_lr.add_vline(x=sug, line_dash="dash", line_color=COLORS[2],
+                                         annotation_text=f"Sugerido {sug:.1e}",
+                                         annotation_position="top")
+                    fig_lr.update_layout(
+                        **_base_layout(340, "Loss vs Learning Rate (barrido)"),
+                        xaxis_title="Learning rate (log)", yaxis_title="Loss",
+                    )
+                    fig_lr.update_xaxes(type="log")
+                    _show(fig_lr, "lr_range_test")
+                    st.caption(
+                        "El LR sugerido es donde la loss baja más rápido (zona de máxima "
+                        "pendiente negativa), típicamente ~1 orden por debajo del mínimo."
+                    )
+
+                # ── Curva de convergencia medida ───────────────────────────────
+                conv = study.get("conv", {})
+                conv_steps = study.get("conv_steps", [])
+                conv_losses = study.get("conv_losses", [])
+                conv_f1s = study.get("conv_f1s", [])
+                if conv and conv_steps:
+                    st.markdown("### Curva de convergencia medida")
+                    cc1, cc2, cc3, cc4 = st.columns(4)
+                    cc1.metric("R² del ajuste", f"{float(conv.get('r_squared', 0) or 0):.3f}")
+                    cc2.metric("Val F1 estimado", f"{float(conv.get('best_f1', 0) or 0):.3f}")
+                    cc3.metric("Plateau (epoch)", conv.get("epochs_to_plateau", "—"))
+                    cc4.metric("Throughput real", f"{float(conv.get('measured_imgs_per_s', 0) or 0):.0f} img/s")
+
+                    # Curva de loss medida + ajuste power law extrapolado
+                    fig_conv = go.Figure()
+                    fig_conv.add_trace(go.Scatter(
+                        x=conv_steps, y=conv_losses, mode="markers",
+                        marker=dict(color=COLORS[0], size=5), name="Loss medida",
+                    ))
+                    # Curva ajustada a·t^-b+c
+                    a = float(conv.get("fit_a", 0) or 0)
+                    b = float(conv.get("fit_b", 0) or 0)
+                    c = float(conv.get("fit_c", 0) or 0)
+                    if a > 0 and conv_steps:
+                        t_fit = np.linspace(min(conv_steps), max(conv_steps) * 3, 80)
+                        y_fit = a * np.power(t_fit, -b) + c
+                        fig_conv.add_trace(go.Scatter(
+                            x=t_fit, y=y_fit, mode="lines",
+                            line=dict(color=COLORS[1], width=2, dash="dash"),
+                            name=f"Ajuste a·t^-b+c (R²={float(conv.get('r_squared',0) or 0):.2f})",
+                        ))
+                    fig_conv.update_layout(
+                        **_base_layout(360, "Loss medida + ajuste power law"),
+                        xaxis_title="Step", yaxis_title="Loss BCE",
+                    )
+                    _show(fig_conv, "convergencia_loss")
+
+                    # F1 por step medido
+                    if conv_f1s:
+                        fig_cf1 = go.Figure(go.Scatter(
+                            x=conv_steps, y=conv_f1s, mode="lines+markers",
+                            line=dict(color=COLORS[2], width=2), marker=dict(size=4),
+                            name="F1 train (batch)",
+                        ))
+                        fig_cf1.update_layout(
+                            **_base_layout(280, "F1 por step (mini-training)"),
+                            xaxis_title="Step", yaxis_title="F1 (batch)",
+                        )
+                        fig_cf1.update_yaxes(range=[0, 1])
+                        _show(fig_cf1, "convergencia_f1")
+
+                    st.caption(
+                        f"Loss extrapolada a 1 epoch: {float(conv.get('loss_1ep', 0) or 0):.4f} | "
+                        f"a final: {float(conv.get('loss_final', 0) or 0):.4f}. "
+                        "El ajuste power law (loss = a·t⁻ᵇ + c) modela la caída inicial; "
+                        "se extrapola al número de epochs objetivo para estimar el F1."
+                    )
+
+                # ── Gradient noise scale ───────────────────────────────────────
+                grad = study.get("grad", {})
+                if grad:
+                    st.markdown("### Gradient noise scale")
+                    gg1, gg2, gg3 = st.columns(3)
+                    gg1.metric("Norma gradiente",
+                               f"{float(grad.get('grad_norm_mean', 0) or 0):.3f} "
+                               f"± {float(grad.get('grad_norm_std', 0) or 0):.3f}")
+                    gg2.metric("Batch size sugerido", grad.get("suggested_batch_size", "—"))
+                    gg3.metric("Coef. variación", f"{float(grad.get('cv', 0) or 0):.3f}")
+                    st.caption(
+                        "El gradient noise scale (McCandlish 2018) estima el batch size crítico: "
+                        "por encima de él, aumentar el batch da rendimientos decrecientes. "
+                        "Un CV alto indica gradientes ruidosos (sugiere batch mayor)."
+                    )
 
     # ── Análisis DDP ──────────────────────────────────────────────────────────
     with subtab_ddp_opt:
@@ -2110,6 +2341,15 @@ with tab_viabilidad:
                     ["(ninguno)"] + (configs_available if configs_available else []),
                 )
                 feas_no_disk = st.checkbox("Omitir medición de I/O (más rápido)", value=False)
+                feas_study = st.checkbox(
+                    "Estudio empírico real (mini-training + LR range + gradient noise)",
+                    value=False,
+                    help="Mide la convergencia real en esta máquina. Más lento (~3-8 min).",
+                )
+                feas_study_steps = st.number_input(
+                    "Steps del mini-training", min_value=20, max_value=200, value=60,
+                    help="Solo si el estudio empírico está activo",
+                )
             submitted_feas = st.form_submit_button("Ejecutar")
 
         if submitted_feas:
@@ -2131,6 +2371,8 @@ with tab_viabilidad:
                     parts.append(f'--dataset-path "{feas_dataset_path.strip()}"')
                 if feas_no_disk:
                     parts.append("--no-disk-profile")
+                if feas_study:
+                    parts.append(f"--convergence-study --study-steps {feas_study_steps}")
                 cmd = " ".join(parts)
                 st.code(cmd, language="bash")
                 out_ph = st.empty()

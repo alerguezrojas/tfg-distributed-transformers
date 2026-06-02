@@ -30,6 +30,19 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     curve_val: list[float] = []
     curve_train: list[float] = []
     curve_epochs: list[int] = []
+    # Estudio empírico de convergencia (v4)
+    study: dict = {}
+
+    def _floats(seq):
+        out = []
+        for v in seq:
+            if v == "":
+                continue
+            try:
+                out.append(float(v))
+            except ValueError:
+                pass
+        return out
 
     with open(csv_path, newline="") as f:
         reader = csv.reader(f)
@@ -40,6 +53,9 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
         header_dataset: list[str] = []
         header_prediction: list[str] = []
         header_ddp: list[str] = []
+        header_study_lr: list[str] = []
+        header_study_conv: list[str] = []
+        header_study_grad: list[str] = []
 
         for row in reader:
             if not row:
@@ -107,6 +123,32 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
                 else:
                     ddp_rows.append(dict(zip(header_ddp, row[1:])))
 
+            elif tag == "#study_lr":
+                if not header_study_lr:
+                    header_study_lr = row[1:]
+                else:
+                    study["lr"] = dict(zip(header_study_lr, row[1:]))
+            elif tag == "#study_lr_curve_lrs":
+                study["lr_curve_lrs"] = _floats(row[1:])
+            elif tag == "#study_lr_curve_losses":
+                study["lr_curve_losses"] = _floats(row[1:])
+            elif tag == "#study_conv":
+                if not header_study_conv:
+                    header_study_conv = row[1:]
+                else:
+                    study["conv"] = dict(zip(header_study_conv, row[1:]))
+            elif tag == "#study_conv_steps":
+                study["conv_steps"] = _floats(row[1:])
+            elif tag == "#study_conv_losses":
+                study["conv_losses"] = _floats(row[1:])
+            elif tag == "#study_conv_f1s":
+                study["conv_f1s"] = _floats(row[1:])
+            elif tag == "#study_grad":
+                if not header_study_grad:
+                    header_study_grad = row[1:]
+                else:
+                    study["grad"] = dict(zip(header_study_grad, row[1:]))
+
             else:
                 rows.append(row)
 
@@ -128,6 +170,8 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
             combined["curve_epochs"] = curve_epochs
     if ddp_rows:
         combined["ddp_scenarios"] = ddp_rows
+    if study:
+        combined["study"] = study
 
     # Normalizar campos numéricos de metadata
     float_fields = (
