@@ -425,10 +425,14 @@ cd ~/tfg-distributed-transformers
 
 Arquitectura (patrón Facade + SRP):
 - `ModelAnalyzer` — FLOPs, parámetros, memoria estática
-- `HardwareProbe` — VRAM disponible
+- `HardwareProbe` — GPU (VRAM, compute capability) + CPU (cores, RAM)
+- `DiskProbe` / `DatasetProfiler` — tipo de disco, NFS, I/O real, `io_bottleneck_ratio`
 - `Benchmarker` — throughput real por (batch_size, trace_mode)
 - `TimeEstimator` — convierte throughput en estimaciones de tiempo
-- `ReportFormatter` — imprime el informe + escribe CSV estructurado
+- `DDPOptimizer` — escenarios 1/2/4/8 GPUs, speedup real, cuello de botella
+- `PerformancePredictor` — predicción F1 empírica (datos históricos)
+- `ConvergenceStudy` (`src/training/convergence_study.py`) — **estudio empírico real**: LR range test + mini-training de convergencia con datos reales + gradient noise scale
+- `ReportFormatter` — imprime el informe + escribe CSV estructurado (bloques `#meta`, `#cpu`, `#disk`, `#dataset`, `#prediction`, `#curve_*`, `#ddp`, `#study_*`)
 - `FeasibilityChecker` — Facade que coordina todo
 
 ```bash
@@ -439,7 +443,9 @@ uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off
 uv run python scripts/check_feasibility.py --batch-sizes 64 --nfs-factor 1.3
 # Override de modelo (uno o varios separados por espacio)
 uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
-uv run python scripts/check_feasibility.py --model vit_tiny_patch16_224 vit_small_patch16_224 vit_base_patch16_224 resnet50 --batch-sizes 16 32 64 128
+# Estudio empírico REAL (mini-training + LR range test + gradient noise) — más lento (~3-8 min)
+uv run python scripts/check_feasibility.py --model vit_base_patch16_224 --batch-sizes 64 \
+  --dataset-path ~/datasets/bigearthnet/BigEarthNet-S2 --convergence-study --study-steps 80
 ```
 
 Genera dos artefactos en `logs/{env}/`:
@@ -814,7 +820,7 @@ uv run streamlit run src/web/app.py
 | Batch | Running loss por batch con moving average y detección de picos; descarga CSV |
 | Comparar | Superpone hasta 4 runs; radar de métricas; overlay de curvas; descarga comparativa |
 | Análisis DDP | Single-GPU vs DDP: speedup, eficiencia, escalado teórico vs real |
-| Viabilidad | Benchmark VRAM/throughput; estimaciones de tiempo; comparar vs training real; ejecutar análisis |
+| Viabilidad | 6 sub-tabs: Informe (perfil sistema, I/O, benchmark, estimaciones) · **Estudio real** (LR range test, curva de convergencia medida, gradient noise) · Análisis DDP · Predicción F1 · Comparar vs training · Ejecutar análisis |
 | Tiempo | Tiempo real por epoch vs estimación; tendencia lineal; warmup detection |
 | Información | Config YAML, detección de anomalías, log completo con buscador |
 | Lanzador | Lanzar entrenamientos single-GPU o DDP con output en tiempo real |
@@ -902,6 +908,11 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Feasibility checker v3 (02/06/26):** Perfilado completo del sistema (CPU cores/RAM, GPU compute capability, tipo de disco, detección NFS, medición I/O real con patches TIFF). `DatasetProfiler` calcula `io_bottleneck_ratio` para detectar si el entrenamiento es I/O-bound o compute-bound. `PerformancePredictor` genera curva F1 val+train predicha con banda de incertidumbre (±0.015 F1) basada en datos históricos reales. `DDPOptimizer` calcula speedup real (≠ lineal) incluyendo overhead de sincronización de gradientes, eficiencia por tipo de red (NVLink/PCIe/NFS/Ethernet), y recomienda batch_per_gpu + num_workers. CSV v3 ampliado con bloques `#cpu`, `#disk`, `#dataset`, `#prediction`, `#curve_*`, `#ddp`. Pestaña Viabilidad con 5 sub-tabs: Informe, Análisis DDP (rectángulos de % cómputo/I/O/sync), Predicción F1, Comparar vs training, Ejecutar análisis. Feature: `feature/feasibility-v3`. 20 tests nuevos.
 - [x] **Suite de tests en 161 (02/06/26).**
 - [x] **DDP heterogéneo corregido y listo (02/06/26):** 3 bugs críticos resueltos: (1) `mixup_batch` devuelve 2 valores, no 4; (2) doble DDP-wrapping eliminado — el builder crea `HeterogeneousDDPTrainer` directamente vía `with_heterogeneous_ddp()`; (3) batch hooks no disparaban — ahora `HeterogeneousDDPTrainer.train_epoch` llama a `self._batch_hooks` con la firma v2. Nuevos métodos en builder: `with_heterogeneous_ddp(local_bs)` y `with_output_mode(mode)`. `train_heterogeneous_ddp.py` reescrito limpio, sin `_find_core/_rewrap`. 11 tests nuevos. **172 tests en verde.** Feature: `feature/fix-heterogeneous-ddp`.
+- [x] **Smoke test local + verificación web con Playwright (02/06/26):** feasibility v3 + training vit_tiny 5 epochs (Val F1=0.6292). Verificación visual del dashboard con Playwright + Chrome del sistema → detectó y corrigió 2 bugs: `yaxis` duplicado en la gráfica DDP (rompía todo el dashboard) y orden cronológico de runs (`RunInfo.sort_key` normaliza DDMMYYYY → YYYYMMDD). Features: `feature/fix-chronological-sort`.
+- [x] **Tab Dataset arreglado + imágenes por clase (03/06/26):** bug del ndarray en `class_distribution_from_parquet` (las labels de BigEarthNet son ndarray, el `isinstance(x,(list,set))` daba 0 a todo → gráfica vacía); ahora se aplanan y cuentan vectorizado. Escalado de todas las gráficas del tab corregido (márgenes, alturas, automargin). Nueva sección de **imágenes de ejemplo por clase** (`find_example_patches` + `load_rgb_image` cargan bandas B04/B03/B02 con rasterio + stretch de percentiles). Fix del nombre de GPU cortado en Inicio. 11 tests. Feature: `feature/dataset-tab-fixes`.
+- [x] **Métricas por batch F1/accuracy/precision (03/06/26):** el batch hook pasa ahora un dict de métricas `(epoch, batch_idx, n_batches, metrics)` en vez de args posicionales. `Trainer` y `HeterogeneousDDPTrainer` computan F1/accuracy/precision por batch. CSV `batch_metrics` v3 con columnas `batch_f1`, `batch_acc`, `batch_prec`. El tab Batch ofrece selector de métrica (loss/F1/accuracy/precision) con eje [0,1] para las no-loss. Feature: `feature/batch-metrics-full`.
+- [x] **Feasibility v4 — estudio empírico real (03/06/26):** nuevo módulo `src/training/convergence_study.py` (`ConvergenceStudy`): (1) LR range test (Smith 2017) que barre LRs y mide la loss → recomienda LR óptimo; (2) mini-training real de N steps con datos reales → ajusta power law `loss=a·t⁻ᵇ+c` (con suavizado) → extrapola loss/F1/plateau; (3) gradient noise scale (McCandlish 2018) → batch size crítico. Flags `--convergence-study --study-steps N`. Sub-tab "Estudio real" en la web con las 3 gráficas. La predicción empírica histórica se mantiene en "Predicción F1" para comparar medido vs histórico. Verificado con vit_tiny + SSD: LR sugerido 8.86e-05, throughput real 410 img/s, R² 0.74. Feature: `feature/feasibility-study`.
+- [x] **Suite de tests en 212 (03/06/26):** +11 dataset, +14 convergencia, +6 parser estudio, +7 sort cronológico, +5 batch metrics.
 
 ### Pendiente
 - [ ] **Primer training distribuido heterogéneo en Verode:** verode21 (V100, rank 0) + verode16 (CPU, rank 1). Ver comandos en la sección DDP heterogéneo.
