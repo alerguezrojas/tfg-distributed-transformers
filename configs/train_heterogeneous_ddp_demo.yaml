@@ -1,0 +1,60 @@
+# Demo de DDP heterogéneo COMPLETO — vit_tiny, subset mediano, pocos epochs.
+#
+# Objetivo: un run distribuido GPU+CPU que TERMINA en ~15-20 min y genera
+# todas las métricas (epoch, batch, confusion, per-clase, energía) para
+# visualizar en la web. NO busca el mejor F1 — es el ejemplo de un run
+# distribuido completo de principio a fin.
+#
+# El run heterogéneo de vit_base con el dataset completo es inviable: la CPU
+# (50× más lenta que la V100) es el cuello de botella del DDP síncrono y la
+# GPU pasa el 98% del tiempo esperándola (~16 días/run). Esto se documenta
+# como resultado: el DDP síncrono requiere hardware balanceado.
+#
+# Generar el subset antes de lanzar (en verode21):
+#   uv run python scripts/make_smoke_subset.py \
+#     --metadata ~/datasets/bigearthnet/metadata.parquet \
+#     --out ~/datasets/bigearthnet/metadata_demo.parquet \
+#     --n-train 5000 --n-val 1500
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata_demo.parquet"
+  num_workers: 8
+
+model:
+  name: "vit_tiny_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.1
+
+training:
+  epochs: 3
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  mixup_alpha: 0.0
+  early_stopping_patience: 10
+  log_batch_every: 5
+
+distributed:
+  backend: "gloo"
+  # batch_size proporcional a compute_weight (96/4 = 24) → ambos ranks hacen
+  # el mismo nº de batches. weight 24 da a la CPU ~4% de los datos: suficiente
+  # para que aporte sin convertirse en un cuello brutal en un run corto.
+  ranks:
+    - device: "cuda"        # rank 0: verode21 (V100)
+      batch_size: 96
+      compute_weight: 24
+    - device: "cpu"         # rank 1: verode16 (CPU)
+      batch_size: 4
+      compute_weight: 1
+
+checkpoint:
+  dir: "checkpoints/verode"
+
+output:
+  env: "verode"
