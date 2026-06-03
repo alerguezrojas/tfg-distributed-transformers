@@ -32,7 +32,7 @@
 data:
   root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
   metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet"
-  num_workers: 0        # 0 en los nodos CPU para evitar problemas de multiprocessing
+  num_workers: 8        # paraleliza la lectura del NFS (lento): clave para alimentar la GPU
 
 model:
   name: "vit_base_patch16_224"
@@ -55,13 +55,18 @@ training:
 
 distributed:
   backend: "gloo"           # gloo soporta CPU y GPU — necesario para nodos heterogéneos
+  # Pesos calibrados con el feasibility (03/06/26): V100 100.7 img/s vs
+  # CPU verode16 1.9 img/s → ratio real ≈ 53:1. batch_size proporcional al
+  # compute_weight (192/4 = 48) para que ambos ranks hagan el MISMO nº de
+  # batches y no haya deadlock en el all_reduce. weight 48 deja a la GPU como
+  # cuello ligero (la CPU nunca bloquea) y batch 192 cabe holgado en la V100.
   ranks:
     - device: "cuda"        # rank 0: verode21 (V100)
-      batch_size: 64
-      compute_weight: 16    # recibe 16/(16+1) ≈ 94% de los datos por step
+      batch_size: 192
+      compute_weight: 48    # recibe 48/49 ≈ 98% de los datos por step
     - device: "cpu"         # rank 1: verode16 o verode18 (CPU)
       batch_size: 4
-      compute_weight: 1     # recibe 1/(16+1) ≈ 6% de los datos por step
+      compute_weight: 1     # recibe 1/49 ≈ 2% de los datos por step
 
 checkpoint:
   dir: "checkpoints/verode"
