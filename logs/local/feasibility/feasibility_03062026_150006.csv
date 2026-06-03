@@ -1,0 +1,8 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,vit_base_patch16_224,85.81,200.8,CPU,0.0,0.0
+#model_mem,weight_mb,gradient_mb,optimizer_mb,activation_mb_per_image,total_static_mb
+#model_mem,343.3,343.3,686.5,162.2,1373.0
+#cpu,logical_cores,physical_cores,freq_mhz,ram_total_gb,ram_free_gb
+#cpu,16,16,1455.0,67.5,64.7
+batch_size,trace_mode,s_per_batch_train,imgs_per_s_train,s_per_batch_eval,imgs_per_s_eval,peak_vram_gb,avg_power_w,oom,est_train_min_per_epoch,est_eval_min_per_epoch,est_total_min_per_epoch,est_total_h_30ep,est_energy_train_wh_per_epoch,est_energy_eval_wh_per_epoch,est_energy_total_wh,flops_train_gflops_per_epoch,flops_eval_gflops_per_epoch,optimizer_steps_per_epoch,est_ddp_2gpu_h_30ep,est_ddp_4gpu_h_30ep
+4,off,2.0989,1.9,0.5863,6.8,0.0,,no,2080.3,298.9,2379.2,1189.6,,,,143312.5,24569.5,59468,699.76,349.88

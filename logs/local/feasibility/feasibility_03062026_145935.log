@@ -1,0 +1,39 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  03/06/2026 15:00:06
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               vit_base_patch16_224
+  Parámetros totales:   85,813,267 (85.8M)
+  FLOPs/imagen:         200.8 MFLOPs
+  Memoria estática:     1.34 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  GPU: no disponible (CUDA no activo)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 16 físicos
+  Frecuencia: 1455 MHz
+  RAM: 67.5 GB total / 64.7 GB libre
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch   Total est.      Estado
+      4       1.97 GB        ✓ OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+      4  off               1.9         6.8   0.00 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  30 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+      4  off        34h 40m   4h 58m   39h 39m  1189h 35m
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  ✓ Batch size óptimo: 4 (1.9 imgs/s)
+  → --trace off      30 epochs: ~1189h 35m  [DDP×2: ~699.8h]
+
+  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+

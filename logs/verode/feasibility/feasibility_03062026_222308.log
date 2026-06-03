@@ -1,0 +1,98 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  03/06/2026 22:24:05
+  Factor NFS aplicado: ×1.30
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               vit_tiny_patch16_224
+  Parámetros totales:   5,528,083 (5.5M)
+  FLOPs/imagen:         34.3 MFLOPs
+  Memoria estática:     0.09 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  Tesla V100-PCIE-32GB  |  VRAM: 34.1 GB total / 34.1 GB libre
+  Compute Capability: 7.0
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 40 lógicos / 40 físicos
+  Frecuencia: 2206 MHz
+  RAM: 270.0 GB total / 257.0 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: NFS  |  NFS: sí
+  Velocidad lectura: 1 MB/s  |  78 patches/s
+  Patches encontrados: ~175,030
+  ⚠ I/O-BOUND (ratio=26.40) — data loading más lento que cómputo
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch   Total est.      Estado
+     32       1.35 GB        ✓ OK
+     64       2.62 GB        ✓ OK
+     96       3.89 GB        ✓ OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     32  off             690.8      1978.2   1.07 GB
+     32  simple          705.0      1977.4   1.07 GB
+     32  deep            303.8       902.6   1.07 GB
+     64  off             766.4      2072.9   2.06 GB
+     64  simple          767.4      2072.8   2.06 GB
+     64  deep            419.3      1099.9   2.06 GB
+     96  off             787.9      2111.9   3.07 GB
+     96  simple          787.9      2095.8   3.07 GB
+     96  deep            484.5      1207.2   3.07 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  3 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     32  off         0h 07m   0h 01m    0h 08m    0h 25m
+     32  simple      0h 07m   0h 01m    0h 08m    0h 25m
+     32  deep        0h 16m   0h 02m    0h 19m    0h 57m
+     64  off         0h 06m   0h 00m    0h 07m    0h 23m
+     64  simple      0h 06m   0h 00m    0h 07m    0h 23m
+     64  deep        0h 12m   0h 01m    0h 14m    0h 42m
+     96  off         0h 06m   0h 00m    0h 07m    0h 22m
+     96  simple      0h 06m   0h 00m    0h 07m    0h 22m
+     96  deep        0h 10m   0h 01m    0h 12m    0h 36m
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         96            96        8    1.00×  100.0%        io
+     2         96           192        8    0.51×   25.6%        io
+     4         96           384        8    1.02×   25.6%        io
+     8         96           768        5    2.05×   25.6%        io
+
+  Configuración recomendada: 1 GPU(s) con batch=96/GPU
+  ⚠ I/O es el cuello de botella — más GPUs no ayudarán sin disco más rápido
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: vit_tiny_patch16_224
+  Val F1 esperado:    ~0.530  (epoch ≈ 8)
+  Early stop aprox.:  epoch ≈ 3  (patience=10)
+  Confianza:          media
+  Nota: Estimación empírica basada en 7 runs históricos en BigEarthNet-S2. | ViT-Tiny converge más rápido pe
+
+────────────────────────────────────────────────────────────────────────  ESTUDIO EMPÍRICO DE CONVERGENCIA (medido)
+  LR range test:
+    LR sugerido (mayor descenso): 8.86e-05
+    LR del mínimo de loss:        1.44e-02
+    LR de divergencia:            1.83e-01
+  Convergencia (mini-training real):
+    Steps medidos:        80  |  throughput 163.5 imgs/s
+    Ajuste loss=a·t^-b+c: a=0.256, b=0.544, c=0.320  (R²=0.919)
+    Loss extrapolada 1 epoch:  0.3217
+    Loss extrapolada final:    0.3208
+    Val F1 estimado (medido):  ~0.292
+    Plateau estimado:          epoch ≈ 2
+  Gradient noise scale:
+    Norma gradiente: 2.446 ± 0.080  (CV=0.033)
+    Batch size sugerido: 8  (noise scale ≈ 0.0)
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  ✓ Batch size óptimo: 96 (787.9 imgs/s)
+  → --trace off      3 epochs: ~0h 22m  [DDP×2: ~0.2h]
+  → --trace simple   3 epochs: ~0h 22m  [DDP×2: ~0.2h]
+  → --trace deep     3 epochs: ~0h 36m  [DDP×2: ~0.4h]
+
