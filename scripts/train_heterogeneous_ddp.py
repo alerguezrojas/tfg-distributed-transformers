@@ -111,19 +111,25 @@ def main():
     timestamp = ts_list[0]
 
     # ── Config por rank ───────────────────────────────────────────────────────
+    # En el config heterogéneo el batch_size se define por rank, así que
+    # training.batch_size puede no existir → fallback lazy (no se evalúa si el
+    # rank ya define su batch_size).
+    default_bs = cfg.get("training", {}).get("batch_size", 32)
+
+    def _rank_bs(r: int) -> int:
+        if ranks_cfg and r < len(ranks_cfg) and "batch_size" in ranks_cfg[r]:
+            return ranks_cfg[r]["batch_size"]
+        return default_bs
+
     if ranks_cfg and rank < len(ranks_cfg):
-        rank_batch_size = ranks_cfg[rank].get("batch_size", cfg["training"]["batch_size"])
+        rank_batch_size = _rank_bs(rank)
         compute_weights = [r.get("compute_weight", 1) for r in ranks_cfg]
     else:
-        rank_batch_size = cfg["training"]["batch_size"]
+        rank_batch_size = default_bs
         compute_weights = [1] * world_size
 
     if rank == 0:
-        total_bs = sum(
-            (ranks_cfg[r].get("batch_size", cfg["training"]["batch_size"])
-             if ranks_cfg and r < len(ranks_cfg) else cfg["training"]["batch_size"])
-            for r in range(world_size)
-        )
+        total_bs = sum(_rank_bs(r) for r in range(world_size))
         print(f"DDP heterogéneo — {world_size} ranks | backend: {backend}")
         print(f"Batch global: {total_bs} | pesos: {compute_weights}")
         print(f"Rank 0 device: {device} | batch: {rank_batch_size}")
