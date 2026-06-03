@@ -86,9 +86,13 @@ class DDPTrainer(Trainer):
         all_preds = torch.cat(gathered_preds).cpu().bool()
         all_labels = torch.cat(gathered_labels).cpu()
 
-        # Average loss across all ranks
+        # Average loss across all ranks.
+        # NOTE: the AVG reduce op is NOT supported by the gloo backend (only
+        # NCCL), and Verode runs gloo on torch 2.7.1. Use SUM + manual division,
+        # which is portable across both backends and torch versions.
         loss_t = torch.tensor(result["loss"], device=self.device)
-        dist.all_reduce(loss_t, op=dist.ReduceOp.AVG)
+        dist.all_reduce(loss_t, op=dist.ReduceOp.SUM)
+        loss_t /= self.world_size
 
         result["_preds"] = all_preds
         result["_labels"] = all_labels
