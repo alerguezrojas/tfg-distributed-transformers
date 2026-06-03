@@ -300,12 +300,19 @@ class DiskProbe:
 
     @staticmethod
     def _measure_io(path: Path | None) -> tuple[float, float]:
-        """Mide velocidad de lectura con hasta N_SAMPLE parches TIFF."""
+        """Mide velocidad de lectura con hasta N_SAMPLE parches TIFF.
+
+        Usa islice sobre el generador rglob para NO materializar todo el árbol
+        del dataset (BigEarthNet tiene ~1.6M ficheros; un list(rglob) sobre NFS
+        tarda decenas de minutos). islice corta en cuanto reúne la muestra.
+        """
         if path is None or not path.exists():
             return 0.0, 0.0
+        import itertools
         N_SAMPLE = 50
         try:
-            tif_files = list(path.rglob("*.tif"))[:500]
+            # Solo los primeros ~300 .tif (lazy, no recorre el árbol completo)
+            tif_files = list(itertools.islice(path.rglob("*.tif"), 300))
             if not tif_files:
                 return 0.0, 0.0
             sample = random.sample(tif_files, min(N_SAMPLE, len(tif_files)))
@@ -342,12 +349,18 @@ class DatasetProfiler:
 
         if self._path and self._path.exists():
             try:
-                # Contar directorios de patches (cada uno contiene ~3 TIFs)
-                dirs = list(self._path.rglob("*_S2"))
-                n_found = len(dirs)
-                if n_found == 0:
-                    # Intento alternativo: contar *.tif
-                    n_found = sum(1 for _ in self._path.rglob("*.tif")) // 3
+                # Estimar el nº de patches sin recorrer todo el árbol (1.6M ficheros
+                # en NFS colgaría). Contamos las escenas del primer nivel (scandir,
+                # 1 nivel = rápido) y multiplicamos por los patches de una escena.
+                scenes = [e for e in os.scandir(self._path) if e.is_dir()]
+                n_scenes = len(scenes)
+                patches_per_scene = 0
+                if scenes:
+                    sample_scene = scenes[0].path
+                    patches_per_scene = sum(
+                        1 for e in os.scandir(sample_scene) if e.is_dir()
+                    )
+                n_found = n_scenes * max(1, patches_per_scene)
                 n_est = n_found
             except Exception:
                 pass
