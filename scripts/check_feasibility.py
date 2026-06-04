@@ -688,13 +688,21 @@ class DDPOptimizer:
         )
 
     def recommend_config(self) -> dict:
-        """Devuelve la configuración recomendada basada en los escenarios."""
+        """Devuelve la configuración recomendada basada en los escenarios.
+
+        Criterio: el MAYOR nº de GPUs que aún escala con eficiencia ≥ 75%.
+        Así, si es compute-bound se recomienda distribuir (varias GPUs); si es
+        I/O-bound o sync-bound (eficiencia cae <75% al añadir GPUs), se queda en
+        1 GPU porque distribuir no compensa. (El criterio anterior usaba
+        speedup/n_gpus = eficiencia, que siempre daba 1 GPU como "óptimo".)
+        """
         scenarios = self.compute_scenarios(30)
         if not scenarios:
             return {}
-        # Elegir el escenario con mejor ratio eficiencia/coste (por GPU)
-        # Para cluster con 2 GPUs, recomendar 2 GPUs si speedup > 1.5×
-        best = max(scenarios, key=lambda s: s.estimated_speedup / max(s.n_gpus, 1))
+        EFF_MIN = 75.0  # % de eficiencia mínima para que merezca la pena escalar
+        efficient = [s for s in scenarios
+                     if s.n_gpus == 1 or s.scaling_efficiency >= EFF_MIN]
+        best = max(efficient, key=lambda s: s.n_gpus)
         return {
             "n_gpus": best.n_gpus,
             "batch_per_gpu": best.batch_per_gpu,

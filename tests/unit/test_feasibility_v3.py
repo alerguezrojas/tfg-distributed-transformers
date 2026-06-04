@@ -248,6 +248,35 @@ def test_ddp_optimizer_recommend_config():
     assert 0 < rec["efficiency_pct"] <= 100
 
 
+def test_recommend_io_bound_stays_single_gpu():
+    """I/O-bound (disco lento) → recomienda 1 GPU (distribuir no compensa)."""
+    optimizer = _make_ddp_optimizer()  # files_per_second=100 → I/O-bound
+    assert optimizer.recommend_config()["n_gpus"] == 1
+
+
+def test_recommend_compute_bound_scales_out():
+    """Compute-bound (disco rápido) → recomienda >1 GPU con eficiencia alta."""
+    from scripts.check_feasibility import (
+        DDPOptimizer, ModelInfo, HardwareInfo, CPUInfo, DiskInfo, BenchmarkResult,
+    )
+    mi = ModelInfo(name="vit_base", total_params=86_000_000, trainable_params=86_000_000,
+                   flops_per_image_mflops=17000, weight_mb=344, gradient_mb=344,
+                   optimizer_mb=688, activation_mb_per_image=120)
+    hi = HardwareInfo(device_name="Tesla T4", total_vram_gb=16.0, free_vram_gb=15.0, is_cuda=True)
+    cpu = CPUInfo(logical_cores=8, physical_cores=4, freq_mhz=2400,
+                  ram_total_gb=32, ram_free_gb=28, platform="linux")
+    disk = DiskInfo(dataset_path="/fast", is_nfs=False, disk_type="SSD",
+                    read_mb_per_s=500, files_per_second=5000)
+    bench = [BenchmarkResult(batch_size=32, trace_mode="off",
+                             seconds_per_batch_train=0.93, seconds_per_batch_eval=0.30,
+                             images_per_second_train=34.5, images_per_second_eval=105,
+                             peak_vram_gb=5.0, avg_power_w=70)]
+    rec = DDPOptimizer(mi, hi, cpu, disk, bench, 5000, 1500, nfs_factor=1.0).recommend_config()
+    assert rec["n_gpus"] >= 2
+    assert rec["efficiency_pct"] >= 75.0
+    assert rec["estimated_speedup"] > 1.5
+
+
 # ── FeasibilityParser v3 ──────────────────────────────────────────────────────
 
 
