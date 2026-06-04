@@ -124,7 +124,12 @@ class HeterogeneousDDPTrainer(DDPTrainer):
 
             self.optimizer.step()
 
-            batch_loss = loss_sum.detach().item() / step_bs  # mean para logging
+            # Loss media para reportar: criterion_sum suma sobre batch × clases,
+            # así que dividimos por ambos para obtener la BCE media (mean), en la
+            # misma escala que la val_loss (Trainer.eval_epoch usa reduction=mean).
+            # Si no, la train_loss saldría ~n_clases× inflada y no comparable.
+            n_elems = step_bs * logits.shape[1]
+            batch_loss = loss_sum.detach().item() / n_elems
             total_loss += batch_loss
 
             with torch.no_grad():
