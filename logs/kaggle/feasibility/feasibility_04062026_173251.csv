@@ -1,0 +1,27 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,vit_base_patch16_224,85.81,200.8,Tesla T4,15.64,15.64
+#sizes,n_train,n_val,nfs_factor
+#sizes,5000,1500,1.0
+#model_mem,weight_mb,gradient_mb,optimizer_mb,activation_mb_per_image,total_static_mb
+#model_mem,343.3,343.3,686.5,162.2,1373.0
+#cpu,logical_cores,physical_cores,freq_mhz,ram_total_gb,ram_free_gb
+#cpu,4,2,2000.0,33.7,31.0
+#disk,type,is_nfs,read_mb_per_s,files_per_second
+#disk,NFS,yes,20.2,692.2
+#dataset,n_files_est,read_mb_per_s,files_per_second,io_bottleneck_ratio
+#dataset,11074,20.2,692.2,0.14
+#prediction,predicted_best_f1,predicted_best_epoch,predicted_early_stop_epoch,confidence
+#prediction,0.67,7,3,alta
+#curve_val_f1,0.192,0.311,0.4
+#curve_train_f1,0.349,0.565,0.7
+#curve_epochs,1,2,3
+#ddp,n_gpus,batch_per_gpu,global_batch,workers_per_gpu,speedup,efficiency_pct,sync_overhead_pct,bottleneck,time_train_epoch_min,time_total_h
+#ddp,1,32,32,4,1.0,100.0,0.0,compute,2.6,0.14
+#ddp,2,32,64,2,1.92,95.9,4.1,compute,1.4,0.08
+#ddp,4,32,128,1,3.83,95.8,4.2,compute,0.7,0.05
+#ddp,8,32,256,1,7.03,87.8,3.8,compute,0.4,0.03
+batch_size,trace_mode,s_per_batch_train,imgs_per_s_train,s_per_batch_eval,imgs_per_s_eval,peak_vram_gb,avg_power_w,oom,est_train_min_per_epoch,est_eval_min_per_epoch,est_total_min_per_epoch,est_total_h_3ep,est_energy_train_wh_per_epoch,est_energy_eval_wh_per_epoch,est_energy_total_wh,flops_train_gflops_per_epoch,flops_eval_gflops_per_epoch,optimizer_steps_per_epoch,est_ddp_2gpu_h_3ep,est_ddp_4gpu_h_3ep
+32,off,1.013,31.6,0.3339,95.8,4.93,63.6,no,2.7,0.3,2.9,0.15,2.81,0.11,8.8,3012.4,301.2,157,0.09,0.04
+32,simple,1.0361,30.9,0.35,91.4,4.93,64.3,no,2.7,0.3,3.0,0.15,2.9,0.12,9.1,3012.4,301.2,157,0.09,0.04
+64,off,2.1275,30.1,0.7276,88.0,8.77,67.0,no,2.8,0.3,3.1,0.15,3.13,0.13,9.8,3012.4,301.2,79,0.09,0.05
+64,simple,2.0541,31.2,0.6999,91.4,8.77,61.1,no,2.7,0.3,3.0,0.15,2.75,0.11,8.6,3012.4,301.2,79,0.09,0.04
