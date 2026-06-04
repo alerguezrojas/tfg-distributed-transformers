@@ -21,6 +21,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     """
     rows: list[list[str]] = []
     meta: dict = {}
+    sizes: dict = {}
     model_mem: dict = {}
     cpu_info: dict = {}
     disk_info: dict = {}
@@ -47,6 +48,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     with open(csv_path, newline="") as f:
         reader = csv.reader(f)
         header_meta: list[str] = []
+        header_sizes: list[str] = []
         header_model_mem: list[str] = []
         header_cpu: list[str] = []
         header_disk: list[str] = []
@@ -68,6 +70,12 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
                     header_meta = row[1:]
                 else:
                     meta = dict(zip(header_meta, row[1:]))
+
+            elif tag == "#sizes":
+                if not header_sizes:
+                    header_sizes = row[1:]
+                else:
+                    sizes = dict(zip(header_sizes, row[1:]))
 
             elif tag == "#model_mem":
                 if not header_model_mem:
@@ -154,6 +162,19 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
 
     # Construir metadata combinada
     combined: dict = {**meta, **model_mem}
+    # Tamaño real del dataset (n imágenes por split). Si el CSV es antiguo y no
+    # trae #sizes, quedará ausente y la comparación usará su fallback.
+    for k in ("n_train", "n_val"):
+        if k in sizes:
+            try:
+                combined[k] = int(float(sizes[k]))
+            except (ValueError, TypeError):
+                pass
+    if "nfs_factor" in sizes:
+        try:
+            combined["nfs_factor"] = float(sizes["nfs_factor"])
+        except (ValueError, TypeError):
+            pass
     if cpu_info:
         combined["cpu"] = cpu_info
     if disk_info:

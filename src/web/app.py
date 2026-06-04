@@ -2498,9 +2498,22 @@ with tab_tiempo:
                                    annotation_position="top left")
 
             feasibility_csvs_t = _get_feasibility_csvs()
-            if feasibility_csvs_t:
+            # Elegir el feasibility cuyo MODELO coincide con el run mostrado; si
+            # no, la línea de estimación sería de otro modelo (comparación falsa).
+            feas_match_t = None
+            for _fc in feasibility_csvs_t:
                 try:
-                    _, bdf_t = parse_feasibility_csv(feasibility_csvs_t[0])
+                    _m_t, _ = parse_feasibility_csv(_fc)
+                    if run.model and _m_t.get("model_name") == run.model:
+                        feas_match_t = _fc
+                        break
+                except Exception:
+                    pass
+            if feas_match_t is None and feasibility_csvs_t:
+                feas_match_t = feasibility_csvs_t[0]
+            if feas_match_t:
+                try:
+                    _, bdf_t = parse_feasibility_csv(feas_match_t)
                     viable_t = bdf_t[bdf_t["oom"] == "no"].copy()
                     tp_col_t = _throughput_col(viable_t)
                     per_ep_col = next((c for c in ["est_total_min_per_epoch", "est_min_per_epoch_30ep"]

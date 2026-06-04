@@ -269,6 +269,65 @@ class TestRunRegistry:
         csvs = discover_feasibility_csvs(ROOT)
         assert len(csvs) > 0
 
+
+class TestFeasibilityComparisonSizes:
+    """La comparación estimación-vs-real debe usar el tamaño REAL del dataset
+    (subset o completo), no asumir el full BigEarthNet de 237871 imágenes."""
+
+    def _feas_df(self):
+        return pd.DataFrame([{
+            "batch_size": 96, "trace_mode": "simple",
+            "s_per_batch_train": 0.16, "imgs_per_s_train": 600.0,
+            "s_per_batch_eval": 0.05, "imgs_per_s_eval": 1800.0,
+            "peak_vram_gb": 3.0, "avg_power_w": 150.0,
+            "est_train_min_per_epoch": 0.1, "est_eval_min_per_epoch": 0.01,
+            "est_total_min_per_epoch": 0.2, "optimizer_steps_per_epoch": 53,
+        }])
+
+    def _actual_df(self):
+        return pd.DataFrame({
+            "epoch": [1, 2, 3], "val_f1": [0.1, 0.2, 0.25],
+            "epoch_time": [30.0, 20.0, 22.0],
+            "time_train_s": [25.0, 16.0, 18.0], "time_eval_s": [5.0, 4.0, 4.0],
+        })
+
+    def test_uses_subset_size_from_meta(self):
+        from src.web.feasibility_comparison import build_comparison
+        meta = {"model_name": "vit_tiny", "n_train": 5000, "n_val": 1500}
+        cmp = build_comparison(meta, self._feas_df(), self._actual_df(),
+                               batch_size=96, trace_mode="simple")
+        steps = next(r for r in cmp.rows if r.metric.startswith("Optimizer steps"))
+        # ⌈5000/96⌉ = 53 — coincide con el estimado del CSV
+        assert steps.actual == 53
+        assert "5000" in steps.formula and "237871" not in steps.formula
+        thr = next(r for r in cmp.rows if r.metric == "Train throughput")
+        # actual = n_train / train_time_medio ≈ 5000/19.67 ≈ 254, NO 237871/t
+        assert thr.actual is not None and thr.actual < 1000
+
+    def test_falls_back_to_full_set_when_sizes_absent(self):
+        from src.web.feasibility_comparison import build_comparison
+        meta = {"model_name": "vit_tiny"}  # sin n_train (CSV antiguo)
+        cmp = build_comparison(meta, self._feas_df(), self._actual_df(),
+                               batch_size=96, trace_mode="simple")
+        steps = next(r for r in cmp.rows if r.metric.startswith("Optimizer steps"))
+        assert "237871" in steps.formula  # fallback al full set
+
+    def test_sizes_roundtrip_through_parser(self, tmp_path):
+        """check_feasibility escribe #sizes y el parser lo lee como n_train/n_val."""
+        from src.web.feasibility_parser import parse_feasibility_csv
+        csv = tmp_path / "feas.csv"
+        csv.write_text(
+            "#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb\n"
+            "#meta,vit_tiny,5.5,34.3,Tesla V100,34.0,34.0\n"
+            "#sizes,n_train,n_val\n"
+            "#sizes,5000,1500\n"
+            "batch_size,trace_mode,imgs_per_s_train\n"
+            "96,simple,600\n"
+        )
+        meta, df = parse_feasibility_csv(csv)
+        assert meta.get("n_train") == 5000
+        assert meta.get("n_val") == 1500
+
     def test_hetero_runs_classified_as_distributed(self):
         """El demo heterogéneo vive en logs/verode/ddp_hetero/ → su mode debe
         empezar por 'ddp' para que la pestaña Análisis DDP lo empareje contra

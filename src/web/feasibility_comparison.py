@@ -13,9 +13,11 @@ from pathlib import Path
 
 import pandas as pd
 
-# BigEarthNet-S2 dataset sizes (fixed for this project)
-_N_TRAIN = 237_871
-_N_VAL = 122_342
+# Fallback al full BigEarthNet-S2 si el CSV de viabilidad no trae el tamaño
+# real (CSVs antiguos sin bloque #sizes). Los CSVs nuevos llevan n_train/n_val
+# del metadata efectivamente usado (subset o completo) → comparación válida.
+_N_TRAIN_DEFAULT = 237_871
+_N_VAL_DEFAULT = 122_342
 
 
 @dataclass
@@ -87,6 +89,15 @@ def build_comparison(
 
     model_name = meta.get("model_name", "unknown")
 
+    # Tamaño real del dataset (del CSV #sizes); fallback al full set.
+    def _int(v, default):
+        try:
+            return int(float(v))
+        except (ValueError, TypeError):
+            return default
+    n_train = _int(meta.get("n_train"), _N_TRAIN_DEFAULT)
+    n_val = _int(meta.get("n_val"), _N_VAL_DEFAULT)
+
     # Find matching feasibility row
     mask = (feas_df["batch_size"] == batch_size)
     if "trace_mode" in feas_df.columns:
@@ -108,8 +119,8 @@ def build_comparison(
     s_per_batch_eval = _safe_float(frow.get("s_per_batch_eval") or frow.get("s_per_batch"))
     imgs_per_s_train = _safe_float(frow.get("imgs_per_s_train") or frow.get("imgs_per_s"))
 
-    n_train_batches = math.ceil(_N_TRAIN / batch_size) if batch_size > 0 else None
-    n_val_batches = math.ceil(_N_VAL / batch_size) if batch_size > 0 else None
+    n_train_batches = math.ceil(n_train / batch_size) if batch_size > 0 else None
+    n_val_batches = math.ceil(n_val / batch_size) if batch_size > 0 else None
 
     # Actual values from training
     act_epoch_time_s = (
@@ -138,7 +149,7 @@ def build_comparison(
     # ── Time estimates ────────────────────────────────────────────────────────
     if n_train_batches and s_per_batch_train:
         formula_train = (
-            f"⌈{_N_TRAIN}/{batch_size}⌉ × {s_per_batch_train:.3f}s × {nfs_factor:.1f}(NFS) / 60"
+            f"⌈{n_train}/{batch_size}⌉ × {s_per_batch_train:.3f}s × {nfs_factor:.1f}(NFS) / 60"
         )
     else:
         formula_train = "n_batches × s/batch × nfs_factor / 60"
@@ -152,7 +163,7 @@ def build_comparison(
     ))
 
     if n_val_batches and s_per_batch_eval:
-        formula_eval = f"⌈{_N_VAL}/{batch_size}⌉ × {s_per_batch_eval:.3f}s / 60"
+        formula_eval = f"⌈{n_val}/{batch_size}⌉ × {s_per_batch_eval:.3f}s / 60"
     else:
         formula_eval = "n_val_batches × s/batch_eval / 60"
 
@@ -175,7 +186,7 @@ def build_comparison(
     # ── Throughput ───────────────────────────────────────────────────────────
     act_throughput = None
     if act_train_time_s and act_train_time_s > 0:
-        act_throughput = (_N_TRAIN / act_train_time_s)
+        act_throughput = (n_train / act_train_time_s)
 
     rows.append(ComparisonRow(
         metric="Train throughput",
@@ -237,7 +248,7 @@ def build_comparison(
     if est_steps is not None and n_train_batches:
         rows.append(ComparisonRow(
             metric="Optimizer steps / epoch",
-            formula=f"⌈{_N_TRAIN}/{batch_size}⌉ = {n_train_batches}",
+            formula=f"⌈{n_train}/{batch_size}⌉ = {n_train_batches}",
             estimated=est_steps,
             actual=float(n_train_batches),
             unit="steps",
@@ -263,10 +274,10 @@ def build_comparison(
 
     # ── Complexity / FLOPs ───────────────────────────────────────────────────
     if flops and n_train_batches and batch_size:
-        total_gflops = flops * _N_TRAIN / 1000  # MFLOPs × N / 1000 → GFLOPs
+        total_gflops = flops * n_train / 1000  # MFLOPs × N / 1000 → GFLOPs
         rows.append(ComparisonRow(
             metric="FLOPs / train epoch",
-            formula=f"{flops:.0f} MFLOPs/img × {_N_TRAIN} imgs / 1000",
+            formula=f"{flops:.0f} MFLOPs/img × {n_train} imgs / 1000",
             estimated=total_gflops,
             actual=None,
             unit="GFLOPs",

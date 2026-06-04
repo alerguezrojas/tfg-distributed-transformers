@@ -1131,6 +1131,12 @@ class ReportFormatter:
                               round(mi.flops_per_image_mflops, 1), hi.device_name,
                               round(hi.total_vram_gb, 2), round(hi.free_vram_gb, 2)])
 
+            # Tamaño REAL del dataset usado (n imágenes por split) — clave para
+            # que la comparación estimación-vs-real no asuma el full set.
+            writer.writerow(["#sizes", "n_train", "n_val", "nfs_factor"])
+            writer.writerow(["#sizes", report.dataset_train, report.dataset_val,
+                              report.nfs_factor])
+
             # Memoria del modelo
             writer.writerow(["#model_mem", "weight_mb", "gradient_mb", "optimizer_mb",
                               "activation_mb_per_image", "total_static_mb"])
@@ -1515,6 +1521,23 @@ def main():
     # Auto-detect dataset path from config if not provided
     dataset_path = args.dataset_path or cfg.get("data", {}).get("root")
 
+    # Tamaño REAL del dataset según el metadata del config — NO asumir el full
+    # set. Si el config apunta a un subset (p.ej. metadata_demo.parquet con 5000
+    # imágenes), las estimaciones deben usar ese tamaño para que sean comparables
+    # con el run real. Fallback al full BigEarthNet si no se puede leer.
+    n_train, n_val = 237871, 122342
+    meta_path = cfg.get("data", {}).get("metadata")
+    if meta_path and Path(meta_path).exists():
+        try:
+            import pandas as pd
+            counts = pd.read_parquet(meta_path, columns=["split"])["split"].value_counts()
+            n_train = int(counts.get("train", n_train))
+            n_val = int(counts.get("validation", n_val))
+            print(f"Dataset (metadata): train={n_train:,}  val={n_val:,}")
+        except Exception as exc:
+            print(f"[aviso] no se pudo leer el tamaño del metadata ({exc}); "
+                  f"usando full set {n_train:,}/{n_val:,}")
+
     for model_name in model_names:
         output_path = args.output
         if output_path is None:
@@ -1526,8 +1549,8 @@ def main():
             batch_sizes=batch_sizes,
             epochs_list=epochs_list,
             trace_modes=args.trace_modes,
-            dataset_train=237871,
-            dataset_val=122342,
+            dataset_train=n_train,
+            dataset_val=n_val,
             nfs_factor=args.nfs_factor,
             dataset_path=dataset_path,
             profile_disk=not args.no_disk_profile,
