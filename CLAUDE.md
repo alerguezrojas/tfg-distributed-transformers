@@ -969,6 +969,38 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 
 ---
 
+## Próximos pasos y planificación del TFG
+
+### ¿Hacen falta más entrenamientos?
+- **Para el núcleo del TFG (comparación single vs distribuido): NO.** Ya están los 3 escenarios comparables (Verode single+heterogéneo, Kaggle 2×T4 vit_tiny + vit_base) y el feasibility validado contra real. La historia está completa y es autoconsistente.
+- **Opcionales que aportarían algo, no imprescindibles:**
+  - Kaggle vit_base con más epochs (p.ej. 10) → curva F1 más vistosa para la memoria; **no cambia** las conclusiones de speedup.
+  - Run de referencia final en Verode V100 con el stack actual (config v3) → cierra con la versión actual; el techo seguirá en ~0.68.
+
+### Trabajo futuro (mejoras opcionales, si sobra tiempo)
+- **`rico-hdl` — atacar el cuello de I/O (la mejora de mayor impacto):** convertir BigEarthNet-S2 a un formato de lectura rápida (LMDB) con [rico-hdl](https://github.com/rsim-tu-berlin/rico-hdl), uno de los "Additional Links" del dataset. El estudio demostró que con modelos ligeros el cuello es el **I/O del NFS** (vit_tiny escaló solo 1.27× en 2×T4 vs 1.90× de vit_base compute-bound; en Verode el heterogéneo penaliza por I/O + desbalance). Convertir a LMDB aceleraría el data loading → **mejoraría el escalado distribuido de modelos ligeros y el throughput general**. Requiere re-convertir el dataset y adaptar `BigEarthNetDataset`.
+- **Clases raras:** `pos_weight` en `BCEWithLogitsLoss` o focal loss para romper el techo de F1 macro ~0.68 (la clase 6 "Land principally occupied by agriculture" da F1=0; varias clases raras tiran el macro hacia abajo).
+- **Más espectro:** usar las 12 bandas de Sentinel-2 (ahora solo RGB proxy B04/B03/B02) o fusión S1 (radar) + S2 (óptico). Extensión grande, fuera del alcance actual.
+- **Recomendación de batch global en `recommend_config`:** afinar la sugerencia de batch/lr (regla de escalado lineal) cuando recomienda varias GPUs.
+
+### Seminarios pendientes (2) — *rellenar fechas según calendario del tutor*
+- **Seminario 1 (fecha: ____):** sugerido — diseño SW (SOLID + Decorator + Template Method, apoyar en `docs/class_diagram.svg`) + entrenamiento single-GPU (resultados v1–v4) + feasibility checker (predicción y recomendaciones).
+- **Seminario 2 (fecha: ____):** sugerido — entrenamiento distribuido: DDP, heterogéneo GPU+CPU, **estudio single vs distribuido** (la tabla de speedups) y **validación del feasibility** (predicho vs real); conclusión compute-bound vs I/O-bound vs hardware desbalanceado.
+- *(Dar la fecha/contenido reales y se actualiza aquí.)*
+
+### Memoria final — entrega junio/julio 2026
+Estructura sugerida apoyándose en lo ya hecho (figuras desde el dashboard y `docs/class_diagram.svg`):
+1. Introducción y objetivos.
+2. Dataset BigEarthNet-S2 (estructura, 19 clases CORINE, multi-label, splits).
+3. Diseño software: principios SOLID + patrones Decorator (GoF) y Template Method → arquitectura de decoradores (usar diagrama de clases).
+4. Entrenamiento single-GPU: LLRD, warmup, cosine, early stopping, regularización v3 (label smoothing, mixup, threshold search); resultados v1–v4 (~0.68 Val F1).
+5. Feasibility checker: perfilado de hardware/I/O, predicción de rendimiento, estudio empírico de convergencia, optimizador DDP; validación estimación-vs-real.
+6. Entrenamiento distribuido: DDP (NCCL/gloo), DDP heterogéneo (sampler proporcional + normalización de gradiente por batch global), comparación single vs distribuido (tabla de 3 escenarios), speedup en GPUs reales (Kaggle 2×T4).
+7. Conclusiones: el escalado distribuido depende del ratio cómputo/IO y del balance del hardware (compute-bound escala ~lineal, I/O-bound no, hardware desbalanceado penaliza); el feasibility lo predice. Limitación: Verode solo tiene 1 GPU usable.
+8. Trabajo futuro: rico-hdl (I/O), clases raras, multi-banda/multi-sensor.
+
+---
+
 ## Errores conocidos y soluciones
 
 | Error | Causa | Solución |
