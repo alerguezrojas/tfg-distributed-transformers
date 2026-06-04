@@ -829,7 +829,7 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 ```
 src/web/
   __init__.py
-  app.py                    # Streamlit entrypoint — 14 tabs (v6, UI en español)
+  app.py                    # Streamlit entrypoint — 6 tabs con sub-pestañas (v7, UI en español)
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
                             # RunInfo con env, mode, model, epoch/perclass/batch/confusion CSV paths
                             # (sin referencias a PNGs — eliminadas en v6)
@@ -847,24 +847,20 @@ uv run streamlit run src/web/app.py
 # Abre http://localhost:8501
 ```
 
-### Tabs (v6 — UI en español, tecnicismos en inglés)
+### Estructura (v7 — 6 pestañas de nivel superior con sub-pestañas)
 
-| Pestaña | Contenido |
-|---------|-----------|
-| **Inicio** | **Pantalla principal con cuadrícula:** 5 métricas globales, run seleccionado (cards + mini curvas), estado del sistema (GPU/CPU/RAM), top 5 mejores/peores clases, tabla de todos los runs con descarga |
-| Sistema | Monitor del sistema con auto-refresh: CPU, RAM, GPU (VRAM, utilización, temperatura, potencia), disco, red |
-| Dataset | Distribución de splits y clases, desbalance, países, scatter F1 vs frecuencia |
-| Modelos | Explorador timm: tabla comparativa VRAM/FLOPs, bubble chart, VRAM por batch size |
-| Curvas | F1/loss/accuracy/prec-rec; tiempo por epoch; energía (Wh); descarga CSV |
-| Por clase | Tabla ranking + gráfica barras; tendencia multi-clase; confusion matrix heatmap 19×19 |
-| Batch | Running loss por batch con moving average y detección de picos; descarga CSV |
-| Comparar | Superpone hasta 4 runs; radar de métricas; overlay de curvas; descarga comparativa |
-| Análisis DDP | Single-GPU vs DDP: speedup, eficiencia, escalado teórico vs real |
-| Viabilidad | 6 sub-tabs: Informe (perfil sistema, I/O, benchmark, estimaciones) · **Estudio real** (LR range test, curva de convergencia medida, gradient noise) · Análisis DDP · Predicción F1 · Comparar vs training · Ejecutar análisis |
-| Tiempo | Tiempo real por epoch vs estimación; tendencia lineal; warmup detection |
-| Información | Config YAML, detección de anomalías, log completo con buscador |
-| Lanzador | Lanzar entrenamientos single-GPU o DDP con output en tiempo real |
-| En vivo | Monitor en vivo: progress bar, GPU, último Val F1/Loss, gráfica, cola del log |
+Reorganización de 14 pestañas planas → **6 con sub-secciones lógicas** (más intuitiva). Las antiguas pestañas se anidan como sub-pestañas (Streamlit coloca cada contenedor donde se crea, así que los bloques `with tab_X:` se rellenan en su posición anidada sin reescribir su contenido).
+
+| Pestaña (nivel sup.) | Sub-pestañas / contenido |
+|---|---|
+| **Inicio** | Pantalla principal con cuadrícula: métricas globales, run seleccionado, sistema, top clases, tabla de runs |
+| **Run** (detalle del run de la barra lateral) | **Curvas** (F1/loss/acc, tiempo, energía) · **Por clase** (ranking, tendencia, heatmap 19×19) · **Batch** (running loss, MA, LR) · **Tiempo** (real vs estimación) · **Información** (config, anomalías, log) |
+| **Comparativa** | **Single vs Distribuido** (speedup/eficiencia, etiquetas conscientes del modo) · **Superponer runs** (hasta 4, radar, overlay) |
+| **Viabilidad** | **Informe** (perfil sistema/I/O, benchmark, estimaciones, **escenarios DDP**) · **Predicción vs realidad** (auto-emparejada con el run; titular + semáforo + barras de error por métrica + curva F1 histórica; tabla de fórmulas plegada) · **Estudio real** (LR range, convergencia, gradient noise) · **Ejecutar análisis** |
+| **Datos y modelos** | **Dataset** (splits, clases, imágenes de ejemplo) · **Modelos** (explorador timm) |
+| **Sistema** | **Monitor** (CPU/RAM/GPU auto-refresh) · **En vivo** (run en curso) · **Lanzador** (lanzar single/DDP) |
+
+**Predicción vs realidad** (rediseño de la antigua "Comparar vs training"): elige el run en la barra lateral → auto-empareja su feasibility (mismo modelo/entorno); muestra estimado vs real con semáforo y un veredicto en lenguaje natural (precisa / optimista por I/O / pesimista). Avisa si el run es distribuido (la estimación es single-GPU → la diferencia incluye el speedup).
 
 **Descarga en todas las pestañas:**
 - Gráficas Plotly: ícono de cámara en la barra de herramientas → descarga PNG (escala 2×, client-side)
@@ -962,6 +958,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Fix modelo de predicción DDP (04/06/26):** dos bugs en `DDPOptimizer`: (1) `_infer_network_type` asumía interconexión **Gigabit (0.125 GB/s)** solo porque el disco era NFS → all_reduce ~128× inflado. Ahora: **NVLink** para GPUs de datacenter (V100/A100…), **PCIe** para el resto (T4/RTX), Ethernet solo multi-nodo CPU. (2) `_build_scenario` reescrito a nivel de **epoch**: `time = max(compute/n_gpus, io_total) + sync` — el I/O es un total fijo que no escala con nº de GPUs. **Predicción tras el fix: vit_base 2-GPU 1.92× (real 1.90×), vit_tiny 1.0× (I/O-bound, real 1.27×).**
 - [x] **Fix `recommend_config` (04/06/26):** antes usaba speedup/n_gpus (= eficiencia) → siempre recomendaba 1 GPU. Ahora recomienda el mayor nº de GPUs con eficiencia ≥75% → compute-bound sugiere escalar (vit_base → 4 GPUs), I/O-bound se queda en 1.
 - [x] **Suite de tests en 229 (04/06/26):** +13 respecto a 212 (parser deep ambos formatos, energía distribuida, ddp_hetero distribuido, round-trip #sizes, comparación con tamaño correcto, predicción DDP compute/IO-bound, recomendación). 14 pestañas verificadas sin errores con Playwright.
+- [x] **Dashboard web v7 — reorganización 14→6 pestañas + "Predicción vs realidad" rediseñada (04/06/26):** las 14 pestañas planas se anidan en 6 de nivel superior (Inicio · Run · Comparativa · Viabilidad · Datos y modelos · Sistema) usando la colocación-en-creación de contenedores de Streamlit (sin reescribir el contenido). Viabilidad pasa de 6 a 4 sub-tabs: Informe absorbe los escenarios DDP, y "Comparar vs training" se rediseña como **Predicción vs realidad** (auto-emparejada con el run de la barra lateral, titular + semáforo + barras de error por métrica + tabla plegada, aviso si el run es distribuido). 6 pestañas verificadas sin errores con Playwright. Feature: `feature/web-redesign-6tabs`.
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.

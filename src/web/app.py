@@ -416,16 +416,28 @@ with st.sidebar:
 
 # ── Pestañas ──────────────────────────────────────────────────────────────────
 
+# 6 pestañas de nivel superior. Las antiguas 14 se anidan como sub-pestañas
+# bajo estos padres. Streamlit coloca cada contenedor donde se CREA, así que
+# los bloques `with tab_X:` de más abajo (sin tocar) rellenan estas sub-pestañas.
 (
-    tab_inicio, tab_sistema, tab_dataset, tab_modelos,
-    tab_curvas, tab_porclase, tab_batch, tab_comparar, tab_ddp,
-    tab_viabilidad, tab_tiempo, tab_info,
-    tab_lanzador, tab_envivo,
+    tab_inicio, tab_run, tab_comp, tab_viabilidad, tab_datos, tab_sistema,
 ) = st.tabs([
-    "Inicio", "Sistema", "Dataset", "Modelos",
-    "Curvas", "Por clase", "Batch", "Comparar", "Análisis DDP",
-    "Viabilidad", "Tiempo", "Información", "Lanzador", "En vivo",
+    "Inicio", "Run", "Comparativa", "Viabilidad", "Datos y modelos", "Sistema",
 ])
+
+with tab_run:
+    st.caption("Detalle del run seleccionado en la barra lateral.")
+    tab_curvas, tab_porclase, tab_batch, tab_tiempo, tab_info = st.tabs(
+        ["Curvas", "Por clase", "Batch", "Tiempo", "Información"])
+
+with tab_comp:
+    tab_ddp, tab_comparar = st.tabs(["Single vs Distribuido", "Superponer runs"])
+
+with tab_datos:
+    tab_dataset, tab_modelos = st.tabs(["Dataset", "Modelos"])
+
+with tab_sistema:
+    tab_monitor, tab_envivo, tab_lanzador = st.tabs(["Monitor", "En vivo", "Lanzador"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # INICIO — pantalla principal con cuadrícula de resumen
@@ -661,7 +673,7 @@ with tab_inicio:
 # SISTEMA
 # ═══════════════════════════════════════════════════════════════════════════════
 
-with tab_sistema:
+with tab_monitor:
     st.markdown("## Monitor del sistema")
     ref_int = st.sidebar.slider("Refresco sistema (s)", 2, 30, 5, key="sys_ref_int")
 
@@ -1733,11 +1745,12 @@ with tab_comparar:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_viabilidad:
-    (subtab_report, subtab_study, subtab_ddp_opt, subtab_prediction,
-     subtab_compare_feas, subtab_run_feas) = st.tabs(
-        ["Informe", "Estudio real", "Análisis DDP", "Predicción F1",
-         "Comparar vs training", "Ejecutar análisis"]
+    (subtab_report, subtab_predreal, subtab_study, subtab_run_feas) = st.tabs(
+        ["Informe", "Predicción vs realidad", "Estudio real", "Ejecutar análisis"]
     )
+    # subtab_ddp_opt y subtab_prediction ya no son pestañas propias: se rellenan
+    # como secciones dentro de "Informe" y "Predicción vs realidad" respectivamente
+    # (contenedores creados más abajo, en sus bloques padre).
 
     # Carga común del informe seleccionado
     feasibility_csvs = _get_feasibility_csvs()
@@ -1750,6 +1763,140 @@ with tab_viabilidad:
         meta, bdf_feas = parse_feasibility_csv(Path(selected_feas_path))
     else:
         meta, bdf_feas = {}, pd.DataFrame()
+
+    # ── Predicción vs realidad (auto-emparejada con el run de la barra lateral) ─
+    with subtab_predreal:
+        st.markdown("### ¿Acertó el feasibility con este run?")
+        st.caption("Se compara el run seleccionado (barra lateral) con el informe "
+                   "de viabilidad del mismo modelo, emparejado automáticamente.")
+        _feas_csvs_pr = _get_feasibility_csvs()
+        if selected_run is None:
+            st.info("Selecciona un run en la barra lateral.")
+        elif not _feas_csvs_pr:
+            st.info("No hay informes de viabilidad. Genera uno en 'Ejecutar análisis'.")
+        else:
+            # Auto-emparejar: +2 si coincide el modelo, +1 si coincide el entorno
+            _scored = []
+            for _p in _feas_csvs_pr:
+                _m, _d = parse_feasibility_csv(_p)
+                _env = _p.parent.parent.name if _p.parent.parent else ""
+                _s = 0
+                if selected_run.model and _m.get("model_name") == selected_run.model:
+                    _s += 2
+                if _env == selected_run.env:
+                    _s += 1
+                _scored.append((_s, _p, _m, _d))
+            _scored.sort(key=lambda x: x[0], reverse=True)
+            _best_s, _feas_p, _meta_pr, _feas_df_pr = _scored[0]
+
+            if _best_s < 2:
+                st.warning(
+                    f"No se encontró un feasibility del modelo **{selected_run.model or '—'}**. "
+                    "Se muestra el más afín; para una comparación válida genera el feasibility "
+                    "del mismo modelo (pestaña 'Ejecutar análisis')."
+                )
+            st.caption(
+                f"**Run:** {selected_run.label[:55]}  ·  "
+                f"**Feasibility:** {_feas_p.parent.parent.name}/{_feas_p.name} "
+                f"(modelo {_meta_pr.get('model_name', '—')})"
+            )
+            if selected_run.mode != "single":
+                st.warning(
+                    f"Este run es **distribuido** (`{selected_run.mode}`), pero el feasibility "
+                    "estima sobre **1 GPU**. Parte de la diferencia será el *speedup* del DDP, "
+                    "no error de predicción. Para validar la predicción, selecciona el run "
+                    "**single-GPU** del mismo modelo; el speedup distribuido se ve en "
+                    "**Comparativa → Single vs Distribuido**."
+                )
+
+            _actual_pr = _load_df(
+                str(selected_run.log_path),
+                str(selected_run.epoch_csv_path) if selected_run.epoch_csv_path else None,
+            )
+            _bs_av = (sorted(_feas_df_pr["batch_size"].dropna().astype(int).unique().tolist())
+                      if (not _feas_df_pr.empty and "batch_size" in _feas_df_pr.columns) else [])
+            _nfs_pr = float(_meta_pr.get("nfs_factor", 1.0) or 1.0)
+
+            if not _bs_av or _actual_pr.empty:
+                st.info("Faltan datos: el feasibility necesita benchmark y el run métricas de tiempo "
+                        "(`--fn timing`/`--trace simple`).")
+            else:
+                _c = st.columns([1, 1, 2])
+                _bs_pr = _c[0].selectbox("Batch size", _bs_av, index=len(_bs_av) - 1, key="pr_bs")
+                _tr_av = (sorted(_feas_df_pr["trace_mode"].unique().tolist())
+                          if "trace_mode" in _feas_df_pr.columns else ["simple"])
+                _tr_pr = _c[1].selectbox("Trace mode", _tr_av, key="pr_tr")
+
+                _cmp = build_comparison(
+                    meta=_meta_pr, feas_df=_feas_df_pr, actual_df=_actual_pr,
+                    batch_size=int(_bs_pr), trace_mode=_tr_pr, nfs_factor=_nfs_pr,
+                )
+                if not _cmp:
+                    st.warning(f"Sin fila de feasibility para batch={_bs_pr}, trace={_tr_pr}.")
+                else:
+                    _rows = {r.metric: r for r in _cmp.rows}
+                    _tt = _rows.get("Total time / epoch")
+                    _thr = _rows.get("Train throughput")
+
+                    mc1, mc2, mc3 = st.columns(3)
+                    if _tt and _tt.estimated is not None and _tt.actual is not None:
+                        _e = _tt.error_pct or 0.0
+                        mc1.metric("Tiempo/epoch estimado", f"{_tt.estimated:.2f} min")
+                        mc2.metric("Tiempo/epoch real", f"{_tt.actual:.2f} min",
+                                   delta=f"{_e:+.0f}% vs estimado", delta_color="off")
+                    if _thr and _thr.estimated is not None and _thr.actual is not None:
+                        mc3.metric("Throughput real", f"{_thr.actual:.0f} img/s",
+                                   delta=f"estimado {_thr.estimated:.0f} img/s", delta_color="off")
+
+                    # Veredicto en lenguaje natural
+                    if _tt and _tt.error_pct is not None:
+                        _e = _tt.error_pct
+                        _io = None
+                        try:
+                            _io = float(_meta_pr.get("dataset", {}).get("io_bottleneck_ratio"))
+                        except (TypeError, ValueError, AttributeError):
+                            pass
+                        if abs(_e) <= 15:
+                            st.success(f"**Predicción precisa** — error {_e:+.0f}% en tiempo/epoch. "
+                                       "El feasibility estimó muy cerca del tiempo real.")
+                        elif _e < 0:
+                            _x = ""
+                            if _io and _io > 1:
+                                _x = (f" Causa probable: **I/O-bound** (ratio≈{_io:.1f}) — el benchmark "
+                                      "sintético mide solo cómputo y no la lectura de disco (NFS).")
+                            st.warning(f"**Estimación optimista** — el real fue {abs(_e):.0f}% más lento "
+                                       f"de lo previsto.{_x}")
+                        else:
+                            st.info(f"**Estimación pesimista** — el real fue {_e:.0f}% (más rápido "
+                                    "de lo previsto).")
+
+                    # Error % por métrica (visual)
+                    _bars = [(r.metric, r.error_pct) for r in _cmp.rows if r.error_pct is not None]
+                    if _bars:
+                        _lab = [b[0] for b in _bars]
+                        _val = [b[1] for b in _bars]
+                        _col = ["#16a34a" if abs(v) <= 10 else "#f59e0b" if abs(v) <= 30 else "#dc2626"
+                                for v in _val]
+                        _figpr = go.Figure(go.Bar(
+                            x=_val, y=_lab, orientation="h", marker_color=_col,
+                            text=[f"{v:+.0f}%" for v in _val], textposition="outside",
+                        ))
+                        _figpr.update_layout(
+                            **_base_layout(max(240, 42 * len(_lab) + 90),
+                                           "Error de la predicción por métrica (estimado vs real)"),
+                            xaxis_title="Error %  (negativo = subestimó)", yaxis_title="",
+                        )
+                        _figpr.add_vline(x=0, line_color="#64748b")
+                        _show(_figpr, "pred_vs_real")
+                        st.caption("Barras cerca de 0 = acertó. Verde ≤10% · ámbar ≤30% · rojo >30%.")
+
+                    with st.expander("Ver detalle y fórmulas"):
+                        _t = _cmp.to_dataframe()
+                        st.dataframe(_t, use_container_width=True, hide_index=True)
+                        _dl_csv(_t, "prediccion_vs_real.csv", "Descargar comparativa")
+
+        st.divider()
+        subtab_prediction = st.container()
 
     # ── Informe ───────────────────────────────────────────────────────────────
     with subtab_report:
@@ -1888,6 +2035,10 @@ with tab_viabilidad:
                         est_df[f"est_total_h_{recalc_n}ep"] = (bdf_feas[per_epoch_col] * recalc_n / 60).round(2)
                     st.dataframe(est_df, use_container_width=True)
                     _dl_csv(est_df, "estimaciones_tiempo.csv", "Descargar estimaciones")
+
+        # Escenarios DDP (1/2/4/8 GPUs) — sección dentro del Informe
+        st.divider()
+        subtab_ddp_opt = st.container()
 
     # ── Estudio empírico real (mini-training + LR range + gradient noise) ──────
     with subtab_study:
@@ -2278,85 +2429,6 @@ with tab_viabilidad:
                         "val_f1_lower": [v - 0.015 for v in curve_val],
                     })
                     _dl_csv(pred_curve_df, "prediccion_curva_f1.csv", "Descargar curva predicha")
-
-    # ── Comparar vs training ──────────────────────────────────────────────────
-    with subtab_compare_feas:
-        st.markdown("### Estimaciones de viabilidad vs resultados reales de training")
-        feasibility_csvs_cmp = _get_feasibility_csvs()
-        all_runs_cmp = _get_runs()
-
-        if not feasibility_csvs_cmp:
-            st.info("No se encontraron CSVs de viabilidad.")
-        elif not all_runs_cmp:
-            st.info("No se encontraron runs de training.")
-        else:
-            cmp_col1, cmp_col2 = st.columns(2)
-            with cmp_col1:
-                csv_labels_cmp = {str(p): f"{p.parent.name}/{p.name}" for p in feasibility_csvs_cmp}
-                sel_feas_cmp = st.selectbox("Informe de viabilidad", list(csv_labels_cmp.keys()),
-                                             format_func=lambda p: csv_labels_cmp[p], key="cmp_feas_sel")
-                meta_cmp, feas_df_cmp = parse_feasibility_csv(Path(sel_feas_cmp))
-                model_feas = meta_cmp.get("model_name", "")
-
-                batch_sizes_available = []
-                if not feas_df_cmp.empty and "batch_size" in feas_df_cmp.columns:
-                    batch_sizes_available = sorted(
-                        feas_df_cmp["batch_size"].dropna().astype(int).unique().tolist()
-                    )
-                sel_bs = (
-                    st.selectbox("Batch size", batch_sizes_available, key="cmp_bs_sel")
-                    if batch_sizes_available else None
-                )
-                trace_modes_available = []
-                if not feas_df_cmp.empty and "trace_mode" in feas_df_cmp.columns:
-                    trace_modes_available = sorted(feas_df_cmp["trace_mode"].unique().tolist())
-                sel_trace = st.selectbox("Trace mode", trace_modes_available or ["simple"], key="cmp_trace_sel")
-                nfs_factor_cmp = float(meta_cmp.get("nfs_factor", 1.0) or 1.0)
-                st.caption(f"Modelo: **{model_feas or '—'}** | Factor NFS: {nfs_factor_cmp:.2f}")
-
-            with cmp_col2:
-                run_labels_cmp = {r.label: r for r in all_runs_cmp}
-                matching = [lbl for lbl, r in run_labels_cmp.items()
-                            if model_feas and r.model and model_feas in r.model]
-                default_run = matching[0] if matching else list(run_labels_cmp.keys())[0]
-                sel_run_cmp = st.selectbox(
-                    "Run de training", list(run_labels_cmp.keys()),
-                    index=list(run_labels_cmp.keys()).index(default_run), key="cmp_run_sel",
-                )
-                run_cmp = run_labels_cmp[sel_run_cmp]
-                actual_df_cmp = _load_df(
-                    str(run_cmp.log_path),
-                    str(run_cmp.epoch_csv_path) if run_cmp.epoch_csv_path else None,
-                )
-
-            if sel_bs is not None and not actual_df_cmp.empty:
-                comparison = build_comparison(
-                    meta=meta_cmp, feas_df=feas_df_cmp, actual_df=actual_df_cmp,
-                    batch_size=int(sel_bs), trace_mode=sel_trace, nfs_factor=nfs_factor_cmp,
-                )
-                if comparison:
-                    cmp_table = comparison.to_dataframe()
-
-                    def _color_error(val: str) -> str:
-                        try:
-                            v = float(val.replace("%", "").replace("+", ""))
-                            if abs(v) <= 10:
-                                return "background-color: #dcfce7"
-                            if abs(v) <= 30:
-                                return "background-color: #fef9c3"
-                            return "background-color: #fee2e2"
-                        except (ValueError, AttributeError):
-                            return ""
-
-                    err_col = next((c for c in cmp_table.columns if c == "Error %"), None)
-                    styled_cmp = cmp_table.style
-                    if err_col:
-                        styled_cmp = styled_cmp.map(_color_error, subset=[err_col])
-                    st.dataframe(styled_cmp, use_container_width=True, hide_index=True)
-                    _dl_csv(cmp_table, "comparativa_viabilidad.csv", "Descargar comparativa")
-                    st.caption("Verde = error ≤ 10% | Amarillo = 10–30% | Rojo = > 30%.")
-                else:
-                    st.warning(f"Sin fila coincidente para batch_size={sel_bs}, trace_mode={sel_trace}.")
 
     # ── Ejecutar análisis ─────────────────────────────────────────────────────
     with subtab_run_feas:

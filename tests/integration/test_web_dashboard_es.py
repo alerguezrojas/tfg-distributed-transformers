@@ -125,18 +125,16 @@ def test_app_py_no_confusion_matrix_paths_references(app_source):
 
 
 def test_app_py_spanish_tab_names(app_source):
-    """Los nombres de las pestañas deben estar en español."""
-    assert '"Inicio"' in app_source
-    assert '"Sistema"' in app_source
-    assert '"Modelos"' in app_source
-    assert '"Curvas"' in app_source
-    assert '"Por clase"' in app_source
-    assert '"Comparar"' in app_source
-    assert '"Viabilidad"' in app_source
-    assert '"Tiempo"' in app_source
-    assert '"Información"' in app_source
-    assert '"Lanzador"' in app_source
-    assert '"En vivo"' in app_source
+    """Los nombres de las pestañas (6 de nivel superior + sub-pestañas) en español."""
+    # Nivel superior (6)
+    for t in ('"Inicio"', '"Run"', '"Comparativa"', '"Viabilidad"',
+              '"Datos y modelos"', '"Sistema"'):
+        assert t in app_source, f"falta pestaña {t}"
+    # Sub-pestañas relevantes
+    for t in ('"Curvas"', '"Por clase"', '"Modelos"', '"Tiempo"', '"Información"',
+              '"Monitor"', '"Lanzador"', '"En vivo"', '"Superponer runs"',
+              '"Single vs Distribuido"', '"Predicción vs realidad"'):
+        assert t in app_source, f"falta sub-pestaña {t}"
 
 
 def test_app_py_show_helper_defined(app_source):
