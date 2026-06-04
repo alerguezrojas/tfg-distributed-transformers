@@ -983,10 +983,10 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - **Más espectro:** usar las 12 bandas de Sentinel-2 (ahora solo RGB proxy B04/B03/B02) o fusión S1 (radar) + S2 (óptico). Extensión grande, fuera del alcance actual.
 - **Recomendación de batch global en `recommend_config`:** afinar la sugerencia de batch/lr (regla de escalado lineal) cuando recomienda varias GPUs.
 
-### Seminarios pendientes (2) — *rellenar fechas según calendario del tutor*
-- **Seminario 1 (fecha: ____):** sugerido — diseño SW (SOLID + Decorator + Template Method, apoyar en `docs/class_diagram.svg`) + entrenamiento single-GPU (resultados v1–v4) + feasibility checker (predicción y recomendaciones).
-- **Seminario 2 (fecha: ____):** sugerido — entrenamiento distribuido: DDP, heterogéneo GPU+CPU, **estudio single vs distribuido** (la tabla de speedups) y **validación del feasibility** (predicho vs real); conclusión compute-bound vs I/O-bound vs hardware desbalanceado.
-- *(Dar la fecha/contenido reales y se actualiza aquí.)*
+### Seminarios pendientes (2) — sin fecha asignada; **ambos a redactar durante junio 2026**
+- **Seminario 1:** sugerido — diseño SW (SOLID + Decorator + Template Method, apoyar en `docs/class_diagram.svg`) + entrenamiento single-GPU (resultados v1–v4) + feasibility checker (predicción y recomendaciones).
+- **Seminario 2:** sugerido — entrenamiento distribuido: DDP, heterogéneo GPU+CPU, **estudio single vs distribuido** (la tabla de speedups) y **validación del feasibility** (predicho vs real); conclusión compute-bound vs I/O-bound vs hardware desbalanceado.
+- *(Cuando el tutor fije fechas, anotarlas aquí.)*
 
 ### Memoria final — entrega junio/julio 2026
 Estructura sugerida apoyándose en lo ya hecho (figuras desde el dashboard y `docs/class_diagram.svg`):
