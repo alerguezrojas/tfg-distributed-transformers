@@ -383,7 +383,17 @@ multi-nodo y la sincronización de gradientes funcionan antes de tener hardware 
 
 - `configs/train_ddp_verode.yaml` — batch_size=64 **por GPU** (global batch = 128 con 2 GPUs), backend NCCL, para V100.
 - `configs/train_ddp_cpu_test.yaml` — batch_size=4, backend **gloo**, `pretrained=false`, 1 epoch. Valida infraestructura multi-nodo sin GPU compatible.
-- `configs/train_heterogeneous_ddp.yaml` — DDP heterogéneo verode21 (V100, batch=64, weight=16) + verode16/18 (CPU, batch=4, weight=1). Backend **gloo**. Label smoothing + mixup v3.
+- `configs/train_heterogeneous_ddp.yaml` — DDP heterogéneo verode21 (V100, batch=192, weight=48) + verode16/18 (CPU, batch=4, weight=1). Backend **gloo**. Label smoothing + mixup v3.
+- `configs/train_heterogeneous_ddp_demo.yaml` — demo heterogéneo COMPLETO vit_tiny, subset (metadata_demo.parquet 5000/1500), 3 epochs, batch GPU 96 / CPU 4. Termina en ~13 min y genera todas las métricas para la web.
+
+#### Configs del estudio apples-to-apples (single vs distribuido, mismo modelo/subset/epochs)
+- `configs/train_demo_single.yaml` — baseline **single-GPU** (vit_tiny, subset 5000, 3 epochs, batch 96). Pareja del demo heterogéneo y del DDP.
+- `configs/train_demo_ddp.yaml` — DDP **NCCL multi-GPU real** (batch 48/GPU = 96 global). Para 2 GPUs físicas (Kaggle 2×T4). ⚠️ NCCL **no permite 2 ranks en la misma GPU** ("Duplicate GPU detected"), así que con 1 sola V100 en Verode la comparación distribuida posible es el heterogéneo V100+CPU (gloo).
+
+#### Speedup positivo en GPUs reales (Kaggle 2×T4)
+Como Verode solo tiene 1 GPU usable, el speedup positivo se mide en **Kaggle** (2× Tesla T4 gratis). Ver `docs/kaggle_speedup_runbook.md`.
+- `scripts/export_kaggle_subset.py` — exporta un subset autocontenido (5000/1500, bandas B04/B03/B02, mismo seed=42) listo para subir como dataset de Kaggle (~570 MB / zip 391 MB).
+- El notebook clona el repo (privado → token de GitHub vía Kaggle Secrets), genera configs al vuelo, corre single (1 T4) + DDP (2 T4) y emite CSVs en `logs/kaggle/{single,ddp}/{model}/`.
 
 ### DDP heterogéneo — verode21 (GPU) + verode16 (CPU)
 
@@ -470,7 +480,7 @@ La tabla de estimaciones muestra **train/epoch**, **eval/epoch**, **total/epoch*
 
 ## Estructura de artefactos
 
-Los artefactos se organizan por entorno (`local`/`verode`), modo (`single`/`ddp`) y modelo:
+Los artefactos se organizan por entorno (`local`/`verode`/`kaggle`), modo (`single`/`ddp`/`ddp_hetero`) y modelo:
 
 ```
 logs/
@@ -482,7 +492,11 @@ logs/
   verode/
     single/{model}/
     ddp/{model}/
+    ddp_hetero/{model}/   # DDP heterogéneo GPU+CPU (gloo)
     feasibility/
+  kaggle/
+    single/{model}/       # baseline 1×T4
+    ddp/{model}/          # DDP 2×T4 (NCCL) — speedup positivo
 plots/
   local/
     single/{model}/   # training_*.png, perclass_*.png, confusion_matrix_*.png
@@ -758,6 +772,32 @@ Mismo config que v3/v3b (`configs/train_cluster_v3.yaml`). Primera ejecución co
 
 ---
 
+## Estudio single-GPU vs distribuido (apples-to-apples, completado 2026-06-04)
+
+Comparación controlada **mismo modelo / mismo subset (5000/1500) / mismos 3 epochs**, cambiando solo la estrategia de distribución. Es el resultado central del TFG sobre escalado distribuido.
+
+| Escenario | Hardware | Modelo | Train/epoch | Speedup | Eficiencia | Cuello | Val F1 |
+|---|---|---|---|---|---|---|---|
+| Single-GPU | V100 (Verode) | vit_tiny | ~16s (estable) | 1.00× (baseline) | — | — | 0.252 |
+| **Heterogéneo** | V100 + CPU (Verode, gloo) | vit_tiny | ~225s | **0.12×** | ~6% | DDP síncrono + hardware desbalanceado + NFS | 0.278 |
+| Single-GPU | 1× T4 (Kaggle) | vit_tiny | 47.5s/ep total | 1.00× | — | — | 0.280 |
+| DDP 2 GPU | 2× T4 (Kaggle, NCCL) | vit_tiny | 37.3s/ep total | **1.27×** | 64% | I/O-bound (modelo diminuto) | 0.263 |
+| Single-GPU | 1× T4 (Kaggle) | vit_base | 179.3s/ep total | 1.00× | — | — | 0.406 |
+| **DDP 2 GPU** | **2× T4 (Kaggle, NCCL)** | **vit_base** | **94.5s/ep total** | **1.90×** | **95%** | **compute-bound → escala casi perfecto** | 0.410 |
+
+**Conclusión demostrada con datos reales:** el speedup del entrenamiento distribuido depende del **ratio cómputo/IO y del balance del hardware**:
+- **Compute-bound (vit_base): escala casi linealmente** (1.90×, 95% eficiencia en 2 GPUs reales) — las GPUs trabajan en paralelo de verdad.
+- **I/O-bound (vit_tiny): escala poco** (1.27×, 64%) — leer los TIFF domina y añadir GPUs no acelera el disco.
+- **Hardware desbalanceado (V100+CPU): penaliza** (0.12×) — el DDP síncrono va al ritmo del nodo más lento (la CPU ~50× más lenta que la V100); la GPU pasa el tiempo esperando.
+- El Val F1 es idéntico entre single y DDP en todos los casos → la sincronización de gradientes (incl. la normalización por batch global del heterogéneo) es matemáticamente correcta.
+- El **feasibility lo predice** en cada caso: marca I/O-bound (ratio≈23 para vit_tiny en NFS) y recomienda el nº de GPUs (1 si I/O-bound, varias si compute-bound).
+
+**Limitación de hardware (clave para la memoria):** Verode solo tiene **1 GPU usable** (verode21 V100, CC 7.0). verode16 (M2090, CC 2.0) y verode18 (K40m, CC 3.5) están por debajo del mínimo CC 3.7 de PyTorch 2.x → no hay multi-GPU NCCL real en Verode. Por eso el speedup positivo se midió en Kaggle (2×T4), y en Verode la comparación distribuida es el heterogéneo GPU+CPU (gloo), un resultado negativo bien documentado.
+
+Artefactos: `logs/verode/single/vit_tiny_patch16_224/` (single), `logs/verode/ddp_hetero/vit_tiny_patch16_224/` (heterogéneo), `logs/kaggle/{single,ddp}/{vit_tiny,vit_base}_patch16_224/` (Kaggle).
+
+---
+
 ## Gestión de dependencias
 
 ### Local (uv)
@@ -913,10 +953,16 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Métricas por batch F1/accuracy/precision (03/06/26):** el batch hook pasa ahora un dict de métricas `(epoch, batch_idx, n_batches, metrics)` en vez de args posicionales. `Trainer` y `HeterogeneousDDPTrainer` computan F1/accuracy/precision por batch. CSV `batch_metrics` v3 con columnas `batch_f1`, `batch_acc`, `batch_prec`. El tab Batch ofrece selector de métrica (loss/F1/accuracy/precision) con eje [0,1] para las no-loss. Feature: `feature/batch-metrics-full`.
 - [x] **Feasibility v4 — estudio empírico real (03/06/26):** nuevo módulo `src/training/convergence_study.py` (`ConvergenceStudy`): (1) LR range test (Smith 2017) que barre LRs y mide la loss → recomienda LR óptimo; (2) mini-training real de N steps con datos reales → ajusta power law `loss=a·t⁻ᵇ+c` (con suavizado) → extrapola loss/F1/plateau; (3) gradient noise scale (McCandlish 2018) → batch size crítico. Flags `--convergence-study --study-steps N`. Sub-tab "Estudio real" en la web con las 3 gráficas. La predicción empírica histórica se mantiene en "Predicción F1" para comparar medido vs histórico. Verificado con vit_tiny + SSD: LR sugerido 8.86e-05, throughput real 410 img/s, R² 0.74. Feature: `feature/feasibility-study`.
 - [x] **Suite de tests en 212 (03/06/26):** +11 dataset, +14 convergencia, +6 parser estudio, +7 sort cronológico, +5 batch metrics.
+- [x] **Training distribuido heterogéneo en Verode (03-04/06/26):** verode21 (V100, rank 0) + verode16 (CPU, rank 1), gloo. Demo vit_tiny subset completado; fix de `train_loss` inflada ~n_clases (dividir por `step_bs × n_clases`); fix `ReduceOp.AVG` no soportado por gloo (usar SUM + dividir). Artefactos en `logs/verode/ddp_hetero/vit_tiny_patch16_224/` (Val F1 0.278).
+- [x] **Estudio apples-to-apples single vs distribuido (04/06/26):** baseline single-GPU V100 (`configs/train_demo_single.yaml`, `logs/verode/single/vit_tiny_patch16_224/`) comparable con el heterogéneo. Ver sección "Estudio single-GPU vs distribuido". Conclusión: heterogéneo V100+CPU es **8.6× más lento** que la GPU sola (speedup 0.12×) por el cuello síncrono.
+- [x] **Speedup positivo real en Kaggle 2×T4 (04/06/26):** `scripts/export_kaggle_subset.py` + `docs/kaggle_speedup_runbook.md`. vit_tiny 1.27× (64%, I/O-bound) y **vit_base 1.90× (95%, compute-bound)**. Artefactos en `logs/kaggle/{single,ddp}/{vit_tiny,vit_base}_patch16_224/`. Hallazgo: NCCL no permite 2 ranks en 1 GPU ("Duplicate GPU detected") → fix `device = cuda:(local_rank % device_count)` en `train_ddp.py`.
+- [x] **Auditoría dashboard — 3 fixes (04/06/26):** (1) parser deep `_parse_deep` reescrito por extracción de campos por nombre (los logs tenían 2 órdenes distintos de `val_f1/best/val_acc` → el run v1 de 30 epochs estaba invisible); (2) pestaña Análisis DDP filtra `mode.startswith("ddp")` → empareja también `ddp_hetero`, etiquetas conscientes del modo (V100+CPU vs 2 GPUs) + aviso cuando speedup<1; (3) parser energía/timing casa `\w*Trainer` (DDPTrainer/HeterogeneousDDPTrainer) y `_load_df` mezcla energía del log al CSV. Borrados 3 runs abortados vacíos.
+- [x] **Fix tamaño de dataset en feasibility (04/06/26):** `check_feasibility.py` lee el conteo real de splits del metadata del config (antes hardcodeaba 237871 → estimaba 47× de más para el subset); escribe bloque `#sizes` (n_train, n_val, nfs_factor). `feasibility_comparison.py` y `feasibility_parser.py` usan ese tamaño real (con fallback al full set). Pestaña Tiempo: la línea de estimación usa el feasibility del mismo modelo que el run.
+- [x] **Suite de tests en 226 (04/06/26):** +9 (parser deep ambos formatos, energía distribuida, ddp_hetero clasificado distribuido, round-trip #sizes, comparación con tamaño correcto). 14 pestañas verificadas sin errores con Playwright.
 
 ### Pendiente
-- [ ] **Primer training distribuido heterogéneo en Verode:** verode21 (V100, rank 0) + verode16 (CPU, rank 1). Ver comandos en la sección DDP heterogéneo.
-- [ ] Comparar throughput single-GPU vs heterogéneo para cuantificar speedup real
+- [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
+- [ ] (Opcional) Tratar las clases raras (pos_weight / focal loss) para subir el F1 macro por encima del techo ~0.68.
 
 ---
 
@@ -936,6 +982,11 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 | `srun --gres=gpu:1` falla en Verode | El recurso GPU se llama `gpu:tesla` en este clúster | Usar `--gres=gpu:tesla:1` |
 | `libcudnn.so.9` en srun no-interactivo | `LD_LIBRARY_PATH` vacío en shells no-interactivos; cu13 instalado por `uv sync` | Reinstalar cu118: `uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118 --force-reinstall` |
 | `ZeroDivisionError` en cosine scheduler | `epochs ≤ warmup_epochs` → `T_max = 0` | `builder.py` usa `max(1, epochs - warmup_epochs)` |
+| `Duplicate GPU detected: rank X and rank Y both on CUDA device` (NCCL) | NCCL exige 1 rank = 1 GPU física; no se pueden 2 procesos en la misma GPU | Usar 2 GPUs reales (Kaggle 2×T4) o gloo CPU. `train_ddp.py` mapea `cuda:(local_rank % device_count)` para multi-GPU real |
+| `Cannot use ReduceOp.AVG with Gloo` | gloo no soporta AVG en all_reduce (sí NCCL) | `ddp_trainer.py` usa `ReduceOp.SUM` y divide por `world_size` |
+| `git clone` pide usuario en Kaggle/CI | El repo es privado | Token de GitHub (fine-grained, Contents:Read) vía Kaggle Secrets: `https://x-access-token:$GH_TOKEN@github.com/...` |
+| Feasibility estima ~47× de más para un subset | `dataset_train` hardcodeado a 237871 | Corregido: lee el conteo real del metadata del config y escribe bloque `#sizes` |
+| Run `--trace deep` invisible en el dashboard (0 epochs) | Regex posicional no casaba el orden de campos de la línea RESUMEN | Corregido: `_parse_deep` extrae cada campo por nombre |
 
 ---
 
