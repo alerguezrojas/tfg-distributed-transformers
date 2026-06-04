@@ -1,115 +1,115 @@
 epoch,true_class,pred_class,value
-1,Urban fabric,Urban fabric,0.019802
+1,Urban fabric,Urban fabric,0.0
 1,Urban fabric,Industrial or commercial units,0.0
-1,Urban fabric,Arable land,0.09901
-1,Urban fabric,Permanent crops,0.0
-1,Urban fabric,Pastures,0.019802
-1,Urban fabric,Complex cultivation patterns,0.024752
+1,Urban fabric,Arable land,0.564356
+1,Urban fabric,Permanent crops,0.014851
+1,Urban fabric,Pastures,0.0
+1,Urban fabric,Complex cultivation patterns,0.019802
 1,Urban fabric,Land principally occupied by agriculture,0.0
-1,Urban fabric,Agro-forestry areas,0.00495
-1,Urban fabric,Broad-leaved forest,0.084158
-1,Urban fabric,Coniferous forest,0.024752
-1,Urban fabric,Mixed forest,0.0
+1,Urban fabric,Agro-forestry areas,0.0
+1,Urban fabric,Broad-leaved forest,0.00495
+1,Urban fabric,Coniferous forest,0.188119
+1,Urban fabric,Mixed forest,0.059406
 1,Urban fabric,Natural grassland and sparsely vegetated areas,0.014851
 1,Urban fabric,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Urban fabric,"Transitional woodland, shrub",0.034653
-1,Urban fabric,"Beaches, dunes, sands",0.0
-1,Urban fabric,Inland wetlands,0.014851
+1,Urban fabric,"Transitional woodland, shrub",0.009901
+1,Urban fabric,"Beaches, dunes, sands",0.00495
+1,Urban fabric,Inland wetlands,0.0
 1,Urban fabric,Coastal wetlands,0.0
 1,Urban fabric,Inland waters,0.0
 1,Urban fabric,Marine waters,0.0
-1,Industrial or commercial units,Urban fabric,0.043478
+1,Industrial or commercial units,Urban fabric,0.0
 1,Industrial or commercial units,Industrial or commercial units,0.0
-1,Industrial or commercial units,Arable land,0.195652
-1,Industrial or commercial units,Permanent crops,0.0
-1,Industrial or commercial units,Pastures,0.043478
-1,Industrial or commercial units,Complex cultivation patterns,0.043478
+1,Industrial or commercial units,Arable land,0.543478
+1,Industrial or commercial units,Permanent crops,0.065217
+1,Industrial or commercial units,Pastures,0.0
+1,Industrial or commercial units,Complex cultivation patterns,0.0
 1,Industrial or commercial units,Land principally occupied by agriculture,0.0
 1,Industrial or commercial units,Agro-forestry areas,0.0
-1,Industrial or commercial units,Broad-leaved forest,0.130435
-1,Industrial or commercial units,Coniferous forest,0.043478
-1,Industrial or commercial units,Mixed forest,0.021739
+1,Industrial or commercial units,Broad-leaved forest,0.043478
+1,Industrial or commercial units,Coniferous forest,0.217391
+1,Industrial or commercial units,Mixed forest,0.043478
 1,Industrial or commercial units,Natural grassland and sparsely vegetated areas,0.021739
 1,Industrial or commercial units,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Industrial or commercial units,"Transitional woodland, shrub",0.065217
+1,Industrial or commercial units,"Transitional woodland, shrub",0.021739
 1,Industrial or commercial units,"Beaches, dunes, sands",0.0
 1,Industrial or commercial units,Inland wetlands,0.0
 1,Industrial or commercial units,Coastal wetlands,0.0
 1,Industrial or commercial units,Inland waters,0.0
 1,Industrial or commercial units,Marine waters,0.0
-1,Arable land,Urban fabric,0.020408
+1,Arable land,Urban fabric,0.006279
 1,Arable land,Industrial or commercial units,0.0
-1,Arable land,Arable land,0.186813
-1,Arable land,Permanent crops,0.0
-1,Arable land,Pastures,0.043956
-1,Arable land,Complex cultivation patterns,0.017268
+1,Arable land,Arable land,0.472527
+1,Arable land,Permanent crops,0.009419
+1,Arable land,Pastures,0.0
+1,Arable land,Complex cultivation patterns,0.028257
 1,Arable land,Land principally occupied by agriculture,0.0
-1,Arable land,Agro-forestry areas,0.00157
-1,Arable land,Broad-leaved forest,0.056515
-1,Arable land,Coniferous forest,0.021978
-1,Arable land,Mixed forest,0.031397
-1,Arable land,Natural grassland and sparsely vegetated areas,0.014129
-1,Arable land,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Arable land,"Transitional woodland, shrub",0.032967
-1,Arable land,"Beaches, dunes, sands",0.0
-1,Arable land,Inland wetlands,0.006279
+1,Arable land,Agro-forestry areas,0.0
+1,Arable land,Broad-leaved forest,0.014129
+1,Arable land,Coniferous forest,0.310832
+1,Arable land,Mixed forest,0.059655
+1,Arable land,Natural grassland and sparsely vegetated areas,0.010989
+1,Arable land,"Moors, heathland and sclerophyllous vegetation",0.00471
+1,Arable land,"Transitional woodland, shrub",0.00157
+1,Arable land,"Beaches, dunes, sands",0.00157
+1,Arable land,Inland wetlands,0.0
 1,Arable land,Coastal wetlands,0.0
-1,Arable land,Inland waters,0.0
+1,Arable land,Inland waters,0.00157
 1,Arable land,Marine waters,0.0
-1,Permanent crops,Urban fabric,0.00885
+1,Permanent crops,Urban fabric,0.0
 1,Permanent crops,Industrial or commercial units,0.0
-1,Permanent crops,Arable land,0.274336
-1,Permanent crops,Permanent crops,0.0
-1,Permanent crops,Pastures,0.106195
+1,Permanent crops,Arable land,0.530973
+1,Permanent crops,Permanent crops,0.017699
+1,Permanent crops,Pastures,0.0
 1,Permanent crops,Complex cultivation patterns,0.0
 1,Permanent crops,Land principally occupied by agriculture,0.0
 1,Permanent crops,Agro-forestry areas,0.0
-1,Permanent crops,Broad-leaved forest,0.115044
-1,Permanent crops,Coniferous forest,0.026549
-1,Permanent crops,Mixed forest,0.00885
-1,Permanent crops,Natural grassland and sparsely vegetated areas,0.0
+1,Permanent crops,Broad-leaved forest,0.070796
+1,Permanent crops,Coniferous forest,0.159292
+1,Permanent crops,Mixed forest,0.061947
+1,Permanent crops,Natural grassland and sparsely vegetated areas,0.00885
 1,Permanent crops,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Permanent crops,"Transitional woodland, shrub",0.035398
+1,Permanent crops,"Transitional woodland, shrub",0.017699
 1,Permanent crops,"Beaches, dunes, sands",0.0
-1,Permanent crops,Inland wetlands,0.00885
+1,Permanent crops,Inland wetlands,0.0
 1,Permanent crops,Coastal wetlands,0.0
 1,Permanent crops,Inland waters,0.0
-1,Permanent crops,Marine waters,0.00885
-1,Pastures,Urban fabric,0.016502
+1,Permanent crops,Marine waters,0.0
+1,Pastures,Urban fabric,0.0
 1,Pastures,Industrial or commercial units,0.0
-1,Pastures,Arable land,0.105611
-1,Pastures,Permanent crops,0.0
-1,Pastures,Pastures,0.026403
-1,Pastures,Complex cultivation patterns,0.009901
+1,Pastures,Arable land,0.382838
+1,Pastures,Permanent crops,0.016502
+1,Pastures,Pastures,0.0
+1,Pastures,Complex cultivation patterns,0.026403
 1,Pastures,Land principally occupied by agriculture,0.0
-1,Pastures,Agro-forestry areas,0.0033
-1,Pastures,Broad-leaved forest,0.026403
-1,Pastures,Coniferous forest,0.026403
-1,Pastures,Mixed forest,0.046205
-1,Pastures,Natural grassland and sparsely vegetated areas,0.016502
-1,Pastures,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Pastures,"Transitional woodland, shrub",0.026403
+1,Pastures,Agro-forestry areas,0.0
+1,Pastures,Broad-leaved forest,0.0033
+1,Pastures,Coniferous forest,0.250825
+1,Pastures,Mixed forest,0.019802
+1,Pastures,Natural grassland and sparsely vegetated areas,0.023102
+1,Pastures,"Moors, heathland and sclerophyllous vegetation",0.0033
+1,Pastures,"Transitional woodland, shrub",0.0033
 1,Pastures,"Beaches, dunes, sands",0.0
-1,Pastures,Inland wetlands,0.0033
+1,Pastures,Inland wetlands,0.0
 1,Pastures,Coastal wetlands,0.0
-1,Pastures,Inland waters,0.0
-1,Pastures,Marine waters,0.0033
-1,Complex cultivation patterns,Urban fabric,0.003289
+1,Pastures,Inland waters,0.0033
+1,Pastures,Marine waters,0.0
+1,Complex cultivation patterns,Urban fabric,0.0
 1,Complex cultivation patterns,Industrial or commercial units,0.0
-1,Complex cultivation patterns,Arable land,0.101974
-1,Complex cultivation patterns,Permanent crops,0.0
-1,Complex cultivation patterns,Pastures,0.026316
-1,Complex cultivation patterns,Complex cultivation patterns,0.0
+1,Complex cultivation patterns,Arable land,0.523026
+1,Complex cultivation patterns,Permanent crops,0.013158
+1,Complex cultivation patterns,Pastures,0.0
+1,Complex cultivation patterns,Complex cultivation patterns,0.032895
 1,Complex cultivation patterns,Land principally occupied by agriculture,0.0
-1,Complex cultivation patterns,Agro-forestry areas,0.003289
-1,Complex cultivation patterns,Broad-leaved forest,0.042763
-1,Complex cultivation patterns,Coniferous forest,0.023026
-1,Complex cultivation patterns,Mixed forest,0.032895
-1,Complex cultivation patterns,Natural grassland and sparsely vegetated areas,0.009868
-1,Complex cultivation patterns,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Complex cultivation patterns,"Transitional woodland, shrub",0.026316
+1,Complex cultivation patterns,Agro-forestry areas,0.0
+1,Complex cultivation patterns,Broad-leaved forest,0.003289
+1,Complex cultivation patterns,Coniferous forest,0.194079
+1,Complex cultivation patterns,Mixed forest,0.036184
+1,Complex cultivation patterns,Natural grassland and sparsely vegetated areas,0.016447
+1,Complex cultivation patterns,"Moors, heathland and sclerophyllous vegetation",0.006579
+1,Complex cultivation patterns,"Transitional woodland, shrub",0.006579
 1,Complex cultivation patterns,"Beaches, dunes, sands",0.0
-1,Complex cultivation patterns,Inland wetlands,0.006579
+1,Complex cultivation patterns,Inland wetlands,0.0
 1,Complex cultivation patterns,Coastal wetlands,0.0
 1,Complex cultivation patterns,Inland waters,0.0
 1,Complex cultivation patterns,Marine waters,0.0
@@ -134,91 +134,91 @@ epoch,true_class,pred_class,value
 1,Land principally occupied by agriculture,Marine waters,0.0
 1,Agro-forestry areas,Urban fabric,0.0
 1,Agro-forestry areas,Industrial or commercial units,0.0
-1,Agro-forestry areas,Arable land,0.604396
-1,Agro-forestry areas,Permanent crops,0.0
-1,Agro-forestry areas,Pastures,0.120879
-1,Agro-forestry areas,Complex cultivation patterns,0.0
+1,Agro-forestry areas,Arable land,0.395604
+1,Agro-forestry areas,Permanent crops,0.010989
+1,Agro-forestry areas,Pastures,0.0
+1,Agro-forestry areas,Complex cultivation patterns,0.021978
 1,Agro-forestry areas,Land principally occupied by agriculture,0.0
 1,Agro-forestry areas,Agro-forestry areas,0.0
-1,Agro-forestry areas,Broad-leaved forest,0.054945
-1,Agro-forestry areas,Coniferous forest,0.10989
-1,Agro-forestry areas,Mixed forest,0.0
-1,Agro-forestry areas,Natural grassland and sparsely vegetated areas,0.010989
+1,Agro-forestry areas,Broad-leaved forest,0.032967
+1,Agro-forestry areas,Coniferous forest,0.043956
+1,Agro-forestry areas,Mixed forest,0.010989
+1,Agro-forestry areas,Natural grassland and sparsely vegetated areas,0.0
 1,Agro-forestry areas,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Agro-forestry areas,"Transitional woodland, shrub",0.032967
+1,Agro-forestry areas,"Transitional woodland, shrub",0.0
 1,Agro-forestry areas,"Beaches, dunes, sands",0.0
-1,Agro-forestry areas,Inland wetlands,0.010989
+1,Agro-forestry areas,Inland wetlands,0.0
 1,Agro-forestry areas,Coastal wetlands,0.0
-1,Agro-forestry areas,Inland waters,0.0
+1,Agro-forestry areas,Inland waters,0.010989
 1,Agro-forestry areas,Marine waters,0.0
-1,Broad-leaved forest,Urban fabric,0.004525
+1,Broad-leaved forest,Urban fabric,0.006787
 1,Broad-leaved forest,Industrial or commercial units,0.0
-1,Broad-leaved forest,Arable land,0.11086
-1,Broad-leaved forest,Permanent crops,0.0
-1,Broad-leaved forest,Pastures,0.027149
-1,Broad-leaved forest,Complex cultivation patterns,0.004525
+1,Broad-leaved forest,Arable land,0.341629
+1,Broad-leaved forest,Permanent crops,0.015837
+1,Broad-leaved forest,Pastures,0.0
+1,Broad-leaved forest,Complex cultivation patterns,0.0181
 1,Broad-leaved forest,Land principally occupied by agriculture,0.0
-1,Broad-leaved forest,Agro-forestry areas,0.002262
-1,Broad-leaved forest,Broad-leaved forest,0.031674
-1,Broad-leaved forest,Coniferous forest,0.047511
-1,Broad-leaved forest,Mixed forest,0.095023
-1,Broad-leaved forest,Natural grassland and sparsely vegetated areas,0.00905
-1,Broad-leaved forest,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Broad-leaved forest,"Transitional woodland, shrub",0.020362
+1,Broad-leaved forest,Agro-forestry areas,0.0
+1,Broad-leaved forest,Broad-leaved forest,0.00905
+1,Broad-leaved forest,Coniferous forest,0.264706
+1,Broad-leaved forest,Mixed forest,0.024887
+1,Broad-leaved forest,Natural grassland and sparsely vegetated areas,0.013575
+1,Broad-leaved forest,"Moors, heathland and sclerophyllous vegetation",0.006787
+1,Broad-leaved forest,"Transitional woodland, shrub",0.015837
 1,Broad-leaved forest,"Beaches, dunes, sands",0.0
 1,Broad-leaved forest,Inland wetlands,0.002262
 1,Broad-leaved forest,Coastal wetlands,0.0
 1,Broad-leaved forest,Inland waters,0.0
-1,Broad-leaved forest,Marine waters,0.004525
-1,Coniferous forest,Urban fabric,0.026639
+1,Broad-leaved forest,Marine waters,0.0
+1,Coniferous forest,Urban fabric,0.07377
 1,Coniferous forest,Industrial or commercial units,0.0
-1,Coniferous forest,Arable land,0.047131
-1,Coniferous forest,Permanent crops,0.0
+1,Coniferous forest,Arable land,0.231557
+1,Coniferous forest,Permanent crops,0.05123
 1,Coniferous forest,Pastures,0.018443
-1,Coniferous forest,Complex cultivation patterns,0.028689
-1,Coniferous forest,Land principally occupied by agriculture,0.0
-1,Coniferous forest,Agro-forestry areas,0.014344
-1,Coniferous forest,Broad-leaved forest,0.018443
-1,Coniferous forest,Coniferous forest,0.094262
-1,Coniferous forest,Mixed forest,0.196721
-1,Coniferous forest,Natural grassland and sparsely vegetated areas,0.006148
-1,Coniferous forest,"Moors, heathland and sclerophyllous vegetation",0.004098
-1,Coniferous forest,"Transitional woodland, shrub",0.036885
-1,Coniferous forest,"Beaches, dunes, sands",0.0
-1,Coniferous forest,Inland wetlands,0.004098
+1,Coniferous forest,Complex cultivation patterns,0.034836
+1,Coniferous forest,Land principally occupied by agriculture,0.002049
+1,Coniferous forest,Agro-forestry areas,0.012295
+1,Coniferous forest,Broad-leaved forest,0.047131
+1,Coniferous forest,Coniferous forest,0.565574
+1,Coniferous forest,Mixed forest,0.067623
+1,Coniferous forest,Natural grassland and sparsely vegetated areas,0.028689
+1,Coniferous forest,"Moors, heathland and sclerophyllous vegetation",0.079918
+1,Coniferous forest,"Transitional woodland, shrub",0.079918
+1,Coniferous forest,"Beaches, dunes, sands",0.002049
+1,Coniferous forest,Inland wetlands,0.022541
 1,Coniferous forest,Coastal wetlands,0.0
 1,Coniferous forest,Inland waters,0.0
-1,Coniferous forest,Marine waters,0.014344
-1,Mixed forest,Urban fabric,0.019802
+1,Coniferous forest,Marine waters,0.022541
+1,Mixed forest,Urban fabric,0.057426
 1,Mixed forest,Industrial or commercial units,0.0
-1,Mixed forest,Arable land,0.033663
-1,Mixed forest,Permanent crops,0.0
-1,Mixed forest,Pastures,0.007921
-1,Mixed forest,Complex cultivation patterns,0.031683
-1,Mixed forest,Land principally occupied by agriculture,0.0
-1,Mixed forest,Agro-forestry areas,0.005941
-1,Mixed forest,Broad-leaved forest,0.011881
-1,Mixed forest,Coniferous forest,0.085149
-1,Mixed forest,Mixed forest,0.178218
-1,Mixed forest,Natural grassland and sparsely vegetated areas,0.005941
-1,Mixed forest,"Moors, heathland and sclerophyllous vegetation",0.00396
-1,Mixed forest,"Transitional woodland, shrub",0.023762
+1,Mixed forest,Arable land,0.257426
+1,Mixed forest,Permanent crops,0.049505
+1,Mixed forest,Pastures,0.005941
+1,Mixed forest,Complex cultivation patterns,0.021782
+1,Mixed forest,Land principally occupied by agriculture,0.00198
+1,Mixed forest,Agro-forestry areas,0.009901
+1,Mixed forest,Broad-leaved forest,0.027723
+1,Mixed forest,Coniferous forest,0.536634
+1,Mixed forest,Mixed forest,0.039604
+1,Mixed forest,Natural grassland and sparsely vegetated areas,0.013861
+1,Mixed forest,"Moors, heathland and sclerophyllous vegetation",0.063366
+1,Mixed forest,"Transitional woodland, shrub",0.063366
 1,Mixed forest,"Beaches, dunes, sands",0.0
-1,Mixed forest,Inland wetlands,0.0
+1,Mixed forest,Inland wetlands,0.011881
 1,Mixed forest,Coastal wetlands,0.0
 1,Mixed forest,Inland waters,0.0
-1,Mixed forest,Marine waters,0.009901
+1,Mixed forest,Marine waters,0.011881
 1,Natural grassland and sparsely vegetated areas,Urban fabric,0.0
 1,Natural grassland and sparsely vegetated areas,Industrial or commercial units,0.0
-1,Natural grassland and sparsely vegetated areas,Arable land,0.131579
+1,Natural grassland and sparsely vegetated areas,Arable land,0.157895
 1,Natural grassland and sparsely vegetated areas,Permanent crops,0.0
 1,Natural grassland and sparsely vegetated areas,Pastures,0.0
 1,Natural grassland and sparsely vegetated areas,Complex cultivation patterns,0.0
 1,Natural grassland and sparsely vegetated areas,Land principally occupied by agriculture,0.0
 1,Natural grassland and sparsely vegetated areas,Agro-forestry areas,0.0
 1,Natural grassland and sparsely vegetated areas,Broad-leaved forest,0.0
-1,Natural grassland and sparsely vegetated areas,Coniferous forest,0.0
-1,Natural grassland and sparsely vegetated areas,Mixed forest,0.210526
+1,Natural grassland and sparsely vegetated areas,Coniferous forest,0.342105
+1,Natural grassland and sparsely vegetated areas,Mixed forest,0.0
 1,Natural grassland and sparsely vegetated areas,Natural grassland and sparsely vegetated areas,0.0
 1,Natural grassland and sparsely vegetated areas,"Moors, heathland and sclerophyllous vegetation",0.0
 1,Natural grassland and sparsely vegetated areas,"Transitional woodland, shrub",0.0
@@ -229,166 +229,166 @@ epoch,true_class,pred_class,value
 1,Natural grassland and sparsely vegetated areas,Marine waters,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Urban fabric,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Industrial or commercial units,0.0
-1,"Moors, heathland and sclerophyllous vegetation",Arable land,0.086957
-1,"Moors, heathland and sclerophyllous vegetation",Permanent crops,0.0
-1,"Moors, heathland and sclerophyllous vegetation",Pastures,0.065217
+1,"Moors, heathland and sclerophyllous vegetation",Arable land,0.456522
+1,"Moors, heathland and sclerophyllous vegetation",Permanent crops,0.021739
+1,"Moors, heathland and sclerophyllous vegetation",Pastures,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Complex cultivation patterns,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Land principally occupied by agriculture,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Agro-forestry areas,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Broad-leaved forest,0.065217
-1,"Moors, heathland and sclerophyllous vegetation",Coniferous forest,0.021739
-1,"Moors, heathland and sclerophyllous vegetation",Mixed forest,0.065217
+1,"Moors, heathland and sclerophyllous vegetation",Coniferous forest,0.086957
+1,"Moors, heathland and sclerophyllous vegetation",Mixed forest,0.043478
 1,"Moors, heathland and sclerophyllous vegetation",Natural grassland and sparsely vegetated areas,0.0
 1,"Moors, heathland and sclerophyllous vegetation","Moors, heathland and sclerophyllous vegetation",0.0
-1,"Moors, heathland and sclerophyllous vegetation","Transitional woodland, shrub",0.021739
+1,"Moors, heathland and sclerophyllous vegetation","Transitional woodland, shrub",0.043478
 1,"Moors, heathland and sclerophyllous vegetation","Beaches, dunes, sands",0.0
-1,"Moors, heathland and sclerophyllous vegetation",Inland wetlands,0.021739
+1,"Moors, heathland and sclerophyllous vegetation",Inland wetlands,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Coastal wetlands,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Inland waters,0.0
 1,"Moors, heathland and sclerophyllous vegetation",Marine waters,0.0
-1,"Transitional woodland, shrub",Urban fabric,0.016461
+1,"Transitional woodland, shrub",Urban fabric,0.049383
 1,"Transitional woodland, shrub",Industrial or commercial units,0.0
-1,"Transitional woodland, shrub",Arable land,0.123457
-1,"Transitional woodland, shrub",Permanent crops,0.0
-1,"Transitional woodland, shrub",Pastures,0.037037
-1,"Transitional woodland, shrub",Complex cultivation patterns,0.018519
-1,"Transitional woodland, shrub",Land principally occupied by agriculture,0.0
-1,"Transitional woodland, shrub",Agro-forestry areas,0.012346
-1,"Transitional woodland, shrub",Broad-leaved forest,0.028807
-1,"Transitional woodland, shrub",Coniferous forest,0.074074
-1,"Transitional woodland, shrub",Mixed forest,0.150206
-1,"Transitional woodland, shrub",Natural grassland and sparsely vegetated areas,0.010288
-1,"Transitional woodland, shrub","Moors, heathland and sclerophyllous vegetation",0.002058
-1,"Transitional woodland, shrub","Transitional woodland, shrub",0.04321
+1,"Transitional woodland, shrub",Arable land,0.286008
+1,"Transitional woodland, shrub",Permanent crops,0.039095
+1,"Transitional woodland, shrub",Pastures,0.016461
+1,"Transitional woodland, shrub",Complex cultivation patterns,0.028807
+1,"Transitional woodland, shrub",Land principally occupied by agriculture,0.002058
+1,"Transitional woodland, shrub",Agro-forestry areas,0.00823
+1,"Transitional woodland, shrub",Broad-leaved forest,0.041152
+1,"Transitional woodland, shrub",Coniferous forest,0.380658
+1,"Transitional woodland, shrub",Mixed forest,0.045267
+1,"Transitional woodland, shrub",Natural grassland and sparsely vegetated areas,0.026749
+1,"Transitional woodland, shrub","Moors, heathland and sclerophyllous vegetation",0.049383
+1,"Transitional woodland, shrub","Transitional woodland, shrub",0.049383
 1,"Transitional woodland, shrub","Beaches, dunes, sands",0.0
-1,"Transitional woodland, shrub",Inland wetlands,0.006173
+1,"Transitional woodland, shrub",Inland wetlands,0.014403
 1,"Transitional woodland, shrub",Coastal wetlands,0.0
 1,"Transitional woodland, shrub",Inland waters,0.0
-1,"Transitional woodland, shrub",Marine waters,0.00823
-1,"Beaches, dunes, sands",Urban fabric,0.5
+1,"Transitional woodland, shrub",Marine waters,0.016461
+1,"Beaches, dunes, sands",Urban fabric,0.0
 1,"Beaches, dunes, sands",Industrial or commercial units,0.0
 1,"Beaches, dunes, sands",Arable land,0.166667
 1,"Beaches, dunes, sands",Permanent crops,0.0
-1,"Beaches, dunes, sands",Pastures,0.166667
+1,"Beaches, dunes, sands",Pastures,0.0
 1,"Beaches, dunes, sands",Complex cultivation patterns,0.0
-1,"Beaches, dunes, sands",Land principally occupied by agriculture,0.166667
+1,"Beaches, dunes, sands",Land principally occupied by agriculture,0.0
 1,"Beaches, dunes, sands",Agro-forestry areas,0.0
-1,"Beaches, dunes, sands",Broad-leaved forest,0.0
-1,"Beaches, dunes, sands",Coniferous forest,0.0
-1,"Beaches, dunes, sands",Mixed forest,0.0
-1,"Beaches, dunes, sands",Natural grassland and sparsely vegetated areas,0.166667
+1,"Beaches, dunes, sands",Broad-leaved forest,0.333333
+1,"Beaches, dunes, sands",Coniferous forest,0.5
+1,"Beaches, dunes, sands",Mixed forest,0.5
+1,"Beaches, dunes, sands",Natural grassland and sparsely vegetated areas,0.5
 1,"Beaches, dunes, sands","Moors, heathland and sclerophyllous vegetation",0.0
-1,"Beaches, dunes, sands","Transitional woodland, shrub",0.166667
+1,"Beaches, dunes, sands","Transitional woodland, shrub",0.0
 1,"Beaches, dunes, sands","Beaches, dunes, sands",0.0
-1,"Beaches, dunes, sands",Inland wetlands,0.0
+1,"Beaches, dunes, sands",Inland wetlands,0.166667
 1,"Beaches, dunes, sands",Coastal wetlands,0.0
 1,"Beaches, dunes, sands",Inland waters,0.0
-1,"Beaches, dunes, sands",Marine waters,0.333333
-1,Inland wetlands,Urban fabric,0.015873
+1,"Beaches, dunes, sands",Marine waters,0.0
+1,Inland wetlands,Urban fabric,0.047619
 1,Inland wetlands,Industrial or commercial units,0.0
-1,Inland wetlands,Arable land,0.079365
-1,Inland wetlands,Permanent crops,0.0
-1,Inland wetlands,Pastures,0.0
-1,Inland wetlands,Complex cultivation patterns,0.0
+1,Inland wetlands,Arable land,0.126984
+1,Inland wetlands,Permanent crops,0.031746
+1,Inland wetlands,Pastures,0.015873
+1,Inland wetlands,Complex cultivation patterns,0.031746
 1,Inland wetlands,Land principally occupied by agriculture,0.0
-1,Inland wetlands,Agro-forestry areas,0.031746
-1,Inland wetlands,Broad-leaved forest,0.0
-1,Inland wetlands,Coniferous forest,0.126984
-1,Inland wetlands,Mixed forest,0.269841
-1,Inland wetlands,Natural grassland and sparsely vegetated areas,0.0
-1,Inland wetlands,"Moors, heathland and sclerophyllous vegetation",0.015873
+1,Inland wetlands,Agro-forestry areas,0.0
+1,Inland wetlands,Broad-leaved forest,0.047619
+1,Inland wetlands,Coniferous forest,0.444444
+1,Inland wetlands,Mixed forest,0.047619
+1,Inland wetlands,Natural grassland and sparsely vegetated areas,0.015873
+1,Inland wetlands,"Moors, heathland and sclerophyllous vegetation",0.047619
 1,Inland wetlands,"Transitional woodland, shrub",0.031746
 1,Inland wetlands,"Beaches, dunes, sands",0.0
-1,Inland wetlands,Inland wetlands,0.0
+1,Inland wetlands,Inland wetlands,0.015873
 1,Inland wetlands,Coastal wetlands,0.0
 1,Inland wetlands,Inland waters,0.0
-1,Inland wetlands,Marine waters,0.0
+1,Inland wetlands,Marine waters,0.015873
 1,Coastal wetlands,Urban fabric,0.0
 1,Coastal wetlands,Industrial or commercial units,0.0
-1,Coastal wetlands,Arable land,0.5
+1,Coastal wetlands,Arable land,0.6
 1,Coastal wetlands,Permanent crops,0.0
-1,Coastal wetlands,Pastures,0.1
+1,Coastal wetlands,Pastures,0.0
 1,Coastal wetlands,Complex cultivation patterns,0.0
 1,Coastal wetlands,Land principally occupied by agriculture,0.0
 1,Coastal wetlands,Agro-forestry areas,0.0
-1,Coastal wetlands,Broad-leaved forest,0.0
+1,Coastal wetlands,Broad-leaved forest,0.1
 1,Coastal wetlands,Coniferous forest,0.1
 1,Coastal wetlands,Mixed forest,0.0
 1,Coastal wetlands,Natural grassland and sparsely vegetated areas,0.0
 1,Coastal wetlands,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Coastal wetlands,"Transitional woodland, shrub",0.0
+1,Coastal wetlands,"Transitional woodland, shrub",0.1
 1,Coastal wetlands,"Beaches, dunes, sands",0.0
 1,Coastal wetlands,Inland wetlands,0.0
 1,Coastal wetlands,Coastal wetlands,0.0
 1,Coastal wetlands,Inland waters,0.0
 1,Coastal wetlands,Marine waters,0.0
-1,Inland waters,Urban fabric,0.021978
+1,Inland waters,Urban fabric,0.049451
 1,Inland waters,Industrial or commercial units,0.0
-1,Inland waters,Arable land,0.032967
-1,Inland waters,Permanent crops,0.0
-1,Inland waters,Pastures,0.005495
-1,Inland waters,Complex cultivation patterns,0.038462
+1,Inland waters,Arable land,0.230769
+1,Inland waters,Permanent crops,0.049451
+1,Inland waters,Pastures,0.010989
+1,Inland waters,Complex cultivation patterns,0.032967
 1,Inland waters,Land principally occupied by agriculture,0.0
-1,Inland waters,Agro-forestry areas,0.010989
-1,Inland waters,Broad-leaved forest,0.0
-1,Inland waters,Coniferous forest,0.087912
-1,Inland waters,Mixed forest,0.208791
-1,Inland waters,Natural grassland and sparsely vegetated areas,0.010989
-1,Inland waters,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Inland waters,"Transitional woodland, shrub",0.021978
+1,Inland waters,Agro-forestry areas,0.005495
+1,Inland waters,Broad-leaved forest,0.038462
+1,Inland waters,Coniferous forest,0.571429
+1,Inland waters,Mixed forest,0.054945
+1,Inland waters,Natural grassland and sparsely vegetated areas,0.027473
+1,Inland waters,"Moors, heathland and sclerophyllous vegetation",0.065934
+1,Inland waters,"Transitional woodland, shrub",0.093407
 1,Inland waters,"Beaches, dunes, sands",0.0
-1,Inland waters,Inland wetlands,0.0
+1,Inland waters,Inland wetlands,0.005495
 1,Inland waters,Coastal wetlands,0.0
 1,Inland waters,Inland waters,0.0
-1,Inland waters,Marine waters,0.016484
-1,Marine waters,Urban fabric,0.023392
+1,Inland waters,Marine waters,0.005495
+1,Marine waters,Urban fabric,0.017544
 1,Marine waters,Industrial or commercial units,0.0
-1,Marine waters,Arable land,0.035088
-1,Marine waters,Permanent crops,0.0
-1,Marine waters,Pastures,0.017544
-1,Marine waters,Complex cultivation patterns,0.005848
-1,Marine waters,Land principally occupied by agriculture,0.005848
+1,Marine waters,Arable land,0.064327
+1,Marine waters,Permanent crops,0.011696
+1,Marine waters,Pastures,0.0
+1,Marine waters,Complex cultivation patterns,0.0
+1,Marine waters,Land principally occupied by agriculture,0.0
 1,Marine waters,Agro-forestry areas,0.0
-1,Marine waters,Broad-leaved forest,0.0
-1,Marine waters,Coniferous forest,0.005848
-1,Marine waters,Mixed forest,0.690058
-1,Marine waters,Natural grassland and sparsely vegetated areas,0.005848
-1,Marine waters,"Moors, heathland and sclerophyllous vegetation",0.0
-1,Marine waters,"Transitional woodland, shrub",0.005848
+1,Marine waters,Broad-leaved forest,0.011696
+1,Marine waters,Coniferous forest,0.122807
+1,Marine waters,Mixed forest,0.02924
+1,Marine waters,Natural grassland and sparsely vegetated areas,0.017544
+1,Marine waters,"Moors, heathland and sclerophyllous vegetation",0.005848
+1,Marine waters,"Transitional woodland, shrub",0.017544
 1,Marine waters,"Beaches, dunes, sands",0.0
-1,Marine waters,Inland wetlands,0.0
+1,Marine waters,Inland wetlands,0.011696
 1,Marine waters,Coastal wetlands,0.0
 1,Marine waters,Inland waters,0.0
-1,Marine waters,Marine waters,0.081871
-2,Urban fabric,Urban fabric,0.044554
+1,Marine waters,Marine waters,0.0
+2,Urban fabric,Urban fabric,0.326733
 2,Urban fabric,Industrial or commercial units,0.0
-2,Urban fabric,Arable land,0.628713
+2,Urban fabric,Arable land,0.539604
 2,Urban fabric,Permanent crops,0.0
-2,Urban fabric,Pastures,0.034653
-2,Urban fabric,Complex cultivation patterns,0.0
+2,Urban fabric,Pastures,0.079208
+2,Urban fabric,Complex cultivation patterns,0.089109
 2,Urban fabric,Land principally occupied by agriculture,0.0
-2,Urban fabric,Agro-forestry areas,0.00495
+2,Urban fabric,Agro-forestry areas,0.0
 2,Urban fabric,Broad-leaved forest,0.0
-2,Urban fabric,Coniferous forest,0.059406
-2,Urban fabric,Mixed forest,0.049505
+2,Urban fabric,Coniferous forest,0.089109
+2,Urban fabric,Mixed forest,0.064356
 2,Urban fabric,Natural grassland and sparsely vegetated areas,0.0
 2,Urban fabric,"Moors, heathland and sclerophyllous vegetation",0.0
 2,Urban fabric,"Transitional woodland, shrub",0.009901
 2,Urban fabric,"Beaches, dunes, sands",0.0
 2,Urban fabric,Inland wetlands,0.0
 2,Urban fabric,Coastal wetlands,0.0
-2,Urban fabric,Inland waters,0.009901
+2,Urban fabric,Inland waters,0.0
 2,Urban fabric,Marine waters,0.0
-2,Industrial or commercial units,Urban fabric,0.065217
+2,Industrial or commercial units,Urban fabric,0.456522
 2,Industrial or commercial units,Industrial or commercial units,0.0
-2,Industrial or commercial units,Arable land,0.586957
+2,Industrial or commercial units,Arable land,0.478261
 2,Industrial or commercial units,Permanent crops,0.0
-2,Industrial or commercial units,Pastures,0.0
-2,Industrial or commercial units,Complex cultivation patterns,0.0
+2,Industrial or commercial units,Pastures,0.065217
+2,Industrial or commercial units,Complex cultivation patterns,0.065217
 2,Industrial or commercial units,Land principally occupied by agriculture,0.0
 2,Industrial or commercial units,Agro-forestry areas,0.0
 2,Industrial or commercial units,Broad-leaved forest,0.0
-2,Industrial or commercial units,Coniferous forest,0.021739
+2,Industrial or commercial units,Coniferous forest,0.086957
 2,Industrial or commercial units,Mixed forest,0.021739
 2,Industrial or commercial units,Natural grassland and sparsely vegetated areas,0.0
 2,Industrial or commercial units,"Moors, heathland and sclerophyllous vegetation",0.0
@@ -398,77 +398,77 @@ epoch,true_class,pred_class,value
 2,Industrial or commercial units,Coastal wetlands,0.0
 2,Industrial or commercial units,Inland waters,0.0
 2,Industrial or commercial units,Marine waters,0.0
-2,Arable land,Urban fabric,0.020408
+2,Arable land,Urban fabric,0.128728
 2,Arable land,Industrial or commercial units,0.0
-2,Arable land,Arable land,0.723705
-2,Arable land,Permanent crops,0.0
-2,Arable land,Pastures,0.029827
-2,Arable land,Complex cultivation patterns,0.010989
+2,Arable land,Arable land,0.583987
+2,Arable land,Permanent crops,0.00157
+2,Arable land,Pastures,0.11146
+2,Arable land,Complex cultivation patterns,0.053375
 2,Arable land,Land principally occupied by agriculture,0.0
-2,Arable land,Agro-forestry areas,0.009419
-2,Arable land,Broad-leaved forest,0.009419
-2,Arable land,Coniferous forest,0.130298
-2,Arable land,Mixed forest,0.117739
+2,Arable land,Agro-forestry areas,0.010989
+2,Arable land,Broad-leaved forest,0.0
+2,Arable land,Coniferous forest,0.178964
+2,Arable land,Mixed forest,0.11303
 2,Arable land,Natural grassland and sparsely vegetated areas,0.0
 2,Arable land,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Arable land,"Transitional woodland, shrub",0.048666
+2,Arable land,"Transitional woodland, shrub",0.012559
 2,Arable land,"Beaches, dunes, sands",0.0
 2,Arable land,Inland wetlands,0.0
 2,Arable land,Coastal wetlands,0.0
-2,Arable land,Inland waters,0.012559
+2,Arable land,Inland waters,0.007849
 2,Arable land,Marine waters,0.0
-2,Permanent crops,Urban fabric,0.044248
+2,Permanent crops,Urban fabric,0.19469
 2,Permanent crops,Industrial or commercial units,0.0
-2,Permanent crops,Arable land,0.628319
+2,Permanent crops,Arable land,0.40708
 2,Permanent crops,Permanent crops,0.0
-2,Permanent crops,Pastures,0.00885
-2,Permanent crops,Complex cultivation patterns,0.0
+2,Permanent crops,Pastures,0.035398
+2,Permanent crops,Complex cultivation patterns,0.044248
 2,Permanent crops,Land principally occupied by agriculture,0.0
 2,Permanent crops,Agro-forestry areas,0.00885
-2,Permanent crops,Broad-leaved forest,0.026549
-2,Permanent crops,Coniferous forest,0.00885
+2,Permanent crops,Broad-leaved forest,0.0
+2,Permanent crops,Coniferous forest,0.017699
 2,Permanent crops,Mixed forest,0.017699
 2,Permanent crops,Natural grassland and sparsely vegetated areas,0.0
 2,Permanent crops,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Permanent crops,"Transitional woodland, shrub",0.035398
+2,Permanent crops,"Transitional woodland, shrub",0.053097
 2,Permanent crops,"Beaches, dunes, sands",0.0
 2,Permanent crops,Inland wetlands,0.0
 2,Permanent crops,Coastal wetlands,0.0
 2,Permanent crops,Inland waters,0.0
 2,Permanent crops,Marine waters,0.0
-2,Pastures,Urban fabric,0.0033
+2,Pastures,Urban fabric,0.066007
 2,Pastures,Industrial or commercial units,0.0
-2,Pastures,Arable land,0.577558
+2,Pastures,Arable land,0.405941
 2,Pastures,Permanent crops,0.0
-2,Pastures,Pastures,0.089109
-2,Pastures,Complex cultivation patterns,0.006601
+2,Pastures,Pastures,0.267327
+2,Pastures,Complex cultivation patterns,0.046205
 2,Pastures,Land principally occupied by agriculture,0.0
-2,Pastures,Agro-forestry areas,0.006601
-2,Pastures,Broad-leaved forest,0.006601
-2,Pastures,Coniferous forest,0.125413
-2,Pastures,Mixed forest,0.09571
+2,Pastures,Agro-forestry areas,0.013201
+2,Pastures,Broad-leaved forest,0.0
+2,Pastures,Coniferous forest,0.181518
+2,Pastures,Mixed forest,0.079208
 2,Pastures,Natural grassland and sparsely vegetated areas,0.0
 2,Pastures,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Pastures,"Transitional woodland, shrub",0.079208
+2,Pastures,"Transitional woodland, shrub",0.016502
 2,Pastures,"Beaches, dunes, sands",0.0
 2,Pastures,Inland wetlands,0.0
 2,Pastures,Coastal wetlands,0.0
 2,Pastures,Inland waters,0.0033
 2,Pastures,Marine waters,0.0
-2,Complex cultivation patterns,Urban fabric,0.013158
+2,Complex cultivation patterns,Urban fabric,0.167763
 2,Complex cultivation patterns,Industrial or commercial units,0.0
-2,Complex cultivation patterns,Arable land,0.592105
+2,Complex cultivation patterns,Arable land,0.427632
 2,Complex cultivation patterns,Permanent crops,0.0
-2,Complex cultivation patterns,Pastures,0.023026
-2,Complex cultivation patterns,Complex cultivation patterns,0.003289
+2,Complex cultivation patterns,Pastures,0.069079
+2,Complex cultivation patterns,Complex cultivation patterns,0.046053
 2,Complex cultivation patterns,Land principally occupied by agriculture,0.0
 2,Complex cultivation patterns,Agro-forestry areas,0.0
-2,Complex cultivation patterns,Broad-leaved forest,0.006579
-2,Complex cultivation patterns,Coniferous forest,0.111842
-2,Complex cultivation patterns,Mixed forest,0.095395
+2,Complex cultivation patterns,Broad-leaved forest,0.0
+2,Complex cultivation patterns,Coniferous forest,0.161184
+2,Complex cultivation patterns,Mixed forest,0.092105
 2,Complex cultivation patterns,Natural grassland and sparsely vegetated areas,0.0
 2,Complex cultivation patterns,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Complex cultivation patterns,"Transitional woodland, shrub",0.069079
+2,Complex cultivation patterns,"Transitional woodland, shrub",0.055921
 2,Complex cultivation patterns,"Beaches, dunes, sands",0.0
 2,Complex cultivation patterns,Inland wetlands,0.0
 2,Complex cultivation patterns,Coastal wetlands,0.0
@@ -493,15 +493,15 @@ epoch,true_class,pred_class,value
 2,Land principally occupied by agriculture,Coastal wetlands,0.0
 2,Land principally occupied by agriculture,Inland waters,0.0
 2,Land principally occupied by agriculture,Marine waters,0.0
-2,Agro-forestry areas,Urban fabric,0.0
+2,Agro-forestry areas,Urban fabric,0.032967
 2,Agro-forestry areas,Industrial or commercial units,0.0
-2,Agro-forestry areas,Arable land,0.78022
+2,Agro-forestry areas,Arable land,0.340659
 2,Agro-forestry areas,Permanent crops,0.0
-2,Agro-forestry areas,Pastures,0.043956
-2,Agro-forestry areas,Complex cultivation patterns,0.065934
+2,Agro-forestry areas,Pastures,0.087912
+2,Agro-forestry areas,Complex cultivation patterns,0.021978
 2,Agro-forestry areas,Land principally occupied by agriculture,0.0
-2,Agro-forestry areas,Agro-forestry areas,0.065934
-2,Agro-forestry areas,Broad-leaved forest,0.043956
+2,Agro-forestry areas,Agro-forestry areas,0.120879
+2,Agro-forestry areas,Broad-leaved forest,0.0
 2,Agro-forestry areas,Coniferous forest,0.0
 2,Agro-forestry areas,Mixed forest,0.0
 2,Agro-forestry areas,Natural grassland and sparsely vegetated areas,0.0
@@ -512,74 +512,74 @@ epoch,true_class,pred_class,value
 2,Agro-forestry areas,Coastal wetlands,0.0
 2,Agro-forestry areas,Inland waters,0.0
 2,Agro-forestry areas,Marine waters,0.0
-2,Broad-leaved forest,Urban fabric,0.011312
+2,Broad-leaved forest,Urban fabric,0.076923
 2,Broad-leaved forest,Industrial or commercial units,0.0
-2,Broad-leaved forest,Arable land,0.411765
+2,Broad-leaved forest,Arable land,0.262443
 2,Broad-leaved forest,Permanent crops,0.0
-2,Broad-leaved forest,Pastures,0.0181
-2,Broad-leaved forest,Complex cultivation patterns,0.015837
+2,Broad-leaved forest,Pastures,0.054299
+2,Broad-leaved forest,Complex cultivation patterns,0.011312
 2,Broad-leaved forest,Land principally occupied by agriculture,0.0
-2,Broad-leaved forest,Agro-forestry areas,0.006787
-2,Broad-leaved forest,Broad-leaved forest,0.031674
-2,Broad-leaved forest,Coniferous forest,0.269231
-2,Broad-leaved forest,Mixed forest,0.226244
+2,Broad-leaved forest,Agro-forestry areas,0.002262
+2,Broad-leaved forest,Broad-leaved forest,0.0
+2,Broad-leaved forest,Coniferous forest,0.307692
+2,Broad-leaved forest,Mixed forest,0.19457
 2,Broad-leaved forest,Natural grassland and sparsely vegetated areas,0.0
 2,Broad-leaved forest,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Broad-leaved forest,"Transitional woodland, shrub",0.158371
+2,Broad-leaved forest,"Transitional woodland, shrub",0.115385
 2,Broad-leaved forest,"Beaches, dunes, sands",0.0
 2,Broad-leaved forest,Inland wetlands,0.0
 2,Broad-leaved forest,Coastal wetlands,0.0
 2,Broad-leaved forest,Inland waters,0.00905
-2,Broad-leaved forest,Marine waters,0.0
-2,Coniferous forest,Urban fabric,0.004098
+2,Broad-leaved forest,Marine waters,0.004525
+2,Coniferous forest,Urban fabric,0.038934
 2,Coniferous forest,Industrial or commercial units,0.0
-2,Coniferous forest,Arable land,0.239754
+2,Coniferous forest,Arable land,0.17418
 2,Coniferous forest,Permanent crops,0.0
-2,Coniferous forest,Pastures,0.004098
-2,Coniferous forest,Complex cultivation patterns,0.002049
+2,Coniferous forest,Pastures,0.028689
+2,Coniferous forest,Complex cultivation patterns,0.018443
 2,Coniferous forest,Land principally occupied by agriculture,0.0
 2,Coniferous forest,Agro-forestry areas,0.0
-2,Coniferous forest,Broad-leaved forest,0.004098
-2,Coniferous forest,Coniferous forest,0.622951
-2,Coniferous forest,Mixed forest,0.534836
+2,Coniferous forest,Broad-leaved forest,0.0
+2,Coniferous forest,Coniferous forest,0.672131
+2,Coniferous forest,Mixed forest,0.477459
 2,Coniferous forest,Natural grassland and sparsely vegetated areas,0.0
 2,Coniferous forest,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Coniferous forest,"Transitional woodland, shrub",0.354508
+2,Coniferous forest,"Transitional woodland, shrub",0.145492
 2,Coniferous forest,"Beaches, dunes, sands",0.0
 2,Coniferous forest,Inland wetlands,0.0
 2,Coniferous forest,Coastal wetlands,0.0
-2,Coniferous forest,Inland waters,0.059426
-2,Coniferous forest,Marine waters,0.008197
-2,Mixed forest,Urban fabric,0.00396
+2,Coniferous forest,Inland waters,0.05123
+2,Coniferous forest,Marine waters,0.012295
+2,Mixed forest,Urban fabric,0.063366
 2,Mixed forest,Industrial or commercial units,0.0
-2,Mixed forest,Arable land,0.241584
+2,Mixed forest,Arable land,0.180198
 2,Mixed forest,Permanent crops,0.0
-2,Mixed forest,Pastures,0.007921
-2,Mixed forest,Complex cultivation patterns,0.00198
+2,Mixed forest,Pastures,0.021782
+2,Mixed forest,Complex cultivation patterns,0.015842
 2,Mixed forest,Land principally occupied by agriculture,0.0
-2,Mixed forest,Agro-forestry areas,0.00198
-2,Mixed forest,Broad-leaved forest,0.005941
-2,Mixed forest,Coniferous forest,0.59604
-2,Mixed forest,Mixed forest,0.520792
+2,Mixed forest,Agro-forestry areas,0.0
+2,Mixed forest,Broad-leaved forest,0.0
+2,Mixed forest,Coniferous forest,0.659406
+2,Mixed forest,Mixed forest,0.487129
 2,Mixed forest,Natural grassland and sparsely vegetated areas,0.0
 2,Mixed forest,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Mixed forest,"Transitional woodland, shrub",0.312871
+2,Mixed forest,"Transitional woodland, shrub",0.116832
 2,Mixed forest,"Beaches, dunes, sands",0.0
 2,Mixed forest,Inland wetlands,0.0
 2,Mixed forest,Coastal wetlands,0.0
-2,Mixed forest,Inland waters,0.063366
-2,Mixed forest,Marine waters,0.007921
+2,Mixed forest,Inland waters,0.049505
+2,Mixed forest,Marine waters,0.011881
 2,Natural grassland and sparsely vegetated areas,Urban fabric,0.0
 2,Natural grassland and sparsely vegetated areas,Industrial or commercial units,0.0
-2,Natural grassland and sparsely vegetated areas,Arable land,0.263158
+2,Natural grassland and sparsely vegetated areas,Arable land,0.131579
 2,Natural grassland and sparsely vegetated areas,Permanent crops,0.0
 2,Natural grassland and sparsely vegetated areas,Pastures,0.0
 2,Natural grassland and sparsely vegetated areas,Complex cultivation patterns,0.0
 2,Natural grassland and sparsely vegetated areas,Land principally occupied by agriculture,0.0
 2,Natural grassland and sparsely vegetated areas,Agro-forestry areas,0.0
 2,Natural grassland and sparsely vegetated areas,Broad-leaved forest,0.0
-2,Natural grassland and sparsely vegetated areas,Coniferous forest,0.263158
-2,Natural grassland and sparsely vegetated areas,Mixed forest,0.157895
+2,Natural grassland and sparsely vegetated areas,Coniferous forest,0.236842
+2,Natural grassland and sparsely vegetated areas,Mixed forest,0.052632
 2,Natural grassland and sparsely vegetated areas,Natural grassland and sparsely vegetated areas,0.0
 2,Natural grassland and sparsely vegetated areas,"Moors, heathland and sclerophyllous vegetation",0.0
 2,Natural grassland and sparsely vegetated areas,"Transitional woodland, shrub",0.210526
@@ -588,47 +588,47 @@ epoch,true_class,pred_class,value
 2,Natural grassland and sparsely vegetated areas,Coastal wetlands,0.0
 2,Natural grassland and sparsely vegetated areas,Inland waters,0.0
 2,Natural grassland and sparsely vegetated areas,Marine waters,0.0
-2,"Moors, heathland and sclerophyllous vegetation",Urban fabric,0.021739
+2,"Moors, heathland and sclerophyllous vegetation",Urban fabric,0.065217
 2,"Moors, heathland and sclerophyllous vegetation",Industrial or commercial units,0.0
-2,"Moors, heathland and sclerophyllous vegetation",Arable land,0.217391
+2,"Moors, heathland and sclerophyllous vegetation",Arable land,0.065217
 2,"Moors, heathland and sclerophyllous vegetation",Permanent crops,0.0
 2,"Moors, heathland and sclerophyllous vegetation",Pastures,0.0
 2,"Moors, heathland and sclerophyllous vegetation",Complex cultivation patterns,0.021739
 2,"Moors, heathland and sclerophyllous vegetation",Land principally occupied by agriculture,0.0
-2,"Moors, heathland and sclerophyllous vegetation",Agro-forestry areas,0.021739
-2,"Moors, heathland and sclerophyllous vegetation",Broad-leaved forest,0.086957
+2,"Moors, heathland and sclerophyllous vegetation",Agro-forestry areas,0.0
+2,"Moors, heathland and sclerophyllous vegetation",Broad-leaved forest,0.0
 2,"Moors, heathland and sclerophyllous vegetation",Coniferous forest,0.195652
-2,"Moors, heathland and sclerophyllous vegetation",Mixed forest,0.195652
+2,"Moors, heathland and sclerophyllous vegetation",Mixed forest,0.065217
 2,"Moors, heathland and sclerophyllous vegetation",Natural grassland and sparsely vegetated areas,0.0
 2,"Moors, heathland and sclerophyllous vegetation","Moors, heathland and sclerophyllous vegetation",0.0
-2,"Moors, heathland and sclerophyllous vegetation","Transitional woodland, shrub",0.391304
+2,"Moors, heathland and sclerophyllous vegetation","Transitional woodland, shrub",0.195652
 2,"Moors, heathland and sclerophyllous vegetation","Beaches, dunes, sands",0.0
 2,"Moors, heathland and sclerophyllous vegetation",Inland wetlands,0.0
 2,"Moors, heathland and sclerophyllous vegetation",Coastal wetlands,0.0
 2,"Moors, heathland and sclerophyllous vegetation",Inland waters,0.0
 2,"Moors, heathland and sclerophyllous vegetation",Marine waters,0.0
-2,"Transitional woodland, shrub",Urban fabric,0.006173
+2,"Transitional woodland, shrub",Urban fabric,0.034979
 2,"Transitional woodland, shrub",Industrial or commercial units,0.0
-2,"Transitional woodland, shrub",Arable land,0.325103
+2,"Transitional woodland, shrub",Arable land,0.179012
 2,"Transitional woodland, shrub",Permanent crops,0.0
-2,"Transitional woodland, shrub",Pastures,0.006173
-2,"Transitional woodland, shrub",Complex cultivation patterns,0.010288
+2,"Transitional woodland, shrub",Pastures,0.032922
+2,"Transitional woodland, shrub",Complex cultivation patterns,0.006173
 2,"Transitional woodland, shrub",Land principally occupied by agriculture,0.0
-2,"Transitional woodland, shrub",Agro-forestry areas,0.006173
-2,"Transitional woodland, shrub",Broad-leaved forest,0.016461
-2,"Transitional woodland, shrub",Coniferous forest,0.423868
-2,"Transitional woodland, shrub",Mixed forest,0.339506
+2,"Transitional woodland, shrub",Agro-forestry areas,0.004115
+2,"Transitional woodland, shrub",Broad-leaved forest,0.0
+2,"Transitional woodland, shrub",Coniferous forest,0.452675
+2,"Transitional woodland, shrub",Mixed forest,0.292181
 2,"Transitional woodland, shrub",Natural grassland and sparsely vegetated areas,0.0
 2,"Transitional woodland, shrub","Moors, heathland and sclerophyllous vegetation",0.0
-2,"Transitional woodland, shrub","Transitional woodland, shrub",0.314815
+2,"Transitional woodland, shrub","Transitional woodland, shrub",0.164609
 2,"Transitional woodland, shrub","Beaches, dunes, sands",0.0
 2,"Transitional woodland, shrub",Inland wetlands,0.0
 2,"Transitional woodland, shrub",Coastal wetlands,0.0
-2,"Transitional woodland, shrub",Inland waters,0.024691
-2,"Transitional woodland, shrub",Marine waters,0.004115
+2,"Transitional woodland, shrub",Inland waters,0.020576
+2,"Transitional woodland, shrub",Marine waters,0.006173
 2,"Beaches, dunes, sands",Urban fabric,0.0
 2,"Beaches, dunes, sands",Industrial or commercial units,0.0
-2,"Beaches, dunes, sands",Arable land,0.666667
+2,"Beaches, dunes, sands",Arable land,0.166667
 2,"Beaches, dunes, sands",Permanent crops,0.0
 2,"Beaches, dunes, sands",Pastures,0.0
 2,"Beaches, dunes, sands",Complex cultivation patterns,0.0
@@ -645,31 +645,31 @@ epoch,true_class,pred_class,value
 2,"Beaches, dunes, sands",Coastal wetlands,0.0
 2,"Beaches, dunes, sands",Inland waters,0.0
 2,"Beaches, dunes, sands",Marine waters,0.333333
-2,Inland wetlands,Urban fabric,0.0
+2,Inland wetlands,Urban fabric,0.031746
 2,Inland wetlands,Industrial or commercial units,0.0
-2,Inland wetlands,Arable land,0.222222
+2,Inland wetlands,Arable land,0.126984
 2,Inland wetlands,Permanent crops,0.0
-2,Inland wetlands,Pastures,0.031746
-2,Inland wetlands,Complex cultivation patterns,0.0
+2,Inland wetlands,Pastures,0.142857
+2,Inland wetlands,Complex cultivation patterns,0.031746
 2,Inland wetlands,Land principally occupied by agriculture,0.0
-2,Inland wetlands,Agro-forestry areas,0.0
+2,Inland wetlands,Agro-forestry areas,0.015873
 2,Inland wetlands,Broad-leaved forest,0.0
-2,Inland wetlands,Coniferous forest,0.52381
-2,Inland wetlands,Mixed forest,0.365079
+2,Inland wetlands,Coniferous forest,0.492063
+2,Inland wetlands,Mixed forest,0.269841
 2,Inland wetlands,Natural grassland and sparsely vegetated areas,0.0
 2,Inland wetlands,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Inland wetlands,"Transitional woodland, shrub",0.301587
+2,Inland wetlands,"Transitional woodland, shrub",0.206349
 2,Inland wetlands,"Beaches, dunes, sands",0.0
 2,Inland wetlands,Inland wetlands,0.0
 2,Inland wetlands,Coastal wetlands,0.0
 2,Inland wetlands,Inland waters,0.015873
-2,Inland wetlands,Marine waters,0.0
-2,Coastal wetlands,Urban fabric,0.0
+2,Inland wetlands,Marine waters,0.015873
+2,Coastal wetlands,Urban fabric,0.3
 2,Coastal wetlands,Industrial or commercial units,0.0
-2,Coastal wetlands,Arable land,0.6
+2,Coastal wetlands,Arable land,0.1
 2,Coastal wetlands,Permanent crops,0.0
 2,Coastal wetlands,Pastures,0.0
-2,Coastal wetlands,Complex cultivation patterns,0.2
+2,Coastal wetlands,Complex cultivation patterns,0.1
 2,Coastal wetlands,Land principally occupied by agriculture,0.0
 2,Coastal wetlands,Agro-forestry areas,0.0
 2,Coastal wetlands,Broad-leaved forest,0.0
@@ -683,157 +683,157 @@ epoch,true_class,pred_class,value
 2,Coastal wetlands,Coastal wetlands,0.0
 2,Coastal wetlands,Inland waters,0.0
 2,Coastal wetlands,Marine waters,0.0
-2,Inland waters,Urban fabric,0.005495
+2,Inland waters,Urban fabric,0.027473
 2,Inland waters,Industrial or commercial units,0.0
-2,Inland waters,Arable land,0.197802
+2,Inland waters,Arable land,0.142857
 2,Inland waters,Permanent crops,0.0
-2,Inland waters,Pastures,0.005495
+2,Inland waters,Pastures,0.016484
 2,Inland waters,Complex cultivation patterns,0.005495
 2,Inland waters,Land principally occupied by agriculture,0.0
 2,Inland waters,Agro-forestry areas,0.0
-2,Inland waters,Broad-leaved forest,0.005495
-2,Inland waters,Coniferous forest,0.686813
-2,Inland waters,Mixed forest,0.60989
+2,Inland waters,Broad-leaved forest,0.0
+2,Inland waters,Coniferous forest,0.741758
+2,Inland waters,Mixed forest,0.582418
 2,Inland waters,Natural grassland and sparsely vegetated areas,0.0
 2,Inland waters,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Inland waters,"Transitional woodland, shrub",0.291209
+2,Inland waters,"Transitional woodland, shrub",0.115385
 2,Inland waters,"Beaches, dunes, sands",0.0
 2,Inland waters,Inland wetlands,0.0
 2,Inland waters,Coastal wetlands,0.0
-2,Inland waters,Inland waters,0.17033
-2,Inland waters,Marine waters,0.032967
-2,Marine waters,Urban fabric,0.0
+2,Inland waters,Inland waters,0.10989
+2,Inland waters,Marine waters,0.038462
+2,Marine waters,Urban fabric,0.005848
 2,Marine waters,Industrial or commercial units,0.0
-2,Marine waters,Arable land,0.05848
+2,Marine waters,Arable land,0.017544
 2,Marine waters,Permanent crops,0.0
-2,Marine waters,Pastures,0.0
+2,Marine waters,Pastures,0.005848
 2,Marine waters,Complex cultivation patterns,0.005848
 2,Marine waters,Land principally occupied by agriculture,0.0
 2,Marine waters,Agro-forestry areas,0.0
 2,Marine waters,Broad-leaved forest,0.0
 2,Marine waters,Coniferous forest,0.105263
-2,Marine waters,Mixed forest,0.087719
+2,Marine waters,Mixed forest,0.076023
 2,Marine waters,Natural grassland and sparsely vegetated areas,0.0
 2,Marine waters,"Moors, heathland and sclerophyllous vegetation",0.0
-2,Marine waters,"Transitional woodland, shrub",0.035088
+2,Marine waters,"Transitional woodland, shrub",0.023392
 2,Marine waters,"Beaches, dunes, sands",0.0
 2,Marine waters,Inland wetlands,0.0
 2,Marine waters,Coastal wetlands,0.0
-2,Marine waters,Inland waters,0.040936
+2,Marine waters,Inland waters,0.011696
 2,Marine waters,Marine waters,0.748538
-3,Urban fabric,Urban fabric,0.193069
-3,Urban fabric,Industrial or commercial units,0.0
-3,Urban fabric,Arable land,0.589109
-3,Urban fabric,Permanent crops,0.0
-3,Urban fabric,Pastures,0.059406
-3,Urban fabric,Complex cultivation patterns,0.074257
+3,Urban fabric,Urban fabric,0.455446
+3,Urban fabric,Industrial or commercial units,0.019802
+3,Urban fabric,Arable land,0.594059
+3,Urban fabric,Permanent crops,0.009901
+3,Urban fabric,Pastures,0.079208
+3,Urban fabric,Complex cultivation patterns,0.143564
 3,Urban fabric,Land principally occupied by agriculture,0.0
-3,Urban fabric,Agro-forestry areas,0.009901
-3,Urban fabric,Broad-leaved forest,0.024752
-3,Urban fabric,Coniferous forest,0.079208
-3,Urban fabric,Mixed forest,0.143564
+3,Urban fabric,Agro-forestry areas,0.0
+3,Urban fabric,Broad-leaved forest,0.054455
+3,Urban fabric,Coniferous forest,0.09901
+3,Urban fabric,Mixed forest,0.138614
 3,Urban fabric,Natural grassland and sparsely vegetated areas,0.0
 3,Urban fabric,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Urban fabric,"Transitional woodland, shrub",0.0
+3,Urban fabric,"Transitional woodland, shrub",0.009901
 3,Urban fabric,"Beaches, dunes, sands",0.0
 3,Urban fabric,Inland wetlands,0.0
 3,Urban fabric,Coastal wetlands,0.0
-3,Urban fabric,Inland waters,0.024752
+3,Urban fabric,Inland waters,0.00495
 3,Urban fabric,Marine waters,0.0
-3,Industrial or commercial units,Urban fabric,0.369565
-3,Industrial or commercial units,Industrial or commercial units,0.0
-3,Industrial or commercial units,Arable land,0.565217
-3,Industrial or commercial units,Permanent crops,0.0
-3,Industrial or commercial units,Pastures,0.065217
-3,Industrial or commercial units,Complex cultivation patterns,0.021739
+3,Industrial or commercial units,Urban fabric,0.652174
+3,Industrial or commercial units,Industrial or commercial units,0.021739
+3,Industrial or commercial units,Arable land,0.608696
+3,Industrial or commercial units,Permanent crops,0.021739
+3,Industrial or commercial units,Pastures,0.086957
+3,Industrial or commercial units,Complex cultivation patterns,0.195652
 3,Industrial or commercial units,Land principally occupied by agriculture,0.0
-3,Industrial or commercial units,Agro-forestry areas,0.021739
-3,Industrial or commercial units,Broad-leaved forest,0.021739
-3,Industrial or commercial units,Coniferous forest,0.021739
-3,Industrial or commercial units,Mixed forest,0.108696
+3,Industrial or commercial units,Agro-forestry areas,0.0
+3,Industrial or commercial units,Broad-leaved forest,0.0
+3,Industrial or commercial units,Coniferous forest,0.065217
+3,Industrial or commercial units,Mixed forest,0.195652
 3,Industrial or commercial units,Natural grassland and sparsely vegetated areas,0.0
 3,Industrial or commercial units,"Moors, heathland and sclerophyllous vegetation",0.0
 3,Industrial or commercial units,"Transitional woodland, shrub",0.0
 3,Industrial or commercial units,"Beaches, dunes, sands",0.0
 3,Industrial or commercial units,Inland wetlands,0.0
 3,Industrial or commercial units,Coastal wetlands,0.0
-3,Industrial or commercial units,Inland waters,0.021739
+3,Industrial or commercial units,Inland waters,0.0
 3,Industrial or commercial units,Marine waters,0.0
-3,Arable land,Urban fabric,0.075353
-3,Arable land,Industrial or commercial units,0.0
-3,Arable land,Arable land,0.66876
-3,Arable land,Permanent crops,0.00157
-3,Arable land,Pastures,0.076923
-3,Arable land,Complex cultivation patterns,0.064364
+3,Arable land,Urban fabric,0.171115
+3,Arable land,Industrial or commercial units,0.006279
+3,Arable land,Arable land,0.654631
+3,Arable land,Permanent crops,0.014129
+3,Arable land,Pastures,0.125589
+3,Arable land,Complex cultivation patterns,0.048666
 3,Arable land,Land principally occupied by agriculture,0.0
-3,Arable land,Agro-forestry areas,0.040816
-3,Arable land,Broad-leaved forest,0.045526
-3,Arable land,Coniferous forest,0.167975
-3,Arable land,Mixed forest,0.243328
+3,Arable land,Agro-forestry areas,0.031397
+3,Arable land,Broad-leaved forest,0.029827
+3,Arable land,Coniferous forest,0.174254
+3,Arable land,Mixed forest,0.199372
 3,Arable land,Natural grassland and sparsely vegetated areas,0.0
 3,Arable land,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Arable land,"Transitional woodland, shrub",0.014129
+3,Arable land,"Transitional woodland, shrub",0.020408
 3,Arable land,"Beaches, dunes, sands",0.0
 3,Arable land,Inland wetlands,0.0
 3,Arable land,Coastal wetlands,0.0
-3,Arable land,Inland waters,0.029827
+3,Arable land,Inland waters,0.007849
 3,Arable land,Marine waters,0.0
-3,Permanent crops,Urban fabric,0.159292
-3,Permanent crops,Industrial or commercial units,0.0
-3,Permanent crops,Arable land,0.584071
-3,Permanent crops,Permanent crops,0.00885
-3,Permanent crops,Pastures,0.017699
-3,Permanent crops,Complex cultivation patterns,0.097345
+3,Permanent crops,Urban fabric,0.318584
+3,Permanent crops,Industrial or commercial units,0.00885
+3,Permanent crops,Arable land,0.522124
+3,Permanent crops,Permanent crops,0.053097
+3,Permanent crops,Pastures,0.026549
+3,Permanent crops,Complex cultivation patterns,0.079646
 3,Permanent crops,Land principally occupied by agriculture,0.0
-3,Permanent crops,Agro-forestry areas,0.061947
-3,Permanent crops,Broad-leaved forest,0.132743
+3,Permanent crops,Agro-forestry areas,0.035398
+3,Permanent crops,Broad-leaved forest,0.070796
 3,Permanent crops,Coniferous forest,0.017699
 3,Permanent crops,Mixed forest,0.035398
 3,Permanent crops,Natural grassland and sparsely vegetated areas,0.0
 3,Permanent crops,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Permanent crops,"Transitional woodland, shrub",0.035398
+3,Permanent crops,"Transitional woodland, shrub",0.053097
 3,Permanent crops,"Beaches, dunes, sands",0.0
 3,Permanent crops,Inland wetlands,0.0
 3,Permanent crops,Coastal wetlands,0.0
 3,Permanent crops,Inland waters,0.0
 3,Permanent crops,Marine waters,0.0
-3,Pastures,Urban fabric,0.033003
+3,Pastures,Urban fabric,0.115512
 3,Pastures,Industrial or commercial units,0.0
-3,Pastures,Arable land,0.531353
-3,Pastures,Permanent crops,0.0
-3,Pastures,Pastures,0.244224
-3,Pastures,Complex cultivation patterns,0.036304
+3,Pastures,Arable land,0.491749
+3,Pastures,Permanent crops,0.0033
+3,Pastures,Pastures,0.339934
+3,Pastures,Complex cultivation patterns,0.019802
 3,Pastures,Land principally occupied by agriculture,0.0
-3,Pastures,Agro-forestry areas,0.026403
-3,Pastures,Broad-leaved forest,0.056106
-3,Pastures,Coniferous forest,0.155116
-3,Pastures,Mixed forest,0.247525
+3,Pastures,Agro-forestry areas,0.013201
+3,Pastures,Broad-leaved forest,0.023102
+3,Pastures,Coniferous forest,0.148515
+3,Pastures,Mixed forest,0.174917
 3,Pastures,Natural grassland and sparsely vegetated areas,0.0
 3,Pastures,"Moors, heathland and sclerophyllous vegetation",0.0
 3,Pastures,"Transitional woodland, shrub",0.036304
 3,Pastures,"Beaches, dunes, sands",0.0
 3,Pastures,Inland wetlands,0.0
 3,Pastures,Coastal wetlands,0.0
-3,Pastures,Inland waters,0.019802
+3,Pastures,Inland waters,0.0
 3,Pastures,Marine waters,0.0
-3,Complex cultivation patterns,Urban fabric,0.069079
+3,Complex cultivation patterns,Urban fabric,0.220395
 3,Complex cultivation patterns,Industrial or commercial units,0.0
-3,Complex cultivation patterns,Arable land,0.523026
-3,Complex cultivation patterns,Permanent crops,0.0
-3,Complex cultivation patterns,Pastures,0.042763
-3,Complex cultivation patterns,Complex cultivation patterns,0.075658
+3,Complex cultivation patterns,Arable land,0.476974
+3,Complex cultivation patterns,Permanent crops,0.009868
+3,Complex cultivation patterns,Pastures,0.085526
+3,Complex cultivation patterns,Complex cultivation patterns,0.0625
 3,Complex cultivation patterns,Land principally occupied by agriculture,0.0
-3,Complex cultivation patterns,Agro-forestry areas,0.0
-3,Complex cultivation patterns,Broad-leaved forest,0.134868
-3,Complex cultivation patterns,Coniferous forest,0.148026
-3,Complex cultivation patterns,Mixed forest,0.256579
+3,Complex cultivation patterns,Agro-forestry areas,0.006579
+3,Complex cultivation patterns,Broad-leaved forest,0.095395
+3,Complex cultivation patterns,Coniferous forest,0.144737
+3,Complex cultivation patterns,Mixed forest,0.197368
 3,Complex cultivation patterns,Natural grassland and sparsely vegetated areas,0.0
 3,Complex cultivation patterns,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Complex cultivation patterns,"Transitional woodland, shrub",0.036184
+3,Complex cultivation patterns,"Transitional woodland, shrub",0.065789
 3,Complex cultivation patterns,"Beaches, dunes, sands",0.0
 3,Complex cultivation patterns,Inland wetlands,0.0
 3,Complex cultivation patterns,Coastal wetlands,0.0
-3,Complex cultivation patterns,Inland waters,0.023026
+3,Complex cultivation patterns,Inland waters,0.0
 3,Complex cultivation patterns,Marine waters,0.0
 3,Land principally occupied by agriculture,Urban fabric,0.0
 3,Land principally occupied by agriculture,Industrial or commercial units,0.0
@@ -854,142 +854,142 @@ epoch,true_class,pred_class,value
 3,Land principally occupied by agriculture,Coastal wetlands,0.0
 3,Land principally occupied by agriculture,Inland waters,0.0
 3,Land principally occupied by agriculture,Marine waters,0.0
-3,Agro-forestry areas,Urban fabric,0.021978
+3,Agro-forestry areas,Urban fabric,0.065934
 3,Agro-forestry areas,Industrial or commercial units,0.0
-3,Agro-forestry areas,Arable land,0.648352
-3,Agro-forestry areas,Permanent crops,0.010989
-3,Agro-forestry areas,Pastures,0.043956
-3,Agro-forestry areas,Complex cultivation patterns,0.131868
+3,Agro-forestry areas,Arable land,0.472527
+3,Agro-forestry areas,Permanent crops,0.054945
+3,Agro-forestry areas,Pastures,0.032967
+3,Agro-forestry areas,Complex cultivation patterns,0.010989
 3,Agro-forestry areas,Land principally occupied by agriculture,0.0
-3,Agro-forestry areas,Agro-forestry areas,0.340659
-3,Agro-forestry areas,Broad-leaved forest,0.263736
+3,Agro-forestry areas,Agro-forestry areas,0.274725
+3,Agro-forestry areas,Broad-leaved forest,0.076923
 3,Agro-forestry areas,Coniferous forest,0.0
 3,Agro-forestry areas,Mixed forest,0.0
 3,Agro-forestry areas,Natural grassland and sparsely vegetated areas,0.0
 3,Agro-forestry areas,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Agro-forestry areas,"Transitional woodland, shrub",0.065934
+3,Agro-forestry areas,"Transitional woodland, shrub",0.10989
 3,Agro-forestry areas,"Beaches, dunes, sands",0.0
 3,Agro-forestry areas,Inland wetlands,0.0
 3,Agro-forestry areas,Coastal wetlands,0.0
 3,Agro-forestry areas,Inland waters,0.0
 3,Agro-forestry areas,Marine waters,0.0
-3,Broad-leaved forest,Urban fabric,0.031674
-3,Broad-leaved forest,Industrial or commercial units,0.0
-3,Broad-leaved forest,Arable land,0.339367
-3,Broad-leaved forest,Permanent crops,0.0
-3,Broad-leaved forest,Pastures,0.049774
-3,Broad-leaved forest,Complex cultivation patterns,0.065611
+3,Broad-leaved forest,Urban fabric,0.115385
+3,Broad-leaved forest,Industrial or commercial units,0.004525
+3,Broad-leaved forest,Arable land,0.291855
+3,Broad-leaved forest,Permanent crops,0.002262
+3,Broad-leaved forest,Pastures,0.056561
+3,Broad-leaved forest,Complex cultivation patterns,0.020362
 3,Broad-leaved forest,Land principally occupied by agriculture,0.0
-3,Broad-leaved forest,Agro-forestry areas,0.031674
-3,Broad-leaved forest,Broad-leaved forest,0.205882
-3,Broad-leaved forest,Coniferous forest,0.289593
-3,Broad-leaved forest,Mixed forest,0.355204
+3,Broad-leaved forest,Agro-forestry areas,0.029412
+3,Broad-leaved forest,Broad-leaved forest,0.144796
+3,Broad-leaved forest,Coniferous forest,0.262443
+3,Broad-leaved forest,Mixed forest,0.269231
 3,Broad-leaved forest,Natural grassland and sparsely vegetated areas,0.0
 3,Broad-leaved forest,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Broad-leaved forest,"Transitional woodland, shrub",0.115385
+3,Broad-leaved forest,"Transitional woodland, shrub",0.147059
 3,Broad-leaved forest,"Beaches, dunes, sands",0.0
 3,Broad-leaved forest,Inland wetlands,0.0
 3,Broad-leaved forest,Coastal wetlands,0.0
-3,Broad-leaved forest,Inland waters,0.049774
-3,Broad-leaved forest,Marine waters,0.0
-3,Coniferous forest,Urban fabric,0.012295
-3,Coniferous forest,Industrial or commercial units,0.0
-3,Coniferous forest,Arable land,0.186475
+3,Broad-leaved forest,Inland waters,0.006787
+3,Broad-leaved forest,Marine waters,0.002262
+3,Coniferous forest,Urban fabric,0.053279
+3,Coniferous forest,Industrial or commercial units,0.002049
+3,Coniferous forest,Arable land,0.170082
 3,Coniferous forest,Permanent crops,0.0
-3,Coniferous forest,Pastures,0.02459
-3,Coniferous forest,Complex cultivation patterns,0.012295
+3,Coniferous forest,Pastures,0.04918
+3,Coniferous forest,Complex cultivation patterns,0.020492
 3,Coniferous forest,Land principally occupied by agriculture,0.0
-3,Coniferous forest,Agro-forestry areas,0.002049
-3,Coniferous forest,Broad-leaved forest,0.055328
-3,Coniferous forest,Coniferous forest,0.663934
-3,Coniferous forest,Mixed forest,0.729508
+3,Coniferous forest,Agro-forestry areas,0.0
+3,Coniferous forest,Broad-leaved forest,0.032787
+3,Coniferous forest,Coniferous forest,0.635246
+3,Coniferous forest,Mixed forest,0.629098
 3,Coniferous forest,Natural grassland and sparsely vegetated areas,0.0
 3,Coniferous forest,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Coniferous forest,"Transitional woodland, shrub",0.192623
+3,Coniferous forest,"Transitional woodland, shrub",0.151639
 3,Coniferous forest,"Beaches, dunes, sands",0.0
 3,Coniferous forest,Inland wetlands,0.0
 3,Coniferous forest,Coastal wetlands,0.0
-3,Coniferous forest,Inland waters,0.129098
-3,Coniferous forest,Marine waters,0.006148
-3,Mixed forest,Urban fabric,0.029703
-3,Mixed forest,Industrial or commercial units,0.0
-3,Mixed forest,Arable land,0.178218
+3,Coniferous forest,Inland waters,0.043033
+3,Coniferous forest,Marine waters,0.008197
+3,Mixed forest,Urban fabric,0.085149
+3,Mixed forest,Industrial or commercial units,0.00198
+3,Mixed forest,Arable land,0.166337
 3,Mixed forest,Permanent crops,0.0
-3,Mixed forest,Pastures,0.019802
-3,Mixed forest,Complex cultivation patterns,0.015842
+3,Mixed forest,Pastures,0.037624
+3,Mixed forest,Complex cultivation patterns,0.023762
 3,Mixed forest,Land principally occupied by agriculture,0.0
-3,Mixed forest,Agro-forestry areas,0.00396
-3,Mixed forest,Broad-leaved forest,0.047525
-3,Mixed forest,Coniferous forest,0.633663
-3,Mixed forest,Mixed forest,0.722772
+3,Mixed forest,Agro-forestry areas,0.00198
+3,Mixed forest,Broad-leaved forest,0.033663
+3,Mixed forest,Coniferous forest,0.631683
+3,Mixed forest,Mixed forest,0.639604
 3,Mixed forest,Natural grassland and sparsely vegetated areas,0.0
 3,Mixed forest,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Mixed forest,"Transitional woodland, shrub",0.144554
+3,Mixed forest,"Transitional woodland, shrub",0.112871
 3,Mixed forest,"Beaches, dunes, sands",0.0
 3,Mixed forest,Inland wetlands,0.0
 3,Mixed forest,Coastal wetlands,0.0
-3,Mixed forest,Inland waters,0.144554
-3,Mixed forest,Marine waters,0.00198
-3,Natural grassland and sparsely vegetated areas,Urban fabric,0.026316
+3,Mixed forest,Inland waters,0.047525
+3,Mixed forest,Marine waters,0.007921
+3,Natural grassland and sparsely vegetated areas,Urban fabric,0.052632
 3,Natural grassland and sparsely vegetated areas,Industrial or commercial units,0.0
-3,Natural grassland and sparsely vegetated areas,Arable land,0.184211
+3,Natural grassland and sparsely vegetated areas,Arable land,0.131579
 3,Natural grassland and sparsely vegetated areas,Permanent crops,0.0
-3,Natural grassland and sparsely vegetated areas,Pastures,0.078947
+3,Natural grassland and sparsely vegetated areas,Pastures,0.052632
 3,Natural grassland and sparsely vegetated areas,Complex cultivation patterns,0.0
 3,Natural grassland and sparsely vegetated areas,Land principally occupied by agriculture,0.0
-3,Natural grassland and sparsely vegetated areas,Agro-forestry areas,0.026316
+3,Natural grassland and sparsely vegetated areas,Agro-forestry areas,0.0
 3,Natural grassland and sparsely vegetated areas,Broad-leaved forest,0.184211
-3,Natural grassland and sparsely vegetated areas,Coniferous forest,0.236842
-3,Natural grassland and sparsely vegetated areas,Mixed forest,0.263158
+3,Natural grassland and sparsely vegetated areas,Coniferous forest,0.105263
+3,Natural grassland and sparsely vegetated areas,Mixed forest,0.052632
 3,Natural grassland and sparsely vegetated areas,Natural grassland and sparsely vegetated areas,0.0
 3,Natural grassland and sparsely vegetated areas,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Natural grassland and sparsely vegetated areas,"Transitional woodland, shrub",0.131579
+3,Natural grassland and sparsely vegetated areas,"Transitional woodland, shrub",0.105263
 3,Natural grassland and sparsely vegetated areas,"Beaches, dunes, sands",0.0
 3,Natural grassland and sparsely vegetated areas,Inland wetlands,0.0
 3,Natural grassland and sparsely vegetated areas,Coastal wetlands,0.0
 3,Natural grassland and sparsely vegetated areas,Inland waters,0.0
 3,Natural grassland and sparsely vegetated areas,Marine waters,0.0
-3,"Moors, heathland and sclerophyllous vegetation",Urban fabric,0.108696
+3,"Moors, heathland and sclerophyllous vegetation",Urban fabric,0.130435
 3,"Moors, heathland and sclerophyllous vegetation",Industrial or commercial units,0.0
-3,"Moors, heathland and sclerophyllous vegetation",Arable land,0.152174
-3,"Moors, heathland and sclerophyllous vegetation",Permanent crops,0.0
+3,"Moors, heathland and sclerophyllous vegetation",Arable land,0.065217
+3,"Moors, heathland and sclerophyllous vegetation",Permanent crops,0.021739
 3,"Moors, heathland and sclerophyllous vegetation",Pastures,0.0
-3,"Moors, heathland and sclerophyllous vegetation",Complex cultivation patterns,0.130435
+3,"Moors, heathland and sclerophyllous vegetation",Complex cultivation patterns,0.065217
 3,"Moors, heathland and sclerophyllous vegetation",Land principally occupied by agriculture,0.0
-3,"Moors, heathland and sclerophyllous vegetation",Agro-forestry areas,0.021739
-3,"Moors, heathland and sclerophyllous vegetation",Broad-leaved forest,0.434783
-3,"Moors, heathland and sclerophyllous vegetation",Coniferous forest,0.282609
-3,"Moors, heathland and sclerophyllous vegetation",Mixed forest,0.347826
+3,"Moors, heathland and sclerophyllous vegetation",Agro-forestry areas,0.0
+3,"Moors, heathland and sclerophyllous vegetation",Broad-leaved forest,0.152174
+3,"Moors, heathland and sclerophyllous vegetation",Coniferous forest,0.152174
+3,"Moors, heathland and sclerophyllous vegetation",Mixed forest,0.217391
 3,"Moors, heathland and sclerophyllous vegetation",Natural grassland and sparsely vegetated areas,0.0
 3,"Moors, heathland and sclerophyllous vegetation","Moors, heathland and sclerophyllous vegetation",0.0
-3,"Moors, heathland and sclerophyllous vegetation","Transitional woodland, shrub",0.304348
+3,"Moors, heathland and sclerophyllous vegetation","Transitional woodland, shrub",0.391304
 3,"Moors, heathland and sclerophyllous vegetation","Beaches, dunes, sands",0.0
 3,"Moors, heathland and sclerophyllous vegetation",Inland wetlands,0.0
 3,"Moors, heathland and sclerophyllous vegetation",Coastal wetlands,0.0
 3,"Moors, heathland and sclerophyllous vegetation",Inland waters,0.0
 3,"Moors, heathland and sclerophyllous vegetation",Marine waters,0.0
-3,"Transitional woodland, shrub",Urban fabric,0.018519
+3,"Transitional woodland, shrub",Urban fabric,0.063786
 3,"Transitional woodland, shrub",Industrial or commercial units,0.0
-3,"Transitional woodland, shrub",Arable land,0.238683
-3,"Transitional woodland, shrub",Permanent crops,0.002058
-3,"Transitional woodland, shrub",Pastures,0.016461
-3,"Transitional woodland, shrub",Complex cultivation patterns,0.047325
+3,"Transitional woodland, shrub",Arable land,0.191358
+3,"Transitional woodland, shrub",Permanent crops,0.012346
+3,"Transitional woodland, shrub",Pastures,0.028807
+3,"Transitional woodland, shrub",Complex cultivation patterns,0.006173
 3,"Transitional woodland, shrub",Land principally occupied by agriculture,0.0
-3,"Transitional woodland, shrub",Agro-forestry areas,0.034979
-3,"Transitional woodland, shrub",Broad-leaved forest,0.176955
-3,"Transitional woodland, shrub",Coniferous forest,0.454733
-3,"Transitional woodland, shrub",Mixed forest,0.50823
+3,"Transitional woodland, shrub",Agro-forestry areas,0.026749
+3,"Transitional woodland, shrub",Broad-leaved forest,0.090535
+3,"Transitional woodland, shrub",Coniferous forest,0.419753
+3,"Transitional woodland, shrub",Mixed forest,0.41358
 3,"Transitional woodland, shrub",Natural grassland and sparsely vegetated areas,0.0
 3,"Transitional woodland, shrub","Moors, heathland and sclerophyllous vegetation",0.0
-3,"Transitional woodland, shrub","Transitional woodland, shrub",0.218107
+3,"Transitional woodland, shrub","Transitional woodland, shrub",0.197531
 3,"Transitional woodland, shrub","Beaches, dunes, sands",0.0
 3,"Transitional woodland, shrub",Inland wetlands,0.0
 3,"Transitional woodland, shrub",Coastal wetlands,0.0
-3,"Transitional woodland, shrub",Inland waters,0.063786
+3,"Transitional woodland, shrub",Inland waters,0.020576
 3,"Transitional woodland, shrub",Marine waters,0.004115
 3,"Beaches, dunes, sands",Urban fabric,0.0
 3,"Beaches, dunes, sands",Industrial or commercial units,0.0
-3,"Beaches, dunes, sands",Arable land,0.5
+3,"Beaches, dunes, sands",Arable land,0.166667
 3,"Beaches, dunes, sands",Permanent crops,0.0
 3,"Beaches, dunes, sands",Pastures,0.0
 3,"Beaches, dunes, sands",Complex cultivation patterns,0.0
@@ -1006,34 +1006,34 @@ epoch,true_class,pred_class,value
 3,"Beaches, dunes, sands",Coastal wetlands,0.0
 3,"Beaches, dunes, sands",Inland waters,0.0
 3,"Beaches, dunes, sands",Marine waters,0.333333
-3,Inland wetlands,Urban fabric,0.0
+3,Inland wetlands,Urban fabric,0.111111
 3,Inland wetlands,Industrial or commercial units,0.0
-3,Inland wetlands,Arable land,0.190476
+3,Inland wetlands,Arable land,0.206349
 3,Inland wetlands,Permanent crops,0.0
-3,Inland wetlands,Pastures,0.079365
+3,Inland wetlands,Pastures,0.126984
 3,Inland wetlands,Complex cultivation patterns,0.015873
 3,Inland wetlands,Land principally occupied by agriculture,0.0
-3,Inland wetlands,Agro-forestry areas,0.031746
-3,Inland wetlands,Broad-leaved forest,0.031746
-3,Inland wetlands,Coniferous forest,0.492063
-3,Inland wetlands,Mixed forest,0.444444
+3,Inland wetlands,Agro-forestry areas,0.015873
+3,Inland wetlands,Broad-leaved forest,0.142857
+3,Inland wetlands,Coniferous forest,0.412698
+3,Inland wetlands,Mixed forest,0.365079
 3,Inland wetlands,Natural grassland and sparsely vegetated areas,0.0
 3,Inland wetlands,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Inland wetlands,"Transitional woodland, shrub",0.206349
+3,Inland wetlands,"Transitional woodland, shrub",0.15873
 3,Inland wetlands,"Beaches, dunes, sands",0.0
 3,Inland wetlands,Inland wetlands,0.0
 3,Inland wetlands,Coastal wetlands,0.0
-3,Inland wetlands,Inland waters,0.063492
+3,Inland wetlands,Inland waters,0.015873
 3,Inland wetlands,Marine waters,0.0
-3,Coastal wetlands,Urban fabric,0.1
+3,Coastal wetlands,Urban fabric,0.2
 3,Coastal wetlands,Industrial or commercial units,0.0
-3,Coastal wetlands,Arable land,0.7
+3,Coastal wetlands,Arable land,0.4
 3,Coastal wetlands,Permanent crops,0.0
 3,Coastal wetlands,Pastures,0.0
-3,Coastal wetlands,Complex cultivation patterns,0.2
+3,Coastal wetlands,Complex cultivation patterns,0.1
 3,Coastal wetlands,Land principally occupied by agriculture,0.0
-3,Coastal wetlands,Agro-forestry areas,0.1
-3,Coastal wetlands,Broad-leaved forest,0.1
+3,Coastal wetlands,Agro-forestry areas,0.0
+3,Coastal wetlands,Broad-leaved forest,0.0
 3,Coastal wetlands,Coniferous forest,0.0
 3,Coastal wetlands,Mixed forest,0.0
 3,Coastal wetlands,Natural grassland and sparsely vegetated areas,0.0
@@ -1044,41 +1044,41 @@ epoch,true_class,pred_class,value
 3,Coastal wetlands,Coastal wetlands,0.0
 3,Coastal wetlands,Inland waters,0.0
 3,Coastal wetlands,Marine waters,0.0
-3,Inland waters,Urban fabric,0.021978
+3,Inland waters,Urban fabric,0.027473
 3,Inland waters,Industrial or commercial units,0.0
-3,Inland waters,Arable land,0.148352
+3,Inland waters,Arable land,0.153846
 3,Inland waters,Permanent crops,0.0
-3,Inland waters,Pastures,0.010989
-3,Inland waters,Complex cultivation patterns,0.016484
+3,Inland waters,Pastures,0.021978
+3,Inland waters,Complex cultivation patterns,0.0
 3,Inland waters,Land principally occupied by agriculture,0.0
 3,Inland waters,Agro-forestry areas,0.0
-3,Inland waters,Broad-leaved forest,0.038462
-3,Inland waters,Coniferous forest,0.708791
-3,Inland waters,Mixed forest,0.774725
+3,Inland waters,Broad-leaved forest,0.043956
+3,Inland waters,Coniferous forest,0.697802
+3,Inland waters,Mixed forest,0.714286
 3,Inland waters,Natural grassland and sparsely vegetated areas,0.0
 3,Inland waters,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Inland waters,"Transitional woodland, shrub",0.159341
+3,Inland waters,"Transitional woodland, shrub",0.142857
 3,Inland waters,"Beaches, dunes, sands",0.0
 3,Inland waters,Inland wetlands,0.0
 3,Inland waters,Coastal wetlands,0.0
-3,Inland waters,Inland waters,0.351648
+3,Inland waters,Inland waters,0.115385
 3,Inland waters,Marine waters,0.027473
-3,Marine waters,Urban fabric,0.0
+3,Marine waters,Urban fabric,0.005848
 3,Marine waters,Industrial or commercial units,0.0
-3,Marine waters,Arable land,0.046784
+3,Marine waters,Arable land,0.02924
 3,Marine waters,Permanent crops,0.0
-3,Marine waters,Pastures,0.0
-3,Marine waters,Complex cultivation patterns,0.005848
+3,Marine waters,Pastures,0.005848
+3,Marine waters,Complex cultivation patterns,0.0
 3,Marine waters,Land principally occupied by agriculture,0.0
-3,Marine waters,Agro-forestry areas,0.005848
-3,Marine waters,Broad-leaved forest,0.005848
-3,Marine waters,Coniferous forest,0.087719
-3,Marine waters,Mixed forest,0.093567
+3,Marine waters,Agro-forestry areas,0.0
+3,Marine waters,Broad-leaved forest,0.011696
+3,Marine waters,Coniferous forest,0.064327
+3,Marine waters,Mixed forest,0.087719
 3,Marine waters,Natural grassland and sparsely vegetated areas,0.0
 3,Marine waters,"Moors, heathland and sclerophyllous vegetation",0.0
-3,Marine waters,"Transitional woodland, shrub",0.017544
+3,Marine waters,"Transitional woodland, shrub",0.005848
 3,Marine waters,"Beaches, dunes, sands",0.0
 3,Marine waters,Inland wetlands,0.0
 3,Marine waters,Coastal wetlands,0.0
-3,Marine waters,Inland waters,0.052632
-3,Marine waters,Marine waters,0.766082
+3,Marine waters,Inland waters,0.0
+3,Marine waters,Marine waters,0.77193
