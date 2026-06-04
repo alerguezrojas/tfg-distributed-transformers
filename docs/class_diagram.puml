@@ -407,6 +407,8 @@ package "scripts.check_feasibility" #FDFEFE {
     + scaling_efficiency: float
     + sync_overhead_pct: float
     + bottleneck: str
+    + time_train_per_epoch_s: float
+    + time_total_s: float
   }
 
   class PerformancePrediction <<dataclass>> {
@@ -504,6 +506,34 @@ package "src.web" #FDFEFE {
     + label: str
   }
 
+  class FeasibilityComparison <<dataclass>> {
+    + model_name: str
+    + batch_size: int
+    + trace_mode: str
+    + nfs_factor: float
+    + rows: list[ComparisonRow]
+    + to_dataframe(): DataFrame
+  }
+
+  class ComparisonRow <<dataclass>> {
+    + metric: str
+    + formula: str
+    + estimated: float | None
+    + actual: float | None
+    + unit: str
+    + error_pct: float | None
+  }
+
+  note as cmp_note
+    **feasibility_comparison.py**
+    build_comparison(meta, feas_df,
+      actual_df, batch_size, ...)
+    → FeasibilityComparison
+    Usa n_train/n_val del bloque #sizes
+    (no asume el full set). Compara
+    estimación vs real por métrica.
+  end note
+
   note as web_note
     **run_registry.py**
     discover_runs(root) → list[RunInfo]
@@ -511,10 +541,13 @@ package "src.web" #FDFEFE {
     DDMMYYYY → YYYYMMDD (orden real).
     Solo CSV paths (sin PNG).
 
-    **parsers**: log_parser, batch_parser
-    (v3: f1/acc/prec), perclass_parser,
-    feasibility_parser (bloques #study_*,
-    #ddp, #cpu, #disk), confusion_matrix_parser
+    **parsers**: log_parser (deep: campos
+    por nombre; energía \w*Trainer),
+    batch_parser (v3: f1/acc/prec),
+    perclass_parser, feasibility_parser
+    (bloques #sizes, #study_*, #ddp,
+    #cpu, #disk), confusion_matrix_parser
+    feasibility_comparison (estim. vs real)
 
     **dataset_stats.py**
     class_distribution_from_parquet (ndarray)
@@ -617,6 +650,10 @@ BigEarthViT ..> BigEarthNetDataset : trained on >
 Trainer ..> metrics_note : uses >
 TracingDecorator ..> logger_note : uses >
 web_note ..> RunInfo : creates >
+
+FeasibilityComparison *-- ComparisonRow
+cmp_note ..> FeasibilityComparison : builds >
+cmp_note ..> FeasibilityReport : reads CSV (#sizes) >
 
 ' ════════════════════════════════════════════════════════════════
 ' ESTILOS POR TIPO
