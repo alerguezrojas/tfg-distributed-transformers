@@ -2724,11 +2724,11 @@ with tab_info:
                 "Mejor Val F1": f"{best_f1_i:.4f}" if not pd.isna(best_f1_i) else "—",
                 "Mejor epoch": int(best_ep_i_v) if best_ep_i_v is not None else "—",
             }
-            # Config del run (solo runs nuevos la registran en el log)
+            # Config del run (solo runs nuevos / backfilleados la registran)
             if _cfg_run.get("batch"):
                 rows_i["Batch size"] = _cfg_run["batch"]
-            elif _cfg_run.get("heterogéneo batch GPU"):
-                rows_i["Batch size"] = "GPU " + _cfg_run["heterogéneo batch GPU"]
+            if _cfg_run.get("reparto"):
+                rows_i["Reparto de datos"] = _cfg_run["reparto"]
             if _cfg_run.get("lr"):
                 rows_i["Learning rate"] = _cfg_run["lr"]
             if _cfg_run.get("train"):

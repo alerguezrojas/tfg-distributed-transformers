@@ -1,4 +1,5 @@
 2026-06-04 14:56:28 [INFO ] Iniciando entrenamiento — 3 epochs
+2026-06-04 14:56:28 [INFO ] Configuración: modelo=vit_tiny_patch16_224 | batch=GPU 96 / CPU 4 (global=100) | reparto=GPU 96% (~4800 img) / CPU 4% (~200 img) | epochs=3 | lr=0.0001 | train=5000 | val=1500 | origen=backfill
 2026-06-04 14:56:28 [INFO ] 
 ── Epoch 001/003 ────────────────────────────
 2026-06-04 15:00:35 [INFO ] [energy] HeterogeneousDDPTrainer.train_epoch: 10891.4 J  (3.02540 Wh)  potencia media 45.5 W
