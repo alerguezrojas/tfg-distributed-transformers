@@ -1,0 +1,70 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  04/06/2026 16:03:13
+  Factor NFS aplicado: ×1.30
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               vit_tiny_patch16_224
+  Parámetros totales:   5,528,083 (5.5M)
+  FLOPs/imagen:         34.3 MFLOPs
+  Memoria estática:     0.09 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  Tesla V100-PCIE-32GB  |  VRAM: 34.1 GB total / 34.1 GB libre
+  Compute Capability: 7.0
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 40 lógicos / 40 físicos
+  Frecuencia: 1001 MHz
+  RAM: 270.0 GB total / 257.0 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: NFS  |  NFS: sí
+  Velocidad lectura: 1 MB/s  |  85 patches/s
+  Patches encontrados: ~175,030
+  ⚠ I/O-BOUND (ratio=25.59) — data loading más lento que cómputo
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch   Total est.      Estado
+     48       1.99 GB        ✓ OK
+     96       3.89 GB        ✓ OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     48  off             725.0      2022.0   1.57 GB
+     48  simple          727.7      2026.8   1.57 GB
+     96  off             788.3      2109.9   3.07 GB
+     96  simple          787.8      2003.3   3.07 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  3 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     48  off         0h 07m   0h 01m    0h 08m    0h 24m
+     48  simple      0h 07m   0h 01m    0h 08m    0h 24m
+     96  off         0h 06m   0h 00m    0h 07m    0h 22m
+     96  simple      0h 06m   0h 01m    0h 07m    0h 22m
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         96            96        8    1.00×  100.0%        io
+     2         96           192        8    0.51×   25.6%        io
+     4         96           384        8    1.02×   25.6%        io
+     8         96           768        5    2.05×   25.6%        io
+
+  Configuración recomendada: 1 GPU(s) con batch=96/GPU
+  ⚠ I/O es el cuello de botella — más GPUs no ayudarán sin disco más rápido
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: vit_tiny_patch16_224
+  Val F1 esperado:    ~0.530  (epoch ≈ 8)
+  Early stop aprox.:  epoch ≈ 3  (patience=10)
+  Confianza:          media
+  Nota: Estimación empírica basada en 7 runs históricos en BigEarthNet-S2. | ViT-Tiny converge más rápido pe
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  ✓ Batch size óptimo: 96 (788.3 imgs/s)
+  → --trace off      3 epochs: ~0h 22m  [DDP×2: ~0.2h]
+  → --trace simple   3 epochs: ~0h 22m  [DDP×2: ~0.2h]
+
