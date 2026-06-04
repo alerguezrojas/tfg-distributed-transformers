@@ -42,6 +42,45 @@ class TestLogParser:
                 assert "energy_eval_wh" in df.columns or "energy_eval_j" in df.columns
                 break
 
+    def test_deep_resumen_both_field_orders(self):
+        """El parser deep debe extraer val_acc esté best ANTES o DESPUÉS de él.
+        Hay dos formatos reales:
+          A) val_f1=X  best=X  val_acc=X   (cluster)
+          B) val_f1=X  val_acc=X  best=X   (local)
+        Un regex posicional fijo dejaba uno de los dos a 0 epochs."""
+        from src.web.log_parser import _parse_deep
+        a = ("2026-05-07 10:56:58 [INFO ] [E001/30] ══ RESUMEN  "
+             "train_loss=0.1657 train_f1=0.5865 train_acc=0.9295 | "
+             "val_loss=0.1628 val_f1=0.6121 best=0.6121 val_acc=0.9306 | "
+             "val_prec=0.7285 val_rec=0.5649 | time=6075s ETA=64h")
+        b = ("2026-05-26 23:02:26 [INFO ] [E001/1] ══ RESUMEN  "
+             "train_loss=0.3632 train_f1=0.3214 train_acc=0.8970 | "
+             "val_loss=0.2414 val_f1=0.4049 val_acc=0.9090 best=0.4049 | "
+             "val_prec=0.6354 val_rec=0.3636 | time=1780s ETA=0h")
+        for txt, exp_f1, exp_acc in [(a, 0.6121, 0.9306), (b, 0.4049, 0.9090)]:
+            df = _parse_deep(txt)
+            assert len(df) == 1, f"no parseó la línea: {txt[:60]}"
+            assert abs(df["val_f1"].iloc[0] - exp_f1) < 1e-6
+            assert abs(df["val_acc"].iloc[0] - exp_acc) < 1e-6
+            assert df["epoch_time"].iloc[0] in (6075.0, 1780.0)
+
+    def test_real_deep_logs_parse_nonempty(self):
+        """Los logs deep reales (train_deep_*.log) que completaron al menos un
+        epoch deben parsear >0 filas (regresión del v1 cluster invisible)."""
+        from src.web.log_parser import parse_log
+        deep_logs = [p for p in _find_files("train_deep_*.log")]
+        if not deep_logs:
+            pytest.skip("No hay logs deep")
+        parsed_any = False
+        for log_path in deep_logs:
+            if "RESUMEN" in log_path.read_text(errors="replace"):
+                df = parse_log(log_path)
+                assert len(df) > 0, f"deep log con RESUMEN parseó 0 filas: {log_path}"
+                assert df["val_f1"].notna().any()
+                parsed_any = True
+        if not parsed_any:
+            pytest.skip("Ningún log deep tiene RESUMEN")
+
     def test_energy_parsed_for_distributed_trainers(self):
         """Los regex [energy]/[timed] deben casar también DDPTrainer y
         HeterogeneousDDPTrainer, no sólo 'Trainer'. (Bug del demo distribuido:

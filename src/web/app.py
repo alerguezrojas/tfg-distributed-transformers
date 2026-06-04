@@ -1067,13 +1067,35 @@ with tab_ddp:
                 avg_s = df_s["epoch_time"].mean() if "epoch_time" in df_s.columns and df_s["epoch_time"].notna().any() else None
                 avg_d = df_d["epoch_time"].mean() if "epoch_time" in df_d.columns and df_d["epoch_time"].notna().any() else None
 
+                # Etiquetas correctas según el tipo de distribución: el
+                # heterogéneo es V100+CPU (NO 2 GPUs equivalentes).
+                is_hetero = r_ddp.mode == "ddp_hetero"
+                worker_desc = "V100 + CPU" if is_hetero else "2 GPUs"
+                n_workers = 2
+
                 su1, su2, su3, su4 = st.columns(4)
                 su1.metric("Epoch single-GPU", f"{avg_s/60:.1f} min" if avg_s else "—")
-                su2.metric("Epoch DDP", f"{avg_d/60:.1f} min" if avg_d else "—")
+                su2.metric(f"Epoch distribuido ({worker_desc})", f"{avg_d/60:.1f} min" if avg_d else "—")
+                speedup = None
                 if avg_s and avg_d and avg_d > 0:
                     speedup = avg_s / avg_d
                     su3.metric("Speedup real", f"{speedup:.2f}×")
-                    su4.metric("Eficiencia de escalado", f"{speedup / 2 * 100:.1f}%")
+                    su4.metric(f"Eficiencia vs ideal {n_workers}× ", f"{speedup / n_workers * 100:.1f}%")
+
+                if speedup is not None and speedup < 1:
+                    st.warning(
+                        f"**Speedup < 1×: el distribuido es {1/speedup:.1f}× más LENTO** que la GPU sola. "
+                        + ("Es el resultado esperado del DDP **síncrono** con hardware desbalanceado "
+                           "(V100 + CPU): en cada batch la GPU espera a la CPU (~50× más lenta), "
+                           "así que el sistema va al ritmo del nodo más lento. Demuestra *cuándo NO distribuir*."
+                           if is_hetero else
+                           "Revisa el reparto de carga / la comunicación entre GPUs.")
+                    )
+                elif speedup is not None:
+                    st.success(
+                        f"**Speedup {speedup:.2f}× con {worker_desc}** "
+                        f"(eficiencia {speedup/n_workers*100:.0f}% sobre el ideal lineal {n_workers}×)."
+                    )
 
                 fig_ddp_f1 = go.Figure()
                 if "val_f1" in df_s.columns:
@@ -1110,14 +1132,19 @@ with tab_ddp:
                     ))
                     if avg_d:
                         fig_scale.add_trace(go.Scatter(
-                            x=[2], y=[avg_d / 60], name="DDP real (2 GPUs)",
+                            x=[2], y=[avg_d / 60], name=f"Real ({worker_desc})",
                             mode="markers", marker=dict(color=COLORS[2], size=14, symbol="star"),
                         ))
-                    fig_scale.update_layout(**_base_layout(300, "Tiempo por epoch vs número de GPUs"),
-                                            xaxis_title="Número de GPUs", yaxis_title="Minutos por epoch")
+                    fig_scale.update_layout(**_base_layout(300, "Tiempo por epoch vs número de workers"),
+                                            xaxis_title="Número de workers (procesos)", yaxis_title="Minutos por epoch")
                     fig_scale.update_xaxes(tickvals=world_sizes)
                     _show(fig_scale, "escalado_ddp")
-                    st.caption("La diferencia entre teórico y real refleja overhead de comunicación, cuello de botella NFS y desequilibrio de carga.")
+                    st.caption(
+                        "La línea teórica asume añadir workers IDÉNTICOS al single-GPU "
+                        "(escalado lineal perfecto). El punto real queda por debajo por "
+                        "overhead de comunicación, cuello NFS y — en el heterogéneo — "
+                        "porque el segundo worker es una CPU ~50× más lenta, no otra V100."
+                    )
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # CURVAS

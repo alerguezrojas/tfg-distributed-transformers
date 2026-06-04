@@ -21,13 +21,12 @@ _TIMED_TRAIN = re.compile(r"\[timed\]\s+\w*Trainer\.train_epoch:\s+([0-9.]+)s")
 _TIMED_EVAL = re.compile(r"\[timed\]\s+\w*Trainer\.eval_epoch:\s+([0-9.]+)s")
 
 # ── Deep-trace patterns ───────────────────────────────────────────────────────
-_DEEP_RESUMEN = re.compile(
-    r"\[E(\d+)/\d+\] ══ RESUMEN\s+"
-    r"train_loss=([0-9.]+)\s+train_f1=([0-9.]+)\s+train_acc=([0-9.]+)\s*\|\s*"
-    r"val_loss=([0-9.]+)\s+val_f1=([0-9.]+)\s+(?:val_acc=([0-9.]+)\s+)?best=[0-9.]+\s*\|\s*"
-    r"val_prec=([0-9.]+)\s+val_rec=([0-9.]+)\s*\|\s*"
-    r"time=([0-9.]+)s"
-)
+# Hay (al menos) dos variantes en el orden de los campos de la línea RESUMEN:
+#   A) ... val_f1=X  best=X  val_acc=X | ...   (cluster, may 2026)
+#   B) ... val_f1=X  val_acc=X  best=X | ...   (local, may 2026)
+# Por eso NO se usa un único regex posicional: se ancla la línea RESUMEN y se
+# extrae cada campo por nombre, independientemente del orden.
+_DEEP_ANCHOR = re.compile(r"\[E(\d+)/\d+\]\s+══\s+RESUMEN")
 
 # ── Legacy format (pre-refactor simple trace) ─────────────────────────────────
 _LEGACY_LINE = re.compile(
@@ -132,25 +131,32 @@ def _parse_simple(text: str) -> pd.DataFrame:
     return _to_df(rows)
 
 
+def _deep_field(name: str, line: str) -> float | None:
+    """Extrae `name=<float>` de una línea, o None si no aparece."""
+    m = re.search(rf"\b{name}=([0-9.]+)", line)
+    return float(m.group(1)) if m else None
+
+
+# Campo del log → columna del DataFrame
+_DEEP_FIELDS = [
+    ("train_loss", "train_loss"), ("train_f1", "train_f1"), ("train_acc", "train_acc"),
+    ("val_loss", "val_loss"), ("val_f1", "val_f1"), ("val_acc", "val_acc"),
+    ("val_prec", "val_prec"), ("val_rec", "val_rec"), ("time", "epoch_time"),
+]
+
+
 def _parse_deep(text: str) -> pd.DataFrame:
     rows: list[dict] = []
     for line in text.splitlines():
-        m = _DEEP_RESUMEN.search(line)
-        if m:
-            row: dict = {
-                "epoch": int(m.group(1)),
-                "train_loss": float(m.group(2)),
-                "train_f1": float(m.group(3)),
-                "train_acc": float(m.group(4)),
-                "val_loss": float(m.group(5)),
-                "val_f1": float(m.group(6)),
-                "val_prec": float(m.group(8)),
-                "val_rec": float(m.group(9)),
-                "epoch_time": float(m.group(10)),
-            }
-            if m.group(7) is not None:
-                row["val_acc"] = float(m.group(7))
-            rows.append(row)
+        a = _DEEP_ANCHOR.search(line)
+        if not a:
+            continue
+        row: dict = {"epoch": int(a.group(1))}
+        for field, col in _DEEP_FIELDS:
+            val = _deep_field(field, line)
+            if val is not None:
+                row[col] = val
+        rows.append(row)
     return _to_df(rows)
 
 
