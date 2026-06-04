@@ -14,10 +14,11 @@ _SIMPLE_PRECISION = re.compile(r"\s+precision\s+val=([0-9.]+)")
 _SIMPLE_RECALL = re.compile(r"\s+recall\s+val=([0-9.]+)")
 _SIMPLE_ETA = re.compile(r"ETA:.*?\(([0-9.]+)s/epoch")
 _SIMPLE_THRESHOLD = re.compile(r"threshold óptimo=([0-9.]+),\s*F1=([0-9.]+)")
-_ENERGY_TRAIN = re.compile(r"\[energy\] Trainer\.train_epoch:\s+([0-9.]+)\s+J\s+\([0-9.]+ Wh\)\s+potencia media\s+([0-9.]+) W")
-_ENERGY_EVAL = re.compile(r"\[energy\] Trainer\.eval_epoch:\s+([0-9.]+)\s+J\s+\(([0-9.]+) Wh\)\s+potencia media\s+([0-9.]+) W")
-_TIMED_TRAIN = re.compile(r"\[timed\] Trainer\.train_epoch:\s+([0-9.]+)s")
-_TIMED_EVAL = re.compile(r"\[timed\] Trainer\.eval_epoch:\s+([0-9.]+)s")
+# \w* permite cualquier subclase: Trainer, DDPTrainer, HeterogeneousDDPTrainer
+_ENERGY_TRAIN = re.compile(r"\[energy\]\s+\w*Trainer\.train_epoch:\s+([0-9.]+)\s+J\s+\([0-9.]+ Wh\)\s+potencia media\s+([0-9.]+) W")
+_ENERGY_EVAL = re.compile(r"\[energy\]\s+\w*Trainer\.eval_epoch:\s+([0-9.]+)\s+J\s+\(([0-9.]+) Wh\)\s+potencia media\s+([0-9.]+) W")
+_TIMED_TRAIN = re.compile(r"\[timed\]\s+\w*Trainer\.train_epoch:\s+([0-9.]+)s")
+_TIMED_EVAL = re.compile(r"\[timed\]\s+\w*Trainer\.eval_epoch:\s+([0-9.]+)s")
 
 # ── Deep-trace patterns ───────────────────────────────────────────────────────
 _DEEP_RESUMEN = re.compile(

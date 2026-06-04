@@ -74,6 +74,20 @@ def _load_df(log_path: str, epoch_csv: str | None) -> pd.DataFrame:
         if not df.empty:
             if "epoch_time_s" in df.columns:
                 df = df.rename(columns={"epoch_time_s": "epoch_time"})
+            # La energía/potencia y los timings sólo viven en el log (no se
+            # escriben al epoch_metrics CSV). Si el log existe, los mezclamos
+            # por epoch para que el panel de energía aparezca también con CSV.
+            _energy_cols = ["energy_train_j", "energy_eval_j", "energy_eval_wh",
+                            "power_train_w", "power_eval_w", "time_train_s", "time_eval_s"]
+            missing = [c for c in _energy_cols if c not in df.columns
+                       or not df[c].notna().any()]
+            if missing and log_path and Path(log_path).exists():
+                log_df = parse_log(Path(log_path))
+                merge_cols = [c for c in missing if c in log_df.columns]
+                if merge_cols and "epoch" in log_df.columns:
+                    df = df.merge(
+                        log_df[["epoch", *merge_cols]], on="epoch", how="left"
+                    )
             return df
     return parse_log(Path(log_path))
 

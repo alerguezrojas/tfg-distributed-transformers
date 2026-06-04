@@ -42,6 +42,48 @@ class TestLogParser:
                 assert "energy_eval_wh" in df.columns or "energy_eval_j" in df.columns
                 break
 
+    def test_energy_parsed_for_distributed_trainers(self):
+        """Los regex [energy]/[timed] deben casar también DDPTrainer y
+        HeterogeneousDDPTrainer, no sólo 'Trainer'. (Bug del demo distribuido:
+        el panel de energía no aparecía porque el regex pedía 'Trainer' literal.)"""
+        from src.web.log_parser import (
+            _ENERGY_TRAIN, _ENERGY_EVAL, _TIMED_TRAIN, _TIMED_EVAL,
+        )
+        train_line = ("2026-06-04 15:00:35 [INFO ] [energy] "
+                      "HeterogeneousDDPTrainer.train_epoch: 10891.4 J  "
+                      "(3.02540 Wh)  potencia media 45.5 W")
+        eval_line = ("2026-06-04 15:00:59 [INFO ] [energy] "
+                     "DDPTrainer.eval_epoch: 1058.1 J  (0.29391 Wh)  "
+                     "potencia media 45.0 W")
+        timed_train = ("2026-06-04 15:00:35 [INFO ] [timed] "
+                       "HeterogeneousDDPTrainer.train_epoch: 246.56s")
+        timed_eval = ("2026-06-04 15:00:59 [INFO ] [timed] "
+                      "DDPTrainer.eval_epoch: 24.24s")
+
+        mt = _ENERGY_TRAIN.search(train_line)
+        assert mt and float(mt.group(1)) == 10891.4 and float(mt.group(2)) == 45.5
+        me = _ENERGY_EVAL.search(eval_line)
+        assert me and float(me.group(2)) == 0.29391 and float(me.group(3)) == 45.0
+        assert _TIMED_TRAIN.search(timed_train).group(1) == "246.56"
+        assert _TIMED_EVAL.search(timed_eval).group(1) == "24.24"
+
+    def test_energy_extracted_from_real_distributed_log(self):
+        """Sobre el log real del demo heterogéneo, parse_log debe rellenar las
+        columnas de energía con valores no nulos."""
+        from src.web.log_parser import parse_log
+        hetero_logs = [p for p in _find_files("train_*.log")
+                       if "ddp_hetero" in str(p)]
+        if not hetero_logs:
+            pytest.skip("No hay logs de DDP heterogéneo")
+        for log_path in hetero_logs:
+            if "[energy]" not in log_path.read_text(errors="replace"):
+                continue
+            df = parse_log(log_path)
+            assert df["energy_train_j"].notna().any(), f"sin energía en {log_path}"
+            assert df["energy_eval_wh"].notna().any()
+            assert df["power_train_w"].notna().any()
+            break
+
 
 class TestEpochMetricsCSV:
     def test_all_csvs_parseable(self):
