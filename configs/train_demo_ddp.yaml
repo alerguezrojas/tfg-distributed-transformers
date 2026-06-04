@@ -1,0 +1,56 @@
+# Demo DDP NCCL multi-GPU REAL — para 2 GPUs físicas (p.ej. Kaggle 2×T4).
+#
+# Es la pareja "distribuido que GANA" del estudio: mismo modelo (vit_tiny),
+# mismo subset y epochs que configs/train_demo_single.yaml, pero repartido en
+# 2 GPUs reales → speedup positivo (~1.5-1.9×). Valida la predicción del
+# DDPOptimizer del feasibility contra una medición real.
+#
+# batch_size es POR GPU. Con world_size=2 → batch global = 48×2 = 96,
+# igual que el single → comparación justa (mismo trabajo por epoch).
+#
+# ⚠ NO sirve para "2 procesos en 1 sola GPU": NCCL exige 1 rank = 1 GPU
+#   física ("Duplicate GPU detected" si dos ranks comparten device). En Verode,
+#   con una única V100 usable, la comparación distribuida posible es el
+#   heterogéneo V100+CPU (gloo): configs/train_heterogeneous_ddp_demo.yaml.
+#
+# Lanzar (nodo con 2 GPUs):
+#   torchrun --nproc_per_node=2 scripts/train_ddp.py \
+#     --config configs/train_demo_ddp.yaml \
+#     --trace simple --layers confusion batch-monitor --fn energy timing
+#
+# Las rutas data.root/metadata se sobreescriben en el notebook de Kaggle
+# (el dataset allí vive en /kaggle/input/...).
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata_demo.parquet"
+  num_workers: 8
+
+model:
+  name: "vit_tiny_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.1
+
+training:
+  epochs: 3
+  batch_size: 48          # POR GPU → 48×2 = 96 global (= single)
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  mixup_alpha: 0.0
+  early_stopping_patience: 10
+  log_batch_every: 5
+
+distributed:
+  backend: "nccl"
+
+checkpoint:
+  dir: "checkpoints/verode"
+
+output:
+  env: "verode"

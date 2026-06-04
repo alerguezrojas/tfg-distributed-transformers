@@ -86,7 +86,11 @@ def main():
 
     local_rank = int(os.environ["LOCAL_RANK"])
     if use_cuda:
-        device = torch.device(f"cuda:{local_rank}")
+        # Si hay menos GPUs que procesos (p.ej. 2 procesos en 1 V100 para medir
+        # overhead de DDP sin hardware extra), varios ranks comparten la misma
+        # GPU vía módulo. Con N GPUs ≥ N procesos, mapea 1:1 como siempre.
+        gpu_id = local_rank % torch.cuda.device_count()
+        device = torch.device(f"cuda:{gpu_id}")
         torch.cuda.set_device(device)
         dist.init_process_group(backend="nccl", device_id=device)
     else:

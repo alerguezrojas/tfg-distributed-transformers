@@ -1,0 +1,52 @@
+# Demo SINGLE-GPU — pareja apples-to-apples del demo distribuido.
+#
+# Mismo modelo (vit_tiny), mismo subset (5000/1500), mismos epochs (3) e
+# hiperparámetros que:
+#   - configs/train_heterogeneous_ddp_demo.yaml  (V100 + CPU, gloo)
+#   - configs/train_demo_ddp.yaml                (2 procesos NCCL en 1 V100)
+#
+# Sirve como línea base single-GPU para medir, en la pestaña "Análisis DDP"
+# de la web, el speedup/overhead real de cada estrategia distribuida sobre
+# EXACTAMENTE la misma carga.
+#
+# Generar el subset antes (en verode21), si no existe:
+#   uv run python scripts/make_smoke_subset.py \
+#     --metadata ~/datasets/bigearthnet/metadata.parquet \
+#     --out ~/datasets/bigearthnet/metadata_demo.parquet \
+#     --n-train 5000 --n-val 1500
+#
+# Lanzar (verode21, GPU):
+#   .venv/bin/python scripts/train_single_gpu.py \
+#     --config configs/train_demo_single.yaml \
+#     --trace simple --layers confusion batch-monitor --fn energy timing
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata_demo.parquet"
+  num_workers: 8
+
+model:
+  name: "vit_tiny_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.1
+
+training:
+  epochs: 3
+  batch_size: 96          # = batch global de las variantes distribuidas
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  mixup_alpha: 0.0
+  early_stopping_patience: 10
+  log_batch_every: 5
+
+checkpoint:
+  dir: "checkpoints/verode"
+
+output:
+  env: "verode"

@@ -229,3 +229,19 @@ class TestRunRegistry:
         from src.web.run_registry import discover_feasibility_csvs
         csvs = discover_feasibility_csvs(ROOT)
         assert len(csvs) > 0
+
+    def test_hetero_runs_classified_as_distributed(self):
+        """El demo heterogéneo vive en logs/verode/ddp_hetero/ → su mode debe
+        empezar por 'ddp' para que la pestaña Análisis DDP lo empareje contra
+        un run single-GPU. (Bug: la pestaña filtraba mode=='ddp' exacto y dejaba
+        fuera los runs heterogéneos.)"""
+        from src.web.run_registry import discover_runs
+        runs = discover_runs(ROOT)
+        hetero = [r for r in runs if "ddp_hetero" in str(r.log_path)]
+        if not hetero:
+            pytest.skip("No hay runs heterogéneos en logs/")
+        for r in hetero:
+            assert r.mode == "ddp_hetero"
+            assert r.mode.startswith("ddp"), (
+                "el filtro de la pestaña Análisis DDP usa mode.startswith('ddp')"
+            )

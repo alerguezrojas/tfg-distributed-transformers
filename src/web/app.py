@@ -1014,11 +1014,14 @@ with tab_ddp:
         st.info("No se encontraron runs.")
     else:
         single_runs = [r for r in all_runs_ddp if r.mode == "single"]
-        ddp_runs = [r for r in all_runs_ddp if r.mode == "ddp"]
+        # Cualquier modo distribuido cuenta como DDP: "ddp" (multi-proceso NCCL)
+        # y "ddp_hetero" (GPU+CPU). Antes sólo se filtraba "ddp" exacto, así que
+        # los runs heterogéneos no aparecían en esta pestaña.
+        ddp_runs = [r for r in all_runs_ddp if r.mode.startswith("ddp")]
 
         da1, da2, da3 = st.columns(3)
         da1.metric("Runs single-GPU", len(single_runs))
-        da2.metric("Runs DDP", len(ddp_runs))
+        da2.metric("Runs distribuidos", len(ddp_runs))
         da3.metric("Total runs", len(all_runs_ddp))
 
         if not ddp_runs:
@@ -1036,7 +1039,8 @@ with tab_ddp:
                               if "epoch_time" in ddf.columns and ddf["epoch_time"].notna().any() else None)
                     ddp_rows.append({
                         "Run": r.label[:50], "Modelo": r.model or "—",
-                        "Entorno": r.env, "Mejor Val F1": round(best_f1, 4),
+                        "Modo": r.mode, "Entorno": r.env,
+                        "Mejor Val F1": round(best_f1, 4),
                         "Epochs": len(ddf),
                         "Epoch promedio (min)": round(avg_ep / 60, 1) if avg_ep else "—",
                     })
