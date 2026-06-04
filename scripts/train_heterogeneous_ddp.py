@@ -28,6 +28,7 @@ Lanzar (dos terminales tmux separadas):
 from __future__ import annotations
 
 import argparse
+import logging
 import os
 import sys
 from datetime import datetime
@@ -197,6 +198,17 @@ def main():
         model_name = args.model or cfg["model"]["name"]
         print(f"Modelo: {model_name} | Trace: {trace} | Layers: {layers or 'ninguno'}")
         print(f"Muestras rank 0: {len(train_sampler)} train / {len(val_sampler)} val")
+        # Config en el log (visible en la web → Información). Heterogéneo: batch
+        # por rank distinto (GPU vs CPU).
+        _bs_gpu = _rank_bs(0)
+        _bs_cpu = _rank_bs(1) if len(ranks_cfg) > 1 else None
+        _glob = _bs_gpu + (_bs_cpu or 0)
+        logging.getLogger("trainer").info(
+            f"Configuración: modelo={model_name} | heterogéneo batch GPU={_bs_gpu} / "
+            f"CPU={_bs_cpu if _bs_cpu is not None else '—'} (global={_glob}) | "
+            f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
+            f"train={len(train_ds)} | val={len(val_ds)}"
+        )
 
     # ── Entrenamiento ─────────────────────────────────────────────────────────
     epochs = cfg["training"]["epochs"]

@@ -47,6 +47,7 @@ Flags
 """
 
 import argparse
+import logging
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -193,6 +194,14 @@ def main():
     print(f"Capas       : {layers or 'ninguna'}")
     print(f"Decoradores@: {fn or 'ninguno'}")
     print(f"Métricas    : {metrics or 'ninguna (DeepTracingDecorator las gestiona)'}")
+
+    # Registrar la configuración en el log (visible en la web → Información)
+    _bs = cfg["training"]["batch_size"]
+    logging.getLogger("trainer").info(
+        f"Configuración: modelo={model_name} | batch={_bs}/GPU (global={_bs}) | "
+        f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
+        f"train={len(train_ds)} | val={len(val_ds)}"
+    )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────
 

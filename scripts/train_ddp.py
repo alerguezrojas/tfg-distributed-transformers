@@ -26,6 +26,7 @@ batch_size × world_size.  Adjust lr proportionally if needed (linear scaling ru
 """
 
 import argparse
+import logging
 import os
 import sys
 from datetime import datetime
@@ -177,6 +178,14 @@ def main():
         print(f"Traza       : {trace}")
         print(f"Capas       : {layers or 'ninguna'}")
         print(f"Decoradores@: {fn or 'ninguno'}")
+        # Config en el log (visible en la web → Información)
+        _bs = cfg["training"]["batch_size"]
+        logging.getLogger("trainer").info(
+            f"Configuración: modelo={model_name} | batch={_bs}/GPU "
+            f"(global={_bs * world_size}, {world_size} GPUs) | "
+            f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
+            f"train={len(train_ds)} | val={len(val_ds)}"
+        )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────
     epochs = cfg["training"]["epochs"]

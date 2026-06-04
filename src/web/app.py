@@ -129,6 +129,26 @@ def _feas_label(path_str: str) -> str:
     return f"{env} · {model} · {when}"
 
 
+@st.cache_data(ttl=30)
+def _run_config(log_path_str: str) -> dict:
+    """Extrae la línea 'Configuración: k=v | k=v | ...' del log → dict.
+    Devuelve {} si el run es anterior a esta versión (no la registra)."""
+    try:
+        for line in Path(log_path_str).read_text(errors="replace").splitlines():
+            i = line.find("Configuración:")
+            if i < 0:
+                continue
+            out = {}
+            for part in line[i + len("Configuración:"):].split("|"):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    out[k.strip()] = v.strip()
+            return out
+    except Exception:
+        pass
+    return {}
+
+
 # ── Cargadores de dataset con caché ─────────────────────────────────────────────
 
 
@@ -2695,20 +2715,33 @@ with tab_info:
 
         with col_m:
             st.subheader("Metadatos del run")
+            _cfg_run = _run_config(str(run.log_path))
             rows_i = {
-                "Log": run.log_path.name,
-                "Entorno": run.env,
+                "Modelo": run.model or "—",
+                "Entorno · Modo": f"{run.env} · {run.mode}",
                 "Trace mode": run.trace_mode,
                 "Epochs": n_ep_i,
                 "Mejor Val F1": f"{best_f1_i:.4f}" if not pd.isna(best_f1_i) else "—",
                 "Mejor epoch": int(best_ep_i_v) if best_ep_i_v is not None else "—",
             }
+            # Config del run (solo runs nuevos la registran en el log)
+            if _cfg_run.get("batch"):
+                rows_i["Batch size"] = _cfg_run["batch"]
+            elif _cfg_run.get("heterogéneo batch GPU"):
+                rows_i["Batch size"] = "GPU " + _cfg_run["heterogéneo batch GPU"]
+            if _cfg_run.get("lr"):
+                rows_i["Learning rate"] = _cfg_run["lr"]
+            if _cfg_run.get("train"):
+                rows_i["Imágenes train/val"] = f"{_cfg_run.get('train', '?')} / {_cfg_run.get('val', '?')}"
             if "epoch_time" in df_info.columns and df_info["epoch_time"].notna().any():
                 total_si = df_info["epoch_time"].sum()
                 rows_i["Tiempo total"] = _dur_str(total_si)
                 rows_i["Promedio/epoch"] = f"{df_info['epoch_time'].mean()/60:.1f} min"
             for k, v in rows_i.items():
                 st.markdown(f"**{k}:** {v}")
+            if not _cfg_run:
+                st.caption("ℹ️ El batch size solo se registra en runs nuevos (a partir de esta "
+                           "versión). Los anteriores no lo guardaron en el log.")
 
         with col_f:
             st.subheader("Ficheros asociados")
