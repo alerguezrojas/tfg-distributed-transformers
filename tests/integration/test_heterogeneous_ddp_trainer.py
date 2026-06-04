@@ -93,6 +93,43 @@ def test_model_wrapped_with_ddp_once():
 # ── Tests del bucle de entrenamiento ─────────────────────────────────────────
 
 
+def test_train_loss_is_mean_scale_not_inflated():
+    """La train_loss reportada debe estar en escala BCE-media (~mismo orden que
+    una BCE normal), NO inflada ~n_clases× por usar criterion_sum sin dividir
+    por el nº de clases. Antes del fix salía ~5-15; debe ser < 2."""
+    _init_gloo()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            trainer = _make_hetero_trainer(Path(tmp))
+            result = trainer.train_epoch(_tiny_loader())
+            # BCE media de un modelo sin entrenar ronda ~0.7; con margen, < 2.0
+            assert 0.0 < result["loss"] < 2.0, (
+                f"train_loss={result['loss']:.3f} fuera de escala BCE-media — "
+                "¿se está reportando la suma sobre clases sin normalizar?"
+            )
+    finally:
+        _destroy_gloo()
+
+
+def test_batch_loss_in_mean_scale():
+    """El batch_loss del hook también debe estar en escala media (< 2), no suma."""
+    _init_gloo()
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            trainer = _make_hetero_trainer(Path(tmp))
+            losses = []
+            trainer.register_batch_hook(
+                lambda ep, bi, nb, met: losses.append(met["batch_loss"])
+            )
+            trainer.train_epoch(_tiny_loader())
+            assert losses, "el hook no recibió batches"
+            assert all(0.0 < bl < 2.0 for bl in losses), (
+                f"batch_loss fuera de escala media: {losses}"
+            )
+    finally:
+        _destroy_gloo()
+
+
 def test_train_epoch_returns_expected_keys():
     """train_epoch debe devolver loss, f1, accuracy, time, _preds, _labels."""
     _init_gloo()
