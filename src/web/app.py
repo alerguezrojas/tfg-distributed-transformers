@@ -112,6 +112,23 @@ def _get_feasibility_csvs() -> list[Path]:
     return discover_feasibility_csvs(ROOT)
 
 
+@st.cache_data(ttl=60)
+def _feas_label(path_str: str) -> str:
+    """Etiqueta legible para un CSV de viabilidad: 'entorno · modelo · DD/MM HH:MM'
+    en vez del nombre por fecha cruda."""
+    import re
+    p = Path(path_str)
+    env = p.parent.parent.name if p.parent.parent else "?"
+    try:
+        m, _ = parse_feasibility_csv(p)
+        model = str(m.get("model_name", "?")).replace("_patch16_224", "")
+    except Exception:
+        model = "?"
+    mt = re.search(r"(\d{2})(\d{2})\d{4}_(\d{2})(\d{2})", p.name)
+    when = f"{mt.group(1)}/{mt.group(2)} {mt.group(3)}:{mt.group(4)}" if mt else p.stem
+    return f"{env} · {model} · {when}"
+
+
 # ── Cargadores de dataset con caché ─────────────────────────────────────────────
 
 
@@ -1755,10 +1772,9 @@ with tab_viabilidad:
     # Carga común del informe seleccionado
     feasibility_csvs = _get_feasibility_csvs()
     if feasibility_csvs:
-        csv_labels_feas = {str(p): f"{p.parent.name}/{p.name}" for p in feasibility_csvs}
         selected_feas_path = st.sidebar.selectbox(
-            "Informe viabilidad", list(csv_labels_feas.keys()),
-            format_func=lambda p: csv_labels_feas[p], key="feas_sidebar_sel",
+            "Informe viabilidad", [str(p) for p in feasibility_csvs],
+            format_func=_feas_label, key="feas_sidebar_sel",
         )
         meta, bdf_feas = parse_feasibility_csv(Path(selected_feas_path))
     else:
@@ -1796,7 +1812,7 @@ with tab_viabilidad:
             _feas_p = _combo_csv[_combo]
             _meta_pr, _feas_df_pr = parse_feasibility_csv(_feas_p)
             _nfs_pr = float(_meta_pr.get("nfs_factor", 1.0) or 1.0)
-            st.caption(f"Feasibility: `{_env_pr}/{_feas_p.name}`  ·  modelo **{_mod_pr}**")
+            st.caption(f"Informe usado: **{_feas_label(str(_feas_p))}**")
 
             _all_pr = _get_runs()
 
@@ -1865,20 +1881,27 @@ with tab_viabilidad:
                                 st.warning(f"**Estimación optimista** — el real fue {abs(_e):.0f}% más lento.{_x}")
                             else:
                                 st.info(f"**Estimación pesimista** — el real fue {_e:.0f}% más rápido de lo previsto.")
-                        _bars = [(r.metric, r.error_pct) for r in _cmp.rows if r.error_pct is not None]
-                        if _bars:
-                            _lab = [b[0] for b in _bars]
-                            _val = [b[1] for b in _bars]
-                            _col = ["#16a34a" if abs(v) <= 10 else "#f59e0b" if abs(v) <= 30 else "#dc2626"
-                                    for v in _val]
-                            _fig = go.Figure(go.Bar(x=_val, y=_lab, orientation="h", marker_color=_col,
-                                                    text=[f"{v:+.0f}%" for v in _val], textposition="outside"))
-                            _fig.update_layout(**_base_layout(max(220, 42 * len(_lab) + 80),
-                                               "Error de la predicción por métrica"),
-                                               xaxis_title="Error %  (negativo = estimó de menos)", yaxis_title="")
-                            _fig.add_vline(x=0, line_color="#64748b")
-                            _show(_fig, "pred_vs_real_single")
-                            st.caption("Verde ≤10% · ámbar ≤30% · rojo >30%.")
+                        # Gráfica sencilla: tiempo estimado vs real, misma unidad (min)
+                        _tm = [(n, _rows.get(k)) for n, k in
+                               (("Train", "Train time / epoch"),
+                                ("Eval", "Eval time / epoch"),
+                                ("Total", "Total time / epoch"))]
+                        _tm = [(n, r) for n, r in _tm
+                               if r and r.estimated is not None and r.actual is not None]
+                        if _tm:
+                            _names = [n for n, _ in _tm]
+                            _fig = go.Figure()
+                            _fig.add_trace(go.Bar(name="Estimado", x=_names, y=[r.estimated for _, r in _tm],
+                                                  marker_color="#94a3b8",
+                                                  text=[f"{r.estimated:.2f}" for _, r in _tm], textposition="outside"))
+                            _fig.add_trace(go.Bar(name="Real", x=_names, y=[r.actual for _, r in _tm],
+                                                  marker_color="#2563eb",
+                                                  text=[f"{r.actual:.2f}" for _, r in _tm], textposition="outside"))
+                            _fig.update_layout(**_base_layout(300, "Tiempo por epoch: estimado vs real"),
+                                               barmode="group", yaxis_title="Minutos", xaxis_title="")
+                            _show(_fig, "pred_time_bars")
+                            st.caption("Las dos barras de cada par a la misma altura = predicción acertada "
+                                       "(gris = estimado, azul = real). Throughput/VRAM/energía en el detalle.")
                         with st.expander("Ver detalle y fórmulas"):
                             _t = _cmp.to_dataframe()
                             st.dataframe(_t, use_container_width=True, hide_index=True)
