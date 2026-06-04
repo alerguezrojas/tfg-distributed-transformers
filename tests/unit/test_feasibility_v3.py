@@ -193,13 +193,42 @@ def test_ddp_optimizer_single_gpu_efficiency_100():
     assert single.estimated_speedup == pytest.approx(1.0, abs=0.01)
 
 
-def test_ddp_optimizer_more_gpus_faster():
-    optimizer = _make_ddp_optimizer()
+def test_ddp_optimizer_more_gpus_faster_when_compute_bound():
+    """Con un disco rápido (compute-bound), más GPUs → menos tiempo total."""
+    from scripts.check_feasibility import (
+        DDPOptimizer, ModelInfo, HardwareInfo, CPUInfo, DiskInfo, BenchmarkResult,
+    )
+    mi = ModelInfo(name="vit_base", total_params=86_000_000, trainable_params=86_000_000,
+                   flops_per_image_mflops=17000, weight_mb=344, gradient_mb=344,
+                   optimizer_mb=688, activation_mb_per_image=120)
+    hi = HardwareInfo(device_name="Tesla T4", total_vram_gb=16.0, free_vram_gb=15.0, is_cuda=True)
+    cpu = CPUInfo(logical_cores=8, physical_cores=4, freq_mhz=2400,
+                  ram_total_gb=32, ram_free_gb=28, platform="linux")
+    disk = DiskInfo(dataset_path="/fast", is_nfs=False, disk_type="SSD",
+                    read_mb_per_s=500, files_per_second=5000)  # disco rápido → compute-bound
+    bench = [BenchmarkResult(batch_size=32, trace_mode="off",
+                             seconds_per_batch_train=0.93, seconds_per_batch_eval=0.30,
+                             images_per_second_train=34.5, images_per_second_eval=105,
+                             peak_vram_gb=5.0, avg_power_w=70)]
+    optimizer = DDPOptimizer(mi, hi, cpu, disk, bench, 5000, 1500, nfs_factor=1.0)
+    scenarios = optimizer.compute_scenarios(n_epochs=3)
+    by_gpu = {s.n_gpus: s for s in scenarios}
+    # Compute-bound → 2 GPUs casi el doble de rápido (speedup ~1.9×, PCIe)
+    assert by_gpu[2].time_total_s < by_gpu[1].time_total_s
+    assert by_gpu[4].time_total_s < by_gpu[2].time_total_s
+    assert by_gpu[2].estimated_speedup > 1.6
+    assert by_gpu[2].bottleneck == "compute"
+
+
+def test_ddp_optimizer_io_bound_no_speedup():
+    """Con disco lento (I/O-bound), más GPUs NO aceleran (el disco es el límite
+    global, fijo). Regresión del bug que asumía Gigabit por NFS."""
+    optimizer = _make_ddp_optimizer()  # files_per_second=100 → I/O-bound
     scenarios = optimizer.compute_scenarios(n_epochs=17)
-    times = {s.n_gpus: s.time_total_s for s in scenarios}
-    # Más GPUs → menos tiempo total
-    assert times[2] < times[1]
-    assert times[4] < times[2]
+    by_gpu = {s.n_gpus: s for s in scenarios}
+    assert by_gpu[2].bottleneck == "io"
+    # speedup ~1× (no mejora) y desde luego no catastrófico (<1) por sync inflada
+    assert 0.9 <= by_gpu[2].estimated_speedup <= 1.15
 
 
 def test_ddp_optimizer_nfs_bottleneck_detection():

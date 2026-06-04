@@ -591,18 +591,23 @@ class DDPOptimizer:
         return max(viable, key=lambda r: r.images_per_second_train)
 
     def _infer_network_type(self) -> str:
-        """Infiere el tipo de interconexión GPU basándose en el hardware."""
+        """Infiere la interconexión GPU-GPU para el escenario DDP multi-GPU.
+
+        El caso realista de multi-GPU es `torchrun --nproc_per_node=N` en UN
+        nodo: las GPUs se comunican por NVLink (datacenter) o PCIe (resto).
+        Que el DISCO sea NFS NO implica que las GPUs hablen por Ethernet — son
+        cosas independientes (Kaggle, Verode y local tienen NFS pero las GPUs
+        están en el mismo nodo). Inferir "Gigabit" del NFS daba sync ~128×
+        sobreestimado → predicciones ~6× pesimistas (0.29× cuando el real es
+        1.90× con vit_base en 2×T4).
+        """
         if not self._gpu.is_cuda:
-            return "Gigabit"
-        # V100 en cluster Verode: comunicación via Gigabit Ethernet (NFS)
-        if self._disk and self._disk.is_nfs:
-            return "Gigabit"
-        # Si hay múltiples GPUs en el mismo nodo, asumimos PCIe o NVLink
-        # V100 típicamente con NVLink
-        if "V100" in self._gpu.device_name:
+            return "Ethernet"  # multi-nodo solo-CPU (gloo)
+        name = self._gpu.device_name or ""
+        # GPUs de datacenter suelen llevar NVLink entre sí en el mismo nodo.
+        if any(g in name for g in ("V100", "A100", "H100", "A800", "A30", "A40")):
             return "NVLink"
-        if "3060" in self._gpu.device_name or "RTX 30" in self._gpu.device_name:
-            return "PCIe"
+        # T4, RTX y demás: PCIe en el mismo nodo.
         return "PCIe"
 
     def _build_scenario(
@@ -621,42 +626,51 @@ class DDPOptimizer:
         logical = self._cpu.logical_cores if self._cpu else 8
         workers_per_gpu = min(max(1, logical // max(1, n_gpus)), 8)
 
-        # Overhead de sincronización de gradientes (All-Reduce)
-        # Volumen = 2 × model_params × 4 bytes (All-Reduce = reduce + broadcast)
+        # ── Modelo a nivel de EPOCH (no de batch) ──────────────────────────
+        # Cómputo: el throughput sintético (sin I/O) escala con 1/n_gpus, porque
+        # cada GPU procesa n_train/n_gpus imágenes.
+        imgs_per_s_compute = base_result.images_per_second_train or 1.0
+        compute_time_epoch = (self._n_train / imgs_per_s_compute) / n_gpus
+
+        # I/O: leer las n_train imágenes (3 ficheros c/u) del disco. Es un total
+        # ~CONSTANTE en n_gpus — el dataset es fijo y el disco se comparte entre
+        # los lectores, así que el disco es el límite global, no por-GPU.
+        if self._disk and self._disk.files_per_second > 0:
+            io_imgs_per_s = self._disk.files_per_second / 3.0
+            io_time_epoch = self._n_train / io_imgs_per_s
+        else:
+            io_time_epoch = 0.0
+
+        # Sincronización de gradientes (All-Reduce = 2 × params × 4 bytes).
         sync_bytes = 2 * self._model.total_params * 4
-        sync_time_s = sync_bytes / (bw_gb_s * 1e9) if bw_gb_s > 0 else 0.0
+        sync_per_batch = (sync_bytes / (bw_gb_s * 1e9)) if (bw_gb_s > 0 and n_gpus > 1) else 0.0
+        n_batches_per_gpu = math.ceil(self._n_train / global_batch)
+        sync_time_epoch = sync_per_batch * n_batches_per_gpu
 
-        compute_time_s = base_result.seconds_per_batch_train
+        # Cómputo e I/O se solapan (los dataloader workers prefetchan mientras la
+        # GPU computa) → max(); la sincronización es serie → se suma.
+        step_time_epoch = max(compute_time_epoch, io_time_epoch)
+        time_train_epoch = (step_time_epoch + sync_time_epoch) * self._nfs_factor
+        time_eval_epoch = math.ceil(self._n_val / batch_per_gpu) * base_result.seconds_per_batch_eval
 
-        if n_gpus == 1:
+        # Speedup vs 1 GPU (mismo modelo, mismo disco).
+        base_train_1gpu = max(self._n_train / imgs_per_s_compute, io_time_epoch)
+        if n_gpus == 1 or time_train_epoch <= 0:
             efficiency = 1.0
             speedup = 1.0
             sync_pct = 0.0
         else:
-            # Eficiencia real = compute / (compute + sync)
-            efficiency = compute_time_s / (compute_time_s + sync_time_s)
-            efficiency = min(efficiency, eff_base)  # cap at empirical efficiency
-            speedup = n_gpus * efficiency
-            sync_pct = sync_time_s / (compute_time_s + sync_time_s) * 100
+            speedup = (base_train_1gpu * self._nfs_factor) / time_train_epoch
+            efficiency = speedup / n_gpus
+            sync_pct = sync_time_epoch / (step_time_epoch + sync_time_epoch) * 100
 
-        # Tiempo de entrenamiento por epoch con n_gpus
-        n_batches_per_gpu = math.ceil(self._n_train / global_batch)
-        time_train_epoch = (
-            n_batches_per_gpu * (compute_time_s + sync_time_s) * self._nfs_factor
-        )
-        time_eval_epoch = math.ceil(self._n_val / batch_per_gpu) * base_result.seconds_per_batch_eval
-
-        # Identificar cuello de botella
-        if self._disk and self._disk.files_per_second > 0:
-            io_per_batch = batch_per_gpu * 3 / self._disk.files_per_second
-            if io_per_batch > compute_time_s * 1.2:
-                bottleneck = "io"
-            elif sync_pct > 30:
-                bottleneck = "sync"
-            else:
-                bottleneck = "compute"
+        # Cuello de botella
+        if io_time_epoch > compute_time_epoch * 1.2:
+            bottleneck = "io"
+        elif sync_pct > 30:
+            bottleneck = "sync"
         else:
-            bottleneck = "sync" if sync_pct > 30 else "compute"
+            bottleneck = "compute"
 
         total_s = (time_train_epoch + time_eval_epoch) * n_epochs
 
