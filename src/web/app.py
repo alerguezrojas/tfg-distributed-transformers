@@ -1766,134 +1766,162 @@ with tab_viabilidad:
 
     # ── Predicción vs realidad (auto-emparejada con el run de la barra lateral) ─
     with subtab_predreal:
-        st.markdown("### ¿Acertó el feasibility con este run?")
-        st.caption("Se compara el run seleccionado (barra lateral) con el informe "
-                   "de viabilidad del mismo modelo, emparejado automáticamente.")
+        st.markdown("### Predicción del feasibility vs lo que pasó de verdad")
+        st.caption(
+            "El feasibility se ejecuta **en 1 GPU**: de ahí (A) estima el tiempo "
+            "single-GPU y (B) **predice** el speedup al distribuir. No existe un "
+            "feasibility 'de 2 GPUs' — el multi-GPU es una predicción. Abajo se "
+            "contrastan ambas con los entrenamientos reales del mismo modelo."
+        )
         _feas_csvs_pr = _get_feasibility_csvs()
-        if selected_run is None:
-            st.info("Selecciona un run en la barra lateral.")
-        elif not _feas_csvs_pr:
+        if not _feas_csvs_pr:
             st.info("No hay informes de viabilidad. Genera uno en 'Ejecutar análisis'.")
         else:
-            # Auto-emparejar: +2 si coincide el modelo, +1 si coincide el entorno
-            _scored = []
+            # Combos (entorno · modelo) que tienen feasibility
+            _combo_csv = {}
             for _p in _feas_csvs_pr:
-                _m, _d = parse_feasibility_csv(_p)
-                _env = _p.parent.parent.name if _p.parent.parent else ""
-                _s = 0
-                if selected_run.model and _m.get("model_name") == selected_run.model:
-                    _s += 2
-                if _env == selected_run.env:
-                    _s += 1
-                _scored.append((_s, _p, _m, _d))
-            _scored.sort(key=lambda x: x[0], reverse=True)
-            _best_s, _feas_p, _meta_pr, _feas_df_pr = _scored[0]
-
-            if _best_s < 2:
-                st.warning(
-                    f"No se encontró un feasibility del modelo **{selected_run.model or '—'}**. "
-                    "Se muestra el más afín; para una comparación válida genera el feasibility "
-                    "del mismo modelo (pestaña 'Ejecutar análisis')."
-                )
-            st.caption(
-                f"**Run:** {selected_run.label[:55]}  ·  "
-                f"**Feasibility:** {_feas_p.parent.parent.name}/{_feas_p.name} "
-                f"(modelo {_meta_pr.get('model_name', '—')})"
-            )
-            if selected_run.mode != "single":
-                st.warning(
-                    f"Este run es **distribuido** (`{selected_run.mode}`), pero el feasibility "
-                    "estima sobre **1 GPU**. Parte de la diferencia será el *speedup* del DDP, "
-                    "no error de predicción. Para validar la predicción, selecciona el run "
-                    "**single-GPU** del mismo modelo; el speedup distribuido se ve en "
-                    "**Comparativa → Single vs Distribuido**."
-                )
-
-            _actual_pr = _load_df(
-                str(selected_run.log_path),
-                str(selected_run.epoch_csv_path) if selected_run.epoch_csv_path else None,
-            )
-            _bs_av = (sorted(_feas_df_pr["batch_size"].dropna().astype(int).unique().tolist())
-                      if (not _feas_df_pr.empty and "batch_size" in _feas_df_pr.columns) else [])
+                _m, _ = parse_feasibility_csv(_p)
+                _env = _p.parent.parent.name if _p.parent.parent else "?"
+                _combo_csv.setdefault((_env, _m.get("model_name", "?")), _p)
+            _combos = list(_combo_csv.keys())
+            _def_i = 0
+            if selected_run is not None:
+                for _i, (_e, _mo) in enumerate(_combos):
+                    if _e == selected_run.env and _mo == selected_run.model:
+                        _def_i = _i
+                        break
+            _combo = st.selectbox("¿Qué comparar?", _combos, index=_def_i,
+                                  format_func=lambda c: f"{c[0]}  ·  {c[1]}", key="pr_combo")
+            _env_pr, _mod_pr = _combo
+            _feas_p = _combo_csv[_combo]
+            _meta_pr, _feas_df_pr = parse_feasibility_csv(_feas_p)
             _nfs_pr = float(_meta_pr.get("nfs_factor", 1.0) or 1.0)
+            st.caption(f"Feasibility: `{_env_pr}/{_feas_p.name}`  ·  modelo **{_mod_pr}**")
 
-            if not _bs_av or _actual_pr.empty:
-                st.info("Faltan datos: el feasibility necesita benchmark y el run métricas de tiempo "
-                        "(`--fn timing`/`--trace simple`).")
+            _all_pr = _get_runs()
+
+            def _find_run(modes):
+                return next((r for r in _all_pr if r.env == _env_pr
+                             and r.model == _mod_pr and r.mode in modes), None)
+
+            def _ep_mean(r):
+                if r is None:
+                    return None
+                _df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
+                if "epoch_time" in _df.columns and _df["epoch_time"].notna().any():
+                    return float(_df["epoch_time"].mean())
+                return None
+
+            _single_run = _find_run({"single"})
+            _ddp_run = _find_run({"ddp"})
+            _hetero_run = _find_run({"ddp_hetero"})
+
+            # ── A) En 1 GPU: tiempo estimado vs real ────────────────────────────
+            st.markdown("#### A · En 1 GPU — tiempo estimado vs real")
+            if _single_run is None:
+                st.info(f"No hay run **single-GPU** de {_mod_pr} en {_env_pr}.")
             else:
-                _c = st.columns([1, 1, 2])
-                _bs_pr = _c[0].selectbox("Batch size", _bs_av, index=len(_bs_av) - 1, key="pr_bs")
+                _act = _load_df(str(_single_run.log_path),
+                                str(_single_run.epoch_csv_path) if _single_run.epoch_csv_path else None)
+                _bs_av = (sorted(_feas_df_pr["batch_size"].dropna().astype(int).unique().tolist())
+                          if (not _feas_df_pr.empty and "batch_size" in _feas_df_pr.columns) else [])
                 _tr_av = (sorted(_feas_df_pr["trace_mode"].unique().tolist())
                           if "trace_mode" in _feas_df_pr.columns else ["simple"])
-                _tr_pr = _c[1].selectbox("Trace mode", _tr_av, key="pr_tr")
-
-                _cmp = build_comparison(
-                    meta=_meta_pr, feas_df=_feas_df_pr, actual_df=_actual_pr,
-                    batch_size=int(_bs_pr), trace_mode=_tr_pr, nfs_factor=_nfs_pr,
-                )
-                if not _cmp:
-                    st.warning(f"Sin fila de feasibility para batch={_bs_pr}, trace={_tr_pr}.")
+                if not _bs_av or _act.empty:
+                    st.info("Faltan datos (benchmark del feasibility o tiempos del run).")
                 else:
-                    _rows = {r.metric: r for r in _cmp.rows}
-                    _tt = _rows.get("Total time / epoch")
-                    _thr = _rows.get("Train throughput")
-
-                    mc1, mc2, mc3 = st.columns(3)
-                    if _tt and _tt.estimated is not None and _tt.actual is not None:
-                        _e = _tt.error_pct or 0.0
-                        mc1.metric("Tiempo/epoch estimado", f"{_tt.estimated:.2f} min")
-                        mc2.metric("Tiempo/epoch real", f"{_tt.actual:.2f} min",
-                                   delta=f"{_e:+.0f}% vs estimado", delta_color="off")
-                    if _thr and _thr.estimated is not None and _thr.actual is not None:
-                        mc3.metric("Throughput real", f"{_thr.actual:.0f} img/s",
-                                   delta=f"estimado {_thr.estimated:.0f} img/s", delta_color="off")
-
-                    # Veredicto en lenguaje natural
-                    if _tt and _tt.error_pct is not None:
-                        _e = _tt.error_pct
-                        _io = None
-                        try:
-                            _io = float(_meta_pr.get("dataset", {}).get("io_bottleneck_ratio"))
-                        except (TypeError, ValueError, AttributeError):
-                            pass
-                        if abs(_e) <= 15:
-                            st.success(f"**Predicción precisa** — error {_e:+.0f}% en tiempo/epoch. "
-                                       "El feasibility estimó muy cerca del tiempo real.")
-                        elif _e < 0:
-                            _x = ""
-                            if _io and _io > 1:
+                    _ca = st.columns([1, 1, 2])
+                    _bs = _ca[0].selectbox("Batch", _bs_av, index=len(_bs_av) - 1, key="pr_bs")
+                    _tr = _ca[1].selectbox("Trace", _tr_av, key="pr_tr")
+                    _cmp = build_comparison(meta=_meta_pr, feas_df=_feas_df_pr, actual_df=_act,
+                                            batch_size=int(_bs), trace_mode=_tr, nfs_factor=_nfs_pr)
+                    if not _cmp:
+                        st.warning(f"Sin fila de feasibility para batch={_bs}, trace={_tr}.")
+                    else:
+                        _rows = {r.metric: r for r in _cmp.rows}
+                        _tt = _rows.get("Total time / epoch")
+                        _thr = _rows.get("Train throughput")
+                        m1, m2, m3 = st.columns(3)
+                        if _tt and _tt.estimated is not None and _tt.actual is not None:
+                            m1.metric("Tiempo/epoch estimado", f"{_tt.estimated:.2f} min")
+                            m2.metric("Tiempo/epoch real", f"{_tt.actual:.2f} min",
+                                      delta=f"{_tt.error_pct or 0:+.0f}%", delta_color="off")
+                        if _thr and _thr.estimated is not None and _thr.actual is not None:
+                            m3.metric("Throughput real", f"{_thr.actual:.0f} img/s",
+                                      delta=f"estimado {_thr.estimated:.0f}", delta_color="off")
+                        if _tt and _tt.error_pct is not None:
+                            _e = _tt.error_pct
+                            _io = None
+                            try:
+                                _io = float(_meta_pr.get("dataset", {}).get("io_bottleneck_ratio"))
+                            except (TypeError, ValueError, AttributeError):
+                                pass
+                            if abs(_e) <= 15:
+                                st.success(f"**Predicción precisa** — error {_e:+.0f}% en tiempo/epoch.")
+                            elif _e < 0:
                                 _x = (f" Causa probable: **I/O-bound** (ratio≈{_io:.1f}) — el benchmark "
-                                      "sintético mide solo cómputo y no la lectura de disco (NFS).")
-                            st.warning(f"**Estimación optimista** — el real fue {abs(_e):.0f}% más lento "
-                                       f"de lo previsto.{_x}")
-                        else:
-                            st.info(f"**Estimación pesimista** — el real fue {_e:.0f}% (más rápido "
-                                    "de lo previsto).")
+                                      "sintético no incluye la lectura de disco (NFS)."
+                                      if _io and _io > 1 else "")
+                                st.warning(f"**Estimación optimista** — el real fue {abs(_e):.0f}% más lento.{_x}")
+                            else:
+                                st.info(f"**Estimación pesimista** — el real fue {_e:.0f}% más rápido de lo previsto.")
+                        _bars = [(r.metric, r.error_pct) for r in _cmp.rows if r.error_pct is not None]
+                        if _bars:
+                            _lab = [b[0] for b in _bars]
+                            _val = [b[1] for b in _bars]
+                            _col = ["#16a34a" if abs(v) <= 10 else "#f59e0b" if abs(v) <= 30 else "#dc2626"
+                                    for v in _val]
+                            _fig = go.Figure(go.Bar(x=_val, y=_lab, orientation="h", marker_color=_col,
+                                                    text=[f"{v:+.0f}%" for v in _val], textposition="outside"))
+                            _fig.update_layout(**_base_layout(max(220, 42 * len(_lab) + 80),
+                                               "Error de la predicción por métrica"),
+                                               xaxis_title="Error %  (negativo = estimó de menos)", yaxis_title="")
+                            _fig.add_vline(x=0, line_color="#64748b")
+                            _show(_fig, "pred_vs_real_single")
+                            st.caption("Verde ≤10% · ámbar ≤30% · rojo >30%.")
+                        with st.expander("Ver detalle y fórmulas"):
+                            _t = _cmp.to_dataframe()
+                            st.dataframe(_t, use_container_width=True, hide_index=True)
+                            _dl_csv(_t, "prediccion_1gpu.csv", "Descargar")
 
-                    # Error % por métrica (visual)
-                    _bars = [(r.metric, r.error_pct) for r in _cmp.rows if r.error_pct is not None]
-                    if _bars:
-                        _lab = [b[0] for b in _bars]
-                        _val = [b[1] for b in _bars]
-                        _col = ["#16a34a" if abs(v) <= 10 else "#f59e0b" if abs(v) <= 30 else "#dc2626"
-                                for v in _val]
-                        _figpr = go.Figure(go.Bar(
-                            x=_val, y=_lab, orientation="h", marker_color=_col,
-                            text=[f"{v:+.0f}%" for v in _val], textposition="outside",
-                        ))
-                        _figpr.update_layout(
-                            **_base_layout(max(240, 42 * len(_lab) + 90),
-                                           "Error de la predicción por métrica (estimado vs real)"),
-                            xaxis_title="Error %  (negativo = subestimó)", yaxis_title="",
-                        )
-                        _figpr.add_vline(x=0, line_color="#64748b")
-                        _show(_figpr, "pred_vs_real")
-                        st.caption("Barras cerca de 0 = acertó. Verde ≤10% · ámbar ≤30% · rojo >30%.")
-
-                    with st.expander("Ver detalle y fórmulas"):
-                        _t = _cmp.to_dataframe()
-                        st.dataframe(_t, use_container_width=True, hide_index=True)
-                        _dl_csv(_t, "prediccion_vs_real.csv", "Descargar comparativa")
+            # ── B) Al distribuir: speedup predicho vs real ──────────────────────
+            st.divider()
+            st.markdown("#### B · Al distribuir — speedup predicho vs real (2 GPUs)")
+            _ddp_scen = parse_ddp_scenarios(_meta_pr)
+            _pred_sp = None
+            if not _ddp_scen.empty and {"n_gpus", "speedup"}.issubset(_ddp_scen.columns):
+                _r2 = _ddp_scen[_ddp_scen["n_gpus"] == 2]
+                if not _r2.empty:
+                    _pred_sp = float(_r2.iloc[0]["speedup"])
+            _s_ep = _ep_mean(_single_run)
+            _d_ep = _ep_mean(_ddp_run)
+            if _single_run is None or _ddp_run is None:
+                _msg = ("Para medir el speedup **real** hace falta un run single-GPU **y** uno "
+                        "DDP multi-GPU del mismo modelo/entorno.")
+                if _pred_sp is not None:
+                    _msg += f" El feasibility **predice {_pred_sp:.2f}×** con 2 GPUs."
+                if _hetero_run is not None:
+                    _msg += (" Hay un run **heterogéneo** (V100+CPU), que no es comparable con la "
+                             "predicción homogénea de 2 GPUs — su speedup está en "
+                             "**Comparativa → Single vs Distribuido**.")
+                st.info(_msg)
+            elif _s_ep and _d_ep:
+                _real_sp = _s_ep / _d_ep
+                sc1, sc2, sc3 = st.columns(3)
+                sc1.metric("Speedup predicho", f"{_pred_sp:.2f}×" if _pred_sp else "—")
+                sc2.metric("Speedup real", f"{_real_sp:.2f}×")
+                if _pred_sp:
+                    _serr = (_pred_sp - _real_sp) / _real_sp * 100
+                    sc3.metric("Error de la predicción", f"{_serr:+.0f}%")
+                    if abs(_serr) <= 15:
+                        st.success(f"**El feasibility predijo bien el escalado** — predicho "
+                                   f"{_pred_sp:.2f}× vs **{_real_sp:.2f}× real**.")
+                    else:
+                        st.warning(f"Predicho {_pred_sp:.2f}× vs **{_real_sp:.2f}× real** "
+                                   f"(error {_serr:+.0f}%).")
+                st.caption(f"Real = tiempo/epoch single ({_s_ep:.0f}s) ÷ DDP ({_d_ep:.0f}s).")
+            else:
+                st.info("Faltan tiempos por epoch en los runs para medir el speedup.")
 
         st.divider()
         subtab_prediction = st.container()
