@@ -22,6 +22,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     rows: list[list[str]] = []
     meta: dict = {}
     sizes: dict = {}
+    gpu_info: dict = {}
     model_mem: dict = {}
     cpu_info: dict = {}
     disk_info: dict = {}
@@ -49,6 +50,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
         reader = csv.reader(f)
         header_meta: list[str] = []
         header_sizes: list[str] = []
+        header_gpu: list[str] = []
         header_model_mem: list[str] = []
         header_cpu: list[str] = []
         header_disk: list[str] = []
@@ -76,6 +78,12 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
                     header_sizes = row[1:]
                 else:
                     sizes = dict(zip(header_sizes, row[1:]))
+
+            elif tag == "#gpu":
+                if not header_gpu:
+                    header_gpu = row[1:]
+                else:
+                    gpu_info = dict(zip(header_gpu, row[1:]))
 
             elif tag == "#model_mem":
                 if not header_model_mem:
@@ -175,6 +183,14 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
             combined["nfs_factor"] = float(sizes["nfs_factor"])
         except (ValueError, TypeError):
             pass
+    if gpu_info:
+        for k in ("sm_count", "cuda_cores", "tensor_cores"):
+            if k in gpu_info:
+                try:
+                    gpu_info[k] = int(float(gpu_info[k]))
+                except (ValueError, TypeError):
+                    pass
+        combined["gpu"] = gpu_info
     if cpu_info:
         combined["cpu"] = cpu_info
     if disk_info:

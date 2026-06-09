@@ -93,6 +93,14 @@ def _monitor(ctx: DashboardContext) -> None:
                 if gpu.power_w is not None:
                     limit_str = f" / {gpu.power_limit_w:.0f} W" if gpu.power_limit_w else ""
                     st.caption(f"Power draw: {gpu.power_w:.1f} W{limit_str}")
+                # Derived hardware specs (compute capability × SM count)
+                if gpu.cuda_cores:
+                    h1, h2, h3, h4, h5 = st.columns(5)
+                    h1.metric("Architecture", gpu.architecture or "—")
+                    h2.metric("Compute cap.", gpu.compute_capability or "—")
+                    h3.metric("SMs", gpu.sm_count or "—")
+                    h4.metric("CUDA cores", f"{gpu.cuda_cores:,}")
+                    h5.metric("Tensor cores", f"{gpu.tensor_cores:,}" if gpu.tensor_cores else "0")
         else:
             st.info("No GPU detected (nvidia-smi unavailable).")
 

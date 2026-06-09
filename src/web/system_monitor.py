@@ -47,6 +47,13 @@ class GpuInfo:
     temp_c: int
     power_w: float | None = None
     power_limit_w: float | None = None
+    # Derived specs (from compute capability × SM count); None if torch/CUDA
+    # is unavailable on the host running the dashboard.
+    compute_capability: str | None = None
+    architecture: str | None = None
+    sm_count: int | None = None
+    cuda_cores: int | None = None
+    tensor_cores: int | None = None
 
 
 @dataclass
@@ -117,7 +124,23 @@ def _disks(paths: list[str]) -> list[DiskInfo]:
     return result
 
 
+_SPECS_CACHE: dict | None = None
+
+
+def _gpu_specs_by_index() -> dict:
+    """Cached map {gpu_index: GpuSpecs} derived via torch (computed once)."""
+    global _SPECS_CACHE
+    if _SPECS_CACHE is None:
+        try:
+            from src.gpu_specs import detect_all
+            _SPECS_CACHE = {s.index: s for s in detect_all()}
+        except Exception:
+            _SPECS_CACHE = {}
+    return _SPECS_CACHE
+
+
 def _gpus() -> list[GpuInfo]:
+    specs = _gpu_specs_by_index()
     try:
         out = subprocess.run(
             [
@@ -135,8 +158,10 @@ def _gpus() -> list[GpuInfo]:
             parts = [p.strip() for p in line.split(",")]
             if len(parts) < 6:
                 continue
+            idx = int(parts[0])
+            sp = specs.get(idx)
             gpus.append(GpuInfo(
-                index=int(parts[0]),
+                index=idx,
                 name=parts[1],
                 mem_used_mb=int(parts[2]),
                 mem_total_mb=int(parts[3]),
@@ -144,6 +169,11 @@ def _gpus() -> list[GpuInfo]:
                 temp_c=int(parts[5]),
                 power_w=float(parts[6]) if len(parts) > 6 and parts[6] not in ("[N/A]", "N/A") else None,
                 power_limit_w=float(parts[7]) if len(parts) > 7 and parts[7] not in ("[N/A]", "N/A") else None,
+                compute_capability=sp.compute_capability if sp else None,
+                architecture=sp.architecture if sp else None,
+                sm_count=sp.sm_count if sp else None,
+                cuda_cores=sp.cuda_cores if sp else None,
+                tensor_cores=sp.tensor_cores if sp else None,
             ))
         return gpus
     except Exception:
