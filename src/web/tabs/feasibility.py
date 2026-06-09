@@ -243,6 +243,17 @@ def render(ctx: DashboardContext) -> None:
             hw_col3.metric("GPU", meta.get("hardware_name", "—"))
             hw_col4.metric("Total VRAM (GB)", meta.get("total_vram_gb", "—"))
 
+            # GPU specs (compute capability × SM count) if available
+            gpu = meta.get("gpu", {})
+            if gpu and gpu.get("cuda_cores"):
+                gc1, gc2, gc3, gc4, gc5 = st.columns(5)
+                gc1.metric("Architecture", gpu.get("architecture", "—"))
+                gc2.metric("Compute cap.", gpu.get("compute_capability", "—"))
+                gc3.metric("SMs", gpu.get("sm_count", "—"))
+                gc4.metric("CUDA cores", f"{int(gpu['cuda_cores']):,}")
+                tc = gpu.get("tensor_cores", 0)
+                gc5.metric("Tensor cores", f"{int(tc):,}" if tc else "0")
+
             # CPU if available
             cpu = meta.get("cpu", {})
             if cpu:
@@ -769,6 +780,8 @@ def render(ctx: DashboardContext) -> None:
             "vit_base_patch16_224", "vit_tiny_patch16_224",
             "vit_small_patch16_224", "resnet50", "efficientnet_b0",
         ]
+        from src.gpu_specs import detect_all
+        _gpus_avail = detect_all()
         with st.form("feasibility_form"):
             fa1, fa2 = st.columns(2)
             with fa1:
@@ -798,6 +811,17 @@ def render(ctx: DashboardContext) -> None:
                     "Mini-training steps", min_value=20, max_value=200, value=60,
                     help="Only if the empirical study is enabled",
                 )
+                feas_device = 0
+                if len(_gpus_avail) > 1:
+                    _dev_labels = {
+                        f"cuda:{g.index} — {g.name} ({g.cuda_cores:,} CUDA cores)": g.index
+                        for g in _gpus_avail
+                    }
+                    _sel = st.selectbox("GPU device", list(_dev_labels.keys()),
+                                        help="Which GPU to run the benchmark on (multi-GPU host).")
+                    feas_device = _dev_labels[_sel]
+                elif len(_gpus_avail) == 1:
+                    st.caption(f"GPU: cuda:0 — {_gpus_avail[0].name}")
             submitted_feas = st.form_submit_button("Run")
 
         if submitted_feas:
@@ -821,6 +845,8 @@ def render(ctx: DashboardContext) -> None:
                     parts.append("--no-disk-profile")
                 if feas_study:
                     parts.append(f"--convergence-study --study-steps {feas_study_steps}")
+                if feas_device:
+                    parts.append(f"--device {feas_device}")
                 cmd = " ".join(parts)
                 st.code(cmd, language="bash")
                 out_ph = st.empty()

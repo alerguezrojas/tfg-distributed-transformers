@@ -70,6 +70,10 @@ class HardwareInfo:
     is_cuda: bool
     compute_capability: str = ""
     memory_bandwidth_gb_s: float = 0.0
+    architecture: str = ""
+    sm_count: int = 0
+    cuda_cores: int = 0
+    tensor_cores: int = 0
 
 
 @dataclass
@@ -205,18 +209,22 @@ class ModelAnalyzer:
 # ═════════════════════════════════════════════════════════════════════════════
 
 class HardwareProbe:
-    def probe_gpu(self) -> HardwareInfo:
+    def probe_gpu(self, index: int = 0) -> HardwareInfo:
         if not torch.cuda.is_available():
             return HardwareInfo(device_name="CPU", total_vram_gb=0.0,
                                 free_vram_gb=0.0, is_cuda=False)
-        props = torch.cuda.get_device_properties(0)
+        props = torch.cuda.get_device_properties(index)
         total_gb = props.total_memory / 1e9
-        reserved_gb = torch.cuda.memory_reserved(0) / 1e9
+        reserved_gb = torch.cuda.memory_reserved(index) / 1e9
         cc = f"{props.major}.{props.minor}"
-        # Memoria de ancho de banda estimada por CC (GB/s)
+        # Estimated memory bandwidth by CC (GB/s)
         bw_map = {"7.0": 900, "8.0": 2000, "8.6": 600, "9.0": 3350,
                   "6.1": 352, "6.0": 720, "5.2": 336}
         bw = float(bw_map.get(cc, 0))
+        # CUDA / Tensor cores derived from compute capability × SM count.
+        from src.gpu_specs import specs_for
+        sp = specs_for(props.name, props.major, props.minor,
+                       props.multi_processor_count, total_gb, index)
         return HardwareInfo(
             device_name=props.name,
             total_vram_gb=total_gb,
@@ -224,6 +232,10 @@ class HardwareProbe:
             is_cuda=True,
             compute_capability=cc,
             memory_bandwidth_gb_s=bw,
+            architecture=sp.architecture,
+            sm_count=sp.sm_count,
+            cuda_cores=sp.cuda_cores,
+            tensor_cores=sp.tensor_cores,
         )
 
     def probe_cpu(self) -> CPUInfo:
@@ -971,7 +983,10 @@ class ReportFormatter:
         if h.is_cuda:
             self._emit(f"  {h.device_name}  |  VRAM: {h.total_vram_gb:.1f} GB total / {h.free_vram_gb:.1f} GB libre")
             if h.compute_capability:
-                self._emit(f"  Compute Capability: {h.compute_capability}")
+                self._emit(f"  Compute Capability: {h.compute_capability}  ({h.architecture})")
+            if h.cuda_cores:
+                self._emit(f"  {h.sm_count} SMs  |  {h.cuda_cores:,} CUDA cores  |  "
+                           f"{h.tensor_cores:,} Tensor cores")
         else:
             self._emit("  GPU: no disponible (CUDA no activo)")
 
@@ -1153,6 +1168,12 @@ class ReportFormatter:
                               round(mi.flops_per_image_mflops, 1), hi.device_name,
                               round(hi.total_vram_gb, 2), round(hi.free_vram_gb, 2)])
 
+            # GPU hardware specs (compute capability × SM count)
+            writer.writerow(["#gpu", "compute_capability", "architecture",
+                              "sm_count", "cuda_cores", "tensor_cores"])
+            writer.writerow(["#gpu", hi.compute_capability, hi.architecture,
+                              hi.sm_count, hi.cuda_cores, hi.tensor_cores])
+
             # Tamaño REAL del dataset usado (n imágenes por split) — clave para
             # que la comparación estimación-vs-real no asuma el full set.
             writer.writerow(["#sizes", "n_train", "n_val", "nfs_factor"])
@@ -1323,6 +1344,7 @@ class FeasibilityChecker:
         config: dict | None = None,
         convergence_study: bool = False,
         study_steps: int = 60,
+        device_index: int = 0,
     ):
         self._model_name = model_name
         self._batch_sizes = batch_sizes
@@ -1338,7 +1360,10 @@ class FeasibilityChecker:
         self._config = config or {}
         self._convergence_study = convergence_study
         self._study_steps = study_steps
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._device_index = device_index if torch.cuda.is_available() else 0
+        self._device = torch.device(
+            f"cuda:{self._device_index}" if torch.cuda.is_available() else "cpu"
+        )
 
     def run(self) -> FeasibilityReport:
         print(f"Cargando modelo {self._model_name}...")
@@ -1346,7 +1371,7 @@ class FeasibilityChecker:
 
         hw_probe = HardwareProbe()
         model_info = ModelAnalyzer(model, self._model_name, self._device).analyze()
-        hardware_info = hw_probe.probe_gpu()
+        hardware_info = hw_probe.probe_gpu(self._device_index)
         cpu_info = hw_probe.probe_cpu()
 
         print("Perfilando CPU y disco...")
@@ -1524,6 +1549,8 @@ def parse_args():
                              "convergencia medida + gradient noise scale (más lento, ~3-8 min)")
     parser.add_argument("--study-steps", type=int, default=60,
                         help="Número de steps del mini-training de convergencia (default 60)")
+    parser.add_argument("--device", type=int, default=0, metavar="INDEX",
+                        help="Índice de GPU CUDA a usar (default 0). Útil en máquinas multi-GPU.")
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
 
@@ -1581,6 +1608,7 @@ def main():
             config=cfg,
             convergence_study=args.convergence_study,
             study_steps=args.study_steps,
+            device_index=args.device,
         )
 
         report = checker.run()
