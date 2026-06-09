@@ -593,33 +593,64 @@ def render(ctx: DashboardContext) -> None:
                     fig_rect.update_yaxes(range=[0, 100])
                     _show(fig_rect, "ddp_load_distribution")
 
-                    # ── Speedup vs theoretical ─────────────────────────────────
-                    st.markdown("### Speedup: real vs theoretical")
+                    # ── Speedup: feasibility estimate vs selectable scaling laws ──
+                    st.markdown("### Speedup: estimate vs scaling laws")
                     if "speedup" in viable_ddp.columns:
+                        from src.estimation_models import SPEEDUP_MODELS, speedup_curve
                         n_gpus_vals = viable_ddp["n_gpus"].tolist()
                         speedup_vals = viable_ddp["speedup"].tolist()
-                        theoretical = n_gpus_vals  # linear theoretical speedup
+
+                        st.caption(
+                            "The green line is the feasibility's own **compute/IO-aware** estimate "
+                            "(includes NFS I/O and gradient-sync overhead). Overlay one or more "
+                            "analytic scaling laws to compare, and tune the serial fraction *s* "
+                            "used by Amdahl/Gustafson."
+                        )
+                        msc, mslider = st.columns([3, 2])
+                        with msc:
+                            chosen = st.multiselect(
+                                "Scaling laws to overlay",
+                                list(SPEEDUP_MODELS.keys()),
+                                default=["linear", "amdahl"],
+                                format_func=lambda k: SPEEDUP_MODELS[k].name,
+                                key="ddp_speedup_models",
+                            )
+                        with mslider:
+                            serial_frac = st.slider(
+                                "Serial fraction s (Amdahl / Gustafson)",
+                                0.0, 0.5, 0.05, 0.01, key="ddp_serial_frac",
+                            )
 
                         fig_su = go.Figure()
                         fig_su.add_trace(go.Scatter(
-                            x=n_gpus_vals, y=theoretical,
-                            name="Theoretical (100% efficiency)",
-                            mode="lines+markers", line=dict(color=COLORS[4], width=2, dash="dash"),
-                        ))
-                        fig_su.add_trace(go.Scatter(
                             x=n_gpus_vals, y=speedup_vals,
-                            name="Estimated real speedup",
+                            name="Feasibility (compute/IO-aware)",
                             mode="lines+markers",
                             line=dict(color=COLORS[2], width=3),
                             marker=dict(size=10),
                         ))
+                        _dash = {"linear": "dash", "amdahl": "dot", "gustafson": "dashdot"}
+                        for i, key in enumerate(chosen):
+                            fig_su.add_trace(go.Scatter(
+                                x=n_gpus_vals,
+                                y=speedup_curve(key, n_gpus_vals, serial_frac),
+                                name=SPEEDUP_MODELS[key].name,
+                                mode="lines+markers",
+                                line=dict(color=COLORS[(i + 3) % len(COLORS)], width=2,
+                                          dash=_dash.get(key, "dash")),
+                            ))
                         fig_su.update_layout(
-                            **_base_layout(320, "Real vs theoretical speedup"),
+                            **_base_layout(340, "Speedup vs number of GPUs"),
                             xaxis_title="Number of GPUs",
                             yaxis_title="Speedup",
                         )
                         fig_su.update_xaxes(tickvals=n_gpus_vals)
                         _show(fig_su, "ddp_speedup")
+                        if chosen:
+                            st.caption("  ·  ".join(
+                                f"**{SPEEDUP_MODELS[k].name}:** `{SPEEDUP_MODELS[k].formula}`"
+                                for k in chosen
+                            ))
 
                     # ── Estimated total time per configuration ─────────────────
                     if "time_total_h" in viable_ddp.columns:
