@@ -14,18 +14,18 @@ _SIMPLE_PRECISION = re.compile(r"\s+precision\s+val=([0-9.]+)")
 _SIMPLE_RECALL = re.compile(r"\s+recall\s+val=([0-9.]+)")
 _SIMPLE_ETA = re.compile(r"ETA:.*?\(([0-9.]+)s/epoch")
 _SIMPLE_THRESHOLD = re.compile(r"threshold óptimo=([0-9.]+),\s*F1=([0-9.]+)")
-# \w* permite cualquier subclase: Trainer, DDPTrainer, HeterogeneousDDPTrainer
+# \w* allows any subclass: Trainer, DDPTrainer, HeterogeneousDDPTrainer
 _ENERGY_TRAIN = re.compile(r"\[energy\]\s+\w*Trainer\.train_epoch:\s+([0-9.]+)\s+J\s+\([0-9.]+ Wh\)\s+potencia media\s+([0-9.]+) W")
 _ENERGY_EVAL = re.compile(r"\[energy\]\s+\w*Trainer\.eval_epoch:\s+([0-9.]+)\s+J\s+\(([0-9.]+) Wh\)\s+potencia media\s+([0-9.]+) W")
 _TIMED_TRAIN = re.compile(r"\[timed\]\s+\w*Trainer\.train_epoch:\s+([0-9.]+)s")
 _TIMED_EVAL = re.compile(r"\[timed\]\s+\w*Trainer\.eval_epoch:\s+([0-9.]+)s")
 
 # ── Deep-trace patterns ───────────────────────────────────────────────────────
-# Hay (al menos) dos variantes en el orden de los campos de la línea RESUMEN:
-#   A) ... val_f1=X  best=X  val_acc=X | ...   (cluster, may 2026)
-#   B) ... val_f1=X  val_acc=X  best=X | ...   (local, may 2026)
-# Por eso NO se usa un único regex posicional: se ancla la línea RESUMEN y se
-# extrae cada campo por nombre, independientemente del orden.
+# There are (at least) two field-order variants of the RESUMEN line:
+#   A) ... val_f1=X  best=X  val_acc=X | ...   (cluster, May 2026)
+#   B) ... val_f1=X  val_acc=X  best=X | ...   (local, May 2026)
+# That is why a single positional regex is NOT used: the RESUMEN line is
+# anchored and each field is extracted by name, regardless of order.
 _DEEP_ANCHOR = re.compile(r"\[E(\d+)/\d+\]\s+══\s+RESUMEN")
 
 # ── Legacy format (pre-refactor simple trace) ─────────────────────────────────
@@ -132,7 +132,7 @@ def _parse_simple(text: str) -> pd.DataFrame:
 
 
 def _deep_field(name: str, line: str) -> float | None:
-    """Extrae `name=<float>` de una línea, o None si no aparece."""
+    """Extracts `name=<float>` from a line, or None if absent."""
     m = re.search(rf"\b{name}=([0-9.]+)", line)
     return float(m.group(1)) if m else None
 

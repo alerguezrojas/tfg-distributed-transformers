@@ -1,4 +1,4 @@
-"""Streamlit web dashboard — Training Dashboard v6 (español)."""
+"""Streamlit web dashboard — Training Dashboard v6 (English)."""
 
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ from src.web.system_monitor import get_snapshot
 ROOT = Path(__file__).resolve().parents[2]
 COLORS = ["#2563eb", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#64748b", "#ec4899", "#94a3b8"]
 
-# ── Configuración de página ────────────────────────────────────────────────────
+# ── Page configuration ──────────────────────────────────────────────────────────
 
 st.set_page_config(
     page_title="Training Dashboard",
@@ -64,7 +64,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ── Cargadores con caché ───────────────────────────────────────────────────────
+# ── Cached loaders ──────────────────────────────────────────────────────────────
 
 
 @st.cache_data(ttl=30)
@@ -74,9 +74,9 @@ def _load_df(log_path: str, epoch_csv: str | None) -> pd.DataFrame:
         if not df.empty:
             if "epoch_time_s" in df.columns:
                 df = df.rename(columns={"epoch_time_s": "epoch_time"})
-            # La energía/potencia y los timings sólo viven en el log (no se
-            # escriben al epoch_metrics CSV). Si el log existe, los mezclamos
-            # por epoch para que el panel de energía aparezca también con CSV.
+            # Energy/power and timings only live in the log (they are not
+            # written to the epoch_metrics CSV). If the log exists, we merge
+            # them by epoch so the energy panel also shows up with the CSV.
             _energy_cols = ["energy_train_j", "energy_eval_j", "energy_eval_wh",
                             "power_train_w", "power_eval_w", "time_train_s", "time_eval_s"]
             missing = [c for c in _energy_cols if c not in df.columns
@@ -114,8 +114,8 @@ def _get_feasibility_csvs() -> list[Path]:
 
 @st.cache_data(ttl=60)
 def _feas_label(path_str: str) -> str:
-    """Etiqueta legible para un CSV de viabilidad: 'entorno · modelo · DD/MM HH:MM'
-    en vez del nombre por fecha cruda."""
+    """Readable label for a feasibility CSV: 'env · model · DD/MM HH:MM'
+    instead of the raw date-based filename."""
     import re
     p = Path(path_str)
     env = p.parent.parent.name if p.parent.parent else "?"
@@ -131,8 +131,9 @@ def _feas_label(path_str: str) -> str:
 
 @st.cache_data(ttl=30)
 def _run_config(log_path_str: str) -> dict:
-    """Extrae la línea 'Configuración: k=v | k=v | ...' del log → dict.
-    Devuelve {} si el run es anterior a esta versión (no la registra)."""
+    """Extracts the 'Configuración: k=v | k=v | ...' line from the log → dict.
+    Returns {} if the run predates this version (it does not record it).
+    Note: the log key stays 'Configuración:' to match existing/backfilled logs."""
     try:
         for line in Path(log_path_str).read_text(errors="replace").splitlines():
             i = line.find("Configuración:")
@@ -149,18 +150,18 @@ def _run_config(log_path_str: str) -> dict:
     return {}
 
 
-# ── Cargadores de dataset con caché ─────────────────────────────────────────────
+# ── Cached dataset loaders ──────────────────────────────────────────────────────
 
 
 @st.cache_data(ttl=600)
 def _load_class_distribution(parquet_str: str) -> pd.DataFrame | None:
-    """Distribución de clases cacheada (itera ~237K filas, lento)."""
+    """Cached class distribution (iterates ~237K rows, slow)."""
     return class_distribution_from_parquet(Path(parquet_str))
 
 
 @st.cache_data(ttl=600)
 def _load_example_images(parquet_str: str, root_str: str, class_name: str, n: int = 4):
-    """Carga n imágenes RGB de ejemplo para una clase, cacheadas."""
+    """Loads n example RGB images for a class, cached."""
     patches = find_example_patches(Path(parquet_str), class_name, n=n)
     images = []
     for pid in patches:
@@ -170,7 +171,7 @@ def _load_example_images(parquet_str: str, root_str: str, class_name: str, n: in
     return images
 
 
-# ── Helpers generales ──────────────────────────────────────────────────────────
+# ── General helpers ─────────────────────────────────────────────────────────────
 
 
 def _safe_max(series: pd.Series) -> float:
@@ -306,7 +307,7 @@ def _color_f1_cell(v: float) -> str:
     return "background-color: #fee2e2; color: #991b1b"
 
 
-# ── Helpers de gráficas ────────────────────────────────────────────────────────
+# ── Chart helpers ───────────────────────────────────────────────────────────────
 
 _PLOTLY_CFG = {
     "displayModeBar": True,
@@ -316,15 +317,15 @@ _PLOTLY_CFG = {
 
 
 def _show(fig: go.Figure, key: str | None = None) -> None:
-    """Muestra una gráfica Plotly con barra de herramientas visible y descarga PNG."""
+    """Shows a Plotly chart with a visible toolbar and PNG download."""
     cfg = dict(_PLOTLY_CFG)
     if key:
         cfg["toImageButtonOptions"] = {"format": "png", "scale": 2, "filename": key}
     st.plotly_chart(fig, use_container_width=True, config=cfg)
 
 
-def _dl_csv(df: pd.DataFrame, filename: str = "datos.csv", label: str = "Descargar CSV") -> None:
-    """Botón de descarga de un DataFrame como CSV."""
+def _dl_csv(df: pd.DataFrame, filename: str = "data.csv", label: str = "Download CSV") -> None:
+    """Download button for a DataFrame as CSV."""
     st.download_button(label, df.to_csv(index=False).encode(), file_name=filename, mime="text/csv")
 
 
@@ -393,7 +394,7 @@ def _overlay_fig(
     return fig
 
 
-# ── Grupos de clases (para confusion matrix) ──────────────────────────────────
+# ── Class groups (for the confusion matrix) ──────────────────────────────────
 
 _CLASS_GROUPS = {
     "Urban":        ([0, 1],             "#6b7280"),
@@ -417,15 +418,15 @@ with st.sidebar:
     st.markdown("---")
 
     if not runs:
-        st.warning("No se encontraron runs en logs/.")
+        st.warning("No runs found in logs/.")
         selected_run = None
         run = None
     else:
-        trace_filter = st.selectbox("Trace mode", ["todos", "simple", "deep"])
-        filtered = [r for r in runs if trace_filter == "todos" or r.trace_mode == trace_filter]
+        trace_filter = st.selectbox("Trace mode", ["all", "simple", "deep"])
+        filtered = [r for r in runs if trace_filter == "all" or r.trace_mode == trace_filter]
 
         if not filtered:
-            st.warning("No hay runs para este filtro.")
+            st.warning("No runs match this filter.")
             selected_run = None
             run = None
         else:
@@ -438,52 +439,52 @@ with st.sidebar:
             has_csv = run.epoch_csv_path is not None and run.epoch_csv_path.exists()
             st.caption(
                 f"**Log:** {run.log_path.name}  \n"
-                f"**Entorno:** {run.env}  \n"
-                f"**Modo:** {run.mode}  \n"
-                f"**Modelo:** {run.model or '—'}  \n"
+                f"**Environment:** {run.env}  \n"
+                f"**Mode:** {run.mode}  \n"
+                f"**Model:** {run.model or '—'}  \n"
                 f"**Trace:** {run.trace_mode}  \n"
-                f"**Epoch CSV:** {'sí' if has_csv else 'no'}  \n"
-                f"**Batch CSV:** {'sí' if run.batch_csv_path else 'no'}  \n"
-                f"**Per-class CSV:** {'sí' if run.perclass_csv_path else 'no'}"
+                f"**Epoch CSV:** {'yes' if has_csv else 'no'}  \n"
+                f"**Batch CSV:** {'yes' if run.batch_csv_path else 'no'}  \n"
+                f"**Per-class CSV:** {'yes' if run.perclass_csv_path else 'no'}"
             )
 
     st.markdown("---")
-    st.markdown("**Monitor en vivo**")
-    refresh_interval = st.slider("Intervalo de refresco (s)", 5, 60, 10)
+    st.markdown("**Live monitor**")
+    refresh_interval = st.slider("Refresh interval (s)", 5, 60, 10)
 
-# ── Pestañas ──────────────────────────────────────────────────────────────────
+# ── Tabs ────────────────────────────────────────────────────────────────────────
 
-# 6 pestañas de nivel superior. Las antiguas 14 se anidan como sub-pestañas
-# bajo estos padres. Streamlit coloca cada contenedor donde se CREA, así que
-# los bloques `with tab_X:` de más abajo (sin tocar) rellenan estas sub-pestañas.
+# 6 top-level tabs. The former 14 are nested as sub-tabs under these parents.
+# Streamlit places each container where it is CREATED, so the `with tab_X:`
+# blocks further down (untouched) fill these sub-tabs in place.
 (
     tab_inicio, tab_run, tab_comp, tab_viabilidad, tab_datos, tab_sistema,
 ) = st.tabs([
-    "Inicio", "Run", "Comparativa", "Viabilidad", "Datos y modelos", "Sistema",
+    "Home", "Run", "Comparison", "Feasibility", "Data & models", "System",
 ])
 
 with tab_run:
-    st.caption("Detalle del run seleccionado en la barra lateral.")
+    st.caption("Details of the run selected in the sidebar.")
     tab_curvas, tab_porclase, tab_batch, tab_tiempo, tab_info = st.tabs(
-        ["Curvas", "Por clase", "Batch", "Tiempo", "Información"])
+        ["Curves", "Per-class", "Batch", "Time", "Info"])
 
 with tab_comp:
-    tab_ddp, tab_comparar = st.tabs(["Single vs Distribuido", "Superponer runs"])
+    tab_ddp, tab_comparar = st.tabs(["Single vs Distributed", "Overlay runs"])
 
 with tab_datos:
-    tab_dataset, tab_modelos = st.tabs(["Dataset", "Modelos"])
+    tab_dataset, tab_modelos = st.tabs(["Dataset", "Models"])
 
 with tab_sistema:
-    tab_monitor, tab_envivo, tab_lanzador = st.tabs(["Monitor", "En vivo", "Lanzador"])
+    tab_monitor, tab_envivo, tab_lanzador = st.tabs(["Monitor", "Live", "Launcher"])
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INICIO — pantalla principal con cuadrícula de resumen
+# HOME — main screen with summary grid
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_inicio:
-    st.markdown("## Vista general del proyecto")
+    st.markdown("## Project overview")
 
-    # ── Estadísticas globales ──────────────────────────────────────────────────
+    # ── Global statistics ──────────────────────────────────────────────────────
     total_runs = len(runs)
     best_f1_global = float("-inf")
     best_run_label = "—"
@@ -508,16 +509,16 @@ with tab_inicio:
 
     g1, g2, g3, g4, g5 = st.columns(5)
     g1.metric("Total runs", total_runs)
-    g2.metric("Mejor Val F1", f"{best_f1_global:.4f}" if best_f1_global > float("-inf") else "—")
-    g3.metric("Run destacado", best_run_label[:28] if best_run_label != "—" else "—")
-    g4.metric("Tiempo GPU total", f"{total_gpu_h:.1f} h")
-    g5.metric("Reportes viabilidad", len(feasibility_csvs_home))
+    g2.metric("Best Val F1", f"{best_f1_global:.4f}" if best_f1_global > float("-inf") else "—")
+    g3.metric("Top run", best_run_label[:28] if best_run_label != "—" else "—")
+    g4.metric("Total GPU time", f"{total_gpu_h:.1f} h")
+    g5.metric("Feasibility reports", len(feasibility_csvs_home))
 
     st.markdown("---")
 
-    # ── Run seleccionado: resumen + mini curvas ────────────────────────────────
+    # ── Selected run: summary + mini curves ─────────────────────────────────────
     if selected_run is not None:
-        st.markdown(f"### Run seleccionado — `{selected_run.label}`")
+        st.markdown(f"### Selected run — `{selected_run.label}`")
         try:
             df_sel = _load_df(
                 str(selected_run.log_path),
@@ -542,20 +543,20 @@ with tab_inicio:
                     else None
                 )
                 m1, m2 = st.columns(2)
-                m1.metric("Epochs completados", n_ep_sel)
-                m2.metric("Mejor Val F1", f"{best_f1_sel:.4f}" if not pd.isna(best_f1_sel) else "—")
+                m1.metric("Epochs completed", n_ep_sel)
+                m2.metric("Best Val F1", f"{best_f1_sel:.4f}" if not pd.isna(best_f1_sel) else "—")
                 m3, m4 = st.columns(2)
-                m3.metric("Mejor epoch", int(best_ep_v) if best_ep_v is not None else "—")
-                m4.metric("Duración", dur_sel or "—")
+                m3.metric("Best epoch", int(best_ep_v) if best_ep_v is not None else "—")
+                m4.metric("Duration", dur_sel or "—")
                 if thresh_f1 is not None:
-                    st.metric("F1 @ threshold óptimo", f"{thresh_f1:.4f}")
+                    st.metric("F1 @ optimal threshold", f"{thresh_f1:.4f}")
                 anomalies_home = _detect_anomalies(selected_run.log_path)
                 if anomalies_home:
-                    st.warning(f"{len(anomalies_home)} anomalía(s) en el log")
+                    st.warning(f"{len(anomalies_home)} anomaly(ies) in the log")
                 else:
-                    st.success("Sin anomalías detectadas")
+                    st.success("No anomalies detected")
             else:
-                st.info("No hay datos de métricas para este run.")
+                st.info("No metrics data for this run.")
 
         with col_curves:
             if not df_sel.empty and "val_f1" in df_sel.columns:
@@ -596,21 +597,21 @@ with tab_inicio:
 
     st.markdown("---")
 
-    # ── Estado del sistema ─────────────────────────────────────────────────────
-    st.markdown("### Estado del sistema")
+    # ── System status ───────────────────────────────────────────────────────────
+    st.markdown("### System status")
     gpu_home = _gpu_usage()
 
     if gpu_home:
-        # Nombre completo de la GPU como encabezado (evita el truncado en st.metric)
+        # Full GPU name as a heading (avoids truncation in st.metric)
         gpu_name_clean = gpu_home["name"].replace("NVIDIA GeForce ", "").replace("NVIDIA ", "")
         st.markdown(f"**GPU:** {gpu_home['name']}")
         gc1, gc2, gc3, gc4 = st.columns(4)
-        gc1.metric("Modelo", gpu_name_clean)
+        gc1.metric("Model", gpu_name_clean)
         gc2.metric("VRAM", f"{gpu_home['mem_used_mb']/1024:.1f} / {gpu_home['mem_total_mb']/1024:.1f} GB")
-        gc3.metric("Utilización GPU", f"{gpu_home['util_pct']}%")
-        gc4.metric("Temperatura", f"{gpu_home['temp_c']} °C")
+        gc3.metric("GPU utilization", f"{gpu_home['util_pct']}%")
+        gc4.metric("Temperature", f"{gpu_home['temp_c']} °C")
     else:
-        st.caption("GPU: nvidia-smi no disponible")
+        st.caption("GPU: nvidia-smi unavailable")
 
     try:
         import psutil
@@ -624,7 +625,7 @@ with tab_inicio:
 
     st.markdown("---")
 
-    # ── Snapshot por clase ─────────────────────────────────────────────────────
+    # ── Per-class snapshot ──────────────────────────────────────────────────────
     perclass_csv_home: Path | None = None
     if selected_run is not None and selected_run.perclass_csv_path and selected_run.perclass_csv_path.exists():
         perclass_csv_home = selected_run.perclass_csv_path
@@ -639,10 +640,10 @@ with tab_inicio:
             if not pc_home.empty:
                 last_ep_home = pc_home["epoch"].max()
                 ep_pc_home = pc_home[pc_home["epoch"] == last_ep_home].copy().sort_values("f1", ascending=False)
-                st.markdown(f"### Rendimiento por clase (epoch {last_ep_home})")
+                st.markdown(f"### Per-class performance (epoch {last_ep_home})")
                 ph_left, ph_right = st.columns(2)
                 with ph_left:
-                    st.markdown("**Top 5 mejores clases**")
+                    st.markdown("**Top 5 best classes**")
                     top5 = ep_pc_home.head(5)[["class_name", "f1", "precision", "recall"]]
                     st.dataframe(
                         top5.style.map(_color_f1_cell, subset=["f1"])
@@ -650,7 +651,7 @@ with tab_inicio:
                         use_container_width=True, hide_index=True,
                     )
                 with ph_right:
-                    st.markdown("**Top 5 peores clases**")
+                    st.markdown("**Top 5 worst classes**")
                     bot5 = ep_pc_home.tail(5).sort_values("f1")[["class_name", "f1", "precision", "recall"]]
                     st.dataframe(
                         bot5.style.map(_color_f1_cell, subset=["f1"])
@@ -661,8 +662,8 @@ with tab_inicio:
         except Exception:
             pass
 
-    # ── Tabla de todos los runs ────────────────────────────────────────────────
-    st.markdown("### Todos los runs")
+    # ── Table of all runs ───────────────────────────────────────────────────────
+    st.markdown("### All runs")
     overview_rows = []
     for r in runs[:30]:
         try:
@@ -684,14 +685,14 @@ with tab_inicio:
             )
             overview_rows.append({
                 "Run": r.label[:55],
-                "Entorno": r.env,
-                "Modelo": r.model or "—",
+                "Environment": r.env,
+                "Model": r.model or "—",
                 "Trace": r.trace_mode,
                 "Epochs": len(df_r),
-                "Mejor Val F1": round(run_best_f1, 4),
-                "Mejor epoch": int(best_ep_v) if best_ep_v is not None else "—",
-                "Duración": _dur_str(dur_s) if not pd.isna(dur_s) else "—",
-                "Energía eval (Wh)": f"{energy_wh:.0f}" if energy_wh else "—",
+                "Best Val F1": round(run_best_f1, 4),
+                "Best epoch": int(best_ep_v) if best_ep_v is not None else "—",
+                "Duration": _dur_str(dur_s) if not pd.isna(dur_s) else "—",
+                "Eval energy (Wh)": f"{energy_wh:.0f}" if energy_wh else "—",
             })
         except Exception:
             pass
@@ -699,20 +700,20 @@ with tab_inicio:
     if overview_rows:
         ov_df = pd.DataFrame(overview_rows)
         st.dataframe(
-            ov_df.style.background_gradient(subset=["Mejor Val F1"], cmap="RdYlGn", vmin=0.4, vmax=0.75),
+            ov_df.style.background_gradient(subset=["Best Val F1"], cmap="RdYlGn", vmin=0.4, vmax=0.75),
             use_container_width=True, hide_index=True,
         )
-        _dl_csv(ov_df, "resumen_runs.csv", "Descargar tabla de runs")
+        _dl_csv(ov_df, "runs_summary.csv", "Download runs table")
     else:
-        st.info("No se encontraron runs con métricas parseables.")
+        st.info("No runs with parseable metrics found.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # SISTEMA
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_monitor:
-    st.markdown("## Monitor del sistema")
-    ref_int = st.sidebar.slider("Refresco sistema (s)", 2, 30, 5, key="sys_ref_int")
+    st.markdown("## System monitor")
+    ref_int = st.sidebar.slider("System refresh (s)", 2, 30, 5, key="sys_ref_int")
 
     @st.fragment(run_every=ref_int)
     def _system_panel():
@@ -720,18 +721,18 @@ with tab_monitor:
 
         st.markdown("### CPU")
         sc1, sc2, sc3, sc4 = st.columns(4)
-        sc1.metric("Uso", f"{snap.cpu.usage_pct:.1f}%")
-        sc2.metric("Núcleos lógicos", snap.cpu.count_logical)
-        sc3.metric("Núcleos físicos", snap.cpu.count_physical)
-        sc4.metric("Frecuencia", f"{snap.cpu.freq_mhz:.0f} MHz" if snap.cpu.freq_mhz else "—")
+        sc1.metric("Usage", f"{snap.cpu.usage_pct:.1f}%")
+        sc2.metric("Logical cores", snap.cpu.count_logical)
+        sc3.metric("Physical cores", snap.cpu.count_physical)
+        sc4.metric("Frequency", f"{snap.cpu.freq_mhz:.0f} MHz" if snap.cpu.freq_mhz else "—")
         st.progress(snap.cpu.usage_pct / 100)
 
         st.markdown("### RAM")
         sr1, sr2, sr3, sr4 = st.columns(4)
-        sr1.metric("Usada", f"{snap.ram.used_gb:.1f} GB")
+        sr1.metric("Used", f"{snap.ram.used_gb:.1f} GB")
         sr2.metric("Total", f"{snap.ram.total_gb:.1f} GB")
-        sr3.metric("Disponible", f"{snap.ram.available_gb:.1f} GB")
-        sr4.metric("Uso %", f"{snap.ram.percent:.1f}%")
+        sr3.metric("Available", f"{snap.ram.available_gb:.1f} GB")
+        sr4.metric("Usage %", f"{snap.ram.percent:.1f}%")
         st.progress(snap.ram.percent / 100)
         if snap.ram.swap_total_gb > 0:
             st.caption(f"Swap: {snap.ram.swap_used_gb:.1f} / {snap.ram.swap_total_gb:.1f} GB")
@@ -742,32 +743,32 @@ with tab_monitor:
                 mem_pct = gpu.mem_used_mb / gpu.mem_total_mb * 100 if gpu.mem_total_mb else 0
                 g1, g2, g3, g4, g5 = st.columns(5)
                 g1.metric(f"GPU {gpu.index}", gpu.name[:28])
-                g2.metric("VRAM usada", f"{gpu.mem_used_mb / 1024:.1f} GB")
+                g2.metric("VRAM used", f"{gpu.mem_used_mb / 1024:.1f} GB")
                 g3.metric("VRAM total", f"{gpu.mem_total_mb / 1024:.1f} GB")
-                g4.metric("Utilización", f"{gpu.util_pct}%")
-                g5.metric("Temperatura", f"{gpu.temp_c}°C")
+                g4.metric("Utilization", f"{gpu.util_pct}%")
+                g5.metric("Temperature", f"{gpu.temp_c}°C")
                 st.progress(mem_pct / 100,
                             text=f"VRAM {gpu.mem_used_mb}/{gpu.mem_total_mb} MB ({mem_pct:.1f}%)")
                 if gpu.power_w is not None:
                     limit_str = f" / {gpu.power_limit_w:.0f} W" if gpu.power_limit_w else ""
-                    st.caption(f"Consumo: {gpu.power_w:.1f} W{limit_str}")
+                    st.caption(f"Power draw: {gpu.power_w:.1f} W{limit_str}")
         else:
-            st.info("No se detectó GPU (nvidia-smi no disponible).")
+            st.info("No GPU detected (nvidia-smi unavailable).")
 
-        st.markdown("### Disco")
+        st.markdown("### Disk")
         if snap.disks:
             disk_cols = st.columns(len(snap.disks))
             for col, disk in zip(disk_cols, snap.disks):
-                col.metric(disk.path, f"{disk.free_gb:.1f} GB libres")
+                col.metric(disk.path, f"{disk.free_gb:.1f} GB free")
                 col.progress(disk.percent / 100,
                              text=f"{disk.used_gb:.1f} / {disk.total_gb:.1f} GB ({disk.percent:.1f}%)")
         else:
-            st.info("No se pudo leer el uso de disco.")
+            st.info("Could not read disk usage.")
 
-        st.markdown("### Red (acumulado desde el arranque)")
+        st.markdown("### Network (cumulative since boot)")
         nn1, nn2 = st.columns(2)
-        nn1.metric("Enviado", f"{snap.network.bytes_sent_mb / 1024:.2f} GB")
-        nn2.metric("Recibido", f"{snap.network.bytes_recv_mb / 1024:.2f} GB")
+        nn1.metric("Sent", f"{snap.network.bytes_sent_mb / 1024:.2f} GB")
+        nn2.metric("Received", f"{snap.network.bytes_recv_mb / 1024:.2f} GB")
 
     _system_panel()
 
@@ -776,7 +777,7 @@ with tab_monitor:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_dataset:
-    st.markdown("## Explorador de datos — BigEarthNet-S2 v2.0")
+    st.markdown("## Data explorer — BigEarthNet-S2 v2.0")
 
     meta_path: Path | None = None
     for candidate in [
@@ -787,42 +788,42 @@ with tab_dataset:
             meta_path = Path(candidate)
             break
 
-    st.markdown("### Splits del dataset")
+    st.markdown("### Dataset splits")
     split_col, pie_col = st.columns([1, 1])
     with split_col:
         ds1, ds2 = st.columns(2)
         ds1.metric("Train", f"{SPLIT_SIZES['train']:,}")
-        ds2.metric("Validación", f"{SPLIT_SIZES['val']:,}")
+        ds2.metric("Validation", f"{SPLIT_SIZES['val']:,}")
         ds3, ds4 = st.columns(2)
         ds3.metric("Test", f"{SPLIT_SIZES['test']:,}")
         ds4.metric("Total patches", f"{sum(SPLIT_SIZES.values()):,}")
     with pie_col:
         fig_splits = go.Figure(go.Pie(
-            labels=["Train", "Validación", "Test"],
+            labels=["Train", "Validation", "Test"],
             values=list(SPLIT_SIZES.values()),
             hole=0.45,
             marker_colors=[COLORS[0], COLORS[2], COLORS[1]],
             textinfo="label+percent",
         ))
         fig_splits.update_layout(
-            **_base_layout(260, "Distribución de splits", margin=dict(l=10, r=10, t=40, b=10)),
+            **_base_layout(260, "Split distribution", margin=dict(l=10, r=10, t=40, b=10)),
             showlegend=False,
         )
         _show(fig_splits, "splits")
 
-    # ── Distribución de clases ─────────────────────────────────────────────────
-    st.markdown("### Distribución de clases (split de train)")
+    # ── Class distribution ──────────────────────────────────────────────────────
+    st.markdown("### Class distribution (train split)")
     dist_df = None
     if meta_path:
         dist_df = _load_class_distribution(str(meta_path))
         if dist_df is not None:
-            st.caption(f"Fuente: {meta_path.name} (conteo real de etiquetas multi-label)")
+            st.caption(f"Source: {meta_path.name} (real multi-label count)")
         else:
-            st.caption("No se pudo leer el parquet — usando estadísticas aproximadas.")
+            st.caption("Could not read the parquet — using approximate statistics.")
     if dist_df is None:
         dist_df = class_distribution_approximate()
         if not meta_path:
-            st.caption("metadata.parquet no encontrado — usando estadísticas aproximadas.")
+            st.caption("metadata.parquet not found — using approximate statistics.")
 
     dist_df = dist_df.sort_values("train_count", ascending=True).reset_index(drop=True)
     dist_df["color"] = dist_df["train_count"].apply(
@@ -837,52 +838,52 @@ with tab_dataset:
         cliponaxis=False,
     ))
     fig_dist.update_layout(
-        **_base_layout(620, "Muestras por clase (train)", margin=dict(l=300, r=90, t=40, b=40)),
-        xaxis_title="Número de muestras (multi-label)", yaxis_title="",
+        **_base_layout(620, "Samples per class (train)", margin=dict(l=300, r=90, t=40, b=40)),
+        xaxis_title="Number of samples (multi-label)", yaxis_title="",
     )
     fig_dist.update_yaxes(tickfont=dict(size=11), automargin=True)
     max_x = dist_df["train_count"].max()
     fig_dist.update_xaxes(range=[0, max_x * 1.15])
-    _show(fig_dist, "distribucion_clases")
+    _show(fig_dist, "class_distribution")
     st.caption(
-        "Rojo = clase rara (<10K), Naranja = moderada (<40K), Verde = frecuente. "
-        "Al ser multi-label, la suma de etiquetas supera el número de patches. "
-        "Las clases raras limitan el techo de F1 macro."
+        "Red = rare class (<10K), Orange = moderate (<40K), Green = frequent. "
+        "Being multi-label, the sum of labels exceeds the number of patches. "
+        "Rare classes cap the macro-F1 ceiling."
     )
 
-    st.markdown("### Desbalance de clases")
+    st.markdown("### Class imbalance")
     max_c = dist_df["train_count"].max()
     min_c = dist_df["train_count"].min()
     ratio = max_c / min_c if min_c > 0 else float("inf")
     ci1, ci2, ci3 = st.columns(3)
-    ci1.metric("Clase más frecuente", dist_df.iloc[-1]["class"][:28],
+    ci1.metric("Most frequent class", dist_df.iloc[-1]["class"][:28],
                f"{int(max_c):,}")
-    ci2.metric("Clase más rara", dist_df.iloc[0]["class"][:28],
+    ci2.metric("Rarest class", dist_df.iloc[0]["class"][:28],
                f"{int(min_c):,}")
-    ci3.metric("Ratio de desbalance", f"{ratio:.1f}×")
-    _dl_csv(dist_df[["class", "train_count"]], "distribucion_clases.csv",
-            "Descargar distribución")
+    ci3.metric("Imbalance ratio", f"{ratio:.1f}×")
+    _dl_csv(dist_df[["class", "train_count"]], "class_distribution.csv",
+            "Download distribution")
 
-    # ── Imágenes de ejemplo por clase ──────────────────────────────────────────
-    st.markdown("### Imágenes de ejemplo por clase")
+    # ── Example images per class ────────────────────────────────────────────────
+    st.markdown("### Example images per class")
     if not meta_path:
-        st.info("Requiere acceso al dataset (metadata.parquet no encontrado).")
+        st.info("Requires dataset access (metadata.parquet not found).")
     else:
-        # Ruta al directorio raíz del dataset (junto al parquet)
+        # Path to the dataset root directory (next to the parquet)
         ds_root = meta_path.parent / "BigEarthNet-S2"
         if not ds_root.exists():
-            st.info(f"Directorio del dataset no encontrado en {ds_root}.")
+            st.info(f"Dataset directory not found at {ds_root}.")
         else:
             sel_class = st.selectbox(
-                "Clase", CLASS_NAMES,
+                "Class", CLASS_NAMES,
                 index=CLASS_NAMES.index("Marine waters") if "Marine waters" in CLASS_NAMES else 0,
             )
-            with st.spinner("Cargando imágenes RGB del dataset…"):
+            with st.spinner("Loading RGB images from the dataset…"):
                 examples = _load_example_images(str(meta_path), str(ds_root), sel_class, n=4)
             if examples:
                 st.caption(
-                    "Proxy RGB (bandas Sentinel-2 B04/B03/B02) con stretch de percentiles "
-                    "para visibilidad. Cada patch es 120×120 px (~1.2 km²)."
+                    "RGB proxy (Sentinel-2 bands B04/B03/B02) with percentile stretch "
+                    "for visibility. Each patch is 120×120 px (~1.2 km²)."
                 )
                 img_cols = st.columns(len(examples))
                 for col, (pid, img) in zip(img_cols, examples):
@@ -890,15 +891,15 @@ with tab_dataset:
                               use_container_width=True)
             else:
                 st.warning(
-                    f"No se pudieron cargar imágenes para '{sel_class}'. "
-                    "¿Está el dataset completo y accesible?"
+                    f"Could not load images for '{sel_class}'. "
+                    "Is the dataset complete and accessible?"
                 )
 
-    # ── País ───────────────────────────────────────────────────────────────────
+    # ── Country ──────────────────────────────────────────────────────────────────
     if meta_path:
         country_counts = get_country_distribution(meta_path)
         if country_counts is not None and not country_counts.empty:
-            st.markdown("### Distribución por país (train)")
+            st.markdown("### Distribution by country (train)")
             top_n = country_counts.head(15).sort_values(ascending=True)
             fig_c = go.Figure(go.Bar(
                 x=top_n.values, y=top_n.index, orientation="h",
@@ -907,16 +908,16 @@ with tab_dataset:
                 cliponaxis=False,
             ))
             fig_c.update_layout(
-                **_base_layout(420, "Top 15 países por número de patches",
+                **_base_layout(420, "Top 15 countries by number of patches",
                                margin=dict(l=120, r=80, t=40, b=40)),
                 xaxis_title="Patches", yaxis_title="",
             )
             fig_c.update_xaxes(range=[0, top_n.values.max() * 1.15])
-            _show(fig_c, "paises")
+            _show(fig_c, "countries")
 
-    # ── Dificultad vs frecuencia ───────────────────────────────────────────────
-    st.markdown("### Dificultad por clase vs frecuencia")
-    st.caption("Cruza la frecuencia de cada clase con su F1 de validación (CSV per-class más reciente).")
+    # ── Difficulty vs frequency ──────────────────────────────────────────────────
+    st.markdown("### Per-class difficulty vs frequency")
+    st.caption("Crosses each class's frequency with its validation F1 (most recent per-class CSV).")
     perclass_csvs_all = sorted(ROOT.rglob("perclass_metrics_*.csv"),
                                key=lambda p: p.stat().st_mtime, reverse=True)
     if perclass_csvs_all:
@@ -930,8 +931,8 @@ with tab_dataset:
                 ep_pc, x="train_count", y="f1",
                 text="class_name", color="f1",
                 color_continuous_scale="RdYlGn", range_color=[0, 1],
-                labels={"train_count": "Muestras de entrenamiento", "f1": "Val F1"},
-                title=f"F1 vs frecuencia de clase (epoch {last_ep})",
+                labels={"train_count": "Training samples", "f1": "Val F1"},
+                title=f"F1 vs class frequency (epoch {last_ep})",
             )
             fig_sc.update_traces(textposition="top center", textfont_size=9)
             fig_sc.update_layout(
@@ -939,46 +940,46 @@ with tab_dataset:
                 showlegend=False,
             )
             fig_sc.update_yaxes(range=[-0.05, 1.05])
-            _show(fig_sc, "f1_vs_frecuencia")
+            _show(fig_sc, "f1_vs_frequency")
             st.caption(
-                "Las clases con pocas muestras tienden a tener F1 bajo. "
-                "Los puntos abajo a la izquierda son los más difíciles de mejorar."
+                "Classes with few samples tend to have low F1. "
+                "The points at the bottom-left are the hardest to improve."
             )
     else:
-        st.info("No se encontró CSV de per-class. Ejecuta un training con `--layers confusion`.")
+        st.info("No per-class CSV found. Run a training with `--layers confusion`.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # MODELOS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_modelos:
-    st.markdown("## Explorador de modelos")
-    st.caption("Explora modelos timm y compara parámetros y requisitos de VRAM.")
+    st.markdown("## Model explorer")
+    st.caption("Explore timm models and compare parameters and VRAM requirements.")
 
     col_fam, col_bs = st.columns([3, 1])
     with col_fam:
         selected_families = st.multiselect(
-            "Familias de modelos", ALL_FAMILIES, default=["ViT", "ResNet", "EfficientNet"],
+            "Model families", ALL_FAMILIES, default=["ViT", "ResNet", "EfficientNet"],
         )
     with col_bs:
-        cmp_batch = st.selectbox("Batch size para estimación VRAM", [4, 8, 16, 32, 64, 128], index=3)
+        cmp_batch = st.selectbox("Batch size for VRAM estimate", [4, 8, 16, 32, 64, 128], index=3)
 
     candidate_models = []
     for fam in selected_families:
         candidate_models.extend(CURATED_MODELS.get(fam, []))
 
-    extra_model = st.text_input("Añadir modelo timm personalizado", placeholder="p.ej. convnext_large")
+    extra_model = st.text_input("Add a custom timm model", placeholder="e.g. convnext_large")
     if extra_model.strip():
         candidate_models.append(extra_model.strip())
 
     if not candidate_models:
-        st.info("Selecciona al menos una familia.")
+        st.info("Select at least one family.")
     else:
-        with st.spinner("Cargando estadísticas de modelos…"):
+        with st.spinner("Loading model statistics…"):
             rows = compare_models(candidate_models, [cmp_batch], num_classes=19)
 
         if not rows:
-            st.warning("No se pudo cargar ningún modelo.")
+            st.warning("Could not load any model.")
         else:
             cmp_df = pd.DataFrame(rows)
             vram_col = f"VRAM est. bs={cmp_batch} (GB)"
@@ -998,10 +999,10 @@ with tab_modelos:
             if vram_col in cmp_df.columns:
                 styled_cmp = styled_cmp.map(_color_vram, subset=[vram_col])
             st.dataframe(styled_cmp, use_container_width=True, hide_index=True)
-            st.caption("Verde = cabe en 4 GB | Naranja = 4–8 GB | Rojo = >8 GB (límite RTX 3060 Ti)")
-            _dl_csv(cmp_df, "comparativa_modelos.csv", "Descargar comparativa de modelos")
+            st.caption("Green = fits in 4 GB | Orange = 4–8 GB | Red = >8 GB (RTX 3060 Ti limit)")
+            _dl_csv(cmp_df, "model_comparison.csv", "Download model comparison")
 
-            st.markdown("### Parámetros vs FLOPs")
+            st.markdown("### Parameters vs FLOPs")
             plot_df = cmp_df[cmp_df["FLOPs (MFLOPs)"] != "—"].copy()
             if not plot_df.empty:
                 plot_df["FLOPs (MFLOPs)"] = pd.to_numeric(plot_df["FLOPs (MFLOPs)"], errors="coerce")
@@ -1010,16 +1011,16 @@ with tab_modelos:
                     plot_df, x="FLOPs (MFLOPs)", y="Params (M)",
                     size=vram_col, color="Family", text="Model", hover_name="Model",
                     size_max=40,
-                    labels={"FLOPs (MFLOPs)": "FLOPs por imagen (MFLOPs)", "Params (M)": "Parámetros (M)"},
+                    labels={"FLOPs (MFLOPs)": "FLOPs per image (MFLOPs)", "Params (M)": "Parameters (M)"},
                 )
                 fig_bubble.update_traces(textposition="top center", textfont_size=8)
-                fig_bubble.update_layout(**_base_layout(420, "Complejidad de modelos"), showlegend=True)
-                _show(fig_bubble, "complejidad_modelos")
-                st.caption("Tamaño de burbuja = VRAM estimada al batch size seleccionado.")
+                fig_bubble.update_layout(**_base_layout(420, "Model complexity"), showlegend=True)
+                _show(fig_bubble, "model_complexity")
+                st.caption("Bubble size = estimated VRAM at the selected batch size.")
 
-            st.markdown("### VRAM requerida por batch size")
+            st.markdown("### Required VRAM by batch size")
             vram_models = candidate_models[:8]
-            with st.spinner("Calculando estimaciones de VRAM…"):
+            with st.spinner("Computing VRAM estimates…"):
                 vram_rows = compare_models(vram_models, [4, 8, 16, 32, 64, 128])
 
             if vram_rows:
@@ -1037,46 +1038,46 @@ with tab_modelos:
                 fig_vram_m.add_hline(y=32, line_dash="dash", line_color="orange",
                                      annotation_text="V100 (32 GB)")
                 fig_vram_m.update_layout(
-                    **_base_layout(380, "VRAM estimada (GB) por batch size"),
+                    **_base_layout(380, "Estimated VRAM (GB) by batch size"),
                     barmode="group", xaxis_tickangle=30, yaxis_title="GB",
                 )
-                _show(fig_vram_m, "vram_por_batch")
+                _show(fig_vram_m, "vram_by_batch")
 
-            st.markdown("### Lanzamiento rápido")
+            st.markdown("### Quick launch")
             selected_for_launch = st.selectbox(
-                "Selecciona modelo para prellenar el Lanzador", [r["Model"] for r in rows]
+                "Select a model to prefill the Launcher", [r["Model"] for r in rows]
             )
             if selected_for_launch:
-                st.info(f"Ve a la pestaña **Lanzador** y usa el modelo `{selected_for_launch}`.")
+                st.info(f"Go to the **Launcher** tab and use the model `{selected_for_launch}`.")
                 st.session_state["preselected_model"] = selected_for_launch
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ANÁLISIS DDP
+# DDP ANALYSIS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_ddp:
-    st.markdown("## Análisis DDP — Single-GPU vs Distribuido")
-    st.caption("Compara runs single-GPU y DDP del mismo modelo para medir speedup real, eficiencia y escalabilidad.")
+    st.markdown("## DDP analysis — Single-GPU vs Distributed")
+    st.caption("Compares single-GPU and DDP runs of the same model to measure real speedup, efficiency and scalability.")
 
     all_runs_ddp = _get_runs()
     if not all_runs_ddp:
-        st.info("No se encontraron runs.")
+        st.info("No runs found.")
     else:
         single_runs = [r for r in all_runs_ddp if r.mode == "single"]
-        # Cualquier modo distribuido cuenta como DDP: "ddp" (multi-proceso NCCL)
-        # y "ddp_hetero" (GPU+CPU). Antes sólo se filtraba "ddp" exacto, así que
-        # los runs heterogéneos no aparecían en esta pestaña.
+        # Any distributed mode counts as DDP: "ddp" (multi-process NCCL) and
+        # "ddp_hetero" (GPU+CPU). Previously only the exact "ddp" was filtered, so
+        # heterogeneous runs did not appear in this tab.
         ddp_runs = [r for r in all_runs_ddp if r.mode.startswith("ddp")]
 
         da1, da2, da3 = st.columns(3)
-        da1.metric("Runs single-GPU", len(single_runs))
-        da2.metric("Runs distribuidos", len(ddp_runs))
+        da1.metric("Single-GPU runs", len(single_runs))
+        da2.metric("Distributed runs", len(ddp_runs))
         da3.metric("Total runs", len(all_runs_ddp))
 
         if not ddp_runs:
-            st.info("No hay runs DDP todavía. Lanza `scripts/train_ddp.py` — los resultados aparecerán aquí automáticamente.")
+            st.info("No DDP runs yet. Launch `scripts/train_ddp.py` — results will appear here automatically.")
         else:
-            st.markdown("### Runs DDP")
+            st.markdown("### DDP runs")
             ddp_rows = []
             for r in ddp_runs:
                 try:
@@ -1087,11 +1088,11 @@ with tab_ddp:
                     avg_ep = (ddf["epoch_time"].dropna().mean()
                               if "epoch_time" in ddf.columns and ddf["epoch_time"].notna().any() else None)
                     ddp_rows.append({
-                        "Run": r.label[:50], "Modelo": r.model or "—",
-                        "Modo": r.mode, "Entorno": r.env,
-                        "Mejor Val F1": round(best_f1, 4),
+                        "Run": r.label[:50], "Model": r.model or "—",
+                        "Mode": r.mode, "Environment": r.env,
+                        "Best Val F1": round(best_f1, 4),
                         "Epochs": len(ddf),
-                        "Epoch promedio (min)": round(avg_ep / 60, 1) if avg_ep else "—",
+                        "Avg epoch (min)": round(avg_ep / 60, 1) if avg_ep else "—",
                     })
                 except Exception:
                     pass
@@ -1099,12 +1100,12 @@ with tab_ddp:
                 st.dataframe(pd.DataFrame(ddp_rows), use_container_width=True, hide_index=True)
 
         if single_runs and ddp_runs:
-            st.markdown("### Análisis de speedup")
+            st.markdown("### Speedup analysis")
             col_s, col_d = st.columns(2)
             with col_s:
-                single_lbl = st.selectbox("Run single-GPU", [r.label for r in single_runs], key="ddp_single_sel")
+                single_lbl = st.selectbox("Single-GPU run", [r.label for r in single_runs], key="ddp_single_sel")
             with col_d:
-                ddp_lbl = st.selectbox("Run DDP", [r.label for r in ddp_runs], key="ddp_ddp_sel")
+                ddp_lbl = st.selectbox("DDP run", [r.label for r in ddp_runs], key="ddp_ddp_sel")
 
             r_single = next(r for r in single_runs if r.label == single_lbl)
             r_ddp = next(r for r in ddp_runs if r.label == ddp_lbl)
@@ -1116,34 +1117,34 @@ with tab_ddp:
                 avg_s = df_s["epoch_time"].mean() if "epoch_time" in df_s.columns and df_s["epoch_time"].notna().any() else None
                 avg_d = df_d["epoch_time"].mean() if "epoch_time" in df_d.columns and df_d["epoch_time"].notna().any() else None
 
-                # Etiquetas correctas según el tipo de distribución: el
-                # heterogéneo es V100+CPU (NO 2 GPUs equivalentes).
+                # Correct labels by distribution type: the heterogeneous case
+                # is V100+CPU (NOT 2 equivalent GPUs).
                 is_hetero = r_ddp.mode == "ddp_hetero"
                 worker_desc = "V100 + CPU" if is_hetero else "2 GPUs"
                 n_workers = 2
 
                 su1, su2, su3, su4 = st.columns(4)
-                su1.metric("Epoch single-GPU", f"{avg_s/60:.1f} min" if avg_s else "—")
-                su2.metric(f"Epoch distribuido ({worker_desc})", f"{avg_d/60:.1f} min" if avg_d else "—")
+                su1.metric("Single-GPU epoch", f"{avg_s/60:.1f} min" if avg_s else "—")
+                su2.metric(f"Distributed epoch ({worker_desc})", f"{avg_d/60:.1f} min" if avg_d else "—")
                 speedup = None
                 if avg_s and avg_d and avg_d > 0:
                     speedup = avg_s / avg_d
-                    su3.metric("Speedup real", f"{speedup:.2f}×")
-                    su4.metric(f"Eficiencia vs ideal {n_workers}× ", f"{speedup / n_workers * 100:.1f}%")
+                    su3.metric("Real speedup", f"{speedup:.2f}×")
+                    su4.metric(f"Efficiency vs ideal {n_workers}× ", f"{speedup / n_workers * 100:.1f}%")
 
                 if speedup is not None and speedup < 1:
                     st.warning(
-                        f"**Speedup < 1×: el distribuido es {1/speedup:.1f}× más LENTO** que la GPU sola. "
-                        + ("Es el resultado esperado del DDP **síncrono** con hardware desbalanceado "
-                           "(V100 + CPU): en cada batch la GPU espera a la CPU (~50× más lenta), "
-                           "así que el sistema va al ritmo del nodo más lento. Demuestra *cuándo NO distribuir*."
+                        f"**Speedup < 1×: distributed is {1/speedup:.1f}× SLOWER** than the GPU alone. "
+                        + ("This is the expected result of **synchronous** DDP with imbalanced hardware "
+                           "(V100 + CPU): on every batch the GPU waits for the CPU (~50× slower), "
+                           "so the system runs at the pace of the slowest node. It shows *when NOT to distribute*."
                            if is_hetero else
-                           "Revisa el reparto de carga / la comunicación entre GPUs.")
+                           "Check the load balancing / inter-GPU communication.")
                     )
                 elif speedup is not None:
                     st.success(
-                        f"**Speedup {speedup:.2f}× con {worker_desc}** "
-                        f"(eficiencia {speedup/n_workers*100:.0f}% sobre el ideal lineal {n_workers}×)."
+                        f"**Speedup {speedup:.2f}× with {worker_desc}** "
+                        f"(efficiency {speedup/n_workers*100:.0f}% over the ideal linear {n_workers}×)."
                     )
 
                 fig_ddp_f1 = go.Figure()
@@ -1165,18 +1166,18 @@ with tab_ddp:
                     if "epoch_time" in df_d.columns:
                         fig_time_ddp.add_trace(go.Scatter(x=df_d["epoch"], y=df_d["epoch_time"] / 60,
                                                            name="DDP", line=dict(color=COLORS[2], width=2)))
-                    fig_time_ddp.update_layout(**_base_layout(260, "Tiempo por epoch: Single-GPU vs DDP"),
-                                               xaxis_title="Epoch", yaxis_title="Minutos")
-                    _show(fig_time_ddp, "ddp_tiempo")
+                    fig_time_ddp.update_layout(**_base_layout(260, "Epoch time: Single-GPU vs DDP"),
+                                               xaxis_title="Epoch", yaxis_title="Minutes")
+                    _show(fig_time_ddp, "ddp_time")
 
-                st.markdown("### Escalado teórico vs real")
+                st.markdown("### Theoretical vs real scaling")
                 world_sizes = [1, 2, 4, 8]
                 if avg_s:
                     theoretical = [avg_s / ws for ws in world_sizes]
                     fig_scale = go.Figure()
                     fig_scale.add_trace(go.Scatter(
                         x=world_sizes, y=[t / 60 for t in theoretical],
-                        name="Teórico (100% eficiencia)",
+                        name="Theoretical (100% efficiency)",
                         line=dict(color=COLORS[4], width=2, dash="dash"), mode="lines+markers",
                     ))
                     if avg_d:
@@ -1184,24 +1185,24 @@ with tab_ddp:
                             x=[2], y=[avg_d / 60], name=f"Real ({worker_desc})",
                             mode="markers", marker=dict(color=COLORS[2], size=14, symbol="star"),
                         ))
-                    fig_scale.update_layout(**_base_layout(300, "Tiempo por epoch vs número de workers"),
-                                            xaxis_title="Número de workers (procesos)", yaxis_title="Minutos por epoch")
+                    fig_scale.update_layout(**_base_layout(300, "Epoch time vs number of workers"),
+                                            xaxis_title="Number of workers (processes)", yaxis_title="Minutes per epoch")
                     fig_scale.update_xaxes(tickvals=world_sizes)
-                    _show(fig_scale, "escalado_ddp")
+                    _show(fig_scale, "ddp_scaling")
                     st.caption(
-                        "La línea teórica asume añadir workers IDÉNTICOS al single-GPU "
-                        "(escalado lineal perfecto). El punto real queda por debajo por "
-                        "overhead de comunicación, cuello NFS y — en el heterogéneo — "
-                        "porque el segundo worker es una CPU ~50× más lenta, no otra V100."
+                        "The theoretical line assumes adding workers IDENTICAL to the single-GPU "
+                        "(perfect linear scaling). The real point falls below it due to "
+                        "communication overhead, the NFS bottleneck and — in the heterogeneous case — "
+                        "because the second worker is a CPU ~50× slower, not another V100."
                     )
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CURVAS
+# CURVES
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_curvas:
     if selected_run is None:
-        st.info("Selecciona un run en la barra lateral.")
+        st.info("Select a run in the sidebar.")
     else:
         df = _load_df(
             str(run.log_path),
@@ -1209,7 +1210,7 @@ with tab_curvas:
         )
 
         if df.empty:
-            st.error("No se pudo parsear ningún epoch del run seleccionado.")
+            st.error("Could not parse any epoch from the selected run.")
         else:
             n_epochs = len(df)
             best_f1 = _safe_max(df["val_f1"]) if "val_f1" in df.columns else float("nan")
@@ -1223,21 +1224,21 @@ with tab_curvas:
 
             c1, c2, c3, c4, c5 = st.columns(5)
             c1.metric("Epochs", n_epochs)
-            c2.metric("Mejor Val F1", f"{best_f1:.4f}" if not pd.isna(best_f1) else "—")
-            c3.metric("Mejor epoch", best_epoch)
+            c2.metric("Best Val F1", f"{best_f1:.4f}" if not pd.isna(best_f1) else "—")
+            c3.metric("Best epoch", best_epoch)
             if best_thresh_f1 is not None:
-                c4.metric("F1 @ threshold óptimo", f"{best_thresh_f1:.4f}")
+                c4.metric("F1 @ optimal threshold", f"{best_thresh_f1:.4f}")
             if "epoch_time" in df.columns and df["epoch_time"].notna().any():
-                c5.metric("Duración total", _dur_str(df["epoch_time"].sum()))
+                c5.metric("Total duration", _dur_str(df["epoch_time"].sum()))
 
-            src = "epoch_metrics CSV" if (run.epoch_csv_path and run.epoch_csv_path.exists()) else "fichero de log"
-            st.caption(f"Fuente: {src}")
+            src = "epoch_metrics CSV" if (run.epoch_csv_path and run.epoch_csv_path.exists()) else "log file"
+            st.caption(f"Source: {src}")
 
             extra_thresh: list = []
             if "f1_at_threshold" in df.columns and df["f1_at_threshold"].notna().any():
                 extra_thresh = [go.Scatter(
                     x=df["epoch"], y=df["f1_at_threshold"],
-                    name="F1 @ threshold óptimo", mode="lines",
+                    name="F1 @ optimal threshold", mode="lines",
                     line=dict(color=COLORS[2], width=2, dash="dot"),
                 )]
 
@@ -1255,13 +1256,13 @@ with tab_curvas:
                 et = df[["epoch", "epoch_time"]].dropna()
                 fig_et = go.Figure(go.Bar(x=et["epoch"], y=et["epoch_time"] / 60,
                                           marker_color=COLORS[0], opacity=0.8))
-                fig_et.update_layout(**_base_layout(240, "Tiempo por epoch (min)"),
-                                     xaxis_title="Epoch", yaxis_title="Minutos")
-                _show(fig_et, "tiempo_epoch")
+                fig_et.update_layout(**_base_layout(240, "Time per epoch (min)"),
+                                     xaxis_title="Epoch", yaxis_title="Minutes")
+                _show(fig_et, "epoch_time")
 
             has_energy = "energy_eval_wh" in df.columns and df["energy_eval_wh"].notna().any()
             if has_energy:
-                st.markdown("#### Consumo energético")
+                st.markdown("#### Energy consumption")
                 e1, e2 = st.columns(2)
                 with e1:
                     rows_e = []
@@ -1279,49 +1280,49 @@ with tab_curvas:
                                                    name="Train", marker_color=COLORS[0], opacity=0.85))
                         fig_e.add_trace(go.Bar(x=df_e["epoch"], y=df_e["Eval (Wh)"],
                                                name="Eval", marker_color=COLORS[1], opacity=0.85))
-                        fig_e.update_layout(**_base_layout(260, "Energía por epoch (Wh)"),
+                        fig_e.update_layout(**_base_layout(260, "Energy per epoch (Wh)"),
                                             barmode="group", xaxis_title="Epoch", yaxis_title="Wh")
-                        _show(fig_e, "energia")
+                        _show(fig_e, "energy")
                 with e2:
                     power_cols = []
                     if "power_eval_w" in df.columns and df["power_eval_w"].notna().any():
-                        power_cols.append(("Potencia eval (W)", "power_eval_w", COLORS[1]))
+                        power_cols.append(("Eval power (W)", "power_eval_w", COLORS[1]))
                     if "power_train_w" in df.columns and df["power_train_w"].notna().any():
-                        power_cols.append(("Potencia train (W)", "power_train_w", COLORS[0]))
+                        power_cols.append(("Train power (W)", "power_train_w", COLORS[0]))
                     if power_cols:
                         fig_p = go.Figure()
                         for name_p, col_p, color_p in power_cols:
                             fig_p.add_trace(go.Scatter(x=df["epoch"], y=df[col_p],
                                                        name=name_p, mode="lines+markers",
                                                        line=dict(color=color_p, width=2)))
-                        fig_p.update_layout(**_base_layout(260, "Potencia GPU promedio por epoch (W)"),
-                                            xaxis_title="Epoch", yaxis_title="Vatios")
-                        _show(fig_p, "potencia_gpu")
+                        fig_p.update_layout(**_base_layout(260, "Average GPU power per epoch (W)"),
+                                            xaxis_title="Epoch", yaxis_title="Watts")
+                        _show(fig_p, "gpu_power")
 
                 total_eval_wh = df["energy_eval_wh"].sum()
                 total_train_wh = (df["energy_train_j"].sum() / 3600
                                   if "energy_train_j" in df.columns and df["energy_train_j"].notna().any() else 0)
                 ec1, ec2, ec3 = st.columns(3)
-                ec1.metric("Energía eval total", f"{total_eval_wh:.1f} Wh")
+                ec1.metric("Total eval energy", f"{total_eval_wh:.1f} Wh")
                 if total_train_wh > 0:
-                    ec2.metric("Energía train total", f"{total_train_wh:.1f} Wh")
-                    ec3.metric("Energía total", f"{total_eval_wh + total_train_wh:.1f} Wh")
+                    ec2.metric("Total train energy", f"{total_train_wh:.1f} Wh")
+                    ec3.metric("Total energy", f"{total_eval_wh + total_train_wh:.1f} Wh")
 
-            _dl_csv(df, "epoch_metrics.csv", "Descargar epoch_metrics.csv")
+            _dl_csv(df, "epoch_metrics.csv", "Download epoch_metrics.csv")
 
-            with st.expander("Tabla de epochs completa"):
+            with st.expander("Full epochs table"):
                 st.dataframe(df.set_index("epoch"), use_container_width=True)
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# POR CLASE
+# PER-CLASS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_porclase:
     if selected_run is None:
-        st.info("Selecciona un run en la barra lateral.")
+        st.info("Select a run in the sidebar.")
     else:
         subtab_bars, subtab_trend, subtab_cm = st.tabs(
-            ["Por clase", "Tendencia", "Matriz de confusión"]
+            ["Per-class", "Trend", "Confusion matrix"]
         )
 
         with subtab_bars:
@@ -1338,7 +1339,7 @@ with tab_porclase:
                 )
                 st.dataframe(styled, use_container_width=True, height=280)
                 _dl_csv(ep_df[["class_name", "f1", "precision", "recall"]],
-                        f"perclass_ep{selected_ep}.csv", "Descargar tabla por clase")
+                        f"perclass_ep{selected_ep}.csv", "Download per-class table")
 
                 colors_f1 = [
                     COLORS[2] if v >= 0.6 else (COLORS[1] if v >= 0.3 else COLORS[3])
@@ -1355,14 +1356,14 @@ with tab_porclase:
                                         name="F1", orientation="h", marker_color=colors_f1))
                 fig_pc.update_layout(
                     barmode="group",
-                    title=dict(text=f"Métricas por clase — Epoch {selected_ep}", font=dict(size=13)),
-                    xaxis_title="Puntuación", xaxis=dict(range=[0, 1]),
+                    title=dict(text=f"Per-class metrics — Epoch {selected_ep}", font=dict(size=13)),
+                    xaxis_title="Score", xaxis=dict(range=[0, 1]),
                     height=600, margin=dict(l=200, r=16, t=36, b=40),
                     paper_bgcolor="white", plot_bgcolor="#f8fafc",
                 )
-                _show(fig_pc, f"por_clase_ep{selected_ep}")
+                _show(fig_pc, f"per_class_ep{selected_ep}")
             else:
-                st.info("Sin datos por clase. Usa `--layers confusion` para generarlos.")
+                st.info("No per-class data. Use `--layers confusion` to generate it.")
 
         with subtab_trend:
             if run.perclass_csv_path and run.perclass_csv_path.exists():
@@ -1370,9 +1371,9 @@ with tab_porclase:
                 classes = sorted(pcdf["class_name"].unique().tolist())
                 col_sel, col_met = st.columns([3, 1])
                 with col_sel:
-                    selected_classes = st.multiselect("Clases (máx 8)", classes, default=classes[:4], max_selections=8)
+                    selected_classes = st.multiselect("Classes (max 8)", classes, default=classes[:4], max_selections=8)
                 with col_met:
-                    metric_sel = st.radio("Métrica", ["f1", "precision", "recall"])
+                    metric_sel = st.radio("Metric", ["f1", "precision", "recall"])
 
                 if selected_classes:
                     fig_trend = go.Figure()
@@ -1384,13 +1385,13 @@ with tab_porclase:
                             line=dict(color=COLORS[i % len(COLORS)], width=2), marker=dict(size=4),
                         ))
                     fig_trend.update_layout(
-                        **_base_layout(400, f"{metric_sel.capitalize()} por clase a lo largo de los epochs"),
+                        **_base_layout(400, f"{metric_sel.capitalize()} per class across epochs"),
                         xaxis_title="Epoch",
                     )
                     fig_trend.update_yaxes(range=[0, 1])
-                    _show(fig_trend, "tendencia_clases")
+                    _show(fig_trend, "class_trend")
             else:
-                st.info("Sin CSV de per-class para este run.")
+                st.info("No per-class CSV for this run.")
 
         with subtab_cm:
             if run.confusion_matrix_csv_path and run.confusion_matrix_csv_path.exists():
@@ -1402,23 +1403,23 @@ with tab_porclase:
                     selected_cm_ep = st.selectbox("Epoch", epochs_cm,
                                                    format_func=lambda e: f"Epoch {e}", key="cm_epoch_sel")
                 with col_cm2:
-                    cm_mode = st.radio("Modo", ["Normalizada", "Absoluta"], key="cm_mode")
+                    cm_mode = st.radio("Mode", ["Normalized", "Absolute"], key="cm_mode")
 
                 pivot = get_matrix_for_epoch(cm_df, selected_cm_ep)
                 class_order = list(pivot.index)
                 z_norm = pivot.reindex(index=class_order, columns=class_order).values
                 n_classes = len(class_order)
 
-                if cm_mode == "Absoluta":
+                if cm_mode == "Absolute":
                     row_sums = z_norm.sum(axis=1, keepdims=True)
                     z_abs = (z_norm * row_sums).round().astype(int)
                     z_plot = z_abs.tolist()
                     text = [[str(v) if v > 0 else "" for v in row] for row in z_abs]
-                    zmin, zmax, cb_title = 0, None, "Muestras"
+                    zmin, zmax, cb_title = 0, None, "Samples"
                 else:
                     z_plot = z_norm.tolist()
                     text = [[f"{v:.2f}" if v >= 0.05 else "" for v in row] for row in z_norm]
-                    zmin, zmax, cb_title = 0, 1, "P(pred j | verdadero i)"
+                    zmin, zmax, cb_title = 0, 1, "P(pred j | true i)"
 
                 shapes = []
                 for group_name, (idxs, color) in _CLASS_GROUPS.items():
@@ -1435,15 +1436,15 @@ with tab_porclase:
                     z=z_plot, x=class_order, y=class_order,
                     colorscale="Blues", zmin=zmin, zmax=zmax,
                     text=text, texttemplate="%{text}", textfont={"size": 8},
-                    hovertemplate="Verdadero: %{y}<br>Predicho: %{x}<br>Valor: %{z:.3f}<extra></extra>",
+                    hovertemplate="True: %{y}<br>Predicted: %{x}<br>Value: %{z:.3f}<extra></extra>",
                     colorbar=dict(title=cb_title),
                 ))
                 fig_cm.update_layout(
-                    title=dict(text=f"Matriz de confusión ({cm_mode.lower()}) — Epoch {selected_cm_ep}",
+                    title=dict(text=f"Confusion matrix ({cm_mode.lower()}) — Epoch {selected_cm_ep}",
                                font=dict(size=13)),
-                    xaxis=dict(title="Predicho", tickangle=45, tickfont=dict(size=9),
+                    xaxis=dict(title="Predicted", tickangle=45, tickfont=dict(size=9),
                                tickmode="array", tickvals=list(range(n_classes)), ticktext=class_order),
-                    yaxis=dict(title="Verdadero", tickfont=dict(size=9), autorange="reversed",
+                    yaxis=dict(title="True", tickfont=dict(size=9), autorange="reversed",
                                tickmode="array", tickvals=list(range(n_classes)), ticktext=class_order),
                     height=660, margin=dict(l=180, r=20, t=50, b=180),
                     paper_bgcolor="white", shapes=shapes,
@@ -1459,12 +1460,12 @@ with tab_porclase:
                 st.markdown(
                     f"<div style='margin-top:4px'>{legend_html}</div>"
                     "<div style='font-size:0.75rem;color:#64748b;margin-top:4px'>"
-                    "Los bordes de color agrupan las clases por tipo de ecosistema. "
-                    "La diagonal = recall por clase.</div>",
+                    "The colored borders group classes by ecosystem type. "
+                    "The diagonal = per-class recall.</div>",
                     unsafe_allow_html=True,
                 )
             else:
-                st.info("Sin matriz de confusión. Usa `--layers confusion` para generarla.")
+                st.info("No confusion matrix. Use `--layers confusion` to generate it.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # BATCH
@@ -1472,20 +1473,20 @@ with tab_porclase:
 
 with tab_batch:
     if selected_run is None:
-        st.info("Selecciona un run en la barra lateral.")
+        st.info("Select a run in the sidebar.")
     elif not run.batch_csv_path:
         st.info(
-            "Sin CSV de nivel de batch para este run. "
-            "Usa `--layers batch-monitor` para generarlo. "
-            "Con `--batch-log-every 1` obtienes un registro por cada batch individual."
+            "No batch-level CSV for this run. "
+            "Use `--layers batch-monitor` to generate it. "
+            "With `--batch-log-every 1` you get one record per individual batch."
         )
     else:
-        # ── Sub-pestañas: por epoch | historia global | learning rate ─────────
+        # ── Sub-tabs: per epoch | global history | learning rate ───────────────
         subtab_by_ep, subtab_global, subtab_lr = st.tabs(
-            ["Por epoch", "Historia global", "Learning rate"]
+            ["Per epoch", "Global history", "Learning rate"]
         )
 
-        # Carga con TTL corto para que el live refresh funcione
+        # Load with a short TTL so the live refresh works
         @st.cache_data(ttl=5)
         def _load_batch_live(p: str) -> pd.DataFrame:
             return _load_batch(p)
@@ -1494,13 +1495,13 @@ with tab_batch:
         has_batch_loss = "batch_loss" in bdf.columns and bdf["batch_loss"].notna().any()
         has_lr = "lr" in bdf.columns and bdf["lr"].notna().any()
 
-        # Mapa de métricas disponibles por batch → etiqueta legible
+        # Map of available per-batch metrics → readable label
         _BATCH_METRIC_LABELS = {
-            "running_loss": "Loss media acumulada",
-            "batch_loss": "Loss instantánea por batch",
-            "batch_f1": "F1 (macro) por batch",
-            "batch_acc": "Accuracy por batch",
-            "batch_prec": "Precision (macro) por batch",
+            "running_loss": "Running mean loss",
+            "batch_loss": "Instantaneous batch loss",
+            "batch_f1": "F1 (macro) per batch",
+            "batch_acc": "Accuracy per batch",
+            "batch_prec": "Precision (macro) per batch",
         }
 
         def _available_batch_metrics() -> list[str]:
@@ -1514,20 +1515,20 @@ with tab_batch:
             return "loss" in m
 
         if bdf.empty:
-            st.warning("El CSV de batch está vacío.")
+            st.warning("The batch CSV is empty.")
         else:
             epochs_available_b = sorted(bdf["epoch"].unique())
             n_batches_total = int(bdf["n_batches"].iloc[0]) if not bdf.empty else "—"
 
-            # Resumen rápido
+            # Quick summary
             bc1, bc2, bc3, bc4 = st.columns(4)
-            bc1.metric("Epochs registrados", len(epochs_available_b))
-            bc2.metric("Batches por epoch", n_batches_total)
-            bc3.metric("Total registros", len(bdf))
+            bc1.metric("Epochs recorded", len(epochs_available_b))
+            bc2.metric("Batches per epoch", n_batches_total)
+            bc3.metric("Total records", len(bdf))
             if has_lr:
-                bc4.metric("LR inicial", f"{bdf['lr'].iloc[0]:.2e}")
+                bc4.metric("Initial LR", f"{bdf['lr'].iloc[0]:.2e}")
 
-            # ── Tab: por epoch ────────────────────────────────────────────────
+            # ── Tab: per epoch ─────────────────────────────────────────────────
             with subtab_by_ep:
                 col_ep, col_met, col_ma = st.columns([2, 2, 2])
                 with col_ep:
@@ -1537,12 +1538,12 @@ with tab_batch:
                     )
                 with col_met:
                     batch_metric = st.selectbox(
-                        "Métrica", _available_batch_metrics(),
+                        "Metric", _available_batch_metrics(),
                         format_func=lambda m: _BATCH_METRIC_LABELS.get(m, m),
                     )
                 with col_ma:
-                    ma_window = st.slider("Media móvil (batches)", 0, 200, 10,
-                                          help="0 = desactivado")
+                    ma_window = st.slider("Moving average (batches)", 0, 200, 10,
+                                          help="0 = disabled")
 
                 if selected_epochs_b and batch_metric in bdf.columns:
                     fig_b = go.Figure()
@@ -1550,7 +1551,7 @@ with tab_batch:
                         subset = bdf[bdf["epoch"] == ep].copy().sort_values("batch")
                         color = COLORS[i % len(COLORS)]
 
-                        # Línea base (semitransparente)
+                        # Base line (semi-transparent)
                         fig_b.add_trace(go.Scatter(
                             x=subset["batch"], y=subset[batch_metric],
                             name=f"Ep {ep}", mode="lines",
@@ -1567,7 +1568,7 @@ with tab_batch:
                                 legendgroup=f"ep{ep}",
                             ))
 
-                        # Detección de picos
+                        # Spike detection
                         mean_l = subset[batch_metric].mean()
                         std_l = subset[batch_metric].std()
                         if not pd.isna(std_l) and std_l > 0:
@@ -1575,7 +1576,7 @@ with tab_batch:
                             if not spikes.empty:
                                 fig_b.add_trace(go.Scatter(
                                     x=spikes["batch"], y=spikes[batch_metric],
-                                    name=f"Pico Ep{ep}", mode="markers",
+                                    name=f"Spike Ep{ep}", mode="markers",
                                     marker=dict(color="red", size=7, symbol="x"),
                                     legendgroup=f"ep{ep}", showlegend=False,
                                 ))
@@ -1583,44 +1584,44 @@ with tab_batch:
                     y_label = _BATCH_METRIC_LABELS.get(batch_metric, batch_metric)
                     fig_b.update_layout(
                         **_base_layout(420, f"{y_label}"),
-                        xaxis_title="Batch dentro del epoch",
+                        xaxis_title="Batch within epoch",
                         yaxis_title=y_label,
                     )
-                    # Las métricas F1/acc/prec van en [0,1]
+                    # F1/acc/prec metrics live in [0,1]
                     if not _is_loss_metric(batch_metric):
                         fig_b.update_yaxes(range=[0, 1])
-                    _show(fig_b, f"batch_{batch_metric}_por_epoch")
+                    _show(fig_b, f"batch_{batch_metric}_per_epoch")
                     sel_bdf = bdf[bdf["epoch"].isin(selected_epochs_b)]
-                    _dl_csv(sel_bdf, "batch_metrics_sel.csv", "Descargar datos seleccionados")
+                    _dl_csv(sel_bdf, "batch_metrics_sel.csv", "Download selected data")
 
-                    with st.expander("Datos en bruto"):
+                    with st.expander("Raw data"):
                         st.dataframe(sel_bdf, use_container_width=True)
 
-            # ── Tab: historia global (eje x = batch global) ───────────────────
+            # ── Tab: global history (x axis = global batch) ────────────────────
             with subtab_global:
                 st.markdown(
-                    "Vista completa de toda la historia de entrenamiento en un solo eje. "
-                    "Las líneas verticales marcan los límites de epoch."
+                    "Full view of the entire training history on a single axis. "
+                    "The vertical lines mark the epoch boundaries."
                 )
                 col_gm, col_gma = st.columns([2, 2])
                 with col_gm:
                     global_metric = st.selectbox(
-                        "Métrica global", _available_batch_metrics(),
+                        "Global metric", _available_batch_metrics(),
                         format_func=lambda m: _BATCH_METRIC_LABELS.get(m, m),
                         key="global_metric_sel",
                     )
                 with col_gma:
-                    gma_window = st.slider("Media móvil (batches globales)", 0, 500, 50,
-                                           help="0 = desactivado", key="global_ma")
+                    gma_window = st.slider("Moving average (global batches)", 0, 500, 50,
+                                           help="0 = disabled", key="global_ma")
 
                 if global_metric in bdf.columns:
                     all_sorted = bdf.sort_values("global_batch")
                     fig_g = go.Figure()
 
-                    # Serie completa (semitransparente)
+                    # Full series (semi-transparent)
                     fig_g.add_trace(go.Scatter(
                         x=all_sorted["global_batch"], y=all_sorted[global_metric],
-                        name="Datos", mode="lines",
+                        name="Data", mode="lines",
                         line=dict(color=COLORS[0], width=1), opacity=0.3,
                     ))
 
@@ -1632,7 +1633,7 @@ with tab_batch:
                             line=dict(color=COLORS[0], width=2.5),
                         ))
 
-                    # Líneas verticales por epoch
+                    # Vertical lines per epoch
                     epoch_boundaries = bdf.groupby("epoch")["global_batch"].max()
                     for ep, gb in epoch_boundaries.items():
                         fig_g.add_vline(
@@ -1643,21 +1644,21 @@ with tab_batch:
 
                     y_label_g = _BATCH_METRIC_LABELS.get(global_metric, global_metric)
                     fig_g.update_layout(
-                        **_base_layout(420, f"{y_label_g} — historia completa"),
-                        xaxis_title="Batch global",
+                        **_base_layout(420, f"{y_label_g} — full history"),
+                        xaxis_title="Global batch",
                         yaxis_title=y_label_g,
                     )
                     if not _is_loss_metric(global_metric):
                         fig_g.update_yaxes(range=[0, 1])
-                    _show(fig_g, "batch_historia_global")
-                    _dl_csv(bdf, "batch_metrics_completo.csv", "Descargar historia completa")
+                    _show(fig_g, "batch_global_history")
+                    _dl_csv(bdf, "batch_metrics_full.csv", "Download full history")
 
-            # ── Tab: learning rate ────────────────────────────────────────────
+            # ── Tab: learning rate ─────────────────────────────────────────────
             with subtab_lr:
                 if not has_lr:
                     st.info(
-                        "No hay datos de learning rate. "
-                        "Requiere `--layers batch-monitor` con la versión actual del BatchMonitorDecorator."
+                        "No learning-rate data. "
+                        "Requires `--layers batch-monitor` with the current version of BatchMonitorDecorator."
                     )
                 else:
                     lr_sorted = bdf.sort_values("global_batch").dropna(subset=["lr"])
@@ -1668,7 +1669,7 @@ with tab_batch:
                         line=dict(color=COLORS[2], width=2),
                     ))
 
-                    # Marcar boundaries de epoch
+                    # Mark epoch boundaries
                     epoch_boundaries_lr = bdf.groupby("epoch")["global_batch"].max()
                     for ep, gb in epoch_boundaries_lr.items():
                         fig_lr.add_vline(
@@ -1678,41 +1679,41 @@ with tab_batch:
                         )
 
                     fig_lr.update_layout(
-                        **_base_layout(380, "Evolución del learning rate"),
-                        xaxis_title="Batch global",
+                        **_base_layout(380, "Learning-rate evolution"),
+                        xaxis_title="Global batch",
                         yaxis_title="Learning rate",
                     )
-                    # Escala log si el rango es grande
+                    # Log scale if the range is large
                     lr_range = lr_sorted["lr"].max() / (lr_sorted["lr"].min() + 1e-12)
                     if lr_range > 100:
                         fig_lr.update_yaxes(type="log")
                     _show(fig_lr, "learning_rate")
 
-                    # Stats de LR
+                    # LR stats
                     lr_col1, lr_col2, lr_col3 = st.columns(3)
-                    lr_col1.metric("LR inicial", f"{lr_sorted['lr'].iloc[0]:.2e}")
-                    lr_col2.metric("LR final", f"{lr_sorted['lr'].iloc[-1]:.2e}")
-                    lr_col3.metric("LR mínimo", f"{lr_sorted['lr'].min():.2e}")
+                    lr_col1.metric("Initial LR", f"{lr_sorted['lr'].iloc[0]:.2e}")
+                    lr_col2.metric("Final LR", f"{lr_sorted['lr'].iloc[-1]:.2e}")
+                    lr_col3.metric("Minimum LR", f"{lr_sorted['lr'].min():.2e}")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# COMPARAR
+# OVERLAY / COMPARE
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_comparar:
     if not runs:
-        st.info("No hay runs disponibles.")
+        st.info("No runs available.")
     else:
         all_run_labels = {r.label: r for r in runs}
         all_labels_list = list(all_run_labels.keys())
 
         selected_compare = st.multiselect(
-            "Selecciona runs a comparar (máx 4)", all_labels_list,
+            "Select runs to compare (max 4)", all_labels_list,
             default=all_labels_list[:min(2, len(all_labels_list))],
             max_selections=4,
         )
 
         if len(selected_compare) < 2:
-            st.info("Selecciona al menos 2 runs.")
+            st.info("Select at least 2 runs.")
         else:
             compare_runs_list = [(lbl, all_run_labels[lbl]) for lbl in selected_compare]
             compare_dfs: list[tuple[str, pd.DataFrame]] = []
@@ -1729,20 +1730,20 @@ with tab_comparar:
                 total_s_c = cdf["epoch_time"].dropna().sum() if "epoch_time" in cdf.columns else float("nan")
                 summary_rows.append({
                     "Run": lbl[:50],
-                    "Mejor Val F1": f"{best_f1_c:.4f}" if not pd.isna(best_f1_c) else "—",
-                    "Mejor epoch": int(best_ep_c_v) if best_ep_c_v is not None else "—",
-                    "F1 final": f"{_last.iloc[-1]:.4f}" if not _last.empty else "—",
+                    "Best Val F1": f"{best_f1_c:.4f}" if not pd.isna(best_f1_c) else "—",
+                    "Best epoch": int(best_ep_c_v) if best_ep_c_v is not None else "—",
+                    "Final F1": f"{_last.iloc[-1]:.4f}" if not _last.empty else "—",
                     "Epochs": len(cdf),
-                    "Duración": _dur_str(total_s_c) if not pd.isna(total_s_c) else "—",
-                    "Entorno": r.env, "Trace": r.trace_mode,
+                    "Duration": _dur_str(total_s_c) if not pd.isna(total_s_c) else "—",
+                    "Environment": r.env, "Trace": r.trace_mode,
                 })
 
             sum_df = pd.DataFrame(summary_rows).set_index("Run")
             st.dataframe(sum_df, use_container_width=True)
-            _dl_csv(sum_df.reset_index(), "comparativa_runs.csv", "Descargar comparativa")
+            _dl_csv(sum_df.reset_index(), "runs_comparison.csv", "Download comparison")
             st.markdown("---")
 
-            st.markdown("#### Radar de métricas en el mejor epoch")
+            st.markdown("#### Metric radar at the best epoch")
             radar_metrics = ["val_f1", "train_f1", "val_acc", "val_prec", "val_rec"]
             radar_fig = go.Figure()
             for i, (lbl, cdf) in enumerate(compare_dfs):
@@ -1760,13 +1761,13 @@ with tab_comparar:
                 polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
                 showlegend=True, height=360,
                 margin=dict(l=60, r=60, t=40, b=40), paper_bgcolor="white",
-                title=dict(text="Métricas en el mejor epoch de Val F1", font=dict(size=13)),
+                title=dict(text="Metrics at the best Val F1 epoch", font=dict(size=13)),
             )
-            _show(radar_fig, "radar_comparativa")
+            _show(radar_fig, "radar_comparison")
             st.markdown("---")
 
             metrics_to_compare = st.multiselect(
-                "Métricas a superponer",
+                "Metrics to overlay",
                 ["val_f1", "val_loss", "train_f1", "train_loss", "val_prec", "val_rec", "epoch_time"],
                 default=["val_f1", "val_loss"],
             )
@@ -1783,37 +1784,37 @@ with tab_comparar:
 
 with tab_viabilidad:
     (subtab_report, subtab_predreal, subtab_study, subtab_run_feas) = st.tabs(
-        ["Informe", "Predicción vs realidad", "Estudio real", "Ejecutar análisis"]
+        ["Report", "Prediction vs reality", "Real study", "Run analysis"]
     )
-    # subtab_ddp_opt y subtab_prediction ya no son pestañas propias: se rellenan
-    # como secciones dentro de "Informe" y "Predicción vs realidad" respectivamente
-    # (contenedores creados más abajo, en sus bloques padre).
+    # subtab_ddp_opt and subtab_prediction are no longer their own tabs: they are
+    # filled as sections inside "Report" and "Prediction vs reality" respectively
+    # (containers created further down, in their parent blocks).
 
-    # Carga común del informe seleccionado
+    # Shared load of the selected report
     feasibility_csvs = _get_feasibility_csvs()
     if feasibility_csvs:
         selected_feas_path = st.sidebar.selectbox(
-            "Informe viabilidad", [str(p) for p in feasibility_csvs],
+            "Feasibility report", [str(p) for p in feasibility_csvs],
             format_func=_feas_label, key="feas_sidebar_sel",
         )
         meta, bdf_feas = parse_feasibility_csv(Path(selected_feas_path))
     else:
         meta, bdf_feas = {}, pd.DataFrame()
 
-    # ── Predicción vs realidad (auto-emparejada con el run de la barra lateral) ─
+    # ── Prediction vs reality (auto-paired with the run in the sidebar) ─────────
     with subtab_predreal:
-        st.markdown("### Predicción del feasibility vs lo que pasó de verdad")
+        st.markdown("### Feasibility prediction vs what actually happened")
         st.caption(
-            "El feasibility se ejecuta **en 1 GPU**: de ahí (A) estima el tiempo "
-            "single-GPU y (B) **predice** el speedup al distribuir. No existe un "
-            "feasibility 'de 2 GPUs' — el multi-GPU es una predicción. Abajo se "
-            "contrastan ambas con los entrenamientos reales del mismo modelo."
+            "The feasibility runs **on 1 GPU**: from there it (A) estimates the "
+            "single-GPU time and (B) **predicts** the speedup when distributing. There "
+            "is no '2-GPU' feasibility — multi-GPU is a prediction. Below, both are "
+            "contrasted with the real trainings of the same model."
         )
         _feas_csvs_pr = _get_feasibility_csvs()
         if not _feas_csvs_pr:
-            st.info("No hay informes de viabilidad. Genera uno en 'Ejecutar análisis'.")
+            st.info("No feasibility reports. Generate one in 'Run analysis'.")
         else:
-            # Combos (entorno · modelo) que tienen feasibility
+            # Combos (environment · model) that have feasibility
             _combo_csv = {}
             for _p in _feas_csvs_pr:
                 _m, _ = parse_feasibility_csv(_p)
@@ -1826,13 +1827,13 @@ with tab_viabilidad:
                     if _e == selected_run.env and _mo == selected_run.model:
                         _def_i = _i
                         break
-            _combo = st.selectbox("¿Qué comparar?", _combos, index=_def_i,
+            _combo = st.selectbox("What to compare?", _combos, index=_def_i,
                                   format_func=lambda c: f"{c[0]}  ·  {c[1]}", key="pr_combo")
             _env_pr, _mod_pr = _combo
             _feas_p = _combo_csv[_combo]
             _meta_pr, _feas_df_pr = parse_feasibility_csv(_feas_p)
             _nfs_pr = float(_meta_pr.get("nfs_factor", 1.0) or 1.0)
-            st.caption(f"Informe usado: **{_feas_label(str(_feas_p))}**")
+            st.caption(f"Report used: **{_feas_label(str(_feas_p))}**")
 
             _all_pr = _get_runs()
 
@@ -1852,10 +1853,10 @@ with tab_viabilidad:
             _ddp_run = _find_run({"ddp"})
             _hetero_run = _find_run({"ddp_hetero"})
 
-            # ── A) En 1 GPU: tiempo estimado vs real ────────────────────────────
-            st.markdown("#### A · En 1 GPU — tiempo estimado vs real")
+            # ── A) On 1 GPU: estimated vs real time ─────────────────────────────
+            st.markdown("#### A · On 1 GPU — estimated vs real time")
             if _single_run is None:
-                st.info(f"No hay run **single-GPU** de {_mod_pr} en {_env_pr}.")
+                st.info(f"No **single-GPU** run of {_mod_pr} in {_env_pr}.")
             else:
                 _act = _load_df(str(_single_run.log_path),
                                 str(_single_run.epoch_csv_path) if _single_run.epoch_csv_path else None)
@@ -1864,7 +1865,7 @@ with tab_viabilidad:
                 _tr_av = (sorted(_feas_df_pr["trace_mode"].unique().tolist())
                           if "trace_mode" in _feas_df_pr.columns else ["simple"])
                 if not _bs_av or _act.empty:
-                    st.info("Faltan datos (benchmark del feasibility o tiempos del run).")
+                    st.info("Missing data (feasibility benchmark or run times).")
                 else:
                     _ca = st.columns([1, 1, 2])
                     _bs = _ca[0].selectbox("Batch", _bs_av, index=len(_bs_av) - 1, key="pr_bs")
@@ -1872,19 +1873,19 @@ with tab_viabilidad:
                     _cmp = build_comparison(meta=_meta_pr, feas_df=_feas_df_pr, actual_df=_act,
                                             batch_size=int(_bs), trace_mode=_tr, nfs_factor=_nfs_pr)
                     if not _cmp:
-                        st.warning(f"Sin fila de feasibility para batch={_bs}, trace={_tr}.")
+                        st.warning(f"No feasibility row for batch={_bs}, trace={_tr}.")
                     else:
                         _rows = {r.metric: r for r in _cmp.rows}
                         _tt = _rows.get("Total time / epoch")
                         _thr = _rows.get("Train throughput")
                         m1, m2, m3 = st.columns(3)
                         if _tt and _tt.estimated is not None and _tt.actual is not None:
-                            m1.metric("Tiempo/epoch estimado", f"{_tt.estimated:.2f} min")
-                            m2.metric("Tiempo/epoch real", f"{_tt.actual:.2f} min",
+                            m1.metric("Estimated time/epoch", f"{_tt.estimated:.2f} min")
+                            m2.metric("Real time/epoch", f"{_tt.actual:.2f} min",
                                       delta=f"{_tt.error_pct or 0:+.0f}%", delta_color="off")
                         if _thr and _thr.estimated is not None and _thr.actual is not None:
-                            m3.metric("Throughput real", f"{_thr.actual:.0f} img/s",
-                                      delta=f"estimado {_thr.estimated:.0f}", delta_color="off")
+                            m3.metric("Real throughput", f"{_thr.actual:.0f} img/s",
+                                      delta=f"estimated {_thr.estimated:.0f}", delta_color="off")
                         if _tt and _tt.error_pct is not None:
                             _e = _tt.error_pct
                             _io = None
@@ -1893,15 +1894,15 @@ with tab_viabilidad:
                             except (TypeError, ValueError, AttributeError):
                                 pass
                             if abs(_e) <= 15:
-                                st.success(f"**Predicción precisa** — error {_e:+.0f}% en tiempo/epoch.")
+                                st.success(f"**Accurate prediction** — {_e:+.0f}% error in time/epoch.")
                             elif _e < 0:
-                                _x = (f" Causa probable: **I/O-bound** (ratio≈{_io:.1f}) — el benchmark "
-                                      "sintético no incluye la lectura de disco (NFS)."
+                                _x = (f" Likely cause: **I/O-bound** (ratio≈{_io:.1f}) — the synthetic "
+                                      "benchmark does not include disk reads (NFS)."
                                       if _io and _io > 1 else "")
-                                st.warning(f"**Estimación optimista** — el real fue {abs(_e):.0f}% más lento.{_x}")
+                                st.warning(f"**Optimistic estimate** — the real run was {abs(_e):.0f}% slower.{_x}")
                             else:
-                                st.info(f"**Estimación pesimista** — el real fue {_e:.0f}% más rápido de lo previsto.")
-                        # Gráfica sencilla: tiempo estimado vs real, misma unidad (min)
+                                st.info(f"**Pessimistic estimate** — the real run was {_e:.0f}% faster than expected.")
+                        # Simple chart: estimated vs real time, same unit (min)
                         _tm = [(n, _rows.get(k)) for n, k in
                                (("Train", "Train time / epoch"),
                                 ("Eval", "Eval time / epoch"),
@@ -1911,25 +1912,25 @@ with tab_viabilidad:
                         if _tm:
                             _names = [n for n, _ in _tm]
                             _fig = go.Figure()
-                            _fig.add_trace(go.Bar(name="Estimado", x=_names, y=[r.estimated for _, r in _tm],
+                            _fig.add_trace(go.Bar(name="Estimated", x=_names, y=[r.estimated for _, r in _tm],
                                                   marker_color="#94a3b8",
                                                   text=[f"{r.estimated:.2f}" for _, r in _tm], textposition="outside"))
                             _fig.add_trace(go.Bar(name="Real", x=_names, y=[r.actual for _, r in _tm],
                                                   marker_color="#2563eb",
                                                   text=[f"{r.actual:.2f}" for _, r in _tm], textposition="outside"))
-                            _fig.update_layout(**_base_layout(300, "Tiempo por epoch: estimado vs real"),
-                                               barmode="group", yaxis_title="Minutos", xaxis_title="")
+                            _fig.update_layout(**_base_layout(300, "Time per epoch: estimated vs real"),
+                                               barmode="group", yaxis_title="Minutes", xaxis_title="")
                             _show(_fig, "pred_time_bars")
-                            st.caption("Las dos barras de cada par a la misma altura = predicción acertada "
-                                       "(gris = estimado, azul = real). Throughput/VRAM/energía en el detalle.")
-                        with st.expander("Ver detalle y fórmulas"):
+                            st.caption("Both bars in each pair at the same height = accurate prediction "
+                                       "(grey = estimated, blue = real). Throughput/VRAM/energy in the detail.")
+                        with st.expander("See detail and formulas"):
                             _t = _cmp.to_dataframe()
                             st.dataframe(_t, use_container_width=True, hide_index=True)
-                            _dl_csv(_t, "prediccion_1gpu.csv", "Descargar")
+                            _dl_csv(_t, "prediction_1gpu.csv", "Download")
 
-            # ── B) Al distribuir: speedup predicho vs real ──────────────────────
+            # ── B) When distributing: predicted vs real speedup ─────────────────
             st.divider()
-            st.markdown("#### B · Al distribuir — speedup predicho vs real (2 GPUs)")
+            st.markdown("#### B · When distributing — predicted vs real speedup (2 GPUs)")
             _ddp_scen = parse_ddp_scenarios(_meta_pr)
             _pred_sp = None
             if not _ddp_scen.empty and {"n_gpus", "speedup"}.issubset(_ddp_scen.columns):
@@ -1939,106 +1940,106 @@ with tab_viabilidad:
             _s_ep = _ep_mean(_single_run)
             _d_ep = _ep_mean(_ddp_run)
             if _single_run is None or _ddp_run is None:
-                _msg = ("Para medir el speedup **real** hace falta un run single-GPU **y** uno "
-                        "DDP multi-GPU del mismo modelo/entorno.")
+                _msg = ("To measure the **real** speedup you need a single-GPU run **and** a "
+                        "multi-GPU DDP run of the same model/environment.")
                 if _pred_sp is not None:
-                    _msg += f" El feasibility **predice {_pred_sp:.2f}×** con 2 GPUs."
+                    _msg += f" The feasibility **predicts {_pred_sp:.2f}×** with 2 GPUs."
                 if _hetero_run is not None:
-                    _msg += (" Hay un run **heterogéneo** (V100+CPU), que no es comparable con la "
-                             "predicción homogénea de 2 GPUs — su speedup está en "
-                             "**Comparativa → Single vs Distribuido**.")
+                    _msg += (" There is a **heterogeneous** run (V100+CPU), which is not comparable to the "
+                             "homogeneous 2-GPU prediction — its speedup is in "
+                             "**Comparison → Single vs Distributed**.")
                 st.info(_msg)
             elif _s_ep and _d_ep:
                 _real_sp = _s_ep / _d_ep
                 sc1, sc2, sc3 = st.columns(3)
-                sc1.metric("Speedup predicho", f"{_pred_sp:.2f}×" if _pred_sp else "—")
-                sc2.metric("Speedup real", f"{_real_sp:.2f}×")
+                sc1.metric("Predicted speedup", f"{_pred_sp:.2f}×" if _pred_sp else "—")
+                sc2.metric("Real speedup", f"{_real_sp:.2f}×")
                 if _pred_sp:
                     _serr = (_pred_sp - _real_sp) / _real_sp * 100
-                    sc3.metric("Error de la predicción", f"{_serr:+.0f}%")
+                    sc3.metric("Prediction error", f"{_serr:+.0f}%")
                     if abs(_serr) <= 15:
-                        st.success(f"**El feasibility predijo bien el escalado** — predicho "
+                        st.success(f"**The feasibility predicted the scaling well** — predicted "
                                    f"{_pred_sp:.2f}× vs **{_real_sp:.2f}× real**.")
                     else:
-                        st.warning(f"Predicho {_pred_sp:.2f}× vs **{_real_sp:.2f}× real** "
+                        st.warning(f"Predicted {_pred_sp:.2f}× vs **{_real_sp:.2f}× real** "
                                    f"(error {_serr:+.0f}%).")
-                st.caption(f"Real = tiempo/epoch single ({_s_ep:.0f}s) ÷ DDP ({_d_ep:.0f}s).")
+                st.caption(f"Real = single time/epoch ({_s_ep:.0f}s) ÷ DDP ({_d_ep:.0f}s).")
             else:
-                st.info("Faltan tiempos por epoch en los runs para medir el speedup.")
+                st.info("Missing per-epoch times in the runs to measure the speedup.")
 
         st.divider()
         subtab_prediction = st.container()
 
-    # ── Informe ───────────────────────────────────────────────────────────────
+    # ── Report ────────────────────────────────────────────────────────────────
     with subtab_report:
         if not feasibility_csvs:
-            st.info("No se encontraron CSVs de viabilidad. Ejecuta el análisis desde la sub-pestaña 'Ejecutar análisis'.")
+            st.info("No feasibility CSVs found. Run the analysis from the 'Run analysis' sub-tab.")
         else:
-            # ── Perfil del sistema ────────────────────────────────────────────
-            st.markdown("### Perfil del sistema")
+            # ── System profile ─────────────────────────────────────────────────
+            st.markdown("### System profile")
             hw_col1, hw_col2, hw_col3, hw_col4 = st.columns(4)
-            hw_col1.metric("Modelo", meta.get("model_name", "—"))
-            hw_col2.metric("Parámetros (M)", meta.get("total_params_M", "—"))
+            hw_col1.metric("Model", meta.get("model_name", "—"))
+            hw_col2.metric("Parameters (M)", meta.get("total_params_M", "—"))
             hw_col3.metric("GPU", meta.get("hardware_name", "—"))
-            hw_col4.metric("VRAM total (GB)", meta.get("total_vram_gb", "—"))
+            hw_col4.metric("Total VRAM (GB)", meta.get("total_vram_gb", "—"))
 
-            # CPU si disponible
+            # CPU if available
             cpu = meta.get("cpu", {})
             if cpu:
                 cc1, cc2, cc3, cc4 = st.columns(4)
-                cc1.metric("Núcleos lógicos", cpu.get("logical_cores", "—"))
-                cc2.metric("Núcleos físicos", cpu.get("physical_cores", "—"))
-                cc3.metric("RAM total (GB)", cpu.get("ram_total_gb", "—"))
-                cc4.metric("RAM libre (GB)", cpu.get("ram_free_gb", "—"))
+                cc1.metric("Logical cores", cpu.get("logical_cores", "—"))
+                cc2.metric("Physical cores", cpu.get("physical_cores", "—"))
+                cc3.metric("Total RAM (GB)", cpu.get("ram_total_gb", "—"))
+                cc4.metric("Free RAM (GB)", cpu.get("ram_free_gb", "—"))
 
-            # Disco si disponible
+            # Disk if available
             disk = meta.get("disk", {})
             ds_profile = meta.get("dataset", {})
             if disk or ds_profile:
-                st.markdown("### I/O del dataset")
+                st.markdown("### Dataset I/O")
                 di_cols = st.columns(4)
                 if disk:
-                    di_cols[0].metric("Tipo de disco", disk.get("type", "—"))
-                    di_cols[1].metric("NFS", "Sí" if disk.get("is_nfs") == "yes" else "No")
+                    di_cols[0].metric("Disk type", disk.get("type", "—"))
+                    di_cols[1].metric("NFS", "Yes" if disk.get("is_nfs") == "yes" else "No")
                     if disk.get("read_mb_per_s", "0") != "0":
-                        di_cols[2].metric("Velocidad lectura", f"{disk.get('read_mb_per_s', '—')} MB/s")
+                        di_cols[2].metric("Read speed", f"{disk.get('read_mb_per_s', '—')} MB/s")
                         di_cols[3].metric("Patches/s", f"{disk.get('files_per_second', '—')}")
                 if ds_profile:
                     io_ratio = float(ds_profile.get("io_bottleneck_ratio", 0) or 0)
-                    st.metric("Ratio I/O vs cómputo", f"{io_ratio:.2f}",
+                    st.metric("I/O vs compute ratio", f"{io_ratio:.2f}",
                                delta="I/O-bound" if io_ratio > 1.2 else "Compute-bound",
                                delta_color="inverse" if io_ratio > 1.2 else "normal")
                     if io_ratio > 1.2:
-                        st.warning("Cuello de botella en I/O: el data loading es más lento que el cómputo GPU. Más GPUs no mejorarán el throughput sin un disco más rápido.")
+                        st.warning("I/O bottleneck: data loading is slower than GPU compute. More GPUs will not improve throughput without a faster disk.")
                     else:
-                        st.success("Compute-bound: la GPU es el cuello de botella. Añadir GPUs (DDP) acelerará el training linealmente.")
+                        st.success("Compute-bound: the GPU is the bottleneck. Adding GPUs (DDP) will speed up training linearly.")
 
-            # Memoria por batch size
+            # Memory by batch size
             mem_keys = ["weight_mb", "gradient_mb", "optimizer_mb", "activation_mb_per_image", "total_static_mb"]
             if any(k in meta for k in mem_keys):
-                st.markdown("### Memoria del modelo")
+                st.markdown("### Model memory")
                 m1, m2, m3, m4, m5 = st.columns(5)
-                m1.metric("Pesos (MB)", meta.get("weight_mb", "—"))
-                m2.metric("Gradientes (MB)", meta.get("gradient_mb", "—"))
+                m1.metric("Weights (MB)", meta.get("weight_mb", "—"))
+                m2.metric("Gradients (MB)", meta.get("gradient_mb", "—"))
                 m3.metric("AdamW state (MB)", meta.get("optimizer_mb", "—"))
-                m4.metric("Activaciones/img (MB)", meta.get("activation_mb_per_image", "—"))
-                m5.metric("Total estático (MB)", meta.get("total_static_mb", "—"))
+                m4.metric("Activations/img (MB)", meta.get("activation_mb_per_image", "—"))
+                m5.metric("Total static (MB)", meta.get("total_static_mb", "—"))
 
                 # VRAM visual
                 total_vram = meta.get("total_vram_gb")
                 free_vram = meta.get("free_vram_gb")
                 if total_vram and free_vram:
                     fig_vr = go.Figure(go.Bar(
-                        x=["Libre", "Usada"],
+                        x=["Free", "Used"],
                         y=[float(free_vram), float(total_vram) - float(free_vram)],
                         marker_color=[COLORS[2], COLORS[3]], opacity=0.85,
                     ))
-                    fig_vr.update_layout(**_base_layout(180, "Distribución VRAM"), yaxis_title="GB")
+                    fig_vr.update_layout(**_base_layout(180, "VRAM distribution"), yaxis_title="GB")
                     _show(fig_vr, "vram_dist")
 
             # Benchmark
             if not bdf_feas.empty:
-                st.markdown("### Benchmark de throughput")
+                st.markdown("### Throughput benchmark")
                 viable = bdf_feas[bdf_feas["oom"] == "no"].copy()
                 tp_col = _throughput_col(viable)
 
@@ -2056,7 +2057,7 @@ with tab_viabilidad:
                         else:
                             fig_tp.add_trace(go.Bar(x=sub["batch_size"].astype(str),
                                                     y=sub[tp_col], name=f"trace={mode_feas}"))
-                    fig_tp.update_layout(**_base_layout(300, "Throughput (imgs/s) por batch size"),
+                    fig_tp.update_layout(**_base_layout(300, "Throughput (imgs/s) by batch size"),
                                          barmode="group", xaxis_title="Batch size", yaxis_title="imgs/s")
                     _show(fig_tp, "throughput")
 
@@ -2069,20 +2070,20 @@ with tab_viabilidad:
                         if meta.get("free_vram_gb"):
                             fig_vram_f.add_hline(
                                 y=float(meta["free_vram_gb"]), line_dash="dash", line_color="red",
-                                annotation_text=f"VRAM libre: {meta['free_vram_gb']} GB",
+                                annotation_text=f"Free VRAM: {meta['free_vram_gb']} GB",
                                 annotation_position="top left",
                             )
-                        fig_vram_f.update_layout(**_base_layout(260, "VRAM pico por batch size"),
+                        fig_vram_f.update_layout(**_base_layout(260, "Peak VRAM by batch size"),
                                                   barmode="group", xaxis_title="Batch size", yaxis_title="GB")
-                        _show(fig_vram_f, "vram_pico")
+                        _show(fig_vram_f, "peak_vram")
 
                 st.dataframe(bdf_feas, use_container_width=True, height=220)
-                _dl_csv(bdf_feas, "feasibility_benchmark.csv", "Descargar benchmark")
+                _dl_csv(bdf_feas, "feasibility_benchmark.csv", "Download benchmark")
 
-                # Estimaciones de tiempo
+                # Time estimates
                 est_cols = [c for c in bdf_feas.columns if c.startswith("est_")]
                 if est_cols:
-                    st.markdown("### Estimaciones de tiempo")
+                    st.markdown("### Time estimates")
                     orig_ep_col = next(
                         (c for c in bdf_feas.columns if c.startswith("est_total_h_") and c.endswith("ep")), None
                     )
@@ -2092,7 +2093,7 @@ with tab_viabilidad:
                             orig_n = int(orig_ep_col.split("est_total_h_")[1].replace("ep", ""))
                         except ValueError:
                             pass
-                    recalc_n = st.number_input("Epochs para estimación total", min_value=1, value=orig_n or 30)
+                    recalc_n = st.number_input("Epochs for total estimate", min_value=1, value=orig_n or 30)
                     display_cols = ["batch_size", "trace_mode", "oom"]
                     for c in ["est_train_min_per_epoch", "est_eval_min_per_epoch", "est_total_min_per_epoch"]:
                         if c in bdf_feas.columns:
@@ -2105,29 +2106,29 @@ with tab_viabilidad:
                     if per_epoch_col:
                         est_df[f"est_total_h_{recalc_n}ep"] = (bdf_feas[per_epoch_col] * recalc_n / 60).round(2)
                     st.dataframe(est_df, use_container_width=True)
-                    _dl_csv(est_df, "estimaciones_tiempo.csv", "Descargar estimaciones")
+                    _dl_csv(est_df, "time_estimates.csv", "Download estimates")
 
-        # Escenarios DDP (1/2/4/8 GPUs) — sección dentro del Informe
+        # DDP scenarios (1/2/4/8 GPUs) — section inside the Report
         st.divider()
         subtab_ddp_opt = st.container()
 
-    # ── Estudio empírico real (mini-training + LR range + gradient noise) ──────
+    # ── Real empirical study (mini-training + LR range + gradient noise) ────────
     with subtab_study:
         if not feasibility_csvs:
-            st.info("Ejecuta primero el análisis de viabilidad.")
+            st.info("Run the feasibility analysis first.")
         else:
             study = meta.get("study")
             if not study:
                 st.info(
-                    "Este informe no incluye estudio empírico. Para generarlo, ejecuta el "
-                    "análisis con `--convergence-study` (mini-training real con LR range test "
-                    "y gradient noise scale)."
+                    "This report does not include an empirical study. To generate it, run the "
+                    "analysis with `--convergence-study` (real mini-training with LR range test "
+                    "and gradient noise scale)."
                 )
             else:
-                st.markdown("## Estudio empírico de convergencia")
+                st.markdown("## Empirical convergence study")
                 st.caption(
-                    "Mediciones reales en esta máquina mediante un mini-training corto, "
-                    "no extrapolación de datos históricos."
+                    "Real measurements on this machine via a short mini-training, "
+                    "not extrapolation from historical data."
                 )
 
                 # ── LR range test ──────────────────────────────────────────────
@@ -2139,10 +2140,10 @@ with tab_viabilidad:
                     sug = float(lr_data.get("suggested_lr", 0) or 0)
                     minl = float(lr_data.get("min_loss_lr", 0) or 0)
                     lr1, lr2, lr3 = st.columns(3)
-                    lr1.metric("LR sugerido", f"{sug:.2e}")
-                    lr2.metric("LR mín. loss", f"{minl:.2e}")
+                    lr1.metric("Suggested LR", f"{sug:.2e}")
+                    lr2.metric("Min-loss LR", f"{minl:.2e}")
                     div = lr_data.get("diverged_lr", "")
-                    lr3.metric("LR divergencia", f"{float(div):.2e}" if div else "—")
+                    lr3.metric("Divergence LR", f"{float(div):.2e}" if div else "—")
 
                     fig_lr = go.Figure()
                     fig_lr.add_trace(go.Scatter(
@@ -2151,17 +2152,17 @@ with tab_viabilidad:
                     ))
                     if sug > 0:
                         fig_lr.add_vline(x=sug, line_dash="dash", line_color=COLORS[2],
-                                         annotation_text=f"Sugerido {sug:.1e}",
+                                         annotation_text=f"Suggested {sug:.1e}",
                                          annotation_position="top")
                     fig_lr.update_layout(
-                        **_base_layout(340, "Loss vs Learning Rate (barrido)"),
+                        **_base_layout(340, "Loss vs Learning Rate (sweep)"),
                         xaxis_title="Learning rate (log)", yaxis_title="Loss",
                     )
                     fig_lr.update_xaxes(type="log")
                     _show(fig_lr, "lr_range_test")
                     st.caption(
-                        "El LR sugerido es donde la loss baja más rápido (zona de máxima "
-                        "pendiente negativa), típicamente ~1 orden por debajo del mínimo."
+                        "The suggested LR is where the loss drops fastest (the steepest "
+                        "negative-slope region), typically ~1 order below the minimum."
                     )
 
                 # ── Curva de convergencia medida ───────────────────────────────
@@ -2170,20 +2171,20 @@ with tab_viabilidad:
                 conv_losses = study.get("conv_losses", [])
                 conv_f1s = study.get("conv_f1s", [])
                 if conv and conv_steps:
-                    st.markdown("### Curva de convergencia medida")
+                    st.markdown("### Measured convergence curve")
                     cc1, cc2, cc3, cc4 = st.columns(4)
-                    cc1.metric("R² del ajuste", f"{float(conv.get('r_squared', 0) or 0):.3f}")
-                    cc2.metric("Val F1 estimado", f"{float(conv.get('best_f1', 0) or 0):.3f}")
+                    cc1.metric("Fit R²", f"{float(conv.get('r_squared', 0) or 0):.3f}")
+                    cc2.metric("Estimated Val F1", f"{float(conv.get('best_f1', 0) or 0):.3f}")
                     cc3.metric("Plateau (epoch)", conv.get("epochs_to_plateau", "—"))
-                    cc4.metric("Throughput real", f"{float(conv.get('measured_imgs_per_s', 0) or 0):.0f} img/s")
+                    cc4.metric("Real throughput", f"{float(conv.get('measured_imgs_per_s', 0) or 0):.0f} img/s")
 
-                    # Curva de loss medida + ajuste power law extrapolado
+                    # Measured loss curve + extrapolated power-law fit
                     fig_conv = go.Figure()
                     fig_conv.add_trace(go.Scatter(
                         x=conv_steps, y=conv_losses, mode="markers",
-                        marker=dict(color=COLORS[0], size=5), name="Loss medida",
+                        marker=dict(color=COLORS[0], size=5), name="Measured loss",
                     ))
-                    # Curva ajustada a·t^-b+c
+                    # Fitted curve a·t^-b+c
                     a = float(conv.get("fit_a", 0) or 0)
                     b = float(conv.get("fit_b", 0) or 0)
                     c = float(conv.get("fit_c", 0) or 0)
@@ -2193,33 +2194,33 @@ with tab_viabilidad:
                         fig_conv.add_trace(go.Scatter(
                             x=t_fit, y=y_fit, mode="lines",
                             line=dict(color=COLORS[1], width=2, dash="dash"),
-                            name=f"Ajuste a·t^-b+c (R²={float(conv.get('r_squared',0) or 0):.2f})",
+                            name=f"Fit a·t^-b+c (R²={float(conv.get('r_squared',0) or 0):.2f})",
                         ))
                     fig_conv.update_layout(
-                        **_base_layout(360, "Loss medida + ajuste power law"),
+                        **_base_layout(360, "Measured loss + power-law fit"),
                         xaxis_title="Step", yaxis_title="Loss BCE",
                     )
-                    _show(fig_conv, "convergencia_loss")
+                    _show(fig_conv, "convergence_loss")
 
-                    # F1 por step medido
+                    # Measured F1 per step
                     if conv_f1s:
                         fig_cf1 = go.Figure(go.Scatter(
                             x=conv_steps, y=conv_f1s, mode="lines+markers",
                             line=dict(color=COLORS[2], width=2), marker=dict(size=4),
-                            name="F1 train (batch)",
+                            name="Train F1 (batch)",
                         ))
                         fig_cf1.update_layout(
-                            **_base_layout(280, "F1 por step (mini-training)"),
+                            **_base_layout(280, "F1 per step (mini-training)"),
                             xaxis_title="Step", yaxis_title="F1 (batch)",
                         )
                         fig_cf1.update_yaxes(range=[0, 1])
-                        _show(fig_cf1, "convergencia_f1")
+                        _show(fig_cf1, "convergence_f1")
 
                     st.caption(
-                        f"Loss extrapolada a 1 epoch: {float(conv.get('loss_1ep', 0) or 0):.4f} | "
-                        f"a final: {float(conv.get('loss_final', 0) or 0):.4f}. "
-                        "El ajuste power law (loss = a·t⁻ᵇ + c) modela la caída inicial; "
-                        "se extrapola al número de epochs objetivo para estimar el F1."
+                        f"Loss extrapolated to 1 epoch: {float(conv.get('loss_1ep', 0) or 0):.4f} | "
+                        f"final: {float(conv.get('loss_final', 0) or 0):.4f}. "
+                        "The power-law fit (loss = a·t⁻ᵇ + c) models the initial drop; "
+                        "it is extrapolated to the target number of epochs to estimate F1."
                     )
 
                 # ── Gradient noise scale ───────────────────────────────────────
@@ -2227,37 +2228,37 @@ with tab_viabilidad:
                 if grad:
                     st.markdown("### Gradient noise scale")
                     gg1, gg2, gg3 = st.columns(3)
-                    gg1.metric("Norma gradiente",
+                    gg1.metric("Gradient norm",
                                f"{float(grad.get('grad_norm_mean', 0) or 0):.3f} "
                                f"± {float(grad.get('grad_norm_std', 0) or 0):.3f}")
-                    gg2.metric("Batch size sugerido", grad.get("suggested_batch_size", "—"))
-                    gg3.metric("Coef. variación", f"{float(grad.get('cv', 0) or 0):.3f}")
+                    gg2.metric("Suggested batch size", grad.get("suggested_batch_size", "—"))
+                    gg3.metric("Coeff. of variation", f"{float(grad.get('cv', 0) or 0):.3f}")
                     st.caption(
-                        "El gradient noise scale (McCandlish 2018) estima el batch size crítico: "
-                        "por encima de él, aumentar el batch da rendimientos decrecientes. "
-                        "Un CV alto indica gradientes ruidosos (sugiere batch mayor)."
+                        "The gradient noise scale (McCandlish 2018) estimates the critical batch size: "
+                        "above it, increasing the batch yields diminishing returns. "
+                        "A high CV indicates noisy gradients (suggests a larger batch)."
                     )
 
-    # ── Análisis DDP ──────────────────────────────────────────────────────────
+    # ── DDP analysis ────────────────────────────────────────────────────────────
     with subtab_ddp_opt:
         if not feasibility_csvs:
-            st.info("Ejecuta primero el análisis de viabilidad.")
+            st.info("Run the feasibility analysis first.")
         else:
-            st.markdown("## Análisis DDP — Distribución óptima de recursos")
+            st.markdown("## DDP analysis — Optimal resource distribution")
             st.caption(
-                "Compara configuraciones de 1 a 8 GPUs mostrando batch size, workers recomendados, "
-                "speedup esperado, eficiencia de escalado y cuello de botella identificado."
+                "Compares configurations from 1 to 8 GPUs showing batch size, recommended workers, "
+                "expected speedup, scaling efficiency and the identified bottleneck."
             )
             ddp_df = parse_ddp_scenarios(meta)
 
             if ddp_df.empty:
                 st.info(
-                    "No hay datos DDP en este informe. "
-                    "Regenera el análisis con la versión actual de check_feasibility.py."
+                    "No DDP data in this report. "
+                    "Regenerate the analysis with the current version of check_feasibility.py."
                 )
             else:
-                # ── Tabla de escenarios ───────────────────────────────────────
-                st.markdown("### Tabla de escenarios")
+                # ── Scenario table ─────────────────────────────────────────────
+                st.markdown("### Scenario table")
 
                 def _color_bottleneck(val: str) -> str:
                     if val == "io":
@@ -2275,13 +2276,13 @@ with tab_viabilidad:
                 else:
                     styled_ddp = ddp_df.style
                 st.dataframe(styled_ddp, use_container_width=True, hide_index=True)
-                _dl_csv(ddp_df, "ddp_scenarios.csv", "Descargar escenarios DDP")
+                _dl_csv(ddp_df, "ddp_scenarios.csv", "Download DDP scenarios")
 
-                # ── Rectángulos de distribución de carga ─────────────────────
-                st.markdown("### Distribución de carga por GPU")
+                # ── Load distribution rectangles ───────────────────────────────
+                st.markdown("### Load distribution per GPU")
                 st.caption(
-                    "Cada barra muestra la proporción del tiempo de batch: "
-                    "cómputo (verde), I/O de datos (naranja), sincronización de gradientes (rojo)."
+                    "Each bar shows the share of batch time: "
+                    "compute (green), data I/O (orange), gradient synchronization (red)."
                 )
 
                 # Calcular proporciones por GPU
@@ -2290,9 +2291,9 @@ with tab_viabilidad:
                     for col in ["sync_overhead_pct", "speedup", "n_gpus"]:
                         viable_ddp[col] = pd.to_numeric(viable_ddp[col], errors="coerce")
 
-                    # Estimar I/O overhead desde el ratio si está disponible
+                    # Estimate I/O overhead from the ratio if available
                     io_ratio = float(meta.get("dataset", {}).get("io_bottleneck_ratio", 0) or 0)
-                    io_pct_est = min(io_ratio * 30, 50)  # Estimación: si ratio=1, I/O ≈ 30% del tiempo
+                    io_pct_est = min(io_ratio * 30, 50)  # Estimate: if ratio=1, I/O ≈ 30% of the time
 
                     fig_rect = go.Figure()
                     labels = [f"{int(row['n_gpus'])} GPU(s)" for _, row in viable_ddp.iterrows()]
@@ -2301,57 +2302,57 @@ with tab_viabilidad:
                     io_pcts = [io_pct_est] * len(labels)
 
                     fig_rect.add_trace(go.Bar(
-                        name="Cómputo GPU", x=labels, y=compute_pcts,
+                        name="GPU compute", x=labels, y=compute_pcts,
                         marker_color=COLORS[2], opacity=0.85,
                     ))
                     fig_rect.add_trace(go.Bar(
-                        name="I/O datos", x=labels, y=io_pcts,
+                        name="Data I/O", x=labels, y=io_pcts,
                         marker_color=COLORS[1], opacity=0.85,
                     ))
                     fig_rect.add_trace(go.Bar(
-                        name="Sync gradientes", x=labels, y=sync_pcts,
+                        name="Gradient sync", x=labels, y=sync_pcts,
                         marker_color=COLORS[3], opacity=0.85,
                     ))
                     fig_rect.update_layout(
-                        **_base_layout(360, "Desglose de tiempo por batch (%) — estimación"),
+                        **_base_layout(360, "Batch time breakdown (%) — estimate"),
                         barmode="stack",
-                        xaxis_title="Configuración DDP",
-                        yaxis_title="Porcentaje del tiempo de batch",
+                        xaxis_title="DDP configuration",
+                        yaxis_title="Percentage of batch time",
                     )
                     fig_rect.update_yaxes(range=[0, 100])
-                    _show(fig_rect, "ddp_carga_distribucion")
+                    _show(fig_rect, "ddp_load_distribution")
 
-                    # ── Speedup vs teórico ────────────────────────────────────
-                    st.markdown("### Speedup: real vs teórico")
+                    # ── Speedup vs theoretical ─────────────────────────────────
+                    st.markdown("### Speedup: real vs theoretical")
                     if "speedup" in viable_ddp.columns:
                         n_gpus_vals = viable_ddp["n_gpus"].tolist()
                         speedup_vals = viable_ddp["speedup"].tolist()
-                        theoretical = n_gpus_vals  # speedup teórico lineal
+                        theoretical = n_gpus_vals  # linear theoretical speedup
 
                         fig_su = go.Figure()
                         fig_su.add_trace(go.Scatter(
                             x=n_gpus_vals, y=theoretical,
-                            name="Teórico (100% eficiencia)",
+                            name="Theoretical (100% efficiency)",
                             mode="lines+markers", line=dict(color=COLORS[4], width=2, dash="dash"),
                         ))
                         fig_su.add_trace(go.Scatter(
                             x=n_gpus_vals, y=speedup_vals,
-                            name="Speedup real estimado",
+                            name="Estimated real speedup",
                             mode="lines+markers",
                             line=dict(color=COLORS[2], width=3),
                             marker=dict(size=10),
                         ))
                         fig_su.update_layout(
-                            **_base_layout(320, "Speedup real vs teórico"),
-                            xaxis_title="Número de GPUs",
+                            **_base_layout(320, "Real vs theoretical speedup"),
+                            xaxis_title="Number of GPUs",
                             yaxis_title="Speedup",
                         )
                         fig_su.update_xaxes(tickvals=n_gpus_vals)
                         _show(fig_su, "ddp_speedup")
 
-                    # ── Tiempo total estimado por configuración ───────────────
+                    # ── Estimated total time per configuration ─────────────────
                     if "time_total_h" in viable_ddp.columns:
-                        st.markdown("### Tiempo total estimado por configuración")
+                        st.markdown("### Estimated total time per configuration")
                         viable_ddp["time_total_h_num"] = pd.to_numeric(viable_ddp["time_total_h"], errors="coerce")
                         fig_tt = go.Figure(go.Bar(
                             x=labels,
@@ -2362,18 +2363,18 @@ with tab_viabilidad:
                             textposition="outside",
                         ))
                         fig_tt.update_layout(
-                            **_base_layout(280, "Tiempo total de entrenamiento (h)"),
-                            xaxis_title="Configuración DDP",
-                            yaxis_title="Horas",
+                            **_base_layout(280, "Total training time (h)"),
+                            xaxis_title="DDP configuration",
+                            yaxis_title="Hours",
                         )
-                        _show(fig_tt, "ddp_tiempo_total")
+                        _show(fig_tt, "ddp_total_time")
 
-    # ── Predicción de rendimiento F1 ──────────────────────────────────────────
+    # ── F1 performance prediction ───────────────────────────────────────────────
     with subtab_prediction:
         if not feasibility_csvs:
-            st.info("Ejecuta primero el análisis de viabilidad.")
+            st.info("Run the feasibility analysis first.")
         else:
-            st.markdown("## Predicción empírica de rendimiento")
+            st.markdown("## Empirical performance prediction")
             pred = meta.get("prediction", {})
             curve_val = meta.get("curve_val_f1", [])
             curve_train = meta.get("curve_train_f1", [])
@@ -2381,69 +2382,69 @@ with tab_viabilidad:
 
             if not pred:
                 st.info(
-                    "No hay datos de predicción en este informe. "
-                    "Regenera con la versión actual de check_feasibility.py."
+                    "No prediction data in this report. "
+                    "Regenerate with the current version of check_feasibility.py."
                 )
             else:
-                # ── Métricas clave de predicción ──────────────────────────────
+                # ── Key prediction metrics ─────────────────────────────────────
                 pred_best_f1 = float(pred.get("predicted_best_f1", 0) or 0)
                 pred_best_ep = int(float(pred.get("predicted_best_epoch", 0) or 0))
                 pred_stop_ep = int(float(pred.get("predicted_early_stop_epoch", 0) or 0))
                 confidence = pred.get("confidence", "—")
 
                 pc1, pc2, pc3, pc4 = st.columns(4)
-                pc1.metric("Val F1 esperado", f"{pred_best_f1:.3f}")
-                pc2.metric("Mejor epoch estimado", pred_best_ep)
-                pc3.metric("Early stop estimado", pred_stop_ep)
-                pc4.metric("Confianza", confidence)
+                pc1.metric("Expected Val F1", f"{pred_best_f1:.3f}")
+                pc2.metric("Estimated best epoch", pred_best_ep)
+                pc3.metric("Estimated early stop", pred_stop_ep)
+                pc4.metric("Confidence", confidence)
 
-                # ── Curva F1 predicha ─────────────────────────────────────────
+                # ── Predicted F1 curve ─────────────────────────────────────────
                 if curve_val and curve_epochs:
-                    st.markdown("### Curva F1 estimada")
+                    st.markdown("### Estimated F1 curve")
                     st.caption(
-                        "Predicción basada en datos históricos de entrenamientos reales en BigEarthNet-S2. "
-                        "La banda de incertidumbre refleja la variabilidad observada (±0.008 F1 entre runs)."
+                        "Prediction based on historical data from real BigEarthNet-S2 trainings. "
+                        "The uncertainty band reflects the observed variability (±0.008 F1 across runs)."
                     )
 
                     fig_pred = go.Figure()
 
-                    # Banda de incertidumbre
+                    # Uncertainty band
                     uncertainty = 0.015
                     fig_pred.add_trace(go.Scatter(
                         x=curve_epochs + curve_epochs[::-1],
                         y=[v + uncertainty for v in curve_val] + [v - uncertainty for v in curve_val[::-1]],
                         fill="toself", fillcolor="rgba(37,99,235,0.1)",
                         line=dict(color="rgba(255,255,255,0)"),
-                        name="Incertidumbre (±0.015 F1)",
+                        name="Uncertainty (±0.015 F1)",
                         showlegend=True,
                     ))
 
-                    # Val F1 predicho
+                    # Predicted Val F1
                     fig_pred.add_trace(go.Scatter(
                         x=curve_epochs, y=curve_val,
-                        name="Val F1 estimado",
+                        name="Estimated Val F1",
                         mode="lines", line=dict(color=COLORS[0], width=3),
                     ))
 
-                    # Train F1 predicho
+                    # Predicted Train F1
                     if curve_train:
                         fig_pred.add_trace(go.Scatter(
                             x=curve_epochs, y=curve_train,
-                            name="Train F1 estimado",
+                            name="Estimated Train F1",
                             mode="lines", line=dict(color=COLORS[0], width=2, dash="dot"),
                             opacity=0.6,
                         ))
 
-                    # Marcar mejor epoch
+                    # Mark best epoch
                     if pred_best_ep <= max(curve_epochs):
                         best_val = curve_val[pred_best_ep - 1] if pred_best_ep <= len(curve_val) else pred_best_f1
                         fig_pred.add_trace(go.Scatter(
                             x=[pred_best_ep], y=[best_val],
-                            name=f"Mejor epoch ({pred_best_ep})",
+                            name=f"Best epoch ({pred_best_ep})",
                             mode="markers", marker=dict(color="gold", size=14, symbol="star"),
                         ))
 
-                    # Marcar early stop
+                    # Mark early stop
                     if pred_stop_ep <= max(curve_epochs):
                         fig_pred.add_vline(
                             x=pred_stop_ep, line_dash="dash", line_color=COLORS[3],
@@ -2462,7 +2463,7 @@ with tab_viabilidad:
                                 fig_pred.add_trace(go.Scatter(
                                     x=df_actual_pred["epoch"].tolist(),
                                     y=df_actual_pred["val_f1"].tolist(),
-                                    name="Val F1 real",
+                                    name="Real Val F1",
                                     mode="lines+markers",
                                     line=dict(color=COLORS[1], width=2.5),
                                     marker=dict(size=5),
@@ -2471,25 +2472,25 @@ with tab_viabilidad:
                             pass
 
                     fig_pred.update_layout(
-                        **_base_layout(420, "Curva F1 de validación — predicción vs real"),
+                        **_base_layout(420, "Validation F1 curve — prediction vs real"),
                         xaxis_title="Epoch",
                         yaxis_title="Val F1 (macro)",
                     )
                     fig_pred.update_yaxes(range=[0.0, 1.0])
-                    _show(fig_pred, "prediccion_f1")
+                    _show(fig_pred, "f1_prediction")
 
                     if selected_run is not None:
                         st.caption(
-                            "Línea amarilla = predicción empírica | "
-                            "Naranja = datos reales del run seleccionado | "
-                            "Estrella dorada = mejor epoch estimado"
+                            "Yellow line = empirical prediction | "
+                            "Orange = real data from the selected run | "
+                            "Gold star = estimated best epoch"
                         )
                     else:
                         st.caption(
-                            "Selecciona un run en la barra lateral para superponer los resultados reales."
+                            "Select a run in the sidebar to overlay the real results."
                         )
 
-                # Datos de predicción como tabla descargable
+                # Prediction data as a downloadable table
                 if curve_val and curve_epochs:
                     import pandas as pd
                     pred_curve_df = pd.DataFrame({
@@ -2499,11 +2500,11 @@ with tab_viabilidad:
                         "val_f1_upper": [v + 0.015 for v in curve_val],
                         "val_f1_lower": [v - 0.015 for v in curve_val],
                     })
-                    _dl_csv(pred_curve_df, "prediccion_curva_f1.csv", "Descargar curva predicha")
+                    _dl_csv(pred_curve_df, "predicted_f1_curve.csv", "Download predicted curve")
 
-    # ── Ejecutar análisis ─────────────────────────────────────────────────────
+    # ── Run analysis ──────────────────────────────────────────────────────────
     with subtab_run_feas:
-        st.subheader("Ejecutar análisis de viabilidad")
+        st.subheader("Run feasibility analysis")
         configs_available = _get_configs()
         model_options_f = [
             "vit_base_patch16_224", "vit_tiny_patch16_224",
@@ -2512,37 +2513,37 @@ with tab_viabilidad:
         with st.form("feasibility_form"):
             fa1, fa2 = st.columns(2)
             with fa1:
-                feas_model = st.selectbox("Modelo", model_options_f)
+                feas_model = st.selectbox("Model", model_options_f)
                 feas_batches = st.multiselect("Batch sizes", [16, 32, 64, 128], default=[32, 64])
-                feas_epochs = st.number_input("Epochs para estimación", min_value=1, value=30)
+                feas_epochs = st.number_input("Epochs for estimate", min_value=1, value=30)
                 feas_dataset_path = st.text_input(
-                    "Ruta al dataset (opcional — para medir I/O real)",
+                    "Dataset path (optional — to measure real I/O)",
                     placeholder="/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2",
                 )
             with fa2:
                 feas_traces = st.multiselect("Trace modes", ["off", "simple", "deep"],
                                               default=["off", "simple"])
-                feas_nfs = st.slider("Factor NFS", 1.0, 2.0, 1.0, 0.05,
-                                     help="Corrección para latencia NFS (Verode: ~1.3)")
+                feas_nfs = st.slider("NFS factor", 1.0, 2.0, 1.0, 0.05,
+                                     help="Correction for NFS latency (Verode: ~1.3)")
                 feas_config = st.selectbox(
-                    "Config YAML (opcional)",
-                    ["(ninguno)"] + (configs_available if configs_available else []),
+                    "YAML config (optional)",
+                    ["(none)"] + (configs_available if configs_available else []),
                 )
-                feas_no_disk = st.checkbox("Omitir medición de I/O (más rápido)", value=False)
+                feas_no_disk = st.checkbox("Skip I/O measurement (faster)", value=False)
                 feas_study = st.checkbox(
-                    "Estudio empírico real (mini-training + LR range + gradient noise)",
+                    "Real empirical study (mini-training + LR range + gradient noise)",
                     value=False,
-                    help="Mide la convergencia real en esta máquina. Más lento (~3-8 min).",
+                    help="Measures real convergence on this machine. Slower (~3-8 min).",
                 )
                 feas_study_steps = st.number_input(
-                    "Steps del mini-training", min_value=20, max_value=200, value=60,
-                    help="Solo si el estudio empírico está activo",
+                    "Mini-training steps", min_value=20, max_value=200, value=60,
+                    help="Only if the empirical study is enabled",
                 )
-            submitted_feas = st.form_submit_button("Ejecutar")
+            submitted_feas = st.form_submit_button("Run")
 
         if submitted_feas:
             if not feas_batches:
-                st.error("Selecciona al menos un batch size.")
+                st.error("Select at least one batch size.")
             else:
                 parts = [
                     "uv run python scripts/check_feasibility.py",
@@ -2553,7 +2554,7 @@ with tab_viabilidad:
                 ]
                 if feas_nfs != 1.0:
                     parts.append(f"--nfs-factor {feas_nfs}")
-                if feas_config != "(ninguno)":
+                if feas_config != "(none)":
                     parts.append(f"--config configs/{feas_config}")
                 if feas_dataset_path.strip():
                     parts.append(f'--dataset-path "{feas_dataset_path.strip()}"')
@@ -2564,28 +2565,28 @@ with tab_viabilidad:
                 cmd = " ".join(parts)
                 st.code(cmd, language="bash")
                 out_ph = st.empty()
-                with st.spinner("Ejecutando análisis completo…"):
+                with st.spinner("Running full analysis…"):
                     result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(ROOT))
                 if result.returncode == 0:
-                    st.success("Análisis completado.")
+                    st.success("Analysis complete.")
                     out_ph.code(result.stdout[-4000:] if len(result.stdout) > 4000 else result.stdout)
                     _get_feasibility_csvs.clear()
                 else:
-                    st.error("Error durante el análisis:")
+                    st.error("Error during the analysis:")
                     out_ph.code(result.stderr[-2000:])
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TIEMPO
+# TIME
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_tiempo:
     if selected_run is None:
-        st.info("Selecciona un run en la barra lateral.")
+        st.info("Select a run in the sidebar.")
     else:
         df_time = _load_df(str(run.log_path), str(run.epoch_csv_path) if run.epoch_csv_path else None)
 
         if "epoch_time" not in df_time.columns or df_time["epoch_time"].isna().all():
-            st.info("Sin datos de tiempo por epoch. Usa `--trace simple` para generarlos.")
+            st.info("No per-epoch time data. Use `--trace simple` to generate it.")
         else:
             et = df_time[["epoch", "epoch_time"]].dropna()
             total_s_t = et["epoch_time"].sum()
@@ -2593,9 +2594,9 @@ with tab_tiempo:
 
             t1, t2, t3, t4 = st.columns(4)
             t1.metric("Total", _dur_str(total_s_t))
-            t2.metric("Promedio/epoch", f"{avg_s_t/60:.1f} min")
-            t3.metric("Mínimo/epoch", f"{et['epoch_time'].min()/60:.1f} min")
-            t4.metric("Máximo/epoch", f"{et['epoch_time'].max()/60:.1f} min")
+            t2.metric("Average/epoch", f"{avg_s_t/60:.1f} min")
+            t3.metric("Min/epoch", f"{et['epoch_time'].min()/60:.1f} min")
+            t4.metric("Max/epoch", f"{et['epoch_time'].max()/60:.1f} min")
 
             fig_time = go.Figure()
             fig_time.add_trace(go.Scatter(
@@ -2622,7 +2623,7 @@ with tab_tiempo:
                 y_arr = et["epoch_time"].values / 60
                 coeffs = np.polyfit(x_arr, y_arr, 1)
                 fig_time.add_trace(go.Scatter(x=et["epoch"], y=np.polyval(coeffs, x_arr),
-                                              name="Tendencia", mode="lines",
+                                              name="Trend", mode="lines",
                                               line=dict(color="#94a3b8", width=1, dash="dash")))
 
             warmup_ep = None
@@ -2641,8 +2642,8 @@ with tab_tiempo:
                                    annotation_position="top left")
 
             feasibility_csvs_t = _get_feasibility_csvs()
-            # Elegir el feasibility cuyo MODELO coincide con el run mostrado; si
-            # no, la línea de estimación sería de otro modelo (comparación falsa).
+            # Pick the feasibility whose MODEL matches the displayed run; otherwise
+            # the estimate line would be for a different model (a false comparison).
             feas_match_t = None
             for _fc in feasibility_csvs_t:
                 try:
@@ -2666,16 +2667,16 @@ with tab_tiempo:
                     if _idx_t is not None and not pd.isna(_idx_t):
                         est_min = float(viable_t.loc[_idx_t, per_ep_col])
                         fig_time.add_hline(y=est_min, line_dash="dash", line_color=COLORS[1],
-                                           annotation_text=f"Estimación viabilidad: {est_min:.0f} min/epoch",
+                                           annotation_text=f"Feasibility estimate: {est_min:.0f} min/epoch",
                                            annotation_position="top right")
                 except Exception:
                     pass
 
-            fig_time.update_layout(**_base_layout(380, "Tiempo por epoch"),
-                                   xaxis_title="Epoch", yaxis_title="Minutos")
-            _show(fig_time, "tiempo_por_epoch")
+            fig_time.update_layout(**_base_layout(380, "Time per epoch"),
+                                   xaxis_title="Epoch", yaxis_title="Minutes")
+            _show(fig_time, "time_per_epoch")
             _dl_csv(et.assign(epoch_time_min=et["epoch_time"] / 60),
-                    "tiempo_por_epoch.csv", "Descargar datos de tiempo")
+                    "time_per_epoch.csv", "Download time data")
 
             if feasibility_csvs_t:
                 try:
@@ -2690,21 +2691,21 @@ with tab_tiempo:
                         est_val = float(viable_c.loc[_idx_c, per_ep_c])
                         real_val = avg_s_t / 60
                         err_pct = (real_val - est_val) / est_val * 100 if est_val else 0
-                        st.markdown("**Estimado vs Real**")
+                        st.markdown("**Estimated vs Real**")
                         ce1, ce2, ce3 = st.columns(3)
-                        ce1.metric("Estimado (min/epoch)", f"{est_val:.1f}")
-                        ce2.metric("Real promedio (min/epoch)", f"{real_val:.1f}")
-                        ce3.metric("Error relativo", f"{err_pct:+.1f}%")
+                        ce1.metric("Estimated (min/epoch)", f"{est_val:.1f}")
+                        ce2.metric("Real average (min/epoch)", f"{real_val:.1f}")
+                        ce3.metric("Relative error", f"{err_pct:+.1f}%")
                 except Exception:
                     pass
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# INFORMACIÓN
+# INFO
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_info:
     if selected_run is None:
-        st.info("Selecciona un run en la barra lateral.")
+        st.info("Select a run in the sidebar.")
     else:
         df_info = _load_df(str(run.log_path), str(run.epoch_csv_path) if run.epoch_csv_path else None)
         n_ep_i = len(df_info)
@@ -2714,37 +2715,37 @@ with tab_info:
         col_m, col_f = st.columns(2)
 
         with col_m:
-            st.subheader("Metadatos del run")
+            st.subheader("Run metadata")
             _cfg_run = _run_config(str(run.log_path))
             rows_i = {
-                "Modelo": run.model or "—",
-                "Entorno · Modo": f"{run.env} · {run.mode}",
+                "Model": run.model or "—",
+                "Environment · Mode": f"{run.env} · {run.mode}",
                 "Trace mode": run.trace_mode,
                 "Epochs": n_ep_i,
-                "Mejor Val F1": f"{best_f1_i:.4f}" if not pd.isna(best_f1_i) else "—",
-                "Mejor epoch": int(best_ep_i_v) if best_ep_i_v is not None else "—",
+                "Best Val F1": f"{best_f1_i:.4f}" if not pd.isna(best_f1_i) else "—",
+                "Best epoch": int(best_ep_i_v) if best_ep_i_v is not None else "—",
             }
-            # Config del run (solo runs nuevos / backfilleados la registran)
+            # Run config (only new / backfilled runs record it)
             if _cfg_run.get("batch"):
                 rows_i["Batch size"] = _cfg_run["batch"]
             if _cfg_run.get("reparto"):
-                rows_i["Reparto de datos"] = _cfg_run["reparto"]
+                rows_i["Data split"] = _cfg_run["reparto"]
             if _cfg_run.get("lr"):
                 rows_i["Learning rate"] = _cfg_run["lr"]
             if _cfg_run.get("train"):
-                rows_i["Imágenes train/val"] = f"{_cfg_run.get('train', '?')} / {_cfg_run.get('val', '?')}"
+                rows_i["Train/val images"] = f"{_cfg_run.get('train', '?')} / {_cfg_run.get('val', '?')}"
             if "epoch_time" in df_info.columns and df_info["epoch_time"].notna().any():
                 total_si = df_info["epoch_time"].sum()
-                rows_i["Tiempo total"] = _dur_str(total_si)
-                rows_i["Promedio/epoch"] = f"{df_info['epoch_time'].mean()/60:.1f} min"
+                rows_i["Total time"] = _dur_str(total_si)
+                rows_i["Average/epoch"] = f"{df_info['epoch_time'].mean()/60:.1f} min"
             for k, v in rows_i.items():
                 st.markdown(f"**{k}:** {v}")
             if not _cfg_run:
-                st.caption("ℹ️ El batch size solo se registra en runs nuevos (a partir de esta "
-                           "versión). Los anteriores no lo guardaron en el log.")
+                st.caption("ℹ️ Batch size is only recorded in new runs (from this "
+                           "version onwards). Earlier ones did not store it in the log.")
 
         with col_f:
-            st.subheader("Ficheros asociados")
+            st.subheader("Associated files")
             for label_f, path_f in [
                 ("Batch CSV", run.batch_csv_path),
                 ("Per-class CSV", run.perclass_csv_path),
@@ -2755,7 +2756,7 @@ with tab_info:
 
         st.markdown("---")
 
-        st.subheader("Config YAML")
+        st.subheader("YAML config")
         import yaml
         configs_i: list[Path] = []
         for cfg in _get_configs():
@@ -2772,34 +2773,34 @@ with tab_info:
             cfg_path_sel = next(p for p in configs_i if p.name == cfg_sel)
             st.code(cfg_path_sel.read_text(), language="yaml")
         else:
-            st.caption("No se pudo determinar la config de este run.")
+            st.caption("Could not determine the config for this run.")
 
-        st.subheader("Detección de anomalías")
+        st.subheader("Anomaly detection")
         anomalies = _detect_anomalies(run.log_path)
         if anomalies:
-            st.warning(f"{len(anomalies)} línea(s) con anomalías detectadas.")
-            with st.expander("Ver anomalías"):
+            st.warning(f"{len(anomalies)} line(s) with detected anomalies.")
+            with st.expander("View anomalies"):
                 for line in anomalies:
                     st.text(line)
         else:
-            st.success("Sin anomalías detectadas en el log.")
+            st.success("No anomalies detected in the log.")
 
         st.subheader("Log")
-        search_term = st.text_input("Filtrar líneas del log", "")
+        search_term = st.text_input("Filter log lines", "")
         try:
             all_lines = run.log_path.read_text(errors="replace").splitlines()
             if search_term:
                 disp_lines = [ln for ln in all_lines if search_term.lower() in ln.lower()]
-                st.caption(f"{len(disp_lines)} / {len(all_lines)} líneas")
+                st.caption(f"{len(disp_lines)} / {len(all_lines)} lines")
             else:
                 disp_lines = all_lines
-                st.caption(f"{len(all_lines)} líneas en total")
+                st.caption(f"{len(all_lines)} lines total")
             st.code("\n".join(disp_lines[-400:]), language="text")
         except Exception as exc:
             st.error(str(exc))
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LANZADOR
+# LAUNCHER
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_lanzador:
@@ -2812,16 +2813,16 @@ with tab_lanzador:
     ]
 
     with subtab_single:
-        st.subheader("Entrenamiento Single GPU")
+        st.subheader("Single-GPU training")
         with st.form("launcher_single_form"):
             la1, la2 = st.columns(2)
             with la1:
-                l_model = st.selectbox("Modelo", model_opts_l)
-                l_config = st.selectbox("Config YAML", configs_l if configs_l else ["(ninguno)"])
+                l_model = st.selectbox("Model", model_opts_l)
+                l_config = st.selectbox("YAML config", configs_l if configs_l else ["(none)"])
                 l_epochs = st.number_input("Override epochs", min_value=0, value=0,
-                                           help="0 = usar valor del config")
+                                           help="0 = use the config value")
                 l_batch = st.number_input("Override batch size", min_value=0, value=0,
-                                          help="0 = usar valor del config")
+                                          help="0 = use the config value")
             with la2:
                 l_trace = st.selectbox("Trace mode", ["simple", "off", "deep"])
                 l_layers = st.multiselect("Layers", ["plot", "hooks", "confusion", "batch-monitor"],
@@ -2829,7 +2830,7 @@ with tab_lanzador:
                 l_fn = st.multiselect("Fn decorators", ["timing", "energy"])
                 l_inspect = st.multiselect("Inspect features",
                                            ["model-summary", "grad-monitor", "anomalies", "batch-table"])
-            launched_single = st.form_submit_button("Lanzar")
+            launched_single = st.form_submit_button("Launch")
 
         if launched_single:
             parts_l = [
@@ -2853,19 +2854,19 @@ with tab_lanzador:
             out_ph_l = st.empty()
             rc_l = _launch_process(cmd_l, out_ph_l)
             if rc_l == 0:
-                st.success("Entrenamiento completado.")
+                st.success("Training complete.")
                 _get_runs.clear()
             else:
-                st.error(f"Proceso terminó con código {rc_l}.")
+                st.error(f"Process exited with code {rc_l}.")
 
     with subtab_ddp_l:
-        st.subheader("Entrenamiento DDP")
+        st.subheader("DDP training")
         with st.form("launcher_ddp_form"):
             dd1, dd2 = st.columns(2)
             with dd1:
                 d_nproc = st.number_input("GPUs (--nproc_per_node)", min_value=1, max_value=8, value=2)
-                d_model = st.selectbox("Modelo", model_opts_l, key="ddp_model")
-                d_config = st.selectbox("Config YAML", configs_l if configs_l else ["(ninguno)"],
+                d_model = st.selectbox("Model", model_opts_l, key="ddp_model")
+                d_config = st.selectbox("YAML config", configs_l if configs_l else ["(none)"],
                                          key="ddp_config")
                 d_epochs = st.number_input("Override epochs", min_value=0, value=0, key="ddp_ep")
             with dd2:
@@ -2873,7 +2874,7 @@ with tab_lanzador:
                 d_layers = st.multiselect("Layers", ["plot", "confusion", "batch-monitor"],
                                           default=["confusion"], key="ddp_layers")
                 d_fn = st.multiselect("Fn decorators", ["timing", "energy"], key="ddp_fn")
-            launched_ddp = st.form_submit_button("Lanzar")
+            launched_ddp = st.form_submit_button("Launch")
 
         if launched_ddp:
             parts_d = [
@@ -2893,17 +2894,17 @@ with tab_lanzador:
             out_ph_d = st.empty()
             rc_d = _launch_process(cmd_d, out_ph_d)
             if rc_d == 0:
-                st.success("Entrenamiento DDP completado.")
+                st.success("DDP training complete.")
                 _get_runs.clear()
             else:
-                st.error(f"Proceso terminó con código {rc_d}.")
+                st.error(f"Process exited with code {rc_d}.")
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# EN VIVO
+# LIVE
 # ═══════════════════════════════════════════════════════════════════════════════
 
 with tab_envivo:
-    st.subheader("Monitor en vivo")
+    st.subheader("Live monitor")
 
     now_ts = time.time()
     recent_runs = [
@@ -2913,12 +2914,12 @@ with tab_envivo:
 
     if not recent_runs:
         st.info(
-            "No hay runs activos (ningún log modificado en los últimos 30 min). "
-            "Lanza un entrenamiento desde la pestaña Lanzador."
+            "No active runs (no log modified in the last 30 min). "
+            "Launch a training from the Launcher tab."
         )
     else:
         live_labels = {r.label: r for r in recent_runs}
-        live_sel = st.selectbox("Run activo", list(live_labels.keys()), key="live_run_sel")
+        live_sel = st.selectbox("Active run", list(live_labels.keys()), key="live_run_sel")
         live_run = live_labels[live_sel]
 
         @st.fragment(run_every=refresh_interval)
@@ -2930,10 +2931,10 @@ with tab_envivo:
                 g1, g2, g3, g4 = st.columns(4)
                 g1.metric("GPU", gpu["name"])
                 g2.metric("VRAM", f"{gpu['mem_used_mb']/1024:.1f} / {gpu['mem_total_mb']/1024:.1f} GB")
-                g3.metric("Utilización", f"{gpu['util_pct']}%")
-                g4.metric("Temperatura", f"{gpu['temp_c']} °C")
+                g3.metric("Utilization", f"{gpu['util_pct']}%")
+                g4.metric("Temperature", f"{gpu['temp_c']} °C")
             else:
-                st.caption("Info GPU no disponible (nvidia-smi no encontrado).")
+                st.caption("GPU info unavailable (nvidia-smi not found).")
 
             progress = _parse_log_progress(run.log_path)
             if progress["epochs"] > 0:
@@ -2942,9 +2943,9 @@ with tab_envivo:
 
             if progress["last_val_f1"] is not None:
                 m1, m2 = st.columns(2)
-                m1.metric("Último Val F1", f"{progress['last_val_f1']:.4f}")
+                m1.metric("Last Val F1", f"{progress['last_val_f1']:.4f}")
                 if progress["last_val_loss"] is not None:
-                    m2.metric("Último Val Loss", f"{progress['last_val_loss']:.4f}")
+                    m2.metric("Last Val Loss", f"{progress['last_val_loss']:.4f}")
 
             if run.epoch_csv_path and run.epoch_csv_path.exists():
                 live_df = _load_df(str(run.log_path), str(run.epoch_csv_path))
@@ -2962,10 +2963,10 @@ with tab_envivo:
                             name="Val Loss", mode="lines+markers",
                             line=dict(color=COLORS[1], width=2), marker=dict(size=4),
                         ))
-                    fig_live.update_layout(**_base_layout(280, "Métricas"), xaxis_title="Epoch")
+                    fig_live.update_layout(**_base_layout(280, "Metrics"), xaxis_title="Epoch")
                     _show(fig_live, "live_metrics")
 
-            st.subheader("Cola del log")
+            st.subheader("Log tail")
             st.code(_read_log_tail(run.log_path, n=40), language="text")
 
         _live_panel(live_run)
