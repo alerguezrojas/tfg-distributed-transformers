@@ -453,6 +453,8 @@ uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off
 uv run python scripts/check_feasibility.py --batch-sizes 64 --nfs-factor 1.3
 # Override de modelo (uno o varios separados por espacio)
 uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
+# Elegir GPU en máquina multi-GPU (registra sus núcleos CUDA/Tensor en el bloque #gpu del CSV)
+uv run python scripts/check_feasibility.py --model vit_base_patch16_224 --batch-sizes 64 --device 1
 # Estudio empírico REAL (mini-training + LR range test + gradient noise) — más lento (~3-8 min)
 uv run python scripts/check_feasibility.py --model vit_base_patch16_224 --batch-sizes 64 \
   --dataset-path ~/datasets/bigearthnet/BigEarthNet-S2 --convergence-study --study-steps 80
@@ -824,21 +826,37 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 
 ## Dashboard web
 
-`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin.
+`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~127 líneas) que monta page config + sidebar + las 6 pestañas y delega en módulos `render(ctx)`.
 
 ```
 src/web/
   __init__.py
-  app.py                    # Streamlit entrypoint — 6 tabs con sub-pestañas (v7, UI en español)
+  app.py                    # orquestador delgado: page config + sidebar + dispatch a tabs/
+  ui/
+    context.py              # DashboardContext (runs, selected_run, run, refresh_interval) → ctx
+    charts.py               # helpers Plotly + estilo: _show, _dl_csv, _metric_fig, _overlay_fig,
+                            #   _base_layout, COLORS, _CLASS_GROUPS (única llamada a st.plotly_chart)
+    helpers.py              # loaders cacheados (_load_df, _get_runs, _feas_label…) + helpers (gpu/log/launch)
+  tabs/
+    home.py                 # render(ctx) — pantalla principal con cuadrícula
+    run.py                  # Curves / Per-class / Batch / Time / Info
+    comparison.py           # Single vs Distributed (DDP) / Overlay runs
+    feasibility.py          # Report / Prediction vs reality / Real study / Run analysis
+    data_models.py          # Dataset / Models
+    system.py               # Monitor / Live / Launcher
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
                             # RunInfo con env, mode, model, epoch/perclass/batch/confusion CSV paths
-                            # (sin referencias a PNGs — eliminadas en v6)
   log_parser.py             # parsea logs --trace simple y --trace deep → DataFrame (fallback)
   batch_parser.py           # lee batch_metrics_*.csv → DataFrame por batch
   perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
-  feasibility_parser.py     # lee feasibility_*.csv → (metadata dict, benchmark DataFrame)
+  feasibility_parser.py     # lee feasibility_*.csv → (metadata dict, benchmark DataFrame); bloque #gpu
   confusion_matrix_parser.py # lee confusion_matrix_*.csv → matriz numpy por epoch
+  system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo enriquecido con specs de GPU
 ```
+
+**Specs de GPU** (`src/gpu_specs.py`): deriva núcleos CUDA y Tensor de cada GPU a partir de su compute capability (→ arquitectura → cores/SM) × nº de SMs (V100 5120/640, T4 2560/320, RTX 3060 Ti 4864/152). Se muestran en **System → Monitor** y **Feasibility → Report**; el `check_feasibility.py` los registra (bloque CSV `#gpu`) y acepta `--device INDEX` para elegir GPU en máquinas multi-GPU (selector en el formulario "Run analysis").
+
+**Modelos de speedup seleccionables** (`src/estimation_models.py`): leyes analíticas Linear / Amdahl / Gustafson (puras, con fórmula), superponibles sobre la estimación compute/IO-aware del feasibility en **Feasibility → Report (DDP)**, con slider de fracción serial *s*.
 
 ### Arranque
 
@@ -961,6 +979,13 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Dashboard web v7 — reorganización 14→6 pestañas + "Predicción vs realidad" rediseñada (04/06/26):** las 14 pestañas planas se anidan en 6 de nivel superior (Inicio · Run · Comparativa · Viabilidad · Datos y modelos · Sistema) usando la colocación-en-creación de contenedores de Streamlit (sin reescribir el contenido). Viabilidad pasa de 6 a 4 sub-tabs: Informe absorbe los escenarios DDP, y "Comparar vs training" se rediseña como **Predicción vs realidad**. 6 pestañas verificadas sin errores con Playwright. Feature: `feature/web-redesign-6tabs`.
 - [x] **Predicción vs realidad en 2 secciones + nombres legibles + gráfica simple (04/06/26):** la pantalla separa **(A) En 1 GPU: tiempo estimado vs real** (contra el run single) y **(B) Al distribuir: speedup predicho vs real** (single ÷ ddp; valida el DDPOptimizer: 1.92× predicho vs 1.90× real). Selector explícito "¿Qué comparar?" (entorno · modelo). Los informes de viabilidad se muestran como `entorno · modelo · DD/MM HH:MM` (`_feas_label`) en vez de la fecha cruda. La gráfica de error divergente se sustituye por barras agrupadas estimado-vs-real (Train/Eval/Total, min).
 - [x] **Config del run en el log + visible en la web (04/06/26):** los 3 scripts de entrenamiento escriben al inicio del log una línea `Configuración: modelo | batch=…/GPU (global=…) | epochs | lr | train/val` (heterogéneo: batch GPU/CPU + `reparto=GPU %…/CPU %…` usando `len(train_sampler)`). La pestaña **Run → Información** la lee (`_run_config`) y muestra batch size, lr, imágenes y reparto. **Backfill:** los 6 runs de comparación (Kaggle tiny/base single+ddp, Verode single + heterogéneo) llevan esa línea añadida a sus logs con los valores exactos de los configs (marcada `origen=backfill`).
+
+#### Mejoras post-seminario 3 (junio 2026) — propuestas de la reunión 05/06
+- [x] **Dashboard web en inglés (09/06/26):** toda la UI traducida a inglés (6 pestañas + sub-pestañas, métricas, gráficas, mensajes, botones) y los comentarios/docstrings de los módulos web. Se conservan en español solo las claves de parseo de logs (`Configuración:`, `threshold óptimo=`, `potencia media`, `RESUMEN`) para casar con logs existentes/backfilleados. Tests del dashboard reescritos a inglés. Ramas: `feature/web-english`.
+- [x] **Refactor del monolito → módulos (SRP) (09/06/26):** `app.py` (2972 líneas) partido en orquestador delgado (~127 líneas) + `ui/` (charts, helpers, context) + `tabs/` (home, run, comparison, feasibility, data_models, system), cada uno con `render(ctx)`. Demuestra SRP también en la herramienta de visualización. 6 pestañas + 21 sub-pestañas verificadas con Playwright. Bug latente corregido: `import pandas as pd` inline dentro de `feasibility.render` sombreaba el `pd` del módulo. Rama: `feature/web-split-modules`.
+- [x] **Specs de GPU (núcleos CUDA/Tensor) + selección de dispositivo (09/06/26):** `src/gpu_specs.py` deriva núcleos CUDA/Tensor de compute capability × SMs; visibles en System → Monitor y Feasibility → Report; `check_feasibility.py` los escribe (bloque `#gpu`) y acepta `--device INDEX` (selector en la web). Rama: `feature/gpu-specs`.
+- [x] **Modelos de speedup seleccionables (09/06/26):** `src/estimation_models.py` (Linear/Amdahl/Gustafson) superponibles a la estimación compute/IO-aware en Feasibility → Report (DDP), con slider de fracción serial. Rama: `feature/selectable-estimation-models`.
+- [x] **Suite de tests en 250** (+21 sobre 229: gpu_specs, estimation_models, parser `#gpu`, dashboard modular). Todo integrado en `develop` y subido a GitHub.
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
