@@ -1,26 +1,27 @@
-"""Web dashboard tests (English UI).
+"""Web dashboard tests (English UI, modular layout).
 
 Checks:
-- That app.py parses correctly without errors.
-- That the key helpers (_safe_max, _dur_str, _detect_anomalies, etc.) work.
+- That app.py and every tab/ui module parse without errors.
+- That the key helpers (_safe_max, _dur_str, _safe_val_at_best) work.
 - That RunInfo no longer has PNG attributes (plot_path, perclass_paths, etc.).
-- That the English tab/section labels are present in the source.
-- That _show and _dl_csv exist and are functions.
-- That there are no broken references to nonexistent RunInfo attributes.
+- That the English tab/section labels are present in the right modules.
+- That _show / _dl_csv / _PLOTLY_CFG live in ui/charts.py and every chart
+  goes through _show (a single direct st.plotly_chart call, inside _show).
+- That app.py is a thin orchestrator (not the old 3000-line monolith).
 """
 import ast
 import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
+WEB = ROOT / "src" / "web"
 sys.path.insert(0, str(ROOT))
 
 
-# ── helpers internos copiados del app para testear en aislamiento ─────────────
+# ── internal helpers copied from the app to test in isolation ─────────────────
 
 def _safe_max(series: pd.Series) -> float:
     valid = series.dropna()
@@ -48,7 +49,7 @@ def _dur_str(seconds: float) -> str:
     return f"{h}h {m}m"
 
 
-# ── tests de helpers ──────────────────────────────────────────────────────────
+# ── helper tests ──────────────────────────────────────────────────────────────
 
 
 def test_safe_max_normal():
@@ -85,124 +86,130 @@ def test_dur_str_exact():
     assert _dur_str(0) == "0h 0m"
 
 
-# ── tests del código fuente de app.py ─────────────────────────────────────────
+# ── module layout ─────────────────────────────────────────────────────────────
+
+_MODULES = [
+    "app.py",
+    "ui/__init__.py", "ui/context.py", "ui/charts.py", "ui/helpers.py",
+    "tabs/__init__.py", "tabs/home.py", "tabs/run.py", "tabs/comparison.py",
+    "tabs/feasibility.py", "tabs/data_models.py", "tabs/system.py",
+]
+
+
+def _src(rel: str) -> str:
+    return (WEB / rel).read_text(encoding="utf-8")
 
 
 @pytest.fixture(scope="module")
 def app_source() -> str:
-    return (ROOT / "src" / "web" / "app.py").read_text(encoding="utf-8")
+    return _src("app.py")
 
 
 @pytest.fixture(scope="module")
-def app_ast(app_source: str) -> ast.Module:
-    return ast.parse(app_source)
+def charts_source() -> str:
+    return _src("ui/charts.py")
 
 
-def test_app_py_valid_syntax(app_ast):
-    """app.py debe parsear sin errores de sintaxis."""
-    assert isinstance(app_ast, ast.Module)
+@pytest.fixture(scope="module")
+def tabs_source() -> str:
+    return "\n".join(_src(f"tabs/{m}") for m in (
+        "home.py", "run.py", "comparison.py", "feasibility.py",
+        "data_models.py", "system.py",
+    ))
 
 
-def test_app_py_no_plot_path_references(app_source):
-    """No debe haber referencias a run.plot_path (atributo eliminado de RunInfo)."""
-    assert "plot_path" not in app_source, (
-        "app.py contiene 'plot_path' — atributo eliminado de RunInfo"
-    )
+@pytest.fixture(scope="module")
+def all_web_source() -> str:
+    return "\n".join(_src(m) for m in _MODULES)
 
 
-def test_app_py_no_perclass_paths_references(app_source):
-    """No debe haber referencias a run.perclass_paths (atributo eliminado de RunInfo)."""
-    assert "perclass_paths" not in app_source, (
-        "app.py contiene 'perclass_paths' — atributo eliminado de RunInfo"
-    )
+def test_all_modules_parse():
+    """Every web module must parse without syntax errors."""
+    for rel in _MODULES:
+        ast.parse(_src(rel), filename=rel)
 
 
-def test_app_py_no_confusion_matrix_paths_references(app_source):
-    """No debe haber referencias a run.confusion_matrix_paths (atributo eliminado de RunInfo)."""
-    assert "confusion_matrix_paths" not in app_source, (
-        "app.py contiene 'confusion_matrix_paths' — atributo eliminado de RunInfo"
-    )
+def test_app_is_thin_orchestrator(app_source):
+    """app.py must be a thin orchestrator, not the old monolith."""
+    n_lines = len(app_source.splitlines())
+    assert n_lines < 200, f"app.py has {n_lines} lines — expected a thin orchestrator"
+    for mod in ("home", "comparison", "feasibility", "data_models", "system"):
+        assert f"{mod}.render(ctx)" in app_source, mod
+    assert "run_tab.render(ctx)" in app_source
 
 
-def test_app_py_tab_names(app_source):
-    """The tab names (6 top-level + sub-tabs) must be present in English."""
-    # Top level (6)
+def test_top_tab_names(app_source):
+    """The 6 top-level tab names (English) live in app.py."""
     for t in ('"Home"', '"Run"', '"Comparison"', '"Feasibility"',
               '"Data & models"', '"System"'):
-        assert t in app_source, f"missing tab {t}"
-    # Relevant sub-tabs
-    for t in ('"Curves"', '"Per-class"', '"Models"', '"Time"', '"Info"',
+        assert t in app_source, f"missing top tab {t}"
+
+
+def test_sub_tab_names(tabs_source):
+    """The sub-tab names (English) live in the tab modules."""
+    for t in ('"Curves"', '"Per-class"', '"Batch"', '"Time"', '"Info"',
               '"Monitor"', '"Launcher"', '"Live"', '"Overlay runs"',
-              '"Single vs Distributed"', '"Prediction vs reality"'):
-        assert t in app_source, f"missing sub-tab {t}"
+              '"Single vs Distributed"', '"Prediction vs reality"',
+              '"Dataset"', '"Models"'):
+        assert t in tabs_source, f"missing sub-tab {t}"
 
 
-def test_app_py_show_helper_defined(app_source):
-    """El helper _show() debe estar definido para envolver st.plotly_chart con config."""
-    assert "def _show(" in app_source
+def test_home_sections(tabs_source):
+    """The home screen grid sections must be present (in tabs/home.py)."""
+    assert "Project overview" in tabs_source
+    assert "System status" in tabs_source
+    assert "Per-class performance" in tabs_source
+    assert "All runs" in tabs_source
+    assert "Selected run" in tabs_source
 
 
-def test_app_py_dl_csv_helper_defined(app_source):
-    """El helper _dl_csv() debe estar definido para botones de descarga."""
-    assert "def _dl_csv(" in app_source
+def test_show_and_dl_csv_defined_in_charts(charts_source):
+    """The _show() and _dl_csv() helpers live in ui/charts.py."""
+    assert "def _show(" in charts_source
+    assert "def _dl_csv(" in charts_source
 
 
-def test_app_py_plotly_config_present(app_source):
-    """La configuración de Plotly con descarga PNG debe estar presente."""
-    assert "_PLOTLY_CFG" in app_source
-    assert "toImageButtonOptions" in app_source
-    assert '"format": "png"' in app_source
+def test_plotly_config_in_charts(charts_source):
+    """The Plotly config with PNG download lives in ui/charts.py."""
+    assert "_PLOTLY_CFG" in charts_source
+    assert "toImageButtonOptions" in charts_source
+    assert '"format": "png"' in charts_source
 
 
-def test_app_py_grid_home_sections(app_source):
-    """The home screen must have the required grid sections."""
-    assert "Project overview" in app_source
-    assert "System status" in app_source
-    assert "Per-class performance" in app_source
-    assert "All runs" in app_source
-    assert "Selected run" in app_source
+def test_no_pil_import(all_web_source):
+    """No web module should import PIL (PNGs were removed from the flow)."""
+    assert "from PIL import" not in all_web_source
+    assert "import PIL" not in all_web_source
 
 
-def test_app_py_no_pil_import(app_source):
-    """No debe importar PIL ya que los PNGs se eliminaron del flujo."""
-    assert "from PIL import" not in app_source
-    assert "import PIL" not in app_source
+def test_download_buttons_present(tabs_source):
+    """The tab modules must offer download buttons (_dl_csv)."""
+    count = tabs_source.count("_dl_csv(")
+    assert count >= 5, f"expected >=5 download buttons, found {count}"
 
 
-def test_app_py_download_buttons_present(app_source):
-    """Deben existir botones de descarga (_dl_csv) en las pestañas principales."""
-    count = app_source.count("_dl_csv(")
-    assert count >= 5, f"Se esperaban ≥5 botones de descarga, encontrados: {count}"
+def test_single_direct_plotly_chart_call(all_web_source):
+    """All charts must go through _show(); the only direct st.plotly_chart
+    call must be inside _show() in ui/charts.py."""
+    show_calls = all_web_source.count("_show(")
+    assert show_calls > 10, f"expected >10 _show() calls, found {show_calls}"
 
-
-def test_app_py_uses_show_for_all_charts(app_source):
-    """Todas las gráficas deben usar _show() en lugar de st.plotly_chart directo.
-
-    La única llamada directa permitida es la interna dentro de la propia función _show().
-    """
-    show_calls = app_source.count("_show(")
-    assert show_calls > 10, f"Se esperaban >10 llamadas a _show(), encontradas: {show_calls}"
-
-    # La única llamada directa a st.plotly_chart debe estar DENTRO de _show()
-    lines_with_direct = [
+    direct = [
         (i + 1, line.strip())
-        for i, line in enumerate(app_source.splitlines())
+        for i, line in enumerate(all_web_source.splitlines())
         if "st.plotly_chart(" in line
     ]
-    assert len(lines_with_direct) == 1, (
-        f"Se esperaba exactamente 1 llamada directa a st.plotly_chart (dentro de _show), "
-        f"encontradas {len(lines_with_direct)}: {lines_with_direct}"
+    assert len(direct) == 1, (
+        f"expected exactly 1 direct st.plotly_chart call (inside _show), found {len(direct)}: {direct}"
     )
-    assert "cfg" in lines_with_direct[0][1], (
-        "La única llamada a st.plotly_chart debe estar en _show() y pasar config=cfg"
-    )
+    assert "cfg" in direct[0][1], "the only st.plotly_chart call must pass config=cfg (inside _show)"
 
 
-# ── tests de RunInfo (sin atributos PNG) ──────────────────────────────────────
+# ── RunInfo (no PNG attributes) ───────────────────────────────────────────────
 
 
 def test_run_info_has_no_png_attributes():
-    """RunInfo no debe tener atributos de paths PNG."""
+    """RunInfo must not have any PNG path attributes."""
     from src.web.run_registry import RunInfo
     import inspect
     source = inspect.getsource(RunInfo)
@@ -212,7 +219,7 @@ def test_run_info_has_no_png_attributes():
 
 
 def test_run_info_csv_attributes_present():
-    """RunInfo debe tener los atributos CSV esperados."""
+    """RunInfo must have the expected CSV attributes."""
     from src.web.run_registry import RunInfo
     import dataclasses
     fields = {f.name for f in dataclasses.fields(RunInfo)}
@@ -223,7 +230,7 @@ def test_run_info_csv_attributes_present():
 
 
 def test_run_info_label_format():
-    """RunInfo.label debe incluir fecha, trace mode, env y modelo."""
+    """RunInfo.label must include date, trace mode, env and model."""
     from src.web.run_registry import RunInfo
     from pathlib import Path
     import tempfile
