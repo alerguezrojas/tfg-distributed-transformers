@@ -13,9 +13,9 @@ from pathlib import Path
 
 import pandas as pd
 
-# Fallback al full BigEarthNet-S2 si el CSV de viabilidad no trae el tamaño
-# real (CSVs antiguos sin bloque #sizes). Los CSVs nuevos llevan n_train/n_val
-# del metadata efectivamente usado (subset o completo) → comparación válida.
+# Fallback to the full BigEarthNet-S2 if the feasibility CSV does not carry the
+# real size (old CSVs without a #sizes block). New CSVs include n_train/n_val
+# from the metadata actually used (subset or full) → valid comparison.
 _N_TRAIN_DEFAULT = 237_871
 _N_VAL_DEFAULT = 122_342
 
@@ -89,7 +89,7 @@ def build_comparison(
 
     model_name = meta.get("model_name", "unknown")
 
-    # Tamaño real del dataset (del CSV #sizes); fallback al full set.
+    # Real dataset size (from the #sizes CSV); fallback to the full set.
     def _int(v, default):
         try:
             return int(float(v))

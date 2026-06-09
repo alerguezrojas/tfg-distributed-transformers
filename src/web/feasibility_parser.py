@@ -13,11 +13,11 @@ import pandas as pd
 
 
 def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
-    """Lee el CSV de viabilidad y devuelve (metadata_dict, benchmark_df).
+    """Reads the feasibility CSV and returns (metadata_dict, benchmark_df).
 
-    El metadata_dict incluye todos los bloques #meta, #model_mem, #cpu, #disk,
+    The metadata_dict includes every block: #meta, #model_mem, #cpu, #disk,
     #dataset, #prediction, #curve_val_f1, #curve_train_f1, #ddp.
-    El benchmark_df contiene las filas de datos de benchmark.
+    The benchmark_df holds the benchmark data rows.
     """
     rows: list[list[str]] = []
     meta: dict = {}
@@ -31,7 +31,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     curve_val: list[float] = []
     curve_train: list[float] = []
     curve_epochs: list[int] = []
-    # Estudio empírico de convergencia (v4)
+    # Empirical convergence study (v4)
     study: dict = {}
 
     def _floats(seq):
@@ -160,10 +160,10 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
             else:
                 rows.append(row)
 
-    # Construir metadata combinada
+    # Build combined metadata
     combined: dict = {**meta, **model_mem}
-    # Tamaño real del dataset (n imágenes por split). Si el CSV es antiguo y no
-    # trae #sizes, quedará ausente y la comparación usará su fallback.
+    # Real dataset size (n images per split). If the CSV is old and lacks
+    # #sizes, it will be absent and the comparison will use its fallback.
     for k in ("n_train", "n_val"):
         if k in sizes:
             try:
@@ -194,7 +194,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     if study:
         combined["study"] = study
 
-    # Normalizar campos numéricos de metadata
+    # Normalize numeric metadata fields
     float_fields = (
         "total_params_M", "flops_mflops", "total_vram_gb", "free_vram_gb",
         "weight_mb", "gradient_mb", "optimizer_mb",
@@ -207,7 +207,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
             except (ValueError, TypeError):
                 pass
 
-    # Normalizar prediction numérica
+    # Normalize numeric prediction
     if "prediction" in combined:
         for k in ("predicted_best_f1", "predicted_best_epoch", "predicted_early_stop_epoch"):
             if k in combined["prediction"]:
@@ -223,7 +223,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     data = rows[1:]
     df = pd.DataFrame(data, columns=header)
 
-    # Convertir columnas numéricas
+    # Convert numeric columns
     numeric_cols = [
         "batch_size",
         "s_per_batch", "imgs_per_s",              # legacy
@@ -244,7 +244,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
 
 
 def parse_ddp_scenarios(meta: dict) -> pd.DataFrame:
-    """Extrae los escenarios DDP como DataFrame (para la web)."""
+    """Extracts the DDP scenarios as a DataFrame (for the web)."""
     scenarios = meta.get("ddp_scenarios", [])
     if not scenarios:
         return pd.DataFrame()

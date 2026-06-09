@@ -1,12 +1,12 @@
-"""Tests del dashboard web v6 (español).
+"""Web dashboard tests (English UI).
 
-Verifica:
-- Que app.py importa correctamente sin errores.
-- Que los helpers clave (_safe_max, _dur_str, _detect_anomalies, etc.) funcionan.
-- Que RunInfo ya no tiene atributos PNG (plot_path, perclass_paths, etc.).
-- Que la traducción clave está presente en el código fuente.
-- Que _show y _dl_csv existen y son funciones.
-- Que no hay referencias rotas a atributos inexistentes de RunInfo.
+Checks:
+- That app.py parses correctly without errors.
+- That the key helpers (_safe_max, _dur_str, _detect_anomalies, etc.) work.
+- That RunInfo no longer has PNG attributes (plot_path, perclass_paths, etc.).
+- That the English tab/section labels are present in the source.
+- That _show and _dl_csv exist and are functions.
+- That there are no broken references to nonexistent RunInfo attributes.
 """
 import ast
 import sys
@@ -124,17 +124,17 @@ def test_app_py_no_confusion_matrix_paths_references(app_source):
     )
 
 
-def test_app_py_spanish_tab_names(app_source):
-    """Los nombres de las pestañas (6 de nivel superior + sub-pestañas) en español."""
-    # Nivel superior (6)
-    for t in ('"Inicio"', '"Run"', '"Comparativa"', '"Viabilidad"',
-              '"Datos y modelos"', '"Sistema"'):
-        assert t in app_source, f"falta pestaña {t}"
-    # Sub-pestañas relevantes
-    for t in ('"Curvas"', '"Por clase"', '"Modelos"', '"Tiempo"', '"Información"',
-              '"Monitor"', '"Lanzador"', '"En vivo"', '"Superponer runs"',
-              '"Single vs Distribuido"', '"Predicción vs realidad"'):
-        assert t in app_source, f"falta sub-pestaña {t}"
+def test_app_py_tab_names(app_source):
+    """The tab names (6 top-level + sub-tabs) must be present in English."""
+    # Top level (6)
+    for t in ('"Home"', '"Run"', '"Comparison"', '"Feasibility"',
+              '"Data & models"', '"System"'):
+        assert t in app_source, f"missing tab {t}"
+    # Relevant sub-tabs
+    for t in ('"Curves"', '"Per-class"', '"Models"', '"Time"', '"Info"',
+              '"Monitor"', '"Launcher"', '"Live"', '"Overlay runs"',
+              '"Single vs Distributed"', '"Prediction vs reality"'):
+        assert t in app_source, f"missing sub-tab {t}"
 
 
 def test_app_py_show_helper_defined(app_source):
@@ -155,12 +155,12 @@ def test_app_py_plotly_config_present(app_source):
 
 
 def test_app_py_grid_home_sections(app_source):
-    """La pantalla de inicio debe tener las secciones de cuadrícula requeridas."""
-    assert "Vista general del proyecto" in app_source
-    assert "Estado del sistema" in app_source
-    assert "Rendimiento por clase" in app_source
-    assert "Todos los runs" in app_source
-    assert "Run seleccionado" in app_source
+    """The home screen must have the required grid sections."""
+    assert "Project overview" in app_source
+    assert "System status" in app_source
+    assert "Per-class performance" in app_source
+    assert "All runs" in app_source
+    assert "Selected run" in app_source
 
 
 def test_app_py_no_pil_import(app_source):

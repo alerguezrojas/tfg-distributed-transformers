@@ -1,11 +1,11 @@
-"""Descubre e indexa runs de entrenamiento desde logs/.
+"""Discovers and indexes training runs from logs/.
 
-Escanea recursivamente para manejar tanto la estructura antigua plana
-(logs/{env}/train_*.log) como la nueva profunda
+Scans recursively to handle both the old flat layout
+(logs/{env}/train_*.log) and the new deep one
 (logs/{env}/{mode}/{model}/train_*.log).
 
-Solo indexa CSVs — los PNGs ya no se generan durante el entrenamiento.
-El dashboard web genera todas las gráficas de forma interactiva desde los CSVs.
+Only indexes CSVs — PNGs are no longer generated during training.
+The web dashboard renders every chart interactively from the CSVs.
 """
 
 from __future__ import annotations
@@ -32,12 +32,12 @@ class RunInfo:
 
     @property
     def sort_key(self) -> str:
-        """Clave de orden cronológico (YYYYMMDD_HHMMSS).
+        """Chronological sort key (YYYYMMDD_HHMMSS).
 
-        Los timestamps se escriben como DDMMYYYY_HHMMSS (formato actual) o
-        YYYYMMDD_HHMMSS (legacy). Ordenar el string crudo NO es cronológico
-        para el formato DDMMYYYY ('27052026' > '02062026' aunque mayo < junio).
-        Esta propiedad normaliza ambos a YYYYMMDD_HHMMSS para un orden correcto.
+        Timestamps are written as DDMMYYYY_HHMMSS (current format) or
+        YYYYMMDD_HHMMSS (legacy). Sorting the raw string is NOT chronological
+        for the DDMMYYYY format ('27052026' > '02062026' even though May < June).
+        This property normalizes both to YYYYMMDD_HHMMSS for a correct order.
         """
         ts = self.timestamp
         time_part = ts[9:15] if len(ts) >= 15 else "000000"
@@ -76,7 +76,7 @@ def _env_mode_model_from_path(log_path: Path, logs_root: Path) -> tuple[str, str
 
 
 def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
-    """Escanea logs/ recursivamente y devuelve runs ordenados por timestamp desc."""
+    """Scans logs/ recursively and returns runs sorted by timestamp desc."""
     logs_root = root / "logs"
     runs: dict[str, RunInfo] = {}
 
@@ -127,7 +127,7 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
 
 
 def discover_feasibility_csvs(root: Path = Path(".")) -> list[Path]:
-    """Devuelve todos los CSVs de viabilidad ordenados por fecha de modificación."""
+    """Returns all feasibility CSVs sorted by modification time."""
     logs_root = root / "logs"
     if not logs_root.exists():
         return []
