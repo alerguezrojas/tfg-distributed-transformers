@@ -854,12 +854,13 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 
 ## Dashboard web
 
-`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~127 líneas) que monta page config + sidebar + las 6 pestañas y delega en módulos `render(ctx)`.
+`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~180 líneas) que monta page config + sidebar + las 6 páginas y delega en módulos `render(ctx)`. **Tema visual** en `.streamlit/config.toml` (primario azul #1A5276, toolbar mínima) — sin él Streamlit usa su rojo por defecto.
 
 ```
+.streamlit/config.toml      # tema (primaryColor azul, toolbarMode minimal)
 src/web/
   __init__.py
-  app.py                    # orquestador delgado: page config + sidebar + dispatch a tabs/
+  app.py                    # orquestador delgado: page config + CSS + sidebar + dispatch a tabs/
   ui/
     context.py              # DashboardContext (runs, selected_run, run, refresh_interval) → ctx
     charts.py               # helpers Plotly + estilo: _show, _dl_csv, _metric_fig, _overlay_fig,

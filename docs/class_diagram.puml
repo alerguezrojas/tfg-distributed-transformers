@@ -633,8 +633,9 @@ package "src.web" #FDFEFE {
   end note
 
   note as web_arch_note
-    **app.py** — orquestador delgado (~160 ln, SRP)
-    page config + sidebar EN/ES + nav agrupada
+    **app.py** — orquestador delgado (~180 ln, SRP)
+    page config + tema (.streamlit/config.toml) +
+    sidebar EN/ES + nav agrupada
     (ANALYZE/PLAN/DATA & OPS) → despacha render(ctx)
 
     **ui/** (SRP): context (DashboardContext),
