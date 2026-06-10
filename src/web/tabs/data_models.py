@@ -39,6 +39,8 @@ from src.web.ui.helpers import (
 
 
 def render(ctx: DashboardContext) -> None:
+    st.markdown("## Data & models")
+    st.caption("BigEarthNet-S2 v2.0 dataset explorer and timm model comparison.")
     sub = st.tabs(["Dataset", "Models"])
     with sub[0]:
         _dataset(ctx)
@@ -51,7 +53,7 @@ def _dataset(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     run = ctx.run
     refresh_interval = ctx.refresh_interval
-    st.markdown("## Data explorer — BigEarthNet-S2 v2.0")
+    st.markdown("### Data explorer — BigEarthNet-S2 v2.0")
 
     meta_path: Path | None = None
     for candidate in [
@@ -229,7 +231,7 @@ def _models(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     run = ctx.run
     refresh_interval = ctx.refresh_interval
-    st.markdown("## Model explorer")
+    st.markdown("### Model explorer")
     st.caption("Explore timm models and compare parameters and VRAM requirements.")
 
     col_fam, col_bs = st.columns([3, 1])
