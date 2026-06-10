@@ -43,6 +43,9 @@ def render(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     run = ctx.run
     refresh_interval = ctx.refresh_interval
+    st.markdown("## Feasibility")
+    st.caption("Plan before training: hardware profile, predicted time and cost, "
+               "and how past predictions held up against reality.")
     (subtab_report, subtab_predreal, subtab_study, subtab_run_feas) = st.tabs(
         ["Report", "Prediction vs reality", "Real study", "Run analysis"]
     )

@@ -44,14 +44,24 @@ i18n.install(_lang)
 st.markdown("""
 <style>
   [data-testid="stSidebar"] { min-width: 240px; max-width: 260px; }
-  .block-container { padding-top: 4rem; padding-left: 1.5rem; padding-right: 1.5rem; }
-  h1 { font-size: 1.4rem; font-weight: 600; }
-  h2 { font-size: 1.1rem; font-weight: 600; margin-top: 1.2rem; }
-  h3 { font-size: 0.95rem; font-weight: 600; }
+  .block-container { padding-top: 2.4rem; padding-left: 1.5rem; padding-right: 1.5rem; }
+  /* Headings: Streamlit's own rules win over bare element selectors, so scope
+     to the markdown container and force a compact, professional scale. */
+  [data-testid="stMarkdownContainer"] h1 { font-size: 1.45rem !important; font-weight: 650 !important; }
+  [data-testid="stMarkdownContainer"] h2 {
+    font-size: 1.25rem !important; font-weight: 650 !important;
+    margin-top: 0.4rem; padding-bottom: 0.2rem;
+  }
+  [data-testid="stMarkdownContainer"] h3 {
+    font-size: 1.02rem !important; font-weight: 600 !important; margin-top: 0.8rem;
+  }
+  [data-testid="stMarkdownContainer"] h4 { font-size: 0.92rem !important; font-weight: 600 !important; }
   [data-testid="stMetricValue"] { font-size: 1.1rem; }
+  [data-testid="stMetricLabel"] { opacity: 0.75; }
   [data-baseweb="tab-list"] {
     overflow-x: auto !important; flex-wrap: nowrap !important;
     scrollbar-width: thin; gap: 0 !important;
+    border-bottom: 1px solid #e5e7eb;
   }
   [data-baseweb="tab-list"]::-webkit-scrollbar { height: 3px; }
   [data-baseweb="tab-list"]::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
@@ -60,10 +70,20 @@ st.markdown("""
     padding-left: 0.75rem !important; padding-right: 0.75rem !important;
     min-width: unset !important;
   }
-  /* Sidebar navigation buttons: left-aligned, menu-like */
+  /* Sidebar navigation: borderless menu items; the active page keeps the
+     filled accent (primary button). */
   [data-testid="stSidebar"] .stButton button {
     justify-content: flex-start; text-align: left; font-weight: 500;
-    padding-top: 0.3rem; padding-bottom: 0.3rem;
+    padding-top: 0.28rem; padding-bottom: 0.28rem;
+  }
+  /* The label lives in a nested <p>; align it too or the text stays centered. */
+  [data-testid="stSidebar"] .stButton button div { justify-content: flex-start; }
+  [data-testid="stSidebar"] .stButton button p { text-align: left; width: 100%; }
+  [data-testid="stSidebar"] .stButton button[kind="secondary"] {
+    border: none; background: transparent;
+  }
+  [data-testid="stSidebar"] .stButton button[kind="secondary"]:hover {
+    background: rgba(26, 82, 118, 0.08); color: inherit;
   }
   [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
     margin-top: 0.4rem; letter-spacing: 0.04em; opacity: 0.7;
@@ -147,15 +167,13 @@ with st.sidebar:
                 f"**Per-class CSV:** {'yes' if run.perclass_csv_path else 'no'}"
             )
 
-    st.markdown("---")
-    refresh_interval = st.slider("Refresh interval (s)", 5, 60, 10)
-
 # ── Build shared context and render the selected page ───────────────────────────
+# (The refresh slider lives in System — Monitor/Live are the only consumers.)
 
 ctx = DashboardContext(
     runs=runs,
     selected_run=selected_run,
     run=run,
-    refresh_interval=refresh_interval,
+    refresh_interval=10,
 )
 _PAGES.get(_page, home.render)(ctx)

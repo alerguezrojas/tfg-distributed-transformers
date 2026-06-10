@@ -39,6 +39,8 @@ from src.web.ui.helpers import (
 
 
 def render(ctx: DashboardContext) -> None:
+    st.markdown("## System")
+    st.caption("Live hardware metrics, active-run monitor and training launcher.")
     sub = st.tabs(["Monitor", "Live", "Launcher"])
     with sub[0]:
         _monitor(ctx)
@@ -53,7 +55,6 @@ def _monitor(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     run = ctx.run
     refresh_interval = ctx.refresh_interval
-    st.markdown("## System monitor")
     ref_int = st.sidebar.slider("System refresh (s)", 2, 30, 5, key="sys_ref_int")
 
     @st.fragment(run_every=ref_int)
@@ -143,7 +144,11 @@ def _live(ctx: DashboardContext) -> None:
         )
     else:
         live_labels = {r.label: r for r in recent_runs}
-        live_sel = st.selectbox("Active run", list(live_labels.keys()), key="live_run_sel")
+        lc1, lc2 = st.columns([3, 1])
+        with lc1:
+            live_sel = st.selectbox("Active run", list(live_labels.keys()), key="live_run_sel")
+        with lc2:
+            refresh_interval = st.slider("Refresh (s)", 5, 60, refresh_interval, key="live_ref_int")
         live_run = live_labels[live_sel]
 
         @st.fragment(run_every=refresh_interval)
