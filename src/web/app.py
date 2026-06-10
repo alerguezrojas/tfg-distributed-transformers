@@ -60,6 +60,14 @@ st.markdown("""
     padding-left: 0.75rem !important; padding-right: 0.75rem !important;
     min-width: unset !important;
   }
+  /* Sidebar navigation buttons: left-aligned, menu-like */
+  [data-testid="stSidebar"] .stButton button {
+    justify-content: flex-start; text-align: left; font-weight: 500;
+    padding-top: 0.3rem; padding-bottom: 0.3rem;
+  }
+  [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
+    margin-top: 0.4rem; letter-spacing: 0.04em; opacity: 0.7;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -67,6 +75,22 @@ st.markdown("""
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 
 runs = _get_runs()
+
+# Grouped sidebar navigation: a single, always-visible map of the dashboard,
+# organized by task. Each entry renders one tab module (full-width main area).
+_NAV = [
+    ("ANALYZE", [("overview", "Overview"), ("run", "Run results"), ("compare", "Compare")]),
+    ("PLAN", [("feasibility", "Feasibility")]),
+    ("DATA & OPS", [("data", "Data & models"), ("system", "System")]),
+]
+_PAGES = {
+    "overview": home.render,
+    "run": run_tab.render,
+    "compare": comparison.render,
+    "feasibility": feasibility.render,
+    "data": data_models.render,
+    "system": system.render,
+}
 
 with st.sidebar:
     st.markdown("### Training Dashboard")
@@ -78,8 +102,21 @@ with st.sidebar:
     if _new_lang != _lang:
         st.session_state["_lang"] = _new_lang
         st.rerun()
-    st.markdown("---")
 
+    st.markdown("---")
+    # ── Navigation (grouped, always visible) ──────────────────────────────────
+    _page = st.session_state.get("nav", "overview")
+    for _group, _items in _NAV:
+        st.caption(_group)
+        for _key, _label in _items:
+            if st.button(_label, key=f"nav_{_key}", use_container_width=True,
+                         type="primary" if _page == _key else "secondary"):
+                st.session_state["nav"] = _key
+                st.rerun()
+    _page = st.session_state.get("nav", "overview")
+
+    st.markdown("---")
+    # ── Run selector (shared context across pages) ────────────────────────────
     if not runs:
         st.warning("No runs found in logs/.")
         selected_run = None
@@ -98,7 +135,6 @@ with st.sidebar:
             run = run_labels[selected_label]
             selected_run = run
 
-            st.markdown("---")
             has_csv = run.epoch_csv_path is not None and run.epoch_csv_path.exists()
             st.caption(
                 f"**Log:** {run.log_path.name}  \n"
@@ -112,10 +148,9 @@ with st.sidebar:
             )
 
     st.markdown("---")
-    st.markdown("**Live monitor**")
     refresh_interval = st.slider("Refresh interval (s)", 5, 60, 10)
 
-# ── Build shared context and dispatch tabs ──────────────────────────────────────
+# ── Build shared context and render the selected page ───────────────────────────
 
 ctx = DashboardContext(
     runs=runs,
@@ -123,19 +158,4 @@ ctx = DashboardContext(
     run=run,
     refresh_interval=refresh_interval,
 )
-
-tab_home, tab_run, tab_comp, tab_viability, tab_data, tab_system = st.tabs(
-    ["Home", "Run", "Comparison", "Feasibility", "Data & models", "System"]
-)
-with tab_home:
-    home.render(ctx)
-with tab_run:
-    run_tab.render(ctx)
-with tab_comp:
-    comparison.render(ctx)
-with tab_viability:
-    feasibility.render(ctx)
-with tab_data:
-    data_models.render(ctx)
-with tab_system:
-    system.render(ctx)
+_PAGES.get(_page, home.render)(ctx)
