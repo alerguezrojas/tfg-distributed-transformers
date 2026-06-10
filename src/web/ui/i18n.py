@@ -105,6 +105,9 @@ def install(lang: str) -> None:
 # ── EN → ES dictionary (static UI chrome) ───────────────────────────────────────
 
 TRANSLATIONS: dict[str, str] = {
+    # Sidebar navigation (groups + items)
+    "ANALYZE": "ANALIZAR", "PLAN": "PLANIFICAR", "DATA & OPS": "DATOS Y OPERACIÓN",
+    "Overview": "Resumen", "Run results": "Resultados del run", "Compare": "Comparar",
     # Top tabs + sub-tabs
     "Home": "Inicio", "Comparison": "Comparativa", "Feasibility": "Viabilidad",
     "Data & models": "Datos y modelos", "System": "Sistema",

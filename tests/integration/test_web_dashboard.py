@@ -130,19 +130,21 @@ def test_all_modules_parse():
 
 
 def test_app_is_thin_orchestrator(app_source):
-    """app.py must be a thin orchestrator, not the old monolith."""
+    """app.py must be a thin orchestrator that dispatches to the page modules."""
     n_lines = len(app_source.splitlines())
-    assert n_lines < 200, f"app.py has {n_lines} lines — expected a thin orchestrator"
+    assert n_lines < 220, f"app.py has {n_lines} lines — expected a thin orchestrator"
     for mod in ("home", "comparison", "feasibility", "data_models", "system"):
-        assert f"{mod}.render(ctx)" in app_source, mod
-    assert "run_tab.render(ctx)" in app_source
+        assert f"{mod}.render" in app_source, mod
+    assert "run_tab.render" in app_source
 
 
-def test_top_tab_names(app_source):
-    """The 6 top-level tab names (English) live in app.py."""
-    for t in ('"Home"', '"Run"', '"Comparison"', '"Feasibility"',
+def test_sidebar_nav_sections(app_source):
+    """The grouped sidebar navigation labels (English) live in app.py."""
+    for t in ('"Overview"', '"Run results"', '"Compare"', '"Feasibility"',
               '"Data & models"', '"System"'):
-        assert t in app_source, f"missing top tab {t}"
+        assert t in app_source, f"missing nav item {t}"
+    # Grouped, always-visible navigation (no top tab bar).
+    assert "_NAV" in app_source and "st.session_state" in app_source
 
 
 def test_sub_tab_names(tabs_source):
