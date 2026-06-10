@@ -816,6 +816,7 @@ Sesión única en Kaggle (2× Tesla T4) que extiende el estudio: **mismo modelo 
 - **DDP+AMP se combina pero NO multiplica:** esperado 1.96 × 3.80 = 7.4×, medido **5.97×**. La comunicación de gradientes no se acelera con AMP, así que pesa relativamente más → la eficiencia del DDP cae **98% (fp32) → ~78% (AMP)**. Amdahl puro, conectado con el análisis cómputo/comunicación del feasibility.
 - **Val F1 ≈ 0.55 en las 5** → la matemática es correcta en todas las estrategias (el F1 es bajo por ser subset de 5000; la calidad real está en los runs del dataset completo en V100, ~0.68).
 - **Model-parallel validado por primera vez en 2 GPUs reales** (en local solo se pudo cruzar `cuda:0→cpu`).
+- **Caso de uso REAL del paralelismo de modelo (vit_large, 303M params):** en una sola T4, vit_large da **CUDA OOM a batch 48** (el feasibility lo predijo: marcó OOM en 48/64, solo cabe batch 32 a 13.78 GB). Partido **12/24** entre las 2 T4 con model-parallel, **entrena 1 epoch sin OOM** (~9 GB/GPU, 614 s). Confirma la conclusión: el paralelismo de modelo **no acelera, pero hace posible entrenar modelos que no caben en una sola GPU** — su verdadero motivo de existir. Artefacto: `logs/kaggle/model_parallel/vit_large_patch16_224/`.
 
 **Validación del feasibility (predicho → real):** 3 predicciones acertadas en la T4:
 - Tiempo single: ~52 min/15ep predicho → ~54 min real (**+4%**).

@@ -1,0 +1,191 @@
+2026-06-10 21:18:15 [INFO ] Configuración: modelo=vit_base_patch16_224 | batch=48/GPU (global=96, 2 GPUs) | epochs=15 | lr=0.0001 | train=5000 | val=1500
+2026-06-10 21:18:15 [INFO ] Iniciando entrenamiento — 15 epochs
+2026-06-10 21:18:16 [INFO ] 
+── Epoch 001/015 ────────────────────────────
+2026-06-10 21:18:48 [INFO ] [energy] DDPTrainer.train_epoch: 1602.4 J  (0.44511 Wh)  potencia media 55.1 W
+2026-06-10 21:18:48 [INFO ] [timed] DDPTrainer.train_epoch: 32.45s
+2026-06-10 21:18:54 [INFO ] [energy] DDPTrainer.eval_epoch: 267.1 J  (0.07418 Wh)  potencia media 44.5 W
+2026-06-10 21:18:54 [INFO ] [timed] DDPTrainer.eval_epoch: 6.42s
+2026-06-10 21:18:54 [INFO ]   loss           train=0.3895  val=0.2897
+2026-06-10 21:18:54 [INFO ]   f1             train=0.1631  val=0.1563
+2026-06-10 21:18:54 [INFO ]   accuracy       train=0.8178  val=0.8741
+2026-06-10 21:18:54 [INFO ]   precision      val=0.3406
+2026-06-10 21:18:54 [INFO ]   recall         val=0.1345
+2026-06-10 21:18:57 [INFO ] [Epoch 001] Checkpoint guardado
+2026-06-10 21:18:57 [INFO ]   ETA: 0h 09m  (32s/epoch, best_f1=0.1563)  (threshold óptimo=0.30, F1=0.2799)
+2026-06-10 21:18:57 [INFO ] 
+── Epoch 002/015 ────────────────────────────
+2026-06-10 21:19:28 [INFO ] [energy] DDPTrainer.train_epoch: 1590.0 J  (0.44166 Wh)  potencia media 57.4 W
+2026-06-10 21:19:28 [INFO ] [timed] DDPTrainer.train_epoch: 31.46s
+2026-06-10 21:19:34 [INFO ] [energy] DDPTrainer.eval_epoch: 269.7 J  (0.07491 Wh)  potencia media 49.0 W
+2026-06-10 21:19:34 [INFO ] [timed] DDPTrainer.eval_epoch: 6.09s
+2026-06-10 21:19:34 [INFO ]   loss           train=0.2555  val=0.2588
+2026-06-10 21:19:34 [INFO ]   f1             train=0.2767  val=0.2580
+2026-06-10 21:19:34 [INFO ]   accuracy       train=0.8885  val=0.8871
+2026-06-10 21:19:34 [INFO ]   precision      val=0.4672
+2026-06-10 21:19:34 [INFO ]   recall         val=0.2071
+2026-06-10 21:19:36 [INFO ] [Epoch 002] Checkpoint guardado
+2026-06-10 21:19:36 [INFO ]   ETA: 0h 08m  (31s/epoch, best_f1=0.2580)  (threshold óptimo=0.30, F1=0.3722)
+2026-06-10 21:19:36 [INFO ] 
+── Epoch 003/015 ────────────────────────────
+2026-06-10 21:20:08 [INFO ] [energy] DDPTrainer.train_epoch: 1654.3 J  (0.45954 Wh)  potencia media 59.1 W
+2026-06-10 21:20:08 [INFO ] [timed] DDPTrainer.train_epoch: 31.90s
+2026-06-10 21:20:15 [INFO ] [energy] DDPTrainer.eval_epoch: 286.4 J  (0.07956 Wh)  potencia media 50.2 W
+2026-06-10 21:20:15 [INFO ] [timed] DDPTrainer.eval_epoch: 6.17s
+2026-06-10 21:20:15 [INFO ]   loss           train=0.2268  val=0.2345
+2026-06-10 21:20:15 [INFO ]   f1             train=0.3704  val=0.4085
+2026-06-10 21:20:15 [INFO ]   accuracy       train=0.9042  val=0.8960
+2026-06-10 21:20:15 [INFO ]   precision      val=0.4839
+2026-06-10 21:20:15 [INFO ]   recall         val=0.3958
+2026-06-10 21:20:17 [INFO ] [Epoch 003] Checkpoint guardado
+2026-06-10 21:20:17 [INFO ]   ETA: 0h 07m  (32s/epoch, best_f1=0.4085)  (threshold óptimo=0.30, F1=0.4495)
+2026-06-10 21:20:17 [INFO ] 
+── Epoch 004/015 ────────────────────────────
+2026-06-10 21:20:49 [INFO ] [energy] DDPTrainer.train_epoch: 1703.5 J  (0.47319 Wh)  potencia media 59.4 W
+2026-06-10 21:20:49 [INFO ] [timed] DDPTrainer.train_epoch: 32.76s
+2026-06-10 21:20:56 [INFO ] [energy] DDPTrainer.eval_epoch: 298.7 J  (0.08298 Wh)  potencia media 50.6 W
+2026-06-10 21:20:56 [INFO ] [timed] DDPTrainer.eval_epoch: 6.46s
+2026-06-10 21:20:56 [INFO ]   loss           train=0.2000  val=0.2202
+2026-06-10 21:20:56 [INFO ]   f1             train=0.4423  val=0.4054
+2026-06-10 21:20:56 [INFO ]   accuracy       train=0.9148  val=0.9074
+2026-06-10 21:20:56 [INFO ]   precision      val=0.5615
+2026-06-10 21:20:56 [INFO ]   recall         val=0.3510
+2026-06-10 21:20:56 [INFO ]   ETA: 0h 07m  (33s/epoch, best_f1=0.4085)  (threshold óptimo=0.30, F1=0.4748)
+2026-06-10 21:20:56 [INFO ] 
+── Epoch 005/015 ────────────────────────────
+2026-06-10 21:21:29 [INFO ] [energy] DDPTrainer.train_epoch: 1751.3 J  (0.48647 Wh)  potencia media 61.4 W
+2026-06-10 21:21:29 [INFO ] [timed] DDPTrainer.train_epoch: 32.73s
+2026-06-10 21:21:35 [INFO ] [energy] DDPTrainer.eval_epoch: 288.7 J  (0.08020 Wh)  potencia media 50.7 W
+2026-06-10 21:21:35 [INFO ] [timed] DDPTrainer.eval_epoch: 6.21s
+2026-06-10 21:21:35 [INFO ]   loss           train=0.1833  val=0.2064
+2026-06-10 21:21:35 [INFO ]   f1             train=0.5055  val=0.4772
+2026-06-10 21:21:35 [INFO ]   accuracy       train=0.9228  val=0.9113
+2026-06-10 21:21:35 [INFO ]   precision      val=0.6918
+2026-06-10 21:21:35 [INFO ]   recall         val=0.4365
+2026-06-10 21:21:38 [INFO ] [Epoch 005] Checkpoint guardado
+2026-06-10 21:21:38 [INFO ]   ETA: 0h 06m  (33s/epoch, best_f1=0.4772)  (threshold óptimo=0.30, F1=0.5010)
+2026-06-10 21:21:38 [INFO ] 
+── Epoch 006/015 ────────────────────────────
+2026-06-10 21:22:12 [INFO ] [energy] DDPTrainer.train_epoch: 1786.1 J  (0.49613 Wh)  potencia media 59.3 W
+2026-06-10 21:22:12 [INFO ] [timed] DDPTrainer.train_epoch: 34.11s
+2026-06-10 21:22:19 [INFO ] [energy] DDPTrainer.eval_epoch: 300.5 J  (0.08348 Wh)  potencia media 50.1 W
+2026-06-10 21:22:19 [INFO ] [timed] DDPTrainer.eval_epoch: 6.54s
+2026-06-10 21:22:19 [INFO ]   loss           train=0.1659  val=0.2058
+2026-06-10 21:22:19 [INFO ]   f1             train=0.5639  val=0.4942
+2026-06-10 21:22:19 [INFO ]   accuracy       train=0.9300  val=0.9130
+2026-06-10 21:22:19 [INFO ]   precision      val=0.6116
+2026-06-10 21:22:19 [INFO ]   recall         val=0.4546
+2026-06-10 21:22:22 [INFO ] [Epoch 006] Checkpoint guardado
+2026-06-10 21:22:22 [INFO ]   ETA: 0h 05m  (34s/epoch, best_f1=0.4942)  (threshold óptimo=0.30, F1=0.5270)
+2026-06-10 21:22:22 [INFO ] 
+── Epoch 007/015 ────────────────────────────
+2026-06-10 21:22:56 [INFO ] [energy] DDPTrainer.train_epoch: 1758.4 J  (0.48846 Wh)  potencia media 58.4 W
+2026-06-10 21:22:56 [INFO ] [timed] DDPTrainer.train_epoch: 34.52s
+2026-06-10 21:23:03 [INFO ] [energy] DDPTrainer.eval_epoch: 291.2 J  (0.08088 Wh)  potencia media 48.5 W
+2026-06-10 21:23:03 [INFO ] [timed] DDPTrainer.eval_epoch: 6.57s
+2026-06-10 21:23:03 [INFO ]   loss           train=0.1587  val=0.2052
+2026-06-10 21:23:03 [INFO ]   f1             train=0.6277  val=0.5107
+2026-06-10 21:23:03 [INFO ]   accuracy       train=0.9346  val=0.9152
+2026-06-10 21:23:03 [INFO ]   precision      val=0.6696
+2026-06-10 21:23:03 [INFO ]   recall         val=0.4696
+2026-06-10 21:23:05 [INFO ] [Epoch 007] Checkpoint guardado
+2026-06-10 21:23:05 [INFO ]   ETA: 0h 05m  (34s/epoch, best_f1=0.5107)  (threshold óptimo=0.30, F1=0.5292)
+2026-06-10 21:23:05 [INFO ] 
+── Epoch 008/015 ────────────────────────────
+2026-06-10 21:23:38 [INFO ] [energy] DDPTrainer.train_epoch: 1717.1 J  (0.47698 Wh)  potencia media 60.9 W
+2026-06-10 21:23:38 [INFO ] [timed] DDPTrainer.train_epoch: 32.75s
+2026-06-10 21:23:44 [INFO ] [energy] DDPTrainer.eval_epoch: 290.1 J  (0.08058 Wh)  potencia media 49.2 W
+2026-06-10 21:23:44 [INFO ] [timed] DDPTrainer.eval_epoch: 6.51s
+2026-06-10 21:23:44 [INFO ]   loss           train=0.1342  val=0.2093
+2026-06-10 21:23:44 [INFO ]   f1             train=0.6839  val=0.5368
+2026-06-10 21:23:44 [INFO ]   accuracy       train=0.9443  val=0.9140
+2026-06-10 21:23:44 [INFO ]   precision      val=0.6254
+2026-06-10 21:23:44 [INFO ]   recall         val=0.4996
+2026-06-10 21:23:45 [INFO ] [Epoch 008] Checkpoint guardado
+2026-06-10 21:23:45 [INFO ]   ETA: 0h 04m  (33s/epoch, best_f1=0.5368)  (threshold óptimo=0.35, F1=0.5828)
+2026-06-10 21:23:45 [INFO ] 
+── Epoch 009/015 ────────────────────────────
+2026-06-10 21:24:20 [INFO ] [energy] DDPTrainer.train_epoch: 1777.3 J  (0.49369 Wh)  potencia media 59.0 W
+2026-06-10 21:24:20 [INFO ] [timed] DDPTrainer.train_epoch: 34.42s
+2026-06-10 21:24:26 [INFO ] [energy] DDPTrainer.eval_epoch: 293.0 J  (0.08139 Wh)  potencia media 49.7 W
+2026-06-10 21:24:26 [INFO ] [timed] DDPTrainer.eval_epoch: 6.39s
+2026-06-10 21:24:26 [INFO ]   loss           train=0.1203  val=0.2203
+2026-06-10 21:24:26 [INFO ]   f1             train=0.7352  val=0.5230
+2026-06-10 21:24:26 [INFO ]   accuracy       train=0.9505  val=0.9129
+2026-06-10 21:24:26 [INFO ]   precision      val=0.6477
+2026-06-10 21:24:26 [INFO ]   recall         val=0.4694
+2026-06-10 21:24:26 [INFO ]   ETA: 0h 03m  (34s/epoch, best_f1=0.5368)  (threshold óptimo=0.30, F1=0.5579)
+2026-06-10 21:24:26 [INFO ] 
+── Epoch 010/015 ────────────────────────────
+2026-06-10 21:24:59 [INFO ] [energy] DDPTrainer.train_epoch: 1762.3 J  (0.48954 Wh)  potencia media 61.4 W
+2026-06-10 21:24:59 [INFO ] [timed] DDPTrainer.train_epoch: 33.00s
+2026-06-10 21:25:06 [INFO ] [energy] DDPTrainer.eval_epoch: 287.6 J  (0.07989 Wh)  potencia media 49.6 W
+2026-06-10 21:25:06 [INFO ] [timed] DDPTrainer.eval_epoch: 6.32s
+2026-06-10 21:25:06 [INFO ]   loss           train=0.1048  val=0.2198
+2026-06-10 21:25:06 [INFO ]   f1             train=0.7638  val=0.5522
+2026-06-10 21:25:06 [INFO ]   accuracy       train=0.9582  val=0.9141
+2026-06-10 21:25:06 [INFO ]   precision      val=0.6370
+2026-06-10 21:25:06 [INFO ]   recall         val=0.5093
+2026-06-10 21:25:08 [INFO ] [Epoch 010] Checkpoint guardado
+2026-06-10 21:25:08 [INFO ]   ETA: 0h 03m  (33s/epoch, best_f1=0.5522)  (threshold óptimo=0.30, F1=0.5965)
+2026-06-10 21:25:08 [INFO ] 
+── Epoch 011/015 ────────────────────────────
+2026-06-10 21:25:41 [INFO ] [energy] DDPTrainer.train_epoch: 1723.4 J  (0.47872 Wh)  potencia media 59.8 W
+2026-06-10 21:25:41 [INFO ] [timed] DDPTrainer.train_epoch: 32.92s
+2026-06-10 21:25:47 [INFO ] [energy] DDPTrainer.eval_epoch: 291.3 J  (0.08092 Wh)  potencia media 50.2 W
+2026-06-10 21:25:47 [INFO ] [timed] DDPTrainer.eval_epoch: 6.36s
+2026-06-10 21:25:47 [INFO ]   loss           train=0.0932  val=0.2248
+2026-06-10 21:25:47 [INFO ]   f1             train=0.7983  val=0.5392
+2026-06-10 21:25:47 [INFO ]   accuracy       train=0.9639  val=0.9143
+2026-06-10 21:25:47 [INFO ]   precision      val=0.6313
+2026-06-10 21:25:47 [INFO ]   recall         val=0.4921
+2026-06-10 21:25:47 [INFO ]   ETA: 0h 02m  (33s/epoch, best_f1=0.5522)  (threshold óptimo=0.30, F1=0.5741)
+2026-06-10 21:25:47 [INFO ] 
+── Epoch 012/015 ────────────────────────────
+2026-06-10 21:26:20 [INFO ] [energy] DDPTrainer.train_epoch: 1718.7 J  (0.47743 Wh)  potencia media 60.5 W
+2026-06-10 21:26:20 [INFO ] [timed] DDPTrainer.train_epoch: 32.54s
+2026-06-10 21:26:26 [INFO ] [energy] DDPTrainer.eval_epoch: 305.1 J  (0.08476 Wh)  potencia media 51.7 W
+2026-06-10 21:26:26 [INFO ] [timed] DDPTrainer.eval_epoch: 6.40s
+2026-06-10 21:26:26 [INFO ]   loss           train=0.0801  val=0.2292
+2026-06-10 21:26:26 [INFO ]   f1             train=0.8080  val=0.5373
+2026-06-10 21:26:26 [INFO ]   accuracy       train=0.9696  val=0.9148
+2026-06-10 21:26:26 [INFO ]   precision      val=0.6370
+2026-06-10 21:26:26 [INFO ]   recall         val=0.4855
+2026-06-10 21:26:26 [INFO ]   ETA: 0h 01m  (33s/epoch, best_f1=0.5522)  (threshold óptimo=0.30, F1=0.5847)
+2026-06-10 21:26:26 [INFO ] 
+── Epoch 013/015 ────────────────────────────
+2026-06-10 21:26:59 [INFO ] [energy] DDPTrainer.train_epoch: 1712.8 J  (0.47577 Wh)  potencia media 60.1 W
+2026-06-10 21:26:59 [INFO ] [timed] DDPTrainer.train_epoch: 32.71s
+2026-06-10 21:27:05 [INFO ] [energy] DDPTrainer.eval_epoch: 302.7 J  (0.08407 Wh)  potencia media 51.3 W
+2026-06-10 21:27:05 [INFO ] [timed] DDPTrainer.eval_epoch: 6.43s
+2026-06-10 21:27:05 [INFO ]   loss           train=0.0743  val=0.2322
+2026-06-10 21:27:05 [INFO ]   f1             train=0.8332  val=0.5459
+2026-06-10 21:27:05 [INFO ]   accuracy       train=0.9724  val=0.9151
+2026-06-10 21:27:05 [INFO ]   precision      val=0.6324
+2026-06-10 21:27:05 [INFO ]   recall         val=0.5014
+2026-06-10 21:27:05 [INFO ]   ETA: 0h 01m  (33s/epoch, best_f1=0.5522)  (threshold óptimo=0.30, F1=0.5701)
+2026-06-10 21:27:05 [INFO ] 
+── Epoch 014/015 ────────────────────────────
+2026-06-10 21:27:38 [INFO ] [energy] DDPTrainer.train_epoch: 1729.9 J  (0.48052 Wh)  potencia media 61.3 W
+2026-06-10 21:27:38 [INFO ] [timed] DDPTrainer.train_epoch: 32.31s
+2026-06-10 21:27:44 [INFO ] [energy] DDPTrainer.eval_epoch: 300.5 J  (0.08346 Wh)  potencia media 51.8 W
+2026-06-10 21:27:44 [INFO ] [timed] DDPTrainer.eval_epoch: 6.30s
+2026-06-10 21:27:44 [INFO ]   loss           train=0.0690  val=0.2330
+2026-06-10 21:27:44 [INFO ]   f1             train=0.8402  val=0.5376
+2026-06-10 21:27:44 [INFO ]   accuracy       train=0.9745  val=0.9153
+2026-06-10 21:27:44 [INFO ]   precision      val=0.6440
+2026-06-10 21:27:44 [INFO ]   recall         val=0.4860
+2026-06-10 21:27:44 [INFO ]   ETA: 0h 00m  (32s/epoch, best_f1=0.5522)  (threshold óptimo=0.30, F1=0.5810)
+2026-06-10 21:27:44 [INFO ] 
+── Epoch 015/015 ────────────────────────────
+2026-06-10 21:28:16 [INFO ] [energy] DDPTrainer.train_epoch: 1706.4 J  (0.47401 Wh)  potencia media 60.7 W
+2026-06-10 21:28:16 [INFO ] [timed] DDPTrainer.train_epoch: 32.32s
+2026-06-10 21:28:23 [INFO ] [energy] DDPTrainer.eval_epoch: 294.3 J  (0.08176 Wh)  potencia media 50.7 W
+2026-06-10 21:28:23 [INFO ] [timed] DDPTrainer.eval_epoch: 6.29s
+2026-06-10 21:28:23 [INFO ]   loss           train=0.0643  val=0.2334
+2026-06-10 21:28:23 [INFO ]   f1             train=0.8459  val=0.5442
+2026-06-10 21:28:23 [INFO ]   accuracy       train=0.9773  val=0.9143
+2026-06-10 21:28:23 [INFO ]   precision      val=0.6403
+2026-06-10 21:28:23 [INFO ]   recall         val=0.4987
+2026-06-10 21:28:23 [INFO ]   ETA: 0h 00m  (32s/epoch, best_f1=0.5522)  (threshold óptimo=0.30, F1=0.5775)
+2026-06-10 21:28:23 [INFO ] Entrenamiento completado — mejor Val F1: 0.5522
