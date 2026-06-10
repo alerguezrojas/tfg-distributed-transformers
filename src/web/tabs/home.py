@@ -111,6 +111,14 @@ def render(ctx: DashboardContext) -> None:
                 m4.metric("Duration", dur_sel or "—")
                 if thresh_f1 is not None:
                     st.metric("F1 @ optimal threshold", f"{thresh_f1:.4f}")
+                # One-line verdict: overfitting gap at the best epoch.
+                if "train_f1" in df_sel.columns and best_ep_v is not None and not pd.isna(best_f1_sel):
+                    _tr = df_sel.loc[df_sel["epoch"] == best_ep_v, "train_f1"]
+                    if not _tr.empty:
+                        gap = float(_tr.iloc[0]) - float(best_f1_sel)
+                        note = " — overfitting" if gap > 0.1 else ""
+                        st.caption(f"Best Val F1 {best_f1_sel:.3f} at epoch "
+                                   f"{int(best_ep_v)} · train–val gap {gap:+.2f}{note}")
                 anomalies_home = _detect_anomalies(selected_run.log_path)
                 if anomalies_home:
                     st.warning(f"{len(anomalies_home)} anomaly(ies) in the log")
@@ -157,71 +165,10 @@ def render(ctx: DashboardContext) -> None:
                         _show(fig_loss_home, "inicio_loss")
 
     st.markdown("---")
-
-    # ── System status ───────────────────────────────────────────────────────────
-    st.markdown("### System status")
-    gpu_home = _gpu_usage()
-
-    if gpu_home:
-        # Full GPU name as a heading (avoids truncation in st.metric)
-        gpu_name_clean = gpu_home["name"].replace("NVIDIA GeForce ", "").replace("NVIDIA ", "")
-        st.markdown(f"**GPU:** {gpu_home['name']}")
-        gc1, gc2, gc3, gc4 = st.columns(4)
-        gc1.metric("Model", gpu_name_clean)
-        gc2.metric("VRAM", f"{gpu_home['mem_used_mb']/1024:.1f} / {gpu_home['mem_total_mb']/1024:.1f} GB")
-        gc3.metric("GPU utilization", f"{gpu_home['util_pct']}%")
-        gc4.metric("Temperature", f"{gpu_home['temp_c']} °C")
-    else:
-        st.caption("GPU: nvidia-smi unavailable")
-
-    try:
-        import psutil
-        cpu_pct = psutil.cpu_percent(interval=0.1)
-        ram = psutil.virtual_memory()
-        sc1, sc2 = st.columns(2)
-        sc1.metric("CPU", f"{cpu_pct:.1f}%")
-        sc2.metric("RAM", f"{ram.used/1024**3:.1f} / {ram.total/1024**3:.1f} GB  ({ram.percent:.0f}%)")
-    except Exception:
-        pass
-
-    st.markdown("---")
-
-    # ── Per-class snapshot ──────────────────────────────────────────────────────
-    perclass_csv_home: Path | None = None
-    if selected_run is not None and selected_run.perclass_csv_path and selected_run.perclass_csv_path.exists():
-        perclass_csv_home = selected_run.perclass_csv_path
-    else:
-        all_pc = sorted(ROOT.rglob("perclass_metrics_*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
-        if all_pc:
-            perclass_csv_home = all_pc[0]
-
-    if perclass_csv_home is not None:
-        try:
-            pc_home = parse_perclass_csv(perclass_csv_home)
-            if not pc_home.empty:
-                last_ep_home = pc_home["epoch"].max()
-                ep_pc_home = pc_home[pc_home["epoch"] == last_ep_home].copy().sort_values("f1", ascending=False)
-                st.markdown(f"### Per-class performance (epoch {last_ep_home})")
-                ph_left, ph_right = st.columns(2)
-                with ph_left:
-                    st.markdown("**Top 5 best classes**")
-                    top5 = ep_pc_home.head(5)[["class_name", "f1", "precision", "recall"]]
-                    st.dataframe(
-                        top5.style.map(_color_f1_cell, subset=["f1"])
-                            .format({"f1": "{:.3f}", "precision": "{:.3f}", "recall": "{:.3f}"}),
-                        use_container_width=True, hide_index=True,
-                    )
-                with ph_right:
-                    st.markdown("**Top 5 worst classes**")
-                    bot5 = ep_pc_home.tail(5).sort_values("f1")[["class_name", "f1", "precision", "recall"]]
-                    st.dataframe(
-                        bot5.style.map(_color_f1_cell, subset=["f1"])
-                            .format({"f1": "{:.3f}", "precision": "{:.3f}", "recall": "{:.3f}"}),
-                        use_container_width=True, hide_index=True,
-                    )
-                st.markdown("---")
-        except Exception:
-            pass
+    st.caption(
+        "Tip: use the sidebar menu to navigate. Live system info lives in **System → Monitor**; "
+        "per-class results in **Run results → Per-class**."
+    )
 
     # ── Table of all runs ───────────────────────────────────────────────────────
     st.markdown("### All runs")

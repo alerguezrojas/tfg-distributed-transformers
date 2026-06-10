@@ -157,10 +157,12 @@ def test_sub_tab_names(tabs_source):
 
 
 def test_home_sections(tabs_source):
-    """The home screen grid sections must be present (in tabs/home.py)."""
+    """The home screen (executive summary) must keep its core sections.
+
+    System/hardware and per-class snapshots were intentionally removed from Home
+    to de-duplicate them (they live in System / Run results).
+    """
     assert "Project overview" in tabs_source
-    assert "System status" in tabs_source
-    assert "Per-class performance" in tabs_source
     assert "All runs" in tabs_source
     assert "Selected run" in tabs_source
 
