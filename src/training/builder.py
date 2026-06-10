@@ -207,6 +207,7 @@ class TrainingSessionBuilder:
         grad_clip = cfg["training"].get("grad_clip", None)
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
+        precision = cfg["training"].get("precision", "fp32")
         checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / mode / model_slug)
         if self._distributed and self._hetero_local_batch_size is not None:
             from src.training.heterogeneous_ddp_trainer import HeterogeneousDDPTrainer
@@ -219,6 +220,7 @@ class TrainingSessionBuilder:
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
+                precision=precision,
                 rank=self._rank,
                 world_size=self._world_size,
                 local_batch_size=self._hetero_local_batch_size,
@@ -234,6 +236,7 @@ class TrainingSessionBuilder:
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
+                precision=precision,
                 rank=self._rank,
                 world_size=self._world_size,
             )
@@ -247,6 +250,7 @@ class TrainingSessionBuilder:
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
+                precision=precision,
             )
 
         # ── 1. @ function decorators on Trainer methods ───────────────────────
