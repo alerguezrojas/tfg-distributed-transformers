@@ -240,7 +240,7 @@ def render(ctx: DashboardContext) -> None:
             # long scroll. 'Distributed scaling' holds the DDP-scenarios section.
             _rt = st.tabs([
                 "Hardware & precision", "Dataset I/O & memory",
-                "Throughput & time", "Distributed scaling",
+                "Throughput & time", "Distributed scaling", "Cloud cost",
             ])
 
             with _rt[0]:
@@ -429,6 +429,55 @@ def render(ctx: DashboardContext) -> None:
             with _rt[3]:
                 # DDP scenarios (1/2/4/8 GPUs) — filled by the DDP analysis block below.
                 subtab_ddp_opt = st.container()
+
+            with _rt[4]:
+                # ── Cloud training cost (estimated) ────────────────────────────
+                st.markdown("### Cloud training cost (estimated)")
+                from src.cloud_cost import estimate_costs
+                viable_c = bdf_feas[bdf_feas["oom"] == "no"].copy() if not bdf_feas.empty else bdf_feas
+                per_ep_col = next((c for c in ["est_total_min_per_epoch", "est_min_per_epoch_30ep"]
+                                   if not bdf_feas.empty and c in bdf_feas.columns), None)
+                if per_ep_col is None or viable_c.empty:
+                    st.info("No time estimate in this report — run a benchmark first.")
+                else:
+                    _orig = next((c for c in bdf_feas.columns
+                                  if c.startswith("est_total_h_") and c.endswith("ep")), None)
+                    _def_ep = 30
+                    if _orig:
+                        try:
+                            _def_ep = int(_orig.split("est_total_h_")[1].replace("ep", ""))
+                        except ValueError:
+                            pass
+                    cc_ep = st.number_input("Epochs", min_value=1, value=_def_ep, key="cloud_cost_epochs")
+                    best_min = float(viable_c[per_ep_col].min())   # fastest viable config
+                    total_h = best_min * cc_ep / 60.0
+                    ref_gpu = meta.get("hardware_name", "")
+                    st.caption(
+                        f"Based on **{total_h:.1f} h** total on the benchmarked GPU "
+                        f"({ref_gpu or 'unknown'}) for {cc_ep} epochs. Times are scaled to each GPU by "
+                        "relative FP16 throughput; prices are approximate on-demand rates "
+                        "(editable in `src/cloud_cost.py`), so treat this as a ballpark."
+                    )
+                    rows = estimate_costs(total_h, ref_gpu)
+                    cost_df = pd.DataFrame([{
+                        "Provider": r["provider"], "GPU": r["gpu"],
+                        "$/h": r["usd_per_hour"], "Est. hours": r["est_hours"],
+                        "Est. cost ($)": r["cost_usd"], "Notes": r["note"],
+                    } for r in rows])
+                    st.dataframe(cost_df, use_container_width=True, hide_index=True, height=320)
+                    _dl_csv(cost_df, "cloud_cost.csv", "Download cost table")
+                    paid = [r for r in rows if r["cost_usd"] > 0]
+                    if paid:
+                        fig_cost = go.Figure(go.Bar(
+                            x=[f"{r['provider']} · {r['gpu']}" for r in paid],
+                            y=[r["cost_usd"] for r in paid],
+                            marker_color=COLORS[0], opacity=0.85,
+                            text=[f"${r['cost_usd']:.0f}" for r in paid], textposition="outside",
+                        ))
+                        fig_cost.update_layout(**_base_layout(320, "Estimated training cost by provider (paid)"),
+                                               xaxis_tickangle=35, yaxis_title="USD")
+                        _show(fig_cost, "cloud_cost")
+                        st.caption("Free options (Kaggle / Colab) are in the table above, not the chart.")
 
     # ── Real empirical study (mini-training + LR range + gradient noise) ────────
     with subtab_study:
