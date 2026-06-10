@@ -1,0 +1,16 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,vit_base_patch16_224,85.81,200.8,NVIDIA GeForce RTX 3060 Ti,8.2,8.2
+#gpu,compute_capability,architecture,sm_count,cuda_cores,tensor_cores
+#gpu,8.6,Ampere,38,4864,152
+#precision,mode
+#precision,fp32
+#precision_cmp,batch_size,tc_precision,fp32_imgs_s,tc_imgs_s,speedup,fp32_vram_gb,tc_vram_gb
+#precision_cmp,32,amp,68.1,172.7,2.54,5.63,4.15
+#sizes,n_train,n_val,nfs_factor
+#sizes,237871,122342,1.0
+#model_mem,weight_mb,gradient_mb,optimizer_mb,activation_mb_per_image,total_static_mb
+#model_mem,343.3,343.3,686.5,162.2,1373.0
+#cpu,logical_cores,physical_cores,freq_mhz,ram_total_gb,ram_free_gb
+#cpu,16,8,4536.0,16.6,7.7
+batch_size,trace_mode,s_per_batch_train,imgs_per_s_train,s_per_batch_eval,imgs_per_s_eval,peak_vram_gb,avg_power_w,oom,est_train_min_per_epoch,est_eval_min_per_epoch,est_total_min_per_epoch,est_total_h_30ep,est_energy_train_wh_per_epoch,est_energy_eval_wh_per_epoch,est_energy_total_wh,flops_train_gflops_per_epoch,flops_eval_gflops_per_epoch,optimizer_steps_per_epoch,est_ddp_2gpu_h_30ep,est_ddp_4gpu_h_30ep
+32,off,0.4673,68.5,0.1531,209.0,4.94,196.3,no,57.9,9.8,67.7,33.83,189.45,12.77,6066.5,143312.5,24569.5,7434,19.9,9.95

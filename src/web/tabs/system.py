@@ -227,6 +227,14 @@ def _launcher(ctx: DashboardContext) -> None:
                 l_fn = st.multiselect("Fn decorators", ["timing", "energy"])
                 l_inspect = st.multiselect("Inspect features",
                                            ["model-summary", "grad-monitor", "anomalies", "batch-table"])
+                from src.gpu_specs import detect_all as _detect
+                from src.precision import available_precisions as _avail, label as _plabel
+                _g = _detect()
+                _precs_l = _avail(_g[0].compute_capability if _g else None, is_cuda=bool(_g))
+                l_precision = st.selectbox(
+                    "Precision (Tensor cores)", _precs_l, format_func=_plabel,
+                    help="fp32 = CUDA cores; tf32/amp/bf16 = Tensor cores (faster, less VRAM).",
+                )
             launched_single = st.form_submit_button("Launch")
 
         if launched_single:
@@ -246,6 +254,8 @@ def _launcher(ctx: DashboardContext) -> None:
                 parts_l.append(f"--fn {' '.join(l_fn)}")
             if l_inspect:
                 parts_l.append(f"--inspect {' '.join(l_inspect)}")
+            if l_precision and l_precision != "fp32":
+                parts_l.append(f"--precision {l_precision}")
             cmd_l = " ".join(parts_l)
             st.code(cmd_l, language="bash")
             out_ph_l = st.empty()

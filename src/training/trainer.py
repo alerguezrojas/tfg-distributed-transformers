@@ -1,5 +1,6 @@
 """Single-GPU trainer for BigEarthNet multi-label classification."""
 
+import contextlib
 import random
 import time
 from pathlib import Path
@@ -8,6 +9,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from src import precision as precision_mod
 from src.training.base_trainer import BaseTrainer
 from src.training import metrics as m
 from src.training.augmentations import mixup_batch
@@ -50,6 +52,7 @@ class Trainer(BaseTrainer):
         grad_clip: float | None = None,
         label_smoothing: float = 0.0,
         mixup_alpha: float = 0.0,
+        precision: str = "fp32",
     ):
         self.model = model.to(device)
         self.optimizer = optimizer
@@ -63,6 +66,25 @@ class Trainer(BaseTrainer):
         self.mixup_alpha = mixup_alpha
         self._current_epoch: int = 0
         self._batch_hooks: list = []
+
+        # ── Numeric precision (the practical Tensor-core switch) ───────────────
+        # fp32 -> CUDA cores; tf32/amp/bf16 -> Tensor cores. autocast/GradScaler
+        # only apply on CUDA; on CPU we always run fp32.
+        self.precision = precision if device.type == "cuda" else "fp32"
+        precision_mod.apply_backend_flags(self.precision)
+        self._amp_dtype = precision_mod.autocast_dtype(self.precision)
+        self._use_amp = self._amp_dtype is not None and device.type == "cuda"
+        _scaler_on = precision_mod.needs_scaler(self.precision) and device.type == "cuda"
+        try:                                   # torch >= 2.3
+            self._scaler = torch.amp.GradScaler("cuda", enabled=_scaler_on)
+        except (AttributeError, TypeError):    # older torch
+            self._scaler = torch.cuda.amp.GradScaler(enabled=_scaler_on)
+
+    def _autocast(self):
+        """Autocast context for the forward pass (no-op for fp32/tf32)."""
+        if self._use_amp:
+            return torch.autocast(device_type="cuda", dtype=self._amp_dtype)
+        return contextlib.nullcontext()
 
     def register_batch_hook(self, fn) -> None:
         """Register a callable called after every training batch."""
@@ -87,12 +109,15 @@ class Trainer(BaseTrainer):
                 labels = labels * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
 
             self.optimizer.zero_grad()
-            logits = self.model(images)
-            loss = self.criterion(logits, labels)
-            loss.backward()
+            with self._autocast():
+                logits = self.model(images)
+                loss = self.criterion(logits, labels)
+            self._scaler.scale(loss).backward()
             if self.grad_clip is not None:
+                self._scaler.unscale_(self.optimizer)
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
-            self.optimizer.step()
+            self._scaler.step(self.optimizer)
+            self._scaler.update()
 
             total_loss += loss.item()
             with torch.no_grad():
@@ -139,11 +164,12 @@ class Trainer(BaseTrainer):
             images = images.to(self.device)
             labels = labels.to(self.device)
 
-            logits = self.model(images)
-            loss = self.criterion(logits, labels)
+            with self._autocast():
+                logits = self.model(images)
+                loss = self.criterion(logits, labels)
             total_loss += loss.item()
 
-            all_probs.append(torch.sigmoid(logits).cpu())
+            all_probs.append(torch.sigmoid(logits.float()).cpu())
             all_labels.append(labels.cpu())
 
         all_probs_t = torch.cat(all_probs)

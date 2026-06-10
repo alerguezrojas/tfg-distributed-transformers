@@ -1,0 +1,43 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  10/06/2026 11:57:31
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               vit_base_patch16_224
+  Parámetros totales:   85,813,267 (85.8M)
+  FLOPs/imagen:         200.8 MFLOPs
+  Memoria estática:     1.34 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: fp32 (CUDA cores)
+  FP32 68 img/s  vs  AMP 173 img/s  → 2.54× con Tensor cores (VRAM 5.63 → 4.15 GB)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 4536 MHz
+  RAM: 16.6 GB total / 7.7 GB libre
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch   Total est.      Estado
+     32       6.41 GB        ✓ OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     32  off              68.5       209.0   4.94 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  30 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     32  off         0h 57m   0h 09m    1h 07m   33h 49m
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  ✓ Batch size óptimo: 32 (68.5 imgs/s)
+  → --trace off      30 epochs: ~33h 49m  [DDP×2: ~19.9h]
+
+  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+

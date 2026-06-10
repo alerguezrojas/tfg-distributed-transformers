@@ -23,6 +23,8 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     meta: dict = {}
     sizes: dict = {}
     gpu_info: dict = {}
+    precision_mode: str = ""
+    precision_cmp: dict = {}
     model_mem: dict = {}
     cpu_info: dict = {}
     disk_info: dict = {}
@@ -51,6 +53,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
         header_meta: list[str] = []
         header_sizes: list[str] = []
         header_gpu: list[str] = []
+        header_precision_cmp: list[str] = []
         header_model_mem: list[str] = []
         header_cpu: list[str] = []
         header_disk: list[str] = []
@@ -84,6 +87,17 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
                     header_gpu = row[1:]
                 else:
                     gpu_info = dict(zip(header_gpu, row[1:]))
+
+            elif tag == "#precision":
+                # row is ["#precision","mode"] then ["#precision","<mode>"]
+                if row[1:] and row[1] != "mode":
+                    precision_mode = row[1]
+
+            elif tag == "#precision_cmp":
+                if not header_precision_cmp:
+                    header_precision_cmp = row[1:]
+                else:
+                    precision_cmp = dict(zip(header_precision_cmp, row[1:]))
 
             elif tag == "#model_mem":
                 if not header_model_mem:
@@ -191,6 +205,16 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
                 except (ValueError, TypeError):
                     pass
         combined["gpu"] = gpu_info
+    if precision_mode:
+        combined["precision"] = precision_mode
+    if precision_cmp:
+        for k in ("fp32_imgs_s", "tc_imgs_s", "speedup", "fp32_vram_gb", "tc_vram_gb", "batch_size"):
+            if k in precision_cmp:
+                try:
+                    precision_cmp[k] = float(precision_cmp[k])
+                except (ValueError, TypeError):
+                    pass
+        combined["precision_cmp"] = precision_cmp
     if cpu_info:
         combined["cpu"] = cpu_info
     if disk_info:

@@ -254,6 +254,40 @@ def render(ctx: DashboardContext) -> None:
                 tc = gpu.get("tensor_cores", 0)
                 gc5.metric("Tensor cores", f"{int(tc):,}" if tc else "0")
 
+            # Precision (Tensor-core) comparison if measured
+            pc = meta.get("precision_cmp")
+            if pc and pc.get("fp32_imgs_s"):
+                st.markdown("#### Precision — CUDA cores vs Tensor cores")
+                st.caption(
+                    "You don't pick cores directly: choosing the **numeric precision** decides "
+                    "which units do the matrix math. **FP32** runs on the conventional CUDA cores; "
+                    "**TF32/FP16/BF16** route the heavy matmuls through the **Tensor cores** "
+                    "(faster and less VRAM, with negligible accuracy change)."
+                )
+                pcl, pcr = st.columns([2, 3])
+                with pcl:
+                    p1, p2 = st.columns(2)
+                    p1.metric("FP32 (CUDA cores)", f"{pc['fp32_imgs_s']:.0f} img/s")
+                    p2.metric(f"{str(pc.get('tc_precision','amp')).upper()} (Tensor cores)",
+                              f"{pc['tc_imgs_s']:.0f} img/s",
+                              delta=f"{pc['speedup']:.2f}× faster")
+                    if pc.get("fp32_vram_gb") and pc.get("tc_vram_gb"):
+                        st.caption(f"VRAM: {pc['fp32_vram_gb']:.2f} → {pc['tc_vram_gb']:.2f} GB "
+                                   f"(batch {int(pc.get('batch_size', 0))})")
+                with pcr:
+                    fig_pc = go.Figure(go.Bar(
+                        x=["FP32 (CUDA cores)", f"{str(pc.get('tc_precision','amp')).upper()} (Tensor cores)"],
+                        y=[pc["fp32_imgs_s"], pc["tc_imgs_s"]],
+                        marker_color=[COLORS[5], COLORS[2]],
+                        text=[f"{pc['fp32_imgs_s']:.0f}", f"{pc['tc_imgs_s']:.0f}"],
+                        textposition="outside",
+                    ))
+                    fig_pc.update_layout(**_base_layout(220, "Training throughput by precision"),
+                                         yaxis_title="img/s")
+                    _show(fig_pc, "precision_cmp")
+            elif meta.get("precision") and meta.get("precision") != "fp32":
+                st.caption(f"Benchmark precision: **{meta['precision']}** (Tensor cores).")
+
             # CPU if available
             cpu = meta.get("cpu", {})
             if cpu:
@@ -853,6 +887,21 @@ def render(ctx: DashboardContext) -> None:
                     feas_device = _dev_labels[_sel]
                 elif len(_gpus_avail) == 1:
                     st.caption(f"GPU: cuda:0 — {_gpus_avail[0].name}")
+
+                # Precision = Tensor-core switch (options gated by the GPU)
+                from src.precision import available_precisions, label as _plabel
+                _cc = _gpus_avail[0].compute_capability if _gpus_avail else None
+                _precs = available_precisions(_cc, is_cuda=bool(_gpus_avail))
+                feas_precision = st.selectbox(
+                    "Precision (Tensor-core switch)", _precs,
+                    format_func=_plabel,
+                    help="fp32 = CUDA cores; tf32/amp/bf16 = Tensor cores (faster, less VRAM).",
+                )
+                feas_compare_prec = st.checkbox(
+                    "Compare FP32 vs Tensor cores", value=False,
+                    help="Run an extra FP32-vs-Tensor pass and report the speedup.",
+                    disabled=len(_precs) <= 1,
+                )
             submitted_feas = st.form_submit_button("Run")
 
         if submitted_feas:
@@ -878,6 +927,10 @@ def render(ctx: DashboardContext) -> None:
                     parts.append(f"--convergence-study --study-steps {feas_study_steps}")
                 if feas_device:
                     parts.append(f"--device {feas_device}")
+                if feas_precision and feas_precision != "fp32":
+                    parts.append(f"--precision {feas_precision}")
+                if feas_compare_prec:
+                    parts.append("--compare-precision")
                 cmd = " ".join(parts)
                 st.code(cmd, language="bash")
                 out_ph = st.empty()
