@@ -1,0 +1,19 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,vit_large_patch16_224,303.32,456.7,Tesla T4,15.64,15.64
+#gpu,compute_capability,architecture,sm_count,cuda_cores,tensor_cores
+#gpu,7.5,Turing,40,2560,320
+#precision,mode
+#precision,fp32
+#sizes,n_train,n_val,nfs_factor
+#sizes,5000,1500,1.0
+#model_mem,weight_mb,gradient_mb,optimizer_mb,activation_mb_per_image,total_static_mb
+#model_mem,1213.3,1213.3,2426.6,429.3,4853.1
+#cpu,logical_cores,physical_cores,freq_mhz,ram_total_gb,ram_free_gb
+#cpu,4,2,2000.0,33.7,30.0
+batch_size,trace_mode,s_per_batch_train,imgs_per_s_train,s_per_batch_eval,imgs_per_s_eval,peak_vram_gb,avg_power_w,oom,est_train_min_per_epoch,est_eval_min_per_epoch,est_total_min_per_epoch,est_total_h_1ep,est_energy_train_wh_per_epoch,est_energy_eval_wh_per_epoch,est_energy_total_wh,flops_train_gflops_per_epoch,flops_eval_gflops_per_epoch,optimizer_steps_per_epoch,est_ddp_2gpu_h_1ep,est_ddp_4gpu_h_1ep
+32,off,3.1126,10.3,1.0673,30.0,13.78,68.4,no,8.1,0.8,9.0,0.15,9.29,0.38,9.7,6850.1,685.0,157,0.09,0.04
+32,simple,3.5173,9.1,1.2201,26.2,13.78,66.3,no,9.2,1.0,10.2,0.17,10.18,0.42,10.6,6850.1,685.0,157,0.1,0.05
+48,off,,,,,,,yes,,,,,,,,,,,,
+48,simple,,,,,,,yes,,,,,,,,,,,,
+64,off,,,,,,,yes,,,,,,,,,,,,
+64,simple,,,,,,,yes,,,,,,,,,,,,

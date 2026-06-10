@@ -1,0 +1,9 @@
+21:43:32  Model-parallel ViT on devices=['cuda:0', 'cuda:1'] (true 2-device split)
+21:43:37  Configuración: modelo=vit_large_patch16_224 | paralelismo=modelo(pipeline) | split_block=12/24 | devices=cuda:0+cuda:1 | batch=48 | epochs=1 | lr=0.0001 | train=5000 | val=1500
+21:53:52  ── Epoch 1/1  (614.4s)
+    loss      train=0.3353  val=0.3238
+    f1        train=0.0650  val=0.0863  (best=0.0863)
+    accuracy  train=0.8583  val=0.8570
+    precision val=0.2121    recall val=0.0629
+    ETA: 0h 00m (614s/epoch)
+21:53:52  Done. Best Val F1=0.0863. Artefacts in logs/kaggle/model_parallel/vit_large_patch16_224
