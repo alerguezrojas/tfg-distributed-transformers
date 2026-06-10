@@ -824,7 +824,7 @@ Sesión única en Kaggle (2× Tesla T4) que extiende el estudio: **mismo modelo 
 - Speedup precisión FP32→AMP: **3.87×** predicho (`--compare-precision`: 27 vs 103 img/s) → **3.80×** real (**<2%**).
 - Specs T4 confirmadas: 40 SMs, **2560 CUDA cores / 320 Tensor cores**.
 
-Artefactos (pendientes de bajar el zip a local): `logs/kaggle/single/vit_base_patch16_224/` (single fp32, single AMP, deep-trace), `logs/kaggle/ddp/vit_base_patch16_224/` (DDP fp32, DDP+AMP), `logs/kaggle/model_parallel/vit_base_patch16_224/`, feasibility en `logs/kaggle/feasibility/`.
+Artefactos (integrados en el repo): `logs/kaggle/single/vit_base_patch16_224/` (single fp32 `173904`, single AMP `203609`, deep-trace `train_deep_205332`), `logs/kaggle/ddp/vit_base_patch16_224/` (DDP fp32 `190526`, DDP+AMP `211814`), `logs/kaggle/model_parallel/{vit_base,vit_large}_patch16_224/` (C + el OOM-vs-split), feasibility (vit_base `172939` + vit_large `213654`) en `logs/kaggle/feasibility/`.
 
 ---
 
@@ -1030,7 +1030,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 ## Próximos pasos y planificación del TFG
 
 ### ¿Hacen falta más entrenamientos?
-- **Para el núcleo del TFG (comparación single vs distribuido): NO.** Ya están los 3 escenarios comparables (Verode single+heterogéneo, Kaggle 2×T4 vit_tiny + vit_base) y el feasibility validado contra real. La historia está completa y es autoconsistente.
+- **Para el núcleo del TFG (comparación single vs distribuido): NO, ya está completo.** Tras la **sesión Kaggle del 10/06** hay un estudio de **5 estrategias comparables** (single/MP/DDP/AMP/DDP+AMP en vit_base, 15 epochs), el **caso OOM-vs-split de vit_large**, el heterogéneo de Verode y **3 predicciones del feasibility validadas (<4% error)**. La historia está completa, validada y es autoconsistente.
 - **Opcionales que aportarían algo, no imprescindibles:**
   - Kaggle vit_base con más epochs (p.ej. 10) → curva F1 más vistosa para la memoria; **no cambia** las conclusiones de speedup.
   - Run de referencia final en Verode V100 con el stack actual (config v3) → cierra con la versión actual; el techo seguirá en ~0.68.
