@@ -38,6 +38,25 @@ from src.web.ui.helpers import (
 )
 
 
+def _predicted_2gpu_speedup(env: str, model: str) -> float | None:
+    """The feasibility's predicted 2-GPU speedup for this env/model, if any."""
+    for p in _get_feasibility_csvs():
+        try:
+            if p.parent.parent.name != env:
+                continue
+            meta, _ = parse_feasibility_csv(p)
+            if meta.get("model_name") != model:
+                continue
+            scen = parse_ddp_scenarios(meta)
+            if not scen.empty and {"n_gpus", "speedup"}.issubset(scen.columns):
+                r2 = scen[scen["n_gpus"] == 2]
+                if not r2.empty:
+                    return float(r2.iloc[0]["speedup"])
+        except Exception:
+            pass
+    return None
+
+
 def render(ctx: DashboardContext) -> None:
     sub = st.tabs(["Single vs Distributed", "Overlay runs"])
     with sub[0]:
@@ -51,7 +70,9 @@ def _ddp(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     run = ctx.run
     refresh_interval = ctx.refresh_interval
-    st.markdown("## DDP analysis — Single-GPU vs Distributed")
+    st.markdown("## Single vs Distributed — measured speedup")
+    st.caption("Did distributing actually help? Measured here, and validated against "
+               "the feasibility's prediction. (Predicted-only scenarios live in Feasibility.)")
     st.caption("Compares single-GPU and DDP runs of the same model to measure real speedup, efficiency and scalability.")
 
     all_runs_ddp = _get_runs()
@@ -141,6 +162,23 @@ def _ddp(ctx: DashboardContext) -> None:
                         f"**Speedup {speedup:.2f}× with {worker_desc}** "
                         f"(efficiency {speedup/n_workers*100:.0f}% over the ideal linear {n_workers}×)."
                     )
+
+                # Predicted vs measured — bring the feasibility's 2-GPU prediction
+                # here so the whole distributed story lives in one place.
+                if speedup is not None and not is_hetero:
+                    pred_sp = _predicted_2gpu_speedup(r_ddp.env, r_ddp.model)
+                    if pred_sp:
+                        err = (pred_sp - speedup) / speedup * 100
+                        pp1, pp2, pp3 = st.columns(3)
+                        pp1.metric("Predicted speedup (feasibility)", f"{pred_sp:.2f}×")
+                        pp2.metric("Measured speedup", f"{speedup:.2f}×")
+                        pp3.metric("Prediction error", f"{err:+.0f}%")
+                        ok = abs(err) <= 15
+                        (st.success if ok else st.info)(
+                            f"The feasibility predicts the speedup from a **1-GPU** benchmark; "
+                            f"here it is validated against the real multi-GPU run "
+                            f"({'accurate' if ok else 'off'}: predicted {pred_sp:.2f}× vs measured {speedup:.2f}×)."
+                        )
 
                 fig_ddp_f1 = go.Figure()
                 if "val_f1" in df_s.columns:

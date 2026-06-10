@@ -549,7 +549,7 @@ def render(ctx: DashboardContext) -> None:
         if not feasibility_csvs:
             st.info("Run the feasibility analysis first.")
         else:
-            st.markdown("## DDP analysis — Optimal resource distribution")
+            st.markdown("## Distributed scaling (predicted)")
             st.caption(
                 "Compares configurations from 1 to 8 GPUs showing batch size, recommended workers, "
                 "expected speedup, scaling efficiency and the identified bottleneck."

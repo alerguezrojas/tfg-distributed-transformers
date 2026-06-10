@@ -91,6 +91,19 @@ def _curves(ctx: DashboardContext) -> None:
             src = "epoch_metrics CSV" if (run.epoch_csv_path and run.epoch_csv_path.exists()) else "log file"
             st.caption(f"Source: {src}")
 
+            # One-line verdict: best epoch, overfitting gap, val-loss divergence.
+            if not pd.isna(best_f1) and best_ep_v is not None and "train_f1" in df.columns:
+                _tr = df.loc[df["epoch"] == best_ep_v, "train_f1"]
+                bits = [f"Best Val F1 **{best_f1:.3f}** at epoch {int(best_ep_v)}"]
+                if not _tr.empty:
+                    gap = float(_tr.iloc[0]) - float(best_f1)
+                    bits.append(f"train–val gap {gap:+.2f}" + (" → overfitting" if gap > 0.1 else ""))
+                if "val_loss" in df.columns and df["val_loss"].notna().sum() > 2:
+                    vl = df.sort_values("epoch")["val_loss"].dropna()
+                    if len(vl) > 2 and vl.iloc[-1] > vl.min() * 1.15:
+                        bits.append("val loss diverges after the best epoch")
+                (st.warning if "overfitting" in " ".join(bits) else st.info)(" · ".join(bits))
+
             extra_thresh: list = []
             if "f1_at_threshold" in df.columns and df["f1_at_threshold"].notna().any():
                 extra_thresh = [go.Scatter(
