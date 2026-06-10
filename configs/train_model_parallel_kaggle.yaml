@@ -1,0 +1,48 @@
+# Model-parallel (pipeline) ViT — para 2 GPUs físicas (Kaggle 2×T4).
+#
+# Tercera estrategia de distribución del estudio, junto a:
+#   - datos homogéneo (DDP NCCL):     configs/train_demo_ddp.yaml
+#   - datos heterogéneo (GPU+CPU):    configs/train_heterogeneous_ddp_demo.yaml
+#
+# Aquí NO se reparten los datos sino el MODELO: los 12 bloques del ViT-base se
+# parten 6/6 entre las 2 T4 (stage 0 en cuda:0, stage 1 en cuda:1). Un único
+# proceso, batch global = batch_size (no por GPU).
+#
+# Es paralelismo de modelo *naive* (sin pipelining de micro-batches): mientras
+# la stage 1 calcula, la stage 0 está ociosa, así que en un modelo que CABE en
+# una sola GPU resulta más lento que el de datos. El valor es didáctico: muestra
+# el mecanismo y por qué el paralelismo de modelo se reserva para modelos que no
+# caben en una GPU (con pipelining/GPipe se recuperaría la utilización).
+#
+# Lanzar (nodo con 2 GPUs, 1 solo proceso — NO torchrun):
+#   python scripts/train_model_parallel.py \
+#     --config configs/train_model_parallel_kaggle.yaml --trace simple
+#
+# Las rutas data.root/metadata se sobreescriben en el notebook de Kaggle.
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata_demo.parquet"
+  num_workers: 8
+
+model:
+  name: "vit_base_patch16_224"   # 12 bloques → split 6/6 entre las 2 GPUs
+  pretrained: true
+  num_classes: 19
+  dropout: 0.1
+
+training:
+  epochs: 3
+  batch_size: 96                 # batch global (1 proceso) = igual que el single/DDP del estudio
+  lr: 0.0001
+  weight_decay: 0.05
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+
+checkpoint:
+  dir: "checkpoints/kaggle"
+
+output:
+  env: "kaggle"

@@ -68,6 +68,14 @@ def parse_args():
     parser.add_argument("--data-root", type=str, help="Override data.root")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
     parser.add_argument("--batch-size", type=int, help="Override training.batch_size")
+    parser.add_argument(
+        "--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
+        help=(
+            "Numeric precision = the practical Tensor-core switch. "
+            "fp32 (CUDA cores) | tf32/amp/bf16 (Tensor cores). "
+            "amp=FP16 mixed precision (Volta+), tf32/bf16 (Ampere+)."
+        ),
+    )
     parser.add_argument("--model", type=str, help="Override model name (any timm ID)")
     parser.add_argument("--resume", type=str, default=None, metavar="CHECKPOINT",
                         help="Path to checkpoint .pt file to resume training from")
@@ -122,6 +130,8 @@ def main():
         cfg["training"]["epochs"] = args.epochs
     if args.batch_size:
         cfg["training"]["batch_size"] = args.batch_size
+    if args.precision:
+        cfg["training"]["precision"] = args.precision
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
@@ -197,10 +207,11 @@ def main():
 
     # Registrar la configuración en el log (visible en la web → Información)
     _bs = cfg["training"]["batch_size"]
+    _prec = cfg["training"].get("precision", "fp32")
     logging.getLogger("trainer").info(
         f"Configuración: modelo={model_name} | batch={_bs}/GPU (global={_bs}) | "
         f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-        f"train={len(train_ds)} | val={len(val_ds)}"
+        f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)}"
     )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

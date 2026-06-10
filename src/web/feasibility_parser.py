@@ -13,15 +13,18 @@ import pandas as pd
 
 
 def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
-    """Lee el CSV de viabilidad y devuelve (metadata_dict, benchmark_df).
+    """Reads the feasibility CSV and returns (metadata_dict, benchmark_df).
 
-    El metadata_dict incluye todos los bloques #meta, #model_mem, #cpu, #disk,
+    The metadata_dict includes every block: #meta, #model_mem, #cpu, #disk,
     #dataset, #prediction, #curve_val_f1, #curve_train_f1, #ddp.
-    El benchmark_df contiene las filas de datos de benchmark.
+    The benchmark_df holds the benchmark data rows.
     """
     rows: list[list[str]] = []
     meta: dict = {}
     sizes: dict = {}
+    gpu_info: dict = {}
+    precision_mode: str = ""
+    precision_cmp: dict = {}
     model_mem: dict = {}
     cpu_info: dict = {}
     disk_info: dict = {}
@@ -31,7 +34,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     curve_val: list[float] = []
     curve_train: list[float] = []
     curve_epochs: list[int] = []
-    # Estudio empírico de convergencia (v4)
+    # Empirical convergence study (v4)
     study: dict = {}
 
     def _floats(seq):
@@ -49,6 +52,8 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
         reader = csv.reader(f)
         header_meta: list[str] = []
         header_sizes: list[str] = []
+        header_gpu: list[str] = []
+        header_precision_cmp: list[str] = []
         header_model_mem: list[str] = []
         header_cpu: list[str] = []
         header_disk: list[str] = []
@@ -76,6 +81,23 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
                     header_sizes = row[1:]
                 else:
                     sizes = dict(zip(header_sizes, row[1:]))
+
+            elif tag == "#gpu":
+                if not header_gpu:
+                    header_gpu = row[1:]
+                else:
+                    gpu_info = dict(zip(header_gpu, row[1:]))
+
+            elif tag == "#precision":
+                # row is ["#precision","mode"] then ["#precision","<mode>"]
+                if row[1:] and row[1] != "mode":
+                    precision_mode = row[1]
+
+            elif tag == "#precision_cmp":
+                if not header_precision_cmp:
+                    header_precision_cmp = row[1:]
+                else:
+                    precision_cmp = dict(zip(header_precision_cmp, row[1:]))
 
             elif tag == "#model_mem":
                 if not header_model_mem:
@@ -160,10 +182,10 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
             else:
                 rows.append(row)
 
-    # Construir metadata combinada
+    # Build combined metadata
     combined: dict = {**meta, **model_mem}
-    # Tamaño real del dataset (n imágenes por split). Si el CSV es antiguo y no
-    # trae #sizes, quedará ausente y la comparación usará su fallback.
+    # Real dataset size (n images per split). If the CSV is old and lacks
+    # #sizes, it will be absent and the comparison will use its fallback.
     for k in ("n_train", "n_val"):
         if k in sizes:
             try:
@@ -175,6 +197,24 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
             combined["nfs_factor"] = float(sizes["nfs_factor"])
         except (ValueError, TypeError):
             pass
+    if gpu_info:
+        for k in ("sm_count", "cuda_cores", "tensor_cores"):
+            if k in gpu_info:
+                try:
+                    gpu_info[k] = int(float(gpu_info[k]))
+                except (ValueError, TypeError):
+                    pass
+        combined["gpu"] = gpu_info
+    if precision_mode:
+        combined["precision"] = precision_mode
+    if precision_cmp:
+        for k in ("fp32_imgs_s", "tc_imgs_s", "speedup", "fp32_vram_gb", "tc_vram_gb", "batch_size"):
+            if k in precision_cmp:
+                try:
+                    precision_cmp[k] = float(precision_cmp[k])
+                except (ValueError, TypeError):
+                    pass
+        combined["precision_cmp"] = precision_cmp
     if cpu_info:
         combined["cpu"] = cpu_info
     if disk_info:
@@ -194,7 +234,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     if study:
         combined["study"] = study
 
-    # Normalizar campos numéricos de metadata
+    # Normalize numeric metadata fields
     float_fields = (
         "total_params_M", "flops_mflops", "total_vram_gb", "free_vram_gb",
         "weight_mb", "gradient_mb", "optimizer_mb",
@@ -207,7 +247,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
             except (ValueError, TypeError):
                 pass
 
-    # Normalizar prediction numérica
+    # Normalize numeric prediction
     if "prediction" in combined:
         for k in ("predicted_best_f1", "predicted_best_epoch", "predicted_early_stop_epoch"):
             if k in combined["prediction"]:
@@ -223,7 +263,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
     data = rows[1:]
     df = pd.DataFrame(data, columns=header)
 
-    # Convertir columnas numéricas
+    # Convert numeric columns
     numeric_cols = [
         "batch_size",
         "s_per_batch", "imgs_per_s",              # legacy
@@ -244,7 +284,7 @@ def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
 
 
 def parse_ddp_scenarios(meta: dict) -> pd.DataFrame:
-    """Extrae los escenarios DDP como DataFrame (para la web)."""
+    """Extracts the DDP scenarios as a DataFrame (for the web)."""
     scenarios = meta.get("ddp_scenarios", [])
     if not scenarios:
         return pd.DataFrame()

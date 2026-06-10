@@ -70,6 +70,10 @@ class HardwareInfo:
     is_cuda: bool
     compute_capability: str = ""
     memory_bandwidth_gb_s: float = 0.0
+    architecture: str = ""
+    sm_count: int = 0
+    cuda_cores: int = 0
+    tensor_cores: int = 0
 
 
 @dataclass
@@ -160,6 +164,9 @@ class FeasibilityReport:
     performance_prediction: Optional[PerformancePrediction] = None
     # v4: estudio empírico real (mini-training + LR range + gradient noise)
     study_report: object = None  # StudyReport | None (evita import circular)
+    # precision used for the benchmark + optional FP32-vs-Tensor-core comparison
+    precision: str = "fp32"
+    precision_comparison: dict | None = None  # {batch, fp32_imgs_s, tc_prec, tc_imgs_s, speedup}
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -205,18 +212,22 @@ class ModelAnalyzer:
 # ═════════════════════════════════════════════════════════════════════════════
 
 class HardwareProbe:
-    def probe_gpu(self) -> HardwareInfo:
+    def probe_gpu(self, index: int = 0) -> HardwareInfo:
         if not torch.cuda.is_available():
             return HardwareInfo(device_name="CPU", total_vram_gb=0.0,
                                 free_vram_gb=0.0, is_cuda=False)
-        props = torch.cuda.get_device_properties(0)
+        props = torch.cuda.get_device_properties(index)
         total_gb = props.total_memory / 1e9
-        reserved_gb = torch.cuda.memory_reserved(0) / 1e9
+        reserved_gb = torch.cuda.memory_reserved(index) / 1e9
         cc = f"{props.major}.{props.minor}"
-        # Memoria de ancho de banda estimada por CC (GB/s)
+        # Estimated memory bandwidth by CC (GB/s)
         bw_map = {"7.0": 900, "8.0": 2000, "8.6": 600, "9.0": 3350,
                   "6.1": 352, "6.0": 720, "5.2": 336}
         bw = float(bw_map.get(cc, 0))
+        # CUDA / Tensor cores derived from compute capability × SM count.
+        from src.gpu_specs import specs_for
+        sp = specs_for(props.name, props.major, props.minor,
+                       props.multi_processor_count, total_gb, index)
         return HardwareInfo(
             device_name=props.name,
             total_vram_gb=total_gb,
@@ -224,6 +235,10 @@ class HardwareProbe:
             is_cuda=True,
             compute_capability=cc,
             memory_bandwidth_gb_s=bw,
+            architecture=sp.architecture,
+            sm_count=sp.sm_count,
+            cuda_cores=sp.cuda_cores,
+            tensor_cores=sp.tensor_cores,
         )
 
     def probe_cpu(self) -> CPUInfo:
@@ -722,11 +737,28 @@ class Benchmarker:
     N_WARMUP = 3
     N_MEASURE = 8
 
-    def __init__(self, model: nn.Module, device: torch.device):
+    def __init__(self, model: nn.Module, device: torch.device, precision: str = "fp32"):
+        from src import precision as precision_mod
         self._model = model.to(device)
         self._device = device
         self._criterion = nn.BCEWithLogitsLoss()
         self._optimizer = torch.optim.AdamW(self._model.parameters(), lr=1e-4)
+        # Numeric precision = Tensor-core switch (fp32 -> CUDA cores).
+        self._precision = precision if device.type == "cuda" else "fp32"
+        precision_mod.apply_backend_flags(self._precision)
+        self._amp_dtype = precision_mod.autocast_dtype(self._precision)
+        self._use_amp = self._amp_dtype is not None and device.type == "cuda"
+        _scaler_on = precision_mod.needs_scaler(self._precision) and device.type == "cuda"
+        try:
+            self._scaler = torch.amp.GradScaler("cuda", enabled=_scaler_on)
+        except (AttributeError, TypeError):
+            self._scaler = torch.cuda.amp.GradScaler(enabled=_scaler_on)
+
+    def _autocast(self):
+        import contextlib
+        if self._use_amp:
+            return torch.autocast(device_type="cuda", dtype=self._amp_dtype)
+        return contextlib.nullcontext()
 
     def run(self, batch_size: int, trace_mode: str) -> BenchmarkResult:
         if self._device.type == "cuda":
@@ -817,12 +849,14 @@ class Benchmarker:
     def _train_step(self, images, labels):
         images, labels = images.to(self._device), labels.to(self._device)
         self._optimizer.zero_grad()
-        loss = self._criterion(self._model(images), labels)
-        loss.backward()
-        self._optimizer.step()
+        with self._autocast():
+            loss = self._criterion(self._model(images), labels)
+        self._scaler.scale(loss).backward()
+        self._scaler.step(self._optimizer)
+        self._scaler.update()
 
     def _eval_step(self, images, labels):
-        with torch.no_grad():
+        with torch.no_grad(), self._autocast():
             self._model(images.to(self._device))
 
     def _register_deep_hooks(self):
@@ -971,7 +1005,18 @@ class ReportFormatter:
         if h.is_cuda:
             self._emit(f"  {h.device_name}  |  VRAM: {h.total_vram_gb:.1f} GB total / {h.free_vram_gb:.1f} GB libre")
             if h.compute_capability:
-                self._emit(f"  Compute Capability: {h.compute_capability}")
+                self._emit(f"  Compute Capability: {h.compute_capability}  ({h.architecture})")
+            if h.cuda_cores:
+                self._emit(f"  {h.sm_count} SMs  |  {h.cuda_cores:,} CUDA cores  |  "
+                           f"{h.tensor_cores:,} Tensor cores")
+            self._emit(f"  Precisión del benchmark: {report.precision} "
+                       f"({'Tensor cores' if report.precision != 'fp32' else 'CUDA cores'})")
+            pc = report.precision_comparison
+            if pc:
+                self._emit(f"  FP32 {pc['fp32_imgs_s']:.0f} img/s  vs  "
+                           f"{pc['tc_precision'].upper()} {pc['tc_imgs_s']:.0f} img/s  "
+                           f"→ {pc['speedup']}× con Tensor cores "
+                           f"(VRAM {pc['fp32_vram_gb']} → {pc['tc_vram_gb']} GB)")
         else:
             self._emit("  GPU: no disponible (CUDA no activo)")
 
@@ -1153,6 +1198,24 @@ class ReportFormatter:
                               round(mi.flops_per_image_mflops, 1), hi.device_name,
                               round(hi.total_vram_gb, 2), round(hi.free_vram_gb, 2)])
 
+            # GPU hardware specs (compute capability × SM count)
+            writer.writerow(["#gpu", "compute_capability", "architecture",
+                              "sm_count", "cuda_cores", "tensor_cores"])
+            writer.writerow(["#gpu", hi.compute_capability, hi.architecture,
+                              hi.sm_count, hi.cuda_cores, hi.tensor_cores])
+
+            # Precision used + optional FP32-vs-Tensor-core comparison
+            writer.writerow(["#precision", "mode"])
+            writer.writerow(["#precision", report.precision])
+            pc = report.precision_comparison
+            if pc:
+                writer.writerow(["#precision_cmp", "batch_size", "tc_precision",
+                                  "fp32_imgs_s", "tc_imgs_s", "speedup",
+                                  "fp32_vram_gb", "tc_vram_gb"])
+                writer.writerow(["#precision_cmp", pc.get("batch_size"), pc.get("tc_precision"),
+                                  pc.get("fp32_imgs_s"), pc.get("tc_imgs_s"), pc.get("speedup"),
+                                  pc.get("fp32_vram_gb"), pc.get("tc_vram_gb")])
+
             # Tamaño REAL del dataset usado (n imágenes por split) — clave para
             # que la comparación estimación-vs-real no asuma el full set.
             writer.writerow(["#sizes", "n_train", "n_val", "nfs_factor"])
@@ -1323,6 +1386,9 @@ class FeasibilityChecker:
         config: dict | None = None,
         convergence_study: bool = False,
         study_steps: int = 60,
+        device_index: int = 0,
+        precision: str = "fp32",
+        compare_precision: bool = False,
     ):
         self._model_name = model_name
         self._batch_sizes = batch_sizes
@@ -1338,7 +1404,12 @@ class FeasibilityChecker:
         self._config = config or {}
         self._convergence_study = convergence_study
         self._study_steps = study_steps
-        self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self._precision = precision
+        self._compare_precision = compare_precision
+        self._device_index = device_index if torch.cuda.is_available() else 0
+        self._device = torch.device(
+            f"cuda:{self._device_index}" if torch.cuda.is_available() else "cpu"
+        )
 
     def run(self) -> FeasibilityReport:
         print(f"Cargando modelo {self._model_name}...")
@@ -1346,7 +1417,7 @@ class FeasibilityChecker:
 
         hw_probe = HardwareProbe()
         model_info = ModelAnalyzer(model, self._model_name, self._device).analyze()
-        hardware_info = hw_probe.probe_gpu()
+        hardware_info = hw_probe.probe_gpu(self._device_index)
         cpu_info = hw_probe.probe_cpu()
 
         print("Perfilando CPU y disco...")
@@ -1361,7 +1432,7 @@ class FeasibilityChecker:
                 self._dataset_path, disk_info
             ).profile(0.5, self._batch_sizes[0])  # placeholder, actualizado después
 
-        benchmarker = Benchmarker(model, self._device)
+        benchmarker = Benchmarker(model, self._device, precision=self._precision)
         report = FeasibilityReport(
             model_info=model_info,
             hardware_info=hardware_info,
@@ -1371,6 +1442,7 @@ class FeasibilityChecker:
             batch_sizes=self._batch_sizes,
             epochs_list=self._epochs_list,
             trace_modes=self._trace_modes,
+            precision=self._precision,
             cpu_info=cpu_info,
             disk_info=disk_info,
         )
@@ -1419,11 +1491,39 @@ class FeasibilityChecker:
             )
             report.ddp_scenarios = optimizer.compute_scenarios(max(self._epochs_list))
 
+        # Comparación de precisión FP32 vs Tensor cores (mismo batch, dos pasadas)
+        if self._compare_precision and self._device.type == "cuda":
+            report.precision_comparison = self._compare_precisions(model, hardware_info)
+
         # Estudio empírico de convergencia (mini-training real)
         if self._convergence_study:
             report.study_report = self._run_convergence_study(model)
 
         return report
+
+    def _compare_precisions(self, model, hardware_info) -> dict | None:
+        """Benchmark FP32 vs the best Tensor-core precision at one batch size,
+        to quantify the speedup the Tensor cores give."""
+        from src import precision as precision_mod
+        avail = precision_mod.available_precisions(hardware_info.compute_capability, True)
+        tc = next((p for p in ("amp", "bf16", "tf32") if p in avail), None)
+        if tc is None:
+            return None
+        bs = self._batch_sizes[0]
+        out = {"batch_size": bs, "tc_precision": tc}
+        for key, prec in (("fp32", "fp32"), ("tc", tc)):
+            bench = Benchmarker(model, self._device, precision=prec)
+            try:
+                res = bench.run(bs, "off")
+            except Exception:
+                return None
+            out[f"{key}_imgs_s"] = round(res.images_per_second_train, 1)
+            out[f"{key}_vram_gb"] = round(res.peak_vram_gb, 2)
+        f, t = out.get("fp32_imgs_s", 0), out.get("tc_imgs_s", 0)
+        out["speedup"] = round(t / f, 2) if f > 0 else 0.0
+        print(f"  Precisión: FP32 {f:.0f} img/s  vs  {tc.upper()} {t:.0f} img/s  "
+              f"→ {out['speedup']}× (Tensor cores)")
+        return out
 
     def _model_family(self) -> str:
         n = self._model_name.lower()
@@ -1524,6 +1624,13 @@ def parse_args():
                              "convergencia medida + gradient noise scale (más lento, ~3-8 min)")
     parser.add_argument("--study-steps", type=int, default=60,
                         help="Número de steps del mini-training de convergencia (default 60)")
+    parser.add_argument("--device", type=int, default=0, metavar="INDEX",
+                        help="Índice de GPU CUDA a usar (default 0). Útil en máquinas multi-GPU.")
+    parser.add_argument("--precision", choices=["fp32", "tf32", "amp", "bf16"], default="fp32",
+                        help="Precisión del benchmark = interruptor de Tensor cores "
+                             "(fp32=CUDA cores; tf32/amp/bf16=Tensor cores).")
+    parser.add_argument("--compare-precision", action="store_true",
+                        help="Mide FP32 vs la mejor precisión Tensor-core y reporta el speedup.")
     parser.add_argument("--output", type=Path, default=None)
     return parser.parse_args()
 
@@ -1581,6 +1688,9 @@ def main():
             config=cfg,
             convergence_study=args.convergence_study,
             study_steps=args.study_steps,
+            device_index=args.device,
+            precision=args.precision,
+            compare_precision=args.compare_precision,
         )
 
         report = checker.run()
