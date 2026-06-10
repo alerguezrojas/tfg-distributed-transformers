@@ -41,8 +41,12 @@ package "src.training" #FDFEFE {
     - grad_clip: float | None
     - label_smoothing: float
     - mixup_alpha: float
+    - precision: str  ' fp32 | tf32 | amp | bf16
+    - _use_amp: bool
+    - _scaler: GradScaler
     - _batch_hooks: list
     + register_batch_hook(fn)
+    - _autocast(): context
     + train_epoch(loader): dict
     + eval_epoch(loader): dict
     + save_checkpoint(epoch, metrics)
@@ -54,6 +58,7 @@ package "src.training" #FDFEFE {
     - rank: int
     - world_size: int
     - _epoch: int
+    ' precision reenviada a Trainer
     + train_epoch(loader): dict
     + eval_epoch(loader): dict
     + save_checkpoint(epoch, metrics)
@@ -340,6 +345,60 @@ package "src.models" #FDFEFE {
     + build_model(name, num_classes, pretrained)
     + build_llrd_optimizer(model, lr, wd, decay)
   }
+
+  class ModelParallelViT {
+    ' paralelismo de modelo (pipeline naive)
+    - base: VisionTransformer
+    - devices: list[torch.device]
+    - split_block: int
+    + output_device: torch.device
+    - _place()  ' stage0→dev0, stage1→dev1
+    + forward(x: Tensor): Tensor
+    + build_model_parallel_vit(name, devices, split_block)
+  }
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src (módulos de soporte — feasibility/web)
+' ════════════════════════════════════════════════════════════════
+package "src.support" as support #FDFEFE {
+
+  class GpuSpecs <<dataclass>> {
+    + name: str
+    + compute_capability: str
+    + architecture: str
+    + sm_count: int
+    + cuda_cores: int
+    + tensor_cores: int
+    + specs_for(name, major, minor, sm_count): GpuSpecs
+    + detect_all(): list[GpuSpecs]
+  }
+
+  class SpeedupModel <<dataclass>> {
+    + key: str  ' linear | amdahl | gustafson
+    + label: str
+    + formula: str
+    + fn(n, s): float
+    + speedup_curve(model, n_gpus, s): list[float]
+  }
+
+  class CloudOption <<dataclass>> {
+    + provider: str
+    + gpu: str
+    + usd_per_hour: float
+    + gpu_tflops(name): float | None
+    + estimate_costs(total_hours_ref, ref_gpu): list[dict]
+  }
+
+  note as precision_note
+    **precision.py** — selector de Tensor cores
+    ALL_PRECISIONS = fp32 | tf32 | amp | bf16
+    uses_tensor_cores(p) / needs_scaler(p)
+    autocast_dtype(p) / apply_backend_flags(p)
+    available_precisions(cc, is_cuda)
+    fp32 → núcleos CUDA;
+    tf32/amp/bf16 → Tensor cores
+  end note
 }
 
 package "src.data" #FDFEFE {
@@ -376,6 +435,10 @@ package "scripts.check_feasibility" #FDFEFE {
     + is_cuda: bool
     + compute_capability: str
     + memory_bandwidth_gb_s: float
+    + architecture: str
+    + sm_count: int
+    + cuda_cores: int
+    + tensor_cores: int
   }
 
   class CPUInfo <<dataclass>> {
@@ -438,6 +501,8 @@ package "scripts.check_feasibility" #FDFEFE {
     + ddp_scenarios: list[DDPScenario]
     + performance_prediction: PerformancePrediction | None
     + study_report: StudyReport | None
+    + precision: str
+    + precision_comparison: dict | None
     + results: list[BenchmarkResult]
   }
 
@@ -445,7 +510,7 @@ package "scripts.check_feasibility" #FDFEFE {
     + analyze(): ModelInfo
   }
   class HardwareProbe {
-    + probe_gpu(): HardwareInfo
+    + probe_gpu(index: int): HardwareInfo
     + probe_cpu(): CPUInfo
   }
   class DiskProbe {
@@ -481,8 +546,12 @@ package "scripts.check_feasibility" #FDFEFE {
     - model_name: str
     - batch_sizes / epochs_list: list
     - convergence_study: bool
+    - device_index: int
+    - precision: str
+    - compare_precision: bool
     + run(): FeasibilityReport
     - _run_convergence_study(model): StudyReport
+    - _compare_precisions(): dict
     - _build_real_loader(batch_size)
   }
 
@@ -534,6 +603,14 @@ package "src.web" #FDFEFE {
     estimación vs real por métrica.
   end note
 
+  class DashboardContext <<dataclass>> {
+    ' src.web.ui.context — estado compartido (ctx)
+    + runs: list[RunInfo]
+    + selected_run: RunInfo | None
+    + run: DataFrame | None
+    + refresh_interval: int
+  }
+
   note as web_note
     **run_registry.py**
     discover_runs(root) → list[RunInfo]
@@ -545,19 +622,30 @@ package "src.web" #FDFEFE {
     por nombre; energía \w*Trainer),
     batch_parser (v3: f1/acc/prec),
     perclass_parser, feasibility_parser
-    (bloques #sizes, #study_*, #ddp,
-    #cpu, #disk), confusion_matrix_parser
+    (bloques #sizes, #gpu, #precision,
+    #precision_cmp, #study_*, #ddp),
+    confusion_matrix_parser,
     feasibility_comparison (estim. vs real)
 
     **dataset_stats.py**
     class_distribution_from_parquet (ndarray)
     find_example_patches / load_rgb_image
+  end note
 
-    **app.py** (Streamlit, 14 pestañas)
-    Inicio | Sistema | Dataset | Modelos |
-    Curvas | Por clase | Batch | Comparar |
-    Análisis DDP | Viabilidad | Tiempo |
-    Información | Lanzador | En vivo
+  note as web_arch_note
+    **app.py** — orquestador delgado (~160 ln, SRP)
+    page config + sidebar EN/ES + nav agrupada
+    (ANALYZE/PLAN/DATA & OPS) → despacha render(ctx)
+
+    **ui/** (SRP): context (DashboardContext),
+    charts (_show/_dl_csv/_metric_fig/_overlay_fig),
+    helpers (loaders cacheados + utilidades),
+    i18n (capa EN→ES que parchea st.* / DeltaGenerator)
+
+    **tabs/** — cada uno expone render(ctx):
+    home · run · comparison · feasibility ·
+    data_models · system
+    (6 páginas, 21 sub-pestañas)
   end note
 
 }
@@ -627,6 +715,7 @@ FeasibilityChecker ..> ConvergenceStudy : uses (--convergence-study) >
 
 ModelAnalyzer ..> ModelInfo : returns >
 HardwareProbe ..> HardwareInfo : returns >
+HardwareProbe ..> GpuSpecs : specs_for (cores) >
 HardwareProbe ..> CPUInfo : returns >
 DiskProbe ..> DiskInfo : returns >
 DatasetProfiler ..> DatasetProfile : returns >
@@ -646,10 +735,19 @@ FeasibilityReport *-- BenchmarkResult
 FeasibilityReport o-- StudyReport
 
 BigEarthViT ..> BigEarthNetDataset : trained on >
+ModelParallelViT ..> BigEarthNetDataset : trained on >
 
 Trainer ..> metrics_note : uses >
+Trainer ..> precision_note : autocast / scaler >
 TracingDecorator ..> logger_note : uses >
 web_note ..> RunInfo : creates >
+
+' ── web modular (SRP): orquestador + ui/ + tabs/ ──
+web_arch_note ..> DashboardContext : passes ctx >
+DashboardContext o-- RunInfo
+web_arch_note ..> SpeedupModel : overlays (Report) >
+web_arch_note ..> CloudOption : cloud cost (Report) >
+web_arch_note ..> GpuSpecs : shows cores (Monitor) >
 
 FeasibilityComparison *-- ComparisonRow
 cmp_note ..> FeasibilityComparison : builds >
