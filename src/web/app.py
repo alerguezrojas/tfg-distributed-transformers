@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import streamlit as st
 
+from src.web.ui import i18n
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import _get_runs
 from src.web.tabs import (
@@ -34,6 +35,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Optional Spanish view (English is the default). Installed before any rendering
+# so the whole UI — sidebar included — is translated on this run.
+_lang = st.session_state.get("_lang", "en")
+i18n.install(_lang)
 
 st.markdown("""
 <style>
@@ -64,6 +70,14 @@ runs = _get_runs()
 
 with st.sidebar:
     st.markdown("### Training Dashboard")
+    _choice = st.radio(
+        "Language / Idioma", ["English", "Español"],
+        index=0 if _lang == "en" else 1, horizontal=True, key="_lang_radio",
+    )
+    _new_lang = "es" if _choice == "Español" else "en"
+    if _new_lang != _lang:
+        st.session_state["_lang"] = _new_lang
+        st.rerun()
     st.markdown("---")
 
     if not runs:
