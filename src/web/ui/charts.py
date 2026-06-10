@@ -33,7 +33,11 @@ def _base_layout(height: int = 320, title: str = "", margin: dict | None = None)
     return dict(
         title=dict(text=title, font=dict(size=13)),
         height=height,
-        margin=margin if margin is not None else dict(l=50, r=16, t=36, b=40),
+        margin=margin if margin is not None else dict(l=50, r=16, t=48, b=40),
+        # Same legend slot as _metric_fig/_overlay_fig: inside top-left,
+        # translucent — clear of the outside title and the modebar.
+        legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01,
+                    bgcolor="rgba(255,255,255,0.65)"),
         paper_bgcolor="white", plot_bgcolor="#f8fafc",
         xaxis=dict(gridcolor="#e2e8f0"), yaxis=dict(gridcolor="#e2e8f0"),
     )
@@ -63,8 +67,12 @@ def _metric_fig(
     fig.update_layout(
         title=dict(text=title, font=dict(size=13)),
         xaxis_title="Epoch", yaxis_title=y_label,
-        height=height, margin=dict(l=50, r=16, t=36, b=40),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        height=height, margin=dict(l=50, r=16, t=48, b=40),
+        # Legend inside the plot (top-left, translucent): clear of both the
+        # outside title (top-left margin) and the modebar (top-right corner).
+        legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01,
+                    bgcolor="rgba(255,255,255,0.65)"),
+        hovermode="x unified",
         paper_bgcolor="white", plot_bgcolor="#f8fafc",
         xaxis=dict(gridcolor="#e2e8f0"), yaxis=dict(gridcolor="#e2e8f0"),
     )
@@ -87,7 +95,9 @@ def _overlay_fig(
     fig.update_layout(
         title=dict(text=title, font=dict(size=13)),
         xaxis_title="Epoch", yaxis_title=y_label,
-        height=height, margin=dict(l=50, r=16, t=36, b=40),
+        height=height, margin=dict(l=50, r=16, t=48, b=40),
+        legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01,
+                    bgcolor="rgba(255,255,255,0.65)"),
         paper_bgcolor="white", plot_bgcolor="#f8fafc",
         xaxis=dict(gridcolor="#e2e8f0"), yaxis=dict(gridcolor="#e2e8f0"),
     )

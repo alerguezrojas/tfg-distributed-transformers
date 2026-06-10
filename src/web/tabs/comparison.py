@@ -58,6 +58,8 @@ def _predicted_2gpu_speedup(env: str, model: str) -> float | None:
 
 
 def render(ctx: DashboardContext) -> None:
+    st.markdown("## Compare")
+    st.caption("Measure the real distributed speedup against single-GPU, or overlay several runs.")
     sub = st.tabs(["Single vs Distributed", "Overlay runs"])
     with sub[0]:
         _ddp(ctx)
@@ -70,10 +72,9 @@ def _ddp(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     run = ctx.run
     refresh_interval = ctx.refresh_interval
-    st.markdown("## Single vs Distributed — measured speedup")
-    st.caption("Did distributing actually help? Measured here, and validated against "
-               "the feasibility's prediction. (Predicted-only scenarios live in Feasibility.)")
-    st.caption("Compares single-GPU and DDP runs of the same model to measure real speedup, efficiency and scalability.")
+    st.markdown("### Single vs Distributed — measured speedup")
+    st.caption("Did distributing actually help? Compares single-GPU and DDP runs of the same model, "
+               "validated against the feasibility's prediction. (Predicted-only scenarios live in Feasibility.)")
 
     all_runs_ddp = _get_runs()
     if not all_runs_ddp:
@@ -118,13 +119,36 @@ def _ddp(ctx: DashboardContext) -> None:
         if single_runs and ddp_runs:
             st.markdown("### Speedup analysis")
             col_s, col_d = st.columns(2)
-            with col_s:
-                single_lbl = st.selectbox("Single-GPU run", [r.label for r in single_runs], key="ddp_single_sel")
             with col_d:
                 ddp_lbl = st.selectbox("DDP run", [r.label for r in ddp_runs], key="ddp_ddp_sel")
-
-            r_single = next(r for r in single_runs if r.label == single_lbl)
             r_ddp = next(r for r in ddp_runs if r.label == ddp_lbl)
+
+            # Sensible default for the single run: same model and environment as
+            # the chosen DDP run, and not deep-trace (deep adds ~20% overhead,
+            # which would inflate the measured speedup).
+            def _single_rank(r):
+                return (
+                    r.model == r_ddp.model,
+                    r.env == r_ddp.env,
+                    r.trace_mode != "deep",
+                    r.sort_key,
+                )
+            _default_single = max(single_runs, key=_single_rank)
+            _single_idx = single_runs.index(_default_single)
+            with col_s:
+                single_lbl = st.selectbox(
+                    "Single-GPU run", [r.label for r in single_runs],
+                    index=_single_idx, key="ddp_single_sel",
+                )
+            r_single = next(r for r in single_runs if r.label == single_lbl)
+
+            # Comparability warnings: mismatches silently distort the speedup.
+            if r_single.model != r_ddp.model:
+                st.warning(f"The runs use **different models** ({r_single.model} vs {r_ddp.model}) "
+                           "— the speedup is not apples-to-apples.")
+            if r_single.trace_mode == "deep" and r_ddp.trace_mode != "deep":
+                st.warning("The single-GPU run uses **deep tracing** (~20% overhead) — "
+                           "the measured speedup is inflated. Prefer a simple-trace single run.")
 
             df_s = _load_df(str(r_single.log_path), str(r_single.epoch_csv_path) if r_single.epoch_csv_path else None)
             df_d = _load_df(str(r_ddp.log_path), str(r_ddp.epoch_csv_path) if r_ddp.epoch_csv_path else None)

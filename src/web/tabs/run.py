@@ -39,7 +39,8 @@ from src.web.ui.helpers import (
 
 
 def render(ctx: DashboardContext) -> None:
-    st.caption("Details of the run selected in the sidebar.")
+    st.markdown("## Run results")
+    st.caption("Curves, per-class metrics, batch detail and metadata of the run selected in the sidebar.")
     sub = st.tabs(["Curves", "Per-class", "Batch", "Time", "Info"])
     with sub[0]:
         _curves(ctx)

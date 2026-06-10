@@ -121,6 +121,20 @@ TRANSLATIONS: dict[str, str] = {
     "DDP (multi-GPU)": "DDP (multi-GPU)",
     # Section headers
     "Project overview": "Vista general del proyecto", "All runs": "Todos los runs",
+    "Selected run": "Run seleccionado",
+    "Executive summary: global stats, the selected run at a glance, and all runs.":
+        "Resumen ejecutivo: estadísticas globales, el run seleccionado de un vistazo y todos los runs.",
+    "Curves, per-class metrics, batch detail and metadata of the run selected in the sidebar.":
+        "Curvas, métricas por clase, detalle por batch y metadatos del run seleccionado en la barra lateral.",
+    "Measure the real distributed speedup against single-GPU, or overlay several runs.":
+        "Mide el speedup distribuido real frente a single-GPU, o superpón varios runs.",
+    "Plan before training: hardware profile, predicted time and cost, and how past predictions held up against reality.":
+        "Planifica antes de entrenar: perfil del hardware, tiempo y coste predichos, y cómo se cumplieron las predicciones.",
+    "BigEarthNet-S2 v2.0 dataset explorer and timm model comparison.":
+        "Explorador del dataset BigEarthNet-S2 v2.0 y comparación de modelos timm.",
+    "Live hardware metrics, active-run monitor and training launcher.":
+        "Métricas de hardware en vivo, monitor del run activo y lanzador de entrenamientos.",
+    "Refresh (s)": "Refresco (s)",
     "System status": "Estado del sistema", "Disk": "Disco",
     "Network (cumulative since boot)": "Red (acumulado desde el arranque)",
     "System monitor": "Monitor del sistema", "System profile": "Perfil del sistema",

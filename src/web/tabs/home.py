@@ -44,6 +44,7 @@ def render(ctx: DashboardContext) -> None:
     run = ctx.run
     refresh_interval = ctx.refresh_interval
     st.markdown("## Project overview")
+    st.caption("Executive summary: global stats, the selected run at a glance, and all runs.")
 
     # ── Global statistics ──────────────────────────────────────────────────────
     total_runs = len(runs)
@@ -71,7 +72,9 @@ def render(ctx: DashboardContext) -> None:
     g1, g2, g3, g4, g5 = st.columns(5)
     g1.metric("Total runs", total_runs)
     g2.metric("Best Val F1", f"{best_f1_global:.4f}" if best_f1_global > float("-inf") else "—")
-    g3.metric("Top run", best_run_label[:28] if best_run_label != "—" else "—")
+    # The label starts with "DD/MM/YYYY HH:MM:SS" — show just the timestamp
+    # (a hard [:28] cut used to leave a dangling, half-open "[simple" tag).
+    g3.metric("Top run", best_run_label[:19] if best_run_label != "—" else "—")
     g4.metric("Total GPU time", f"{total_gpu_h:.1f} h")
     g5.metric("Feasibility reports", len(feasibility_csvs_home))
 
@@ -79,7 +82,8 @@ def render(ctx: DashboardContext) -> None:
 
     # ── Selected run: summary + mini curves ─────────────────────────────────────
     if selected_run is not None:
-        st.markdown(f"### Selected run — `{selected_run.label}`")
+        st.markdown("### Selected run")
+        st.caption(selected_run.label)
         try:
             df_sel = _load_df(
                 str(selected_run.log_path),
@@ -207,8 +211,14 @@ def render(ctx: DashboardContext) -> None:
 
     if overview_rows:
         ov_df = pd.DataFrame(overview_rows)
+        # Data-driven range (a fixed 0.4–0.75 clamps the subset runs, F1~0.05-0.55,
+        # into a wall of saturated red); a sequential blue reads calmer: darker = better.
+        _f1 = ov_df["Best Val F1"]
         st.dataframe(
-            ov_df.style.background_gradient(subset=["Best Val F1"], cmap="RdYlGn", vmin=0.4, vmax=0.75),
+            ov_df.style.background_gradient(
+                subset=["Best Val F1"], cmap="Blues",
+                vmin=float(_f1.min()), vmax=float(_f1.max()) + 1e-9,
+            ),
             use_container_width=True, hide_index=True,
         )
         _dl_csv(ov_df, "runs_summary.csv", "Download runs table")
