@@ -144,6 +144,8 @@ TRANSLATIONS: dict[str, str] = {
     "Theoretical vs real scaling": "Escalado teórico vs real",
     "DDP analysis — Optimal resource distribution": "Análisis DDP — Distribución óptima de recursos",
     "Distributed scaling (predicted)": "Escalado distribuido (predicho)",
+    "Hardware & precision": "Hardware y precisión", "Dataset I/O & memory": "E/S del dataset y memoria",
+    "Throughput & time": "Throughput y tiempo", "Distributed scaling": "Escalado distribuido",
     "Scenario table": "Tabla de escenarios", "Load distribution per GPU": "Distribución de carga por GPU",
     "Speedup: estimate vs scaling laws": "Speedup: estimación vs leyes de escalado",
     "Estimated total time per configuration": "Tiempo total estimado por configuración",
