@@ -148,12 +148,19 @@ def test_sidebar_nav_sections(app_source):
 
 
 def test_sub_tab_names(tabs_source):
-    """The sub-tab names (English) live in the tab modules."""
+    """The sub-tab names (English) live in the tab modules.
+
+    Compare has no sub-tabs anymore: it is ONE unified section (multiselect →
+    summary + speedup vs baseline + radar + energy + overlays).
+    """
     for t in ('"Curves"', '"Per-class"', '"Batch"', '"Time"', '"Info"',
-              '"Monitor"', '"Launcher"', '"Live"', '"Overlay runs"',
-              '"Single vs Distributed"', '"Prediction vs reality"',
+              '"Monitor"', '"Launcher"', '"Live"', '"Prediction vs reality"',
               '"Dataset"', '"Models"'):
         assert t in tabs_source, f"missing sub-tab {t}"
+    # The unified Compare keeps its key sections.
+    for s in ("Speedup analysis", "Baseline run (= 1.00×)", "Energy consumption",
+              "Metrics to overlay"):
+        assert s in tabs_source, f"missing Compare section {s}"
 
 
 def test_home_sections(tabs_source):
