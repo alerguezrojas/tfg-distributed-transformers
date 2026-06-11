@@ -316,6 +316,10 @@ def _overlay(ctx: DashboardContext) -> None:
             compare_dfs: list[tuple[str, pd.DataFrame]] = []
             for lbl, r in compare_runs_list:
                 cdf = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
+                # The log reports train energy in Joules — derive Wh so energy
+                # charts use one unit (eval already comes as energy_eval_wh).
+                if "energy_train_j" in cdf.columns:
+                    cdf = cdf.assign(energy_train_wh=cdf["energy_train_j"] / 3600.0)
                 compare_dfs.append((lbl, cdf))
 
             summary_rows = []
@@ -367,9 +371,64 @@ def _overlay(ctx: DashboardContext) -> None:
             _show(radar_fig, "radar_comparison")
             st.markdown("---")
 
+            # ── Energy comparison (runs trained with --fn energy) ─────────────
+            def _has(d: pd.DataFrame, c: str) -> bool:
+                return c in d.columns and d[c].notna().any()
+
+            energy_rows = []
+            for lbl, cdf in compare_dfs:
+                t_wh = cdf["energy_train_wh"].dropna().sum() if _has(cdf, "energy_train_wh") else 0.0
+                e_wh = cdf["energy_eval_wh"].dropna().sum() if _has(cdf, "energy_eval_wh") else 0.0
+                if t_wh or e_wh:
+                    energy_rows.append((lbl, t_wh, e_wh))
+
+            if energy_rows:
+                st.markdown("#### Energy consumption")
+                st.caption(
+                    "Total energy over the whole run (Wh), as measured by pynvml on the "
+                    "logging GPU. Runs without energy measurement (no `--fn energy`, e.g. "
+                    "model-parallel) are not shown."
+                )
+                fig_energy = go.Figure()
+                _lbls = [l for l, _, _ in energy_rows]
+                fig_energy.add_trace(go.Bar(
+                    y=_lbls, x=[t for _, t, _ in energy_rows], name="Train",
+                    orientation="h", marker_color=COLORS[0],
+                ))
+                fig_energy.add_trace(go.Bar(
+                    y=_lbls, x=[e for _, _, e in energy_rows], name="Eval",
+                    orientation="h", marker_color=COLORS[1],
+                ))
+                fig_energy.update_layout(
+                    **_base_layout(160 + 44 * len(energy_rows), "Total energy per run (Wh)",
+                                   margin=dict(l=10, r=16, t=48, b=40)),
+                    barmode="stack", xaxis_title="Wh",
+                )
+                fig_energy.update_yaxes(autorange="reversed", automargin=True)
+                # Outside the plot: the inside-top-left default would cover the first bar.
+                fig_energy.update_layout(legend=dict(
+                    orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1.0,
+                    bgcolor="rgba(0,0,0,0)",
+                ))
+                _show(fig_energy, "compare_energy_total")
+
+                _n_eff = [(l, (t + e)) for l, t, e in energy_rows]
+                _best = min(_n_eff, key=lambda x: x[1])
+                _worst = max(_n_eff, key=lambda x: x[1])
+                if _worst[1] > 0 and _best != _worst:
+                    st.caption(
+                        f"Most efficient: **{_best[0]}** ({_best[1]:.1f} Wh) — "
+                        f"{_worst[1]/_best[1]:.1f}× less energy than **{_worst[0]}** "
+                        f"({_worst[1]:.1f} Wh)."
+                    )
+                st.markdown("---")
+
+            _energy_opts = (["energy_train_wh", "energy_eval_wh", "power_train_w"]
+                            if energy_rows else [])
             metrics_to_compare = st.multiselect(
                 "Metrics to overlay",
-                ["val_f1", "val_loss", "train_f1", "train_loss", "val_prec", "val_rec", "epoch_time"],
+                ["val_f1", "val_loss", "train_f1", "train_loss", "val_prec", "val_rec",
+                 "epoch_time"] + _energy_opts,
                 default=["val_f1", "val_loss"],
             )
             cols = st.columns(2)
