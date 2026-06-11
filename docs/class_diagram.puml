@@ -567,12 +567,13 @@ package "src.web" #FDFEFE {
     + log_path: Path
     + trace_mode: str
     + env / mode / model: str
+    + precision: str  ' fp32/tf32/amp/bf16, leída del log
     + epoch_csv_path: Path | None
     + batch_csv_path: Path | None
     + perclass_csv_path: Path | None
     + confusion_matrix_csv_path: Path | None
     + sort_key: str  ' orden cronológico
-    + label: str
+    + label: str  ' compacto, tags [ddp]/[amp]/[deep]
   }
 
   class FeasibilityComparison <<dataclass>> {
@@ -616,6 +617,8 @@ package "src.web" #FDFEFE {
     discover_runs(root) → list[RunInfo]
     RunInfo.sort_key normaliza
     DDMMYYYY → YYYYMMDD (orden real).
+    _read_precision: lee precision= de la
+    línea Configuración del log (4 KB).
     Solo CSV paths (sin PNG).
 
     **parsers**: log_parser (deep: campos
@@ -646,7 +649,9 @@ package "src.web" #FDFEFE {
     **tabs/** — cada uno expone render(ctx):
     home · run · comparison · feasibility ·
     data_models · system
-    (6 páginas, 21 sub-pestañas)
+    (6 páginas; Compare = sección única:
+    speedup vs baseline + radar + energía
+    + overlays, sin sub-pestañas)
   end note
 
 }

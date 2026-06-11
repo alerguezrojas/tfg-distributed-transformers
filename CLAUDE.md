@@ -869,12 +869,13 @@ src/web/
   tabs/
     home.py                 # render(ctx) — pantalla principal con cuadrícula
     run.py                  # Curves / Per-class / Batch / Time / Info
-    comparison.py           # Single vs Distributed (DDP) / Overlay runs
+    comparison.py           # Compare unificado: multiselect → resumen + speedup vs baseline + radar + energía + overlays
     feasibility.py          # Report / Prediction vs reality / Real study / Run analysis
     data_models.py          # Dataset / Models
     system.py               # Monitor / Live / Launcher
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
-                            # RunInfo con env, mode, model, epoch/perclass/batch/confusion CSV paths
+                            # RunInfo con env, mode, model, precision (leída del log) y CSV paths;
+                            # label compacto con tags [ddp]/[amp]/[deep] (defaults implícitos)
   log_parser.py             # parsea logs --trace simple y --trace deep → DataFrame (fallback)
   batch_parser.py           # lee batch_metrics_*.csv → DataFrame por batch
   perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
