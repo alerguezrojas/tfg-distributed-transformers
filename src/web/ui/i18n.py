@@ -241,6 +241,10 @@ TRANSLATIONS: dict[str, str] = {
     "Select runs to compare (max 4)": "Selecciona runs a comparar (máx 4)",
     "Select runs to compare (max 8)": "Selecciona runs a comparar (máx 8)",
     "Baseline run (= 1.00×)": "Run de referencia (= 1.00×)",
+    "Baseline run (= 1.00×) — every other selected run is measured against it":
+        "Run de referencia (= 1.00×) — los demás runs seleccionados se miden contra él",
+    "All the runs selected at the top are compared against ONE of them — the baseline, which counts as 1.00×. To compare more runs, add them to the selector at the top of the page.":
+        "Todos los runs seleccionados arriba se comparan contra UNO de ellos — la referencia, que cuenta como 1.00×. Para comparar más runs, añádelos al selector de la parte superior de la página.",
     "Pick any set of runs and compare them in one place: summary, speedup against a baseline, radar, energy and per-epoch overlays.":
         "Elige los runs que quieras y compáralos en un solo sitio: resumen, speedup frente a una referencia, radar, energía y curvas por epoch.",
     "Speedup needs at least 2 selected runs with epoch timing.":

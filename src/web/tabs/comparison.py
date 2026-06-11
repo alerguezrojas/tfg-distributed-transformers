@@ -62,9 +62,16 @@ def render(ctx: DashboardContext) -> None:
     all_run_labels = {r.label: r for r in runs}
     all_labels_list = list(all_run_labels.keys())
 
+    # Default: the latest SESSION (runs sharing env and day with the most
+    # recent run) — e.g. the whole 5-strategy Kaggle session in one click.
+    _latest = runs[0]
+    _session = [r.label for r in runs
+                if r.env == _latest.env and r.timestamp[:8] == _latest.timestamp[:8]][:8]
+    _default = _session if len(_session) >= 2 else all_labels_list[:min(2, len(all_labels_list))]
+
     selected_compare = st.multiselect(
         "Select runs to compare (max 8)", all_labels_list,
-        default=all_labels_list[:min(2, len(all_labels_list))],
+        default=_default,
         max_selections=8,
     )
     if len(selected_compare) < 2:
@@ -123,6 +130,11 @@ def _summary_table(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.Dat
 def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.DataFrame]) -> None:
     """Every selected run against one baseline (the generalized pair analysis)."""
     st.markdown("### Speedup analysis")
+    st.caption(
+        "All the runs selected at the top are compared against ONE of them — the "
+        "baseline, which counts as 1.00×. To compare more runs, add them to the "
+        "selector at the top of the page."
+    )
 
     timed: list[tuple[str, RunInfo, float]] = []
     for lbl, r in sel:
@@ -132,6 +144,9 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
     if len(timed) < 2:
         st.caption("Speedup needs at least 2 selected runs with epoch timing.")
         return
+    if len(timed) < len(sel):
+        st.caption(f"{len(sel) - len(timed)} selected run(s) have no epoch timing "
+                   "and are excluded from the speedup table.")
 
     # Baseline default: a single-GPU fp32 simple-trace run (the natural 1.00x
     # reference); ties broken by recency.
@@ -143,8 +158,10 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
     default_lbl = max(timed, key=_baseline_rank)[0]
     # No fixed key: the widget is re-created when the selection changes, so the
     # smart default re-applies (a fixed key would freeze the first-render pick).
-    base_lbl = st.selectbox("Baseline run (= 1.00×)", timed_labels,
-                            index=timed_labels.index(default_lbl))
+    base_lbl = st.selectbox(
+        "Baseline run (= 1.00×) — every other selected run is measured against it",
+        timed_labels, index=timed_labels.index(default_lbl),
+    )
     _, base_r, base_t = next(t for t in timed if t[0] == base_lbl)
 
     rows, bar_lbls, bar_vals, bar_colors = [], [], [], []
@@ -156,7 +173,10 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
         if _prec(r) != _prec(base_r):
             notes.append(f"precision {_prec(r)} vs {_prec(base_r)} (Tensor cores ~3-4×)")
         if r.mode == "ddp":
-            notes.append(f"{sp / 2 * 100:.0f}% of ideal 2×")
+            # % of ideal only makes sense vs a same-precision baseline —
+            # otherwise the Tensor-core effect pollutes the DDP efficiency.
+            if _prec(r) == _prec(base_r):
+                notes.append(f"{sp / 2 * 100:.0f}% of ideal 2×")
         elif r.mode == "ddp_hetero":
             notes.append("synchronous + imbalanced hardware")
         elif r.mode == "model_parallel":
