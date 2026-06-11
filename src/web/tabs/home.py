@@ -72,9 +72,9 @@ def render(ctx: DashboardContext) -> None:
     g1, g2, g3, g4, g5 = st.columns(5)
     g1.metric("Total runs", total_runs)
     g2.metric("Best Val F1", f"{best_f1_global:.4f}" if best_f1_global > float("-inf") else "—")
-    # The label starts with "DD/MM/YYYY HH:MM:SS" — show just the timestamp
+    # The label starts with "DD/MM/YYYY HH:MM" — show just the timestamp
     # (a hard [:28] cut used to leave a dangling, half-open "[simple" tag).
-    g3.metric("Top run", best_run_label[:19] if best_run_label != "—" else "—")
+    g3.metric("Top run", best_run_label[:16] if best_run_label != "—" else "—")
     g4.metric("Total GPU time", f"{total_gpu_h:.1f} h")
     g5.metric("Feasibility reports", len(feasibility_csvs_home))
 

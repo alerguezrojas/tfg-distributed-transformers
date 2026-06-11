@@ -85,19 +85,24 @@ def _overlay_fig(
     height: int = 340,
 ) -> go.Figure:
     fig = go.Figure()
+    n_series = 0
     for i, (label, df) in enumerate(dfs):
         if col in df.columns and df[col].notna().any():
+            n_series += 1
             fig.add_trace(go.Scatter(
                 x=df["epoch"], y=df[col],
-                name=label[:30], mode="lines+markers",
+                name=label, mode="lines+markers",
                 line=dict(color=COLORS[i % len(COLORS)], width=2), marker=dict(size=4),
             ))
+    # Full run labels need room: legend below the plot, one row per run, and
+    # the figure grows with the number of series so the plot area keeps its size.
+    legend_px = 20 * max(n_series, 1)
     fig.update_layout(
         title=dict(text=title, font=dict(size=13)),
         xaxis_title="Epoch", yaxis_title=y_label,
-        height=height, margin=dict(l=50, r=16, t=48, b=40),
-        legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01,
-                    bgcolor="rgba(255,255,255,0.65)"),
+        height=height + legend_px, margin=dict(l=50, r=16, t=48, b=60 + legend_px),
+        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="left", x=0,
+                    font=dict(size=11)),
         paper_bgcolor="white", plot_bgcolor="#f8fafc",
         xaxis=dict(gridcolor="#e2e8f0"), yaxis=dict(gridcolor="#e2e8f0"),
     )

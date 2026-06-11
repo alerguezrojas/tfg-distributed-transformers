@@ -221,6 +221,7 @@ TRANSLATIONS: dict[str, str] = {
     "Anomaly detection": "Detección de anomalías", "Associated files": "Ficheros asociados",
     "Batch size for VRAM estimate": "Batch size para estimación VRAM", "Batch sizes": "Batch sizes",
     "Classes (max 8)": "Clases (máx 8)", "DDP run": "Run DDP", "DDP training": "Entrenamiento DDP",
+    "Distributed run": "Run distribuido",
     "Epochs for estimate": "Epochs para estimación", "Epochs for total estimate": "Epochs para estimación total",
     "Filter log lines": "Filtrar líneas del log", "Fn decorators": "Decoradores Fn",
     "Full epochs table": "Tabla de epochs completa", "GPU device": "Dispositivo GPU",
@@ -238,6 +239,18 @@ TRANSLATIONS: dict[str, str] = {
     "YAML config": "Config YAML", "Model families": "Familias de modelos",
     "Metrics to overlay": "Métricas a superponer",
     "Select runs to compare (max 4)": "Selecciona runs a comparar (máx 4)",
+    "Select runs to compare (max 8)": "Selecciona runs a comparar (máx 8)",
+    "Baseline run (= 1.00×)": "Run de referencia (= 1.00×)",
+    "Baseline run (= 1.00×) — every other selected run is measured against it":
+        "Run de referencia (= 1.00×) — los demás runs seleccionados se miden contra él",
+    "All the runs selected at the top are compared against ONE of them — the baseline, which counts as 1.00×. To compare more runs, add them to the selector at the top of the page.":
+        "Todos los runs seleccionados arriba se comparan contra UNO de ellos — la referencia, que cuenta como 1.00×. Para comparar más runs, añádelos al selector de la parte superior de la página.",
+    "Pick any set of runs and compare them in one place: summary, speedup against a baseline, radar, energy and per-epoch overlays.":
+        "Elige los runs que quieras y compáralos en un solo sitio: resumen, speedup frente a una referencia, radar, energía y curvas por epoch.",
+    "Speedup needs at least 2 selected runs with epoch timing.":
+        "El speedup necesita al menos 2 runs seleccionados con tiempos por epoch.",
+    "Total energy over the whole run (Wh), as measured by pynvml on the logging GPU. Runs without energy measurement (no `--fn energy`, e.g. model-parallel) are not shown.":
+        "Energía total del run completo (Wh), medida por pynvml en la GPU que escribe el log. Los runs sin medición de energía (sin `--fn energy`, p. ej. model-parallel) no se muestran.",
     "Global metric": "Métrica global", "Scaling laws to overlay": "Leyes de escalado a superponer",
     "Serial fraction s (Amdahl / Gustafson)": "Fracción serial s (Amdahl / Gustafson)",
     "Select a model to prefill the Launcher": "Selecciona modelo para prellenar el Lanzador",

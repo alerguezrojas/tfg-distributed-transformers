@@ -148,12 +148,19 @@ def test_sidebar_nav_sections(app_source):
 
 
 def test_sub_tab_names(tabs_source):
-    """The sub-tab names (English) live in the tab modules."""
+    """The sub-tab names (English) live in the tab modules.
+
+    Compare has no sub-tabs anymore: it is ONE unified section (multiselect →
+    summary + speedup vs baseline + radar + energy + overlays).
+    """
     for t in ('"Curves"', '"Per-class"', '"Batch"', '"Time"', '"Info"',
-              '"Monitor"', '"Launcher"', '"Live"', '"Overlay runs"',
-              '"Single vs Distributed"', '"Prediction vs reality"',
+              '"Monitor"', '"Launcher"', '"Live"', '"Prediction vs reality"',
               '"Dataset"', '"Models"'):
         assert t in tabs_source, f"missing sub-tab {t}"
+    # The unified Compare keeps its key sections.
+    for s in ("Speedup analysis", "Baseline run (= 1.00×)", "Energy consumption",
+              "Metrics to overlay"):
+        assert s in tabs_source, f"missing Compare section {s}"
 
 
 def test_home_sections(tabs_source):
@@ -234,7 +241,9 @@ def test_run_info_csv_attributes_present():
 
 
 def test_run_info_label_format():
-    """RunInfo.label must include date, trace mode, env and model."""
+    """RunInfo.label: compact — date+time, env, short model; the defaults
+    (simple trace, fp32, single mode) are implicit; deep/mode/precision are
+    tagged so e.g. the Kaggle AMP runs are distinguishable in the selector."""
     from src.web.run_registry import RunInfo
     from pathlib import Path
     import tempfile
@@ -251,7 +260,43 @@ def test_run_info_label_format():
         model="vit_base_patch16_224",
     )
     label = info.label
-    assert "[simple]" in label
+    assert label.startswith("27/05/2026 21:02")
     assert "[local]" in label
-    assert "vit_base_patch16_224" in label
+    assert "vit_base" in label and "_patch16_224" not in label  # short model
+    assert "[simple]" not in label                              # default: implicit
+
+    # Non-default runs get tags: mode, precision (Tensor cores) and deep trace.
+    tagged = RunInfo(
+        timestamp="10062026_211814", log_path=tmp, trace_mode="deep",
+        env="kaggle", mode="ddp", model="vit_base_patch16_224", precision="amp",
+    )
+    assert "[ddp]" in tagged.label
+    assert "[amp]" in tagged.label
+    assert "[deep]" in tagged.label
+    fp32 = RunInfo(
+        timestamp="10062026_173904", log_path=tmp, trace_mode="simple",
+        env="kaggle", mode="single", model="vit_base_patch16_224", precision="fp32",
+    )
+    assert "[fp32]" not in fp32.label                           # default: implicit
     tmp.unlink(missing_ok=True)
+
+
+def test_read_precision_from_log(tmp_path):
+    """discover_runs must read precision= from the log's config header line."""
+    from src.web.run_registry import _read_precision
+
+    log = tmp_path / "train_10062026_203609.log"
+    log.write_text(
+        "2026-06-10 20:36:11 [INFO ] Configuración: modelo=vit_base_patch16_224 "
+        "| batch=96/GPU (global=96) | epochs=15 | lr=0.0001 | precision=amp "
+        "| train=5000 | val=1500\n",
+        encoding="utf-8",
+    )
+    assert _read_precision(log) == "amp"
+
+    legacy = tmp_path / "train_27052026_210223.log"
+    legacy.write_text(
+        "2026-05-27 21:02:23 [INFO ] Configuración: modelo=x | batch=64\n",
+        encoding="utf-8",
+    )
+    assert _read_precision(legacy) == ""

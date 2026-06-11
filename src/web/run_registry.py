@@ -15,6 +15,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 _TIMESTAMP_RE = re.compile(r"(\d{8}_\d{6})")
+_PRECISION_RE = re.compile(r"precision=(fp32|tf32|amp|bf16)")
+
+
+def _read_precision(log_path: Path) -> str:
+    """Reads the precision from the run's 'Configuración:' header line.
+
+    Returns "" when the log has no precision marker (pre-precision runs).
+    Only the first ~4 KB are read — the config line is always at the top.
+    """
+    try:
+        with log_path.open(encoding="utf-8", errors="ignore") as f:
+            head = f.read(4096)
+    except OSError:
+        return ""
+    m = _PRECISION_RE.search(head)
+    return m.group(1) if m else ""
 
 
 @dataclass
@@ -25,6 +41,7 @@ class RunInfo:
     env: str = "local"
     mode: str = "single"
     model: str = ""
+    precision: str = ""
     confusion_matrix_csv_path: Path | None = None
     batch_csv_path: Path | None = None
     epoch_csv_path: Path | None = None
@@ -49,18 +66,30 @@ class RunInfo:
 
     @property
     def label(self) -> str:
+        """Compact display label.
+
+        Kept short so the distinguishing tags survive the selectbox width:
+        no seconds, the default trace (simple) and precision (fp32) are
+        implicit, and the ubiquitous "_patch16_224" model suffix is dropped.
+        E.g. "10/06/2026 21:18 [kaggle] vit_base [ddp] [amp]".
+        """
         ts = self.timestamp
         if int(ts[4:8]) >= 2000:  # DDMMYYYY
             date = f"{ts[:2]}/{ts[2:4]}/{ts[4:8]}"
         else:                      # legacy YYYYMMDD
             date = f"{ts[6:8]}/{ts[4:6]}/{ts[:4]}"
-        time_str = f"{ts[9:11]}:{ts[11:13]}:{ts[13:15]}"
-        parts = [f"{date} {time_str}", f"[{self.trace_mode}]", f"[{self.env}]"]
+        time_str = f"{ts[9:11]}:{ts[11:13]}"
+        parts = [f"{date} {time_str}", f"[{self.env}]"]
         if self.model:
-            parts.append(f"[{self.model}]")
+            parts.append(self.model.replace("_patch16_224", ""))
         if self.mode != "single":
             parts.append(f"[{self.mode}]")
-        return "  ".join(parts)
+        # Tag Tensor-core runs (amp/tf32/bf16); fp32 is the unlabeled default.
+        if self.precision and self.precision != "fp32":
+            parts.append(f"[{self.precision}]")
+        if self.trace_mode == "deep":
+            parts.append("[deep]")
+        return " ".join(parts)
 
 
 def _env_mode_model_from_path(log_path: Path, logs_root: Path) -> tuple[str, str, str]:
@@ -98,6 +127,7 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
             log_path=log_path,
             trace_mode="deep" if is_deep else "simple",
             env=env, mode=mode, model=model,
+            precision=_read_precision(log_path),
         )
 
     if not runs:
