@@ -240,6 +240,11 @@ TRANSLATIONS: dict[str, str] = {
     "Metrics to overlay": "Métricas a superponer",
     "Select runs to compare (max 4)": "Selecciona runs a comparar (máx 4)",
     "Select runs to compare (max 8)": "Selecciona runs a comparar (máx 8)",
+    "Baseline run (= 1.00×)": "Run de referencia (= 1.00×)",
+    "Pick any set of runs and compare them in one place: summary, speedup against a baseline, radar, energy and per-epoch overlays.":
+        "Elige los runs que quieras y compáralos en un solo sitio: resumen, speedup frente a una referencia, radar, energía y curvas por epoch.",
+    "Speedup needs at least 2 selected runs with epoch timing.":
+        "El speedup necesita al menos 2 runs seleccionados con tiempos por epoch.",
     "Total energy over the whole run (Wh), as measured by pynvml on the logging GPU. Runs without energy measurement (no `--fn energy`, e.g. model-parallel) are not shown.":
         "Energía total del run completo (Wh), medida por pynvml en la GPU que escribe el log. Los runs sin medición de energía (sin `--fn energy`, p. ej. model-parallel) no se muestran.",
     "Global metric": "Métrica global", "Scaling laws to overlay": "Leyes de escalado a superponer",
