@@ -234,7 +234,9 @@ def test_run_info_csv_attributes_present():
 
 
 def test_run_info_label_format():
-    """RunInfo.label must include date, trace mode, env and model."""
+    """RunInfo.label: compact — date+time, env, short model; the defaults
+    (simple trace, fp32, single mode) are implicit; deep/mode/precision are
+    tagged so e.g. the Kaggle AMP runs are distinguishable in the selector."""
     from src.web.run_registry import RunInfo
     from pathlib import Path
     import tempfile
@@ -251,7 +253,43 @@ def test_run_info_label_format():
         model="vit_base_patch16_224",
     )
     label = info.label
-    assert "[simple]" in label
+    assert label.startswith("27/05/2026 21:02")
     assert "[local]" in label
-    assert "vit_base_patch16_224" in label
+    assert "vit_base" in label and "_patch16_224" not in label  # short model
+    assert "[simple]" not in label                              # default: implicit
+
+    # Non-default runs get tags: mode, precision (Tensor cores) and deep trace.
+    tagged = RunInfo(
+        timestamp="10062026_211814", log_path=tmp, trace_mode="deep",
+        env="kaggle", mode="ddp", model="vit_base_patch16_224", precision="amp",
+    )
+    assert "[ddp]" in tagged.label
+    assert "[amp]" in tagged.label
+    assert "[deep]" in tagged.label
+    fp32 = RunInfo(
+        timestamp="10062026_173904", log_path=tmp, trace_mode="simple",
+        env="kaggle", mode="single", model="vit_base_patch16_224", precision="fp32",
+    )
+    assert "[fp32]" not in fp32.label                           # default: implicit
     tmp.unlink(missing_ok=True)
+
+
+def test_read_precision_from_log(tmp_path):
+    """discover_runs must read precision= from the log's config header line."""
+    from src.web.run_registry import _read_precision
+
+    log = tmp_path / "train_10062026_203609.log"
+    log.write_text(
+        "2026-06-10 20:36:11 [INFO ] Configuración: modelo=vit_base_patch16_224 "
+        "| batch=96/GPU (global=96) | epochs=15 | lr=0.0001 | precision=amp "
+        "| train=5000 | val=1500\n",
+        encoding="utf-8",
+    )
+    assert _read_precision(log) == "amp"
+
+    legacy = tmp_path / "train_27052026_210223.log"
+    legacy.write_text(
+        "2026-05-27 21:02:23 [INFO ] Configuración: modelo=x | batch=64\n",
+        encoding="utf-8",
+    )
+    assert _read_precision(legacy) == ""

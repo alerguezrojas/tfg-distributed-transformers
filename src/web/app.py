@@ -70,11 +70,16 @@ st.markdown("""
     padding-left: 0.75rem !important; padding-right: 0.75rem !important;
     min-width: unset !important;
   }
+  /* Sidebar: compact — everything (nav + run selector + language) must fit
+     without scrolling. Tighter gaps, slim dividers, less top padding. */
+  [data-testid="stSidebarUserContent"] { padding-top: 1.2rem; }
+  [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.45rem; }
+  [data-testid="stSidebar"] hr { margin: 0.45rem 0; }
   /* Sidebar navigation: borderless menu items; the active page keeps the
      filled accent (primary button). */
   [data-testid="stSidebar"] .stButton button {
     justify-content: flex-start; text-align: left; font-weight: 500;
-    padding-top: 0.28rem; padding-bottom: 0.28rem;
+    padding-top: 0.22rem; padding-bottom: 0.22rem; min-height: 1.9rem;
   }
   /* The label lives in a nested <p>; align it too or the text stays centered. */
   [data-testid="stSidebar"] .stButton button div { justify-content: flex-start; }
@@ -88,6 +93,16 @@ st.markdown("""
   [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
     margin-top: 0.4rem; letter-spacing: 0.04em; opacity: 0.7;
   }
+  /* Selectbox dropdowns copy the control's width (~200px in the sidebar),
+     truncating the run tags. Widening the popover itself breaks its centered
+     positioning, so instead let the option list overflow it to the right. */
+  [data-baseweb="popover"], [data-baseweb="popover"] > div,
+  [data-baseweb="popover"] > div > div { overflow: visible !important; }
+  [data-testid="stSelectboxVirtualDropdown"] {
+    min-width: 27rem !important;
+    background: white; box-shadow: 0 4px 16px rgba(0,0,0,0.16); border-radius: 0.5rem;
+  }
+  [data-testid="stSelectboxVirtualDropdown"] li { white-space: nowrap !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -112,18 +127,11 @@ _PAGES = {
     "system": system.render,
 }
 
+# Everything must fit without scrolling: navigation first, then the run
+# selector; the language toggle goes last (used once per session at most).
 with st.sidebar:
     st.markdown("### Training Dashboard")
-    _choice = st.radio(
-        "Language / Idioma", ["English", "Español"],
-        index=0 if _lang == "en" else 1, horizontal=True, key="_lang_radio",
-    )
-    _new_lang = "es" if _choice == "Español" else "en"
-    if _new_lang != _lang:
-        st.session_state["_lang"] = _new_lang
-        st.rerun()
 
-    st.markdown("---")
     # ── Navigation (grouped, always visible) ──────────────────────────────────
     _page = st.session_state.get("nav", "overview")
     for _group, _items in _NAV:
@@ -155,17 +163,27 @@ with st.sidebar:
             run = run_labels[selected_label]
             selected_run = run
 
+            # The label already carries env/model/mode/precision — only add
+            # what it doesn't: the log filename and which CSVs exist.
             has_csv = run.epoch_csv_path is not None and run.epoch_csv_path.exists()
-            st.caption(
-                f"**Log:** {run.log_path.name}  \n"
-                f"**Environment:** {run.env}  \n"
-                f"**Mode:** {run.mode}  \n"
-                f"**Model:** {run.model or '—'}  \n"
-                f"**Trace:** {run.trace_mode}  \n"
-                f"**Epoch CSV:** {'yes' if has_csv else 'no'}  \n"
-                f"**Batch CSV:** {'yes' if run.batch_csv_path else 'no'}  \n"
-                f"**Per-class CSV:** {'yes' if run.perclass_csv_path else 'no'}"
+            _csv_bits = " · ".join(
+                f"{name} {'✓' if ok else '—'}"
+                for name, ok in (("epoch", has_csv),
+                                 ("batch", run.batch_csv_path is not None),
+                                 ("per-class", run.perclass_csv_path is not None))
             )
+            st.caption(f"{run.log_path.name}  \nCSV: {_csv_bits}")
+
+    st.markdown("---")
+    # ── Language (least-used control — keep it at the bottom) ─────────────────
+    _choice = st.radio(
+        "Language / Idioma", ["English", "Español"],
+        index=0 if _lang == "en" else 1, horizontal=True, key="_lang_radio",
+    )
+    _new_lang = "es" if _choice == "Español" else "en"
+    if _new_lang != _lang:
+        st.session_state["_lang"] = _new_lang
+        st.rerun()
 
 # ── Build shared context and render the selected page ───────────────────────────
 # (The refresh slider lives in System — Monitor/Live are the only consumers.)

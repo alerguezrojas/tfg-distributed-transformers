@@ -1,4 +1,4 @@
-2026-06-10 19:05:28 [INFO ] Configuración: modelo=vit_base_patch16_224 | batch=48/GPU (global=96, 2 GPUs) | epochs=15 | lr=0.0001 | train=5000 | val=1500
+2026-06-10 19:05:28 [INFO ] Configuración: modelo=vit_base_patch16_224 | batch=48/GPU (global=96, 2 GPUs) | epochs=15 | lr=0.0001 | precision=fp32 | train=5000 | val=1500
 2026-06-10 19:05:28 [INFO ] Iniciando entrenamiento — 15 epochs
 2026-06-10 19:05:28 [INFO ] 
 ── Epoch 001/015 ────────────────────────────

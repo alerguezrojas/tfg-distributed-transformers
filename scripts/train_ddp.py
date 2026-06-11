@@ -180,11 +180,12 @@ def main():
         print(f"Decoradores@: {fn or 'ninguno'}")
         # Config en el log (visible en la web → Información)
         _bs = cfg["training"]["batch_size"]
+        _prec = cfg["training"].get("precision", "fp32")
         logging.getLogger("trainer").info(
             f"Configuración: modelo={model_name} | batch={_bs}/GPU "
             f"(global={_bs * world_size}, {world_size} GPUs) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-            f"train={len(train_ds)} | val={len(val_ds)}"
+            f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)}"
         )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────
