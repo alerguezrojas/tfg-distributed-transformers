@@ -73,18 +73,20 @@ def _ddp(ctx: DashboardContext) -> None:
     run = ctx.run
     refresh_interval = ctx.refresh_interval
     st.markdown("### Single vs Distributed — measured speedup")
-    st.caption("Did distributing actually help? Compares single-GPU and DDP runs of the same model, "
-               "validated against the feasibility's prediction. (Predicted-only scenarios live in Feasibility.)")
+    st.caption("Did distributing actually help? Compares a single-GPU run against any distributed "
+               "strategy — DDP, heterogeneous or model-parallel — validated against the "
+               "feasibility's prediction. (Predicted-only scenarios live in Feasibility.)")
 
     all_runs_ddp = _get_runs()
     if not all_runs_ddp:
         st.info("No runs found.")
     else:
         single_runs = [r for r in all_runs_ddp if r.mode == "single"]
-        # Any distributed mode counts as DDP: "ddp" (multi-process NCCL) and
-        # "ddp_hetero" (GPU+CPU). Previously only the exact "ddp" was filtered, so
-        # heterogeneous runs did not appear in this tab.
-        ddp_runs = [r for r in all_runs_ddp if r.mode.startswith("ddp")]
+        # Every distributed strategy counts: "ddp" (multi-process NCCL),
+        # "ddp_hetero" (GPU+CPU) and "model_parallel" (pipeline across 2 GPUs) —
+        # so 1 GPU vs model-parallel is also comparable here.
+        ddp_runs = [r for r in all_runs_ddp
+                    if r.mode.startswith("ddp") or r.mode == "model_parallel"]
 
         da1, da2, da3 = st.columns(3)
         da1.metric("Single-GPU runs", len(single_runs))
@@ -92,9 +94,10 @@ def _ddp(ctx: DashboardContext) -> None:
         da3.metric("Total runs", len(all_runs_ddp))
 
         if not ddp_runs:
-            st.info("No DDP runs yet. Launch `scripts/train_ddp.py` — results will appear here automatically.")
+            st.info("No distributed runs yet. Launch `scripts/train_ddp.py` or "
+                    "`scripts/train_model_parallel.py` — results will appear here automatically.")
         else:
-            st.markdown("### DDP runs")
+            st.markdown("### Distributed runs")
             ddp_rows = []
             for r in ddp_runs:
                 try:
@@ -120,16 +123,21 @@ def _ddp(ctx: DashboardContext) -> None:
             st.markdown("### Speedup analysis")
             col_s, col_d = st.columns(2)
             with col_d:
-                ddp_lbl = st.selectbox("DDP run", [r.label for r in ddp_runs], key="ddp_ddp_sel")
+                ddp_lbl = st.selectbox("Distributed run", [r.label for r in ddp_runs], key="ddp_ddp_sel")
             r_ddp = next(r for r in ddp_runs if r.label == ddp_lbl)
 
-            # Sensible default for the single run: same model and environment as
-            # the chosen DDP run, and not deep-trace (deep adds ~20% overhead,
-            # which would inflate the measured speedup).
+            # Sensible default for the single run: same model, environment and
+            # precision as the chosen distributed run, and not deep-trace (deep
+            # adds ~20% overhead, which would inflate the measured speedup).
+            # Runs without a precision marker predate the selector → fp32.
+            def _prec(r):
+                return r.precision or "fp32"
+
             def _single_rank(r):
                 return (
                     r.model == r_ddp.model,
                     r.env == r_ddp.env,
+                    _prec(r) == _prec(r_ddp),
                     r.trace_mode != "deep",
                     r.sort_key,
                 )
@@ -146,6 +154,10 @@ def _ddp(ctx: DashboardContext) -> None:
             if r_single.model != r_ddp.model:
                 st.warning(f"The runs use **different models** ({r_single.model} vs {r_ddp.model}) "
                            "— the speedup is not apples-to-apples.")
+            if _prec(r_single) != _prec(r_ddp):
+                st.warning(f"The runs use **different precision** ({_prec(r_single)} vs "
+                           f"{_prec(r_ddp)}) — Tensor cores alone change the time ~3-4×, so the "
+                           "speedup mixes two effects. Prefer same-precision runs.")
             if r_single.trace_mode == "deep" and r_ddp.trace_mode != "deep":
                 st.warning("The single-GPU run uses **deep tracing** (~20% overhead) — "
                            "the measured speedup is inflated. Prefer a simple-trace single run.")
@@ -157,10 +169,18 @@ def _ddp(ctx: DashboardContext) -> None:
                 avg_s = df_s["epoch_time"].mean() if "epoch_time" in df_s.columns and df_s["epoch_time"].notna().any() else None
                 avg_d = df_d["epoch_time"].mean() if "epoch_time" in df_d.columns and df_d["epoch_time"].notna().any() else None
 
-                # Correct labels by distribution type: the heterogeneous case
-                # is V100+CPU (NOT 2 equivalent GPUs).
+                # Correct labels by distribution type: the heterogeneous case is
+                # V100+CPU (NOT 2 equivalent GPUs), and model parallelism splits
+                # the MODEL across 2 GPUs (data parallelism's "ideal 2x" does not
+                # apply — naive pipeline stages serialize, so ~1x is expected).
                 is_hetero = r_ddp.mode == "ddp_hetero"
-                worker_desc = "V100 + CPU" if is_hetero else "2 GPUs"
+                is_mp = r_ddp.mode == "model_parallel"
+                if is_hetero:
+                    worker_desc, dist_label = "V100 + CPU", "Hetero (V100+CPU)"
+                elif is_mp:
+                    worker_desc, dist_label = "2 GPUs, pipeline", "Model-parallel"
+                else:
+                    worker_desc, dist_label = "2 GPUs", "DDP"
                 n_workers = 2
 
                 su1, su2, su3, su4 = st.columns(4)
@@ -170,9 +190,20 @@ def _ddp(ctx: DashboardContext) -> None:
                 if avg_s and avg_d and avg_d > 0:
                     speedup = avg_s / avg_d
                     su3.metric("Real speedup", f"{speedup:.2f}×")
-                    su4.metric(f"Efficiency vs ideal {n_workers}× ", f"{speedup / n_workers * 100:.1f}%")
+                    if is_mp:
+                        su4.metric("Expected (naive pipeline)", "≈1×")
+                    else:
+                        su4.metric(f"Efficiency vs ideal {n_workers}× ", f"{speedup / n_workers * 100:.1f}%")
 
-                if speedup is not None and speedup < 1:
+                if speedup is not None and is_mp:
+                    st.info(
+                        f"**Model parallelism: {speedup:.2f}× — it does not accelerate, and that is "
+                        f"the expected result.** The naive pipeline serializes the stages (while one "
+                        f"GPU computes, the other waits), so ≈1× is the theoretical ceiling. Its value "
+                        f"is **fitting models that do not fit on one GPU**: vit_large OOMs on a single "
+                        f"T4 but trains split 12/24 across both."
+                    )
+                elif speedup is not None and speedup < 1:
                     st.warning(
                         f"**Speedup < 1×: distributed is {1/speedup:.1f}× SLOWER** than the GPU alone. "
                         + ("This is the expected result of **synchronous** DDP with imbalanced hardware "
@@ -188,8 +219,10 @@ def _ddp(ctx: DashboardContext) -> None:
                     )
 
                 # Predicted vs measured — bring the feasibility's 2-GPU prediction
-                # here so the whole distributed story lives in one place.
-                if speedup is not None and not is_hetero:
+                # here so the whole distributed story lives in one place. (The
+                # DDPOptimizer predicts DATA parallelism — not applicable to
+                # heterogeneous or model-parallel runs.)
+                if speedup is not None and not is_hetero and not is_mp:
                     pred_sp = _predicted_2gpu_speedup(r_ddp.env, r_ddp.model)
                     if pred_sp:
                         err = (pred_sp - speedup) / speedup * 100
@@ -210,8 +243,8 @@ def _ddp(ctx: DashboardContext) -> None:
                                                      name="Single-GPU Val F1", line=dict(color=COLORS[0], width=2)))
                 if "val_f1" in df_d.columns:
                     fig_ddp_f1.add_trace(go.Scatter(x=df_d["epoch"], y=df_d["val_f1"],
-                                                     name="DDP Val F1", line=dict(color=COLORS[2], width=2)))
-                fig_ddp_f1.update_layout(**_base_layout(300, "Val F1: Single-GPU vs DDP"),
+                                                     name=f"{dist_label} Val F1", line=dict(color=COLORS[2], width=2)))
+                fig_ddp_f1.update_layout(**_base_layout(300, f"Val F1: Single-GPU vs {dist_label}"),
                                           xaxis_title="Epoch", yaxis_title="Val F1")
                 _show(fig_ddp_f1, "ddp_f1")
 
@@ -222,36 +255,40 @@ def _ddp(ctx: DashboardContext) -> None:
                                                            name="Single-GPU", line=dict(color=COLORS[0], width=2)))
                     if "epoch_time" in df_d.columns:
                         fig_time_ddp.add_trace(go.Scatter(x=df_d["epoch"], y=df_d["epoch_time"] / 60,
-                                                           name="DDP", line=dict(color=COLORS[2], width=2)))
-                    fig_time_ddp.update_layout(**_base_layout(260, "Epoch time: Single-GPU vs DDP"),
+                                                           name=dist_label, line=dict(color=COLORS[2], width=2)))
+                    fig_time_ddp.update_layout(**_base_layout(260, f"Epoch time: Single-GPU vs {dist_label}"),
                                                xaxis_title="Epoch", yaxis_title="Minutes")
                     _show(fig_time_ddp, "ddp_time")
 
-                st.markdown("### Theoretical vs real scaling")
-                world_sizes = [1, 2, 4, 8]
-                if avg_s:
-                    theoretical = [avg_s / ws for ws in world_sizes]
-                    fig_scale = go.Figure()
-                    fig_scale.add_trace(go.Scatter(
-                        x=world_sizes, y=[t / 60 for t in theoretical],
-                        name="Theoretical (100% efficiency)",
-                        line=dict(color=COLORS[4], width=2, dash="dash"), mode="lines+markers",
-                    ))
-                    if avg_d:
+                # Worker-scaling theory describes DATA parallelism (N workers on
+                # the same data) — it is meaningless for a pipeline that splits
+                # the model, so the section is skipped for model-parallel runs.
+                if not is_mp:
+                    st.markdown("### Theoretical vs real scaling")
+                    world_sizes = [1, 2, 4, 8]
+                    if avg_s:
+                        theoretical = [avg_s / ws for ws in world_sizes]
+                        fig_scale = go.Figure()
                         fig_scale.add_trace(go.Scatter(
-                            x=[2], y=[avg_d / 60], name=f"Real ({worker_desc})",
-                            mode="markers", marker=dict(color=COLORS[2], size=14, symbol="star"),
+                            x=world_sizes, y=[t / 60 for t in theoretical],
+                            name="Theoretical (100% efficiency)",
+                            line=dict(color=COLORS[4], width=2, dash="dash"), mode="lines+markers",
                         ))
-                    fig_scale.update_layout(**_base_layout(300, "Epoch time vs number of workers"),
-                                            xaxis_title="Number of workers (processes)", yaxis_title="Minutes per epoch")
-                    fig_scale.update_xaxes(tickvals=world_sizes)
-                    _show(fig_scale, "ddp_scaling")
-                    st.caption(
-                        "The theoretical line assumes adding workers IDENTICAL to the single-GPU "
-                        "(perfect linear scaling). The real point falls below it due to "
-                        "communication overhead, the NFS bottleneck and — in the heterogeneous case — "
-                        "because the second worker is a CPU ~50× slower, not another V100."
-                    )
+                        if avg_d:
+                            fig_scale.add_trace(go.Scatter(
+                                x=[2], y=[avg_d / 60], name=f"Real ({worker_desc})",
+                                mode="markers", marker=dict(color=COLORS[2], size=14, symbol="star"),
+                            ))
+                        fig_scale.update_layout(**_base_layout(300, "Epoch time vs number of workers"),
+                                                xaxis_title="Number of workers (processes)", yaxis_title="Minutes per epoch")
+                        fig_scale.update_xaxes(tickvals=world_sizes)
+                        _show(fig_scale, "ddp_scaling")
+                        st.caption(
+                            "The theoretical line assumes adding workers IDENTICAL to the single-GPU "
+                            "(perfect linear scaling). The real point falls below it due to "
+                            "communication overhead, the NFS bottleneck and — in the heterogeneous case — "
+                            "because the second worker is a CPU ~50× slower, not another V100."
+                        )
 
 
 
@@ -267,9 +304,9 @@ def _overlay(ctx: DashboardContext) -> None:
         all_labels_list = list(all_run_labels.keys())
 
         selected_compare = st.multiselect(
-            "Select runs to compare (max 4)", all_labels_list,
+            "Select runs to compare (max 8)", all_labels_list,
             default=all_labels_list[:min(2, len(all_labels_list))],
-            max_selections=4,
+            max_selections=8,
         )
 
         if len(selected_compare) < 2:
@@ -279,17 +316,17 @@ def _overlay(ctx: DashboardContext) -> None:
             compare_dfs: list[tuple[str, pd.DataFrame]] = []
             for lbl, r in compare_runs_list:
                 cdf = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
-                compare_dfs.append((lbl[:30], cdf))
+                compare_dfs.append((lbl, cdf))
 
             summary_rows = []
             for lbl, r in compare_runs_list:
-                cdf = next(d for ll, d in compare_dfs if ll == lbl[:30])
+                cdf = next(d for ll, d in compare_dfs if ll == lbl)
                 best_f1_c = _safe_max(cdf["val_f1"]) if "val_f1" in cdf.columns and not cdf.empty else float("nan")
                 best_ep_c_v = _safe_val_at_best(cdf, "val_f1", "epoch")
                 _last = cdf["val_f1"].dropna() if "val_f1" in cdf.columns and not cdf.empty else pd.Series(dtype=float)
                 total_s_c = cdf["epoch_time"].dropna().sum() if "epoch_time" in cdf.columns else float("nan")
                 summary_rows.append({
-                    "Run": lbl[:50],
+                    "Run": lbl,
                     "Best Val F1": f"{best_f1_c:.4f}" if not pd.isna(best_f1_c) else "—",
                     "Best epoch": int(best_ep_c_v) if best_ep_c_v is not None else "—",
                     "Final F1": f"{_last.iloc[-1]:.4f}" if not _last.empty else "—",
@@ -314,13 +351,17 @@ def _overlay(ctx: DashboardContext) -> None:
                 vals_closed = vals + [vals[0]]
                 radar_fig.add_trace(go.Scatterpolar(
                     r=vals_closed, theta=radar_metrics + [radar_metrics[0]],
-                    fill="toself", name=lbl[:30],
+                    fill="toself", name=lbl,
                     line=dict(color=COLORS[i % len(COLORS)]), opacity=0.6,
                 ))
+            # Full-label legend below the radar: one row per run stays readable
+            # even with 7-8 runs selected.
+            _n_radar = len(compare_dfs)
             radar_fig.update_layout(
                 polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-                showlegend=True, height=360,
-                margin=dict(l=60, r=60, t=40, b=40), paper_bgcolor="white",
+                showlegend=True, height=380 + 20 * _n_radar,
+                legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0),
+                margin=dict(l=60, r=60, t=40, b=40 + 20 * _n_radar), paper_bgcolor="white",
                 title=dict(text="Metrics at the best Val F1 epoch", font=dict(size=13)),
             )
             _show(radar_fig, "radar_comparison")
