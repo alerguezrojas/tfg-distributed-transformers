@@ -240,6 +240,8 @@ TRANSLATIONS: dict[str, str] = {
     "Metrics to overlay": "Métricas a superponer",
     "Select runs to compare (max 4)": "Selecciona runs a comparar (máx 4)",
     "Select runs to compare (max 8)": "Selecciona runs a comparar (máx 8)",
+    "Total energy over the whole run (Wh), as measured by pynvml on the logging GPU. Runs without energy measurement (no `--fn energy`, e.g. model-parallel) are not shown.":
+        "Energía total del run completo (Wh), medida por pynvml en la GPU que escribe el log. Los runs sin medición de energía (sin `--fn energy`, p. ej. model-parallel) no se muestran.",
     "Global metric": "Métrica global", "Scaling laws to overlay": "Leyes de escalado a superponer",
     "Serial fraction s (Amdahl / Gustafson)": "Fracción serial s (Amdahl / Gustafson)",
     "Select a model to prefill the Launcher": "Selecciona modelo para prellenar el Lanzador",
