@@ -1,60 +1,36 @@
-"""Tab render module — see src/web/app.py for the orchestrator."""
+"""Tab render module — see src/web/app.py for the orchestrator.
+
+System = local hardware Monitor + Import runs. The old Live monitor and
+Launcher were removed: trainings now run on Kaggle/Verode, not from this
+machine, so launching/streaming from the web was never usable. Import runs
+replaces them with something useful for every machine — drop the zip a
+remote run produced and it shows up in the dashboard.
+"""
 from __future__ import annotations
 
-import subprocess
-import time
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-import plotly.graph_objects as go
-import plotly.express as px
 import streamlit as st
 
-from src.web.confusion_matrix_parser import get_matrix_for_epoch, parse_confusion_matrix_csv
-from src.web.dataset_stats import (
-    CLASS_NAMES, SPLIT_SIZES,
-    class_distribution_approximate, class_distribution_from_parquet,
-    get_country_distribution, find_example_patches, load_rgb_image,
-)
-from src.web.feasibility_comparison import build_comparison
-from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
-from src.web.model_explorer import ALL_FAMILIES, CURATED_MODELS, compare_models
-from src.web.perclass_parser import parse_perclass_csv
-from src.web.run_registry import RunInfo
+from src.web.run_import import import_run_archive, import_run_folder, summarize_import
 from src.web.system_monitor import get_snapshot
 
-from src.web.ui.charts import (
-    COLORS, _show, _dl_csv, _base_layout, _metric_fig, _overlay_fig,
-    _CLASS_GROUPS, _CLASS_GROUP_COLOR,
-)
 from src.web.ui.context import DashboardContext
-from src.web.ui.helpers import (
-    ROOT, _load_df, _load_batch, _load_perclass, _get_runs, _get_feasibility_csvs,
-    _feas_label, _run_config, _load_class_distribution, _load_example_images,
-    _safe_max, _safe_idxmax, _safe_val_at_best, _throughput_col, _dur_str,
-    _get_configs, _detect_anomalies, _read_log_tail, _parse_log_progress,
-    _gpu_usage, _launch_process, _color_f1_cell,
-)
+from src.web.ui.helpers import ROOT, _get_runs, _get_feasibility_csvs
 
 
 def render(ctx: DashboardContext) -> None:
     st.markdown("## System")
-    st.caption("Live hardware metrics, active-run monitor and training launcher.")
-    sub = st.tabs(["Monitor", "Live", "Launcher"])
+    st.caption("Local hardware monitor and importer for runs trained elsewhere "
+               "(Kaggle, the Verode cluster…).")
+    sub = st.tabs(["Monitor", "Import runs"])
     with sub[0]:
         _monitor(ctx)
     with sub[1]:
-        _live(ctx)
-    with sub[2]:
-        _launcher(ctx)
+        _import_runs(ctx)
 
 
 def _monitor(ctx: DashboardContext) -> None:
-    runs = ctx.runs
-    selected_run = ctx.selected_run
-    run = ctx.run
-    refresh_interval = ctx.refresh_interval
     ref_int = st.sidebar.slider("System refresh (s)", 2, 30, 5, key="sys_ref_int")
 
     @st.fragment(run_every=ref_int)
@@ -123,191 +99,72 @@ def _monitor(ctx: DashboardContext) -> None:
     _system_panel()
 
 
+def _import_runs(ctx: DashboardContext) -> None:
+    st.markdown("### Import runs trained elsewhere")
+    st.caption(
+        "Trainings run on Kaggle or the cluster and produce a `logs/` folder. "
+        "Download it as a zip (or copy it to this machine) and import it here — "
+        "the artifacts are copied into the repo's `logs/` tree and appear in the "
+        "dashboard immediately. Works for any environment (kaggle, verode, local)."
+    )
 
-def _live(ctx: DashboardContext) -> None:
+    logs_root = ROOT / "logs"
+
+    # ── Upload a zip ──────────────────────────────────────────────────────────
+    st.markdown("#### From a zip file")
+    uploaded = st.file_uploader(
+        "Drop a zip of the run's `logs/` folder (or its contents)",
+        type=["zip"], accept_multiple_files=False,
+    )
+    if uploaded is not None and st.button("Import zip", type="primary"):
+        try:
+            rel = import_run_archive(uploaded.getvalue(), logs_root)
+        except Exception as e:
+            st.error(f"Could not read the zip: {e}")
+            rel = []
+        _report_import(rel)
+
+    st.markdown("---")
+
+    # ── Import from a folder path ─────────────────────────────────────────────
+    st.markdown("#### From a folder on this machine")
+    st.caption("Useful when you already copied the `logs/` folder somewhere "
+               "(e.g. via `scp` from the cluster).")
+    folder_str = st.text_input("Folder path", placeholder="/home/alejandro/Downloads/kaggle_logs")
+    if folder_str and st.button("Import folder"):
+        folder = Path(folder_str).expanduser()
+        if not folder.is_dir():
+            st.error(f"Not a folder: {folder}")
+        else:
+            rel = import_run_folder(folder, logs_root)
+            _report_import(rel)
+
+    # ── What's already in the repo ────────────────────────────────────────────
+    st.markdown("---")
     runs = ctx.runs
-    selected_run = ctx.selected_run
-    run = ctx.run
-    refresh_interval = ctx.refresh_interval
-    st.subheader("Live monitor")
-
-    now_ts = time.time()
-    recent_runs = [
-        r for r in runs
-        if r.log_path.exists() and (now_ts - r.log_path.stat().st_mtime) < 1800
-    ]
-
-    if not recent_runs:
-        st.info(
-            "No active runs (no log modified in the last 30 min). "
-            "Launch a training from the Launcher tab."
-        )
-    else:
-        live_labels = {r.label: r for r in recent_runs}
-        lc1, lc2 = st.columns([3, 1])
-        with lc1:
-            live_sel = st.selectbox("Active run", list(live_labels.keys()), key="live_run_sel")
-        with lc2:
-            refresh_interval = st.slider("Refresh (s)", 5, 60, refresh_interval, key="live_ref_int")
-        live_run = live_labels[live_sel]
-
-        @st.fragment(run_every=refresh_interval)
-        def _live_panel(run: RunInfo):
-            _load_df.clear()
-
-            gpu = _gpu_usage()
-            if gpu:
-                g1, g2, g3, g4 = st.columns(4)
-                g1.metric("GPU", gpu["name"])
-                g2.metric("VRAM", f"{gpu['mem_used_mb']/1024:.1f} / {gpu['mem_total_mb']/1024:.1f} GB")
-                g3.metric("Utilization", f"{gpu['util_pct']}%")
-                g4.metric("Temperature", f"{gpu['temp_c']} °C")
-            else:
-                st.caption("GPU info unavailable (nvidia-smi not found).")
-
-            progress = _parse_log_progress(run.log_path)
-            if progress["epochs"] > 0:
-                pct = progress["epoch"] / progress["epochs"]
-                st.progress(pct, text=f"Epoch {progress['epoch']} / {progress['epochs']}")
-
-            if progress["last_val_f1"] is not None:
-                m1, m2 = st.columns(2)
-                m1.metric("Last Val F1", f"{progress['last_val_f1']:.4f}")
-                if progress["last_val_loss"] is not None:
-                    m2.metric("Last Val Loss", f"{progress['last_val_loss']:.4f}")
-
-            if run.epoch_csv_path and run.epoch_csv_path.exists():
-                live_df = _load_df(str(run.log_path), str(run.epoch_csv_path))
-                if not live_df.empty:
-                    fig_live = go.Figure()
-                    if "val_f1" in live_df.columns:
-                        fig_live.add_trace(go.Scatter(
-                            x=live_df["epoch"], y=live_df["val_f1"],
-                            name="Val F1", mode="lines+markers",
-                            line=dict(color=COLORS[0], width=2), marker=dict(size=4),
-                        ))
-                    if "val_loss" in live_df.columns:
-                        fig_live.add_trace(go.Scatter(
-                            x=live_df["epoch"], y=live_df["val_loss"],
-                            name="Val Loss", mode="lines+markers",
-                            line=dict(color=COLORS[1], width=2), marker=dict(size=4),
-                        ))
-                    fig_live.update_layout(**_base_layout(280, "Metrics"), xaxis_title="Epoch")
-                    _show(fig_live, "live_metrics")
-
-            st.subheader("Log tail")
-            st.code(_read_log_tail(run.log_path, n=40), language="text")
-
-        _live_panel(live_run)
+    envs = sorted({r.env for r in runs})
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Runs indexed", len(runs))
+    c2.metric("Feasibility reports", len(_get_feasibility_csvs()))
+    c3.metric("Environments", ", ".join(envs) if envs else "—")
 
 
-def _launcher(ctx: DashboardContext) -> None:
-    runs = ctx.runs
-    selected_run = ctx.selected_run
-    run = ctx.run
-    refresh_interval = ctx.refresh_interval
-    subtab_single, subtab_ddp_l = st.tabs(["Single GPU", "DDP (multi-GPU)"])
-
-    configs_l = _get_configs()
-    model_opts_l = [
-        "vit_tiny_patch16_224", "vit_small_patch16_224", "vit_base_patch16_224",
-        "resnet50", "efficientnet_b0", "deit_tiny_patch16_224",
-    ]
-
-    with subtab_single:
-        st.subheader("Single-GPU training")
-        with st.form("launcher_single_form"):
-            la1, la2 = st.columns(2)
-            with la1:
-                l_model = st.selectbox("Model", model_opts_l)
-                l_config = st.selectbox("YAML config", configs_l if configs_l else ["(none)"])
-                l_epochs = st.number_input("Override epochs", min_value=0, value=0,
-                                           help="0 = use the config value")
-                l_batch = st.number_input("Override batch size", min_value=0, value=0,
-                                          help="0 = use the config value")
-            with la2:
-                l_trace = st.selectbox("Trace mode", ["simple", "off", "deep"])
-                l_layers = st.multiselect("Layers", ["plot", "hooks", "confusion", "batch-monitor"],
-                                          default=["confusion"])
-                l_fn = st.multiselect("Fn decorators", ["timing", "energy"])
-                l_inspect = st.multiselect("Inspect features",
-                                           ["model-summary", "grad-monitor", "anomalies", "batch-table"])
-                from src.gpu_specs import detect_all as _detect
-                from src.precision import available_precisions as _avail, label as _plabel
-                _g = _detect()
-                _precs_l = _avail(_g[0].compute_capability if _g else None, is_cuda=bool(_g))
-                l_precision = st.selectbox(
-                    "Precision (Tensor cores)", _precs_l, format_func=_plabel,
-                    help="fp32 = CUDA cores; tf32/amp/bf16 = Tensor cores (faster, less VRAM).",
-                )
-            launched_single = st.form_submit_button("Launch")
-
-        if launched_single:
-            parts_l = [
-                "uv run python scripts/train_single_gpu.py",
-                f"--config configs/{l_config}",
-                f"--model {l_model}",
-                f"--trace {l_trace}",
-            ]
-            if l_epochs > 0:
-                parts_l.append(f"--epochs {l_epochs}")
-            if l_batch > 0:
-                parts_l.append(f"--batch-size {l_batch}")
-            if l_layers:
-                parts_l.append(f"--layers {' '.join(l_layers)}")
-            if l_fn:
-                parts_l.append(f"--fn {' '.join(l_fn)}")
-            if l_inspect:
-                parts_l.append(f"--inspect {' '.join(l_inspect)}")
-            if l_precision and l_precision != "fp32":
-                parts_l.append(f"--precision {l_precision}")
-            cmd_l = " ".join(parts_l)
-            st.code(cmd_l, language="bash")
-            out_ph_l = st.empty()
-            rc_l = _launch_process(cmd_l, out_ph_l)
-            if rc_l == 0:
-                st.success("Training complete.")
-                _get_runs.clear()
-            else:
-                st.error(f"Process exited with code {rc_l}.")
-
-    with subtab_ddp_l:
-        st.subheader("DDP training")
-        with st.form("launcher_ddp_form"):
-            dd1, dd2 = st.columns(2)
-            with dd1:
-                d_nproc = st.number_input("GPUs (--nproc_per_node)", min_value=1, max_value=8, value=2)
-                d_model = st.selectbox("Model", model_opts_l, key="ddp_model")
-                d_config = st.selectbox("YAML config", configs_l if configs_l else ["(none)"],
-                                         key="ddp_config")
-                d_epochs = st.number_input("Override epochs", min_value=0, value=0, key="ddp_ep")
-            with dd2:
-                d_trace = st.selectbox("Trace mode", ["simple", "off", "deep"], key="ddp_trace")
-                d_layers = st.multiselect("Layers", ["plot", "confusion", "batch-monitor"],
-                                          default=["confusion"], key="ddp_layers")
-                d_fn = st.multiselect("Fn decorators", ["timing", "energy"], key="ddp_fn")
-            launched_ddp = st.form_submit_button("Launch")
-
-        if launched_ddp:
-            parts_d = [
-                f"torchrun --nproc_per_node={d_nproc} scripts/train_ddp.py",
-                f"--config configs/{d_config}",
-                f"--model {d_model}",
-                f"--trace {d_trace}",
-            ]
-            if d_epochs > 0:
-                parts_d.append(f"--epochs {d_epochs}")
-            if d_layers:
-                parts_d.append(f"--layers {' '.join(d_layers)}")
-            if d_fn:
-                parts_d.append(f"--fn {' '.join(d_fn)}")
-            cmd_d = " ".join(parts_d)
-            st.code(cmd_d, language="bash")
-            out_ph_d = st.empty()
-            rc_d = _launch_process(cmd_d, out_ph_d)
-            if rc_d == 0:
-                st.success("DDP training complete.")
-                _get_runs.clear()
-            else:
-                st.error(f"Process exited with code {rc_d}.")
-
+def _report_import(rel_paths: list[str]) -> None:
+    """Reports the outcome of an import and refreshes the run caches."""
+    if not rel_paths:
+        st.warning("No recognizable artifacts found "
+                   "(expected train_*.log / *_metrics_*.csv / confusion_matrix_*.csv / "
+                   "feasibility_*).")
+        return
+    s = summarize_import(rel_paths)
+    # New files on disk → invalidate the discovery caches so they show up now.
+    _get_runs.clear()
+    _get_feasibility_csvs.clear()
+    st.success(
+        f"Imported {s['total']} file(s): {s['runs']} run log(s), "
+        f"{s['metric_csvs']} metric CSV(s), {s['feasibility']} feasibility report(s)."
+    )
+    with st.expander("Imported files"):
+        for p in rel_paths:
+            st.write(f"`logs/{p}`")
+    st.info("Select the new run in the sidebar to explore it.")

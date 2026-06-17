@@ -154,7 +154,7 @@ def test_sub_tab_names(tabs_source):
     summary + speedup vs baseline + radar + energy + overlays).
     """
     for t in ('"Curves"', '"Per-class"', '"Batch"', '"Time"', '"Info"',
-              '"Monitor"', '"Launcher"', '"Live"', '"Prediction vs reality"',
+              '"Monitor"', '"Import runs"', '"Prediction vs reality"',
               '"Dataset"', '"Models"'):
         assert t in tabs_source, f"missing sub-tab {t}"
     # The unified Compare keeps its key sections.
