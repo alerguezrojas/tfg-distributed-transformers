@@ -1,16 +1,16 @@
-# Dashboard theme — professional, calm accent (replaces Streamlit's default red).
-# The primary color drives the active nav button, tab underline, radio, slider,
-# focus ring and progress bars, so one value restyles the whole app coherently.
+# Dashboard theme — scientific / paper-grade: a single muted accent, flat surfaces.
+# primaryColor drives the active controls (radio, slider, focus ring, progress);
+# kept restrained (muted slate-blue) so nothing reads as a colourful product UI.
 
 [theme]
 base = "light"
-primaryColor = "#1A5276"            # project deep blue (same family as the UML diagram)
+primaryColor = "#3A536B"            # muted slate-blue — single restrained accent
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F4F6F8"
-textColor = "#1F2937"
+secondaryBackgroundColor = "#F7F8F9"
+textColor = "#1A1A1A"
 
 [client]
-toolbarMode = "minimal"             # hide the Deploy button / dev chrome
+toolbarMode = "minimal"
 
 [browser]
 gatherUsageStats = false

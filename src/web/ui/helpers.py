@@ -284,9 +284,10 @@ def _gpu_usage() -> dict | None:
 
 
 def _color_f1_cell(v: float) -> str:
+    # Muted, paper-grade tints (no bright fills).
     if v >= 0.6:
-        return "background-color: #d1fae5; color: #065f46"
+        return "background-color: #eaf1ec; color: #3a5a45"
     if v >= 0.3:
-        return "background-color: #fef3c7; color: #92400e"
-    return "background-color: #fee2e2; color: #991b1b"
+        return "background-color: #f4efe1; color: #6b5320"
+    return "background-color: #f3e7e3; color: #6b3a30"
 

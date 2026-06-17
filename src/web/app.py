@@ -84,9 +84,11 @@ with st.sidebar:
         manual_select=_manual, key="navmenu",
         styles={
             "container": {"padding": "0", "background-color": "transparent"},
-            "nav-link": {"font-size": "0.9rem", "padding": "0.45rem 0.7rem",
-                         "margin": "0.1rem 0"},
-            "nav-link-selected": {"background-color": "#1A5276"},
+            "icon": {"display": "none"},
+            "nav-link": {"font-size": "0.88rem", "font-weight": "500", "color": "#2B2F35",
+                         "padding": "0.4rem 0.7rem", "margin": "0.05rem 0", "border-radius": "2px"},
+            "nav-link-selected": {"background-color": "#EAEEF2", "color": "#1A1A1A",
+                                  "font-weight": "600"},
         },
     )
     _page = _NAV_KEYS[_NAV_LABELS.index(_chosen)]

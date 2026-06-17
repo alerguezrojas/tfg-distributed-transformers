@@ -204,7 +204,7 @@ def render(ctx: DashboardContext) -> None:
                                                   marker_color="#94a3b8",
                                                   text=[f"{r.estimated:.2f}" for _, r in _tm], textposition="outside"))
                             _fig.add_trace(go.Bar(name="Real", x=_names, y=[r.actual for _, r in _tm],
-                                                  marker_color="#2563eb",
+                                                  marker_color="#3A536B",
                                                   text=[f"{r.actual:.2f}" for _, r in _tm], textposition="outside"))
                             _fig.update_layout(**_base_layout(300, "Time per epoch: estimated vs real"),
                                                barmode="group", yaxis_title="Minutes", xaxis_title="")

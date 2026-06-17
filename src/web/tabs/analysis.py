@@ -62,7 +62,7 @@ def _parcoords(hp: pd.DataFrame) -> go.Figure:
             cat("Model", "model"), num("Epochs", "epochs"), num("Best Val F1", "best_f1")]
     f1 = pd.to_numeric(hp["best_f1"], errors="coerce").fillna(0)
     fig = go.Figure(go.Parcoords(
-        line=dict(color=f1, colorscale="Tealgrn", showscale=True,
+        line=dict(color=f1, colorscale="Blues", showscale=True,
                   cmin=float(f1.min()), cmax=float(f1.max()),
                   colorbar=dict(title="Best F1", thickness=12)),
         dimensions=dims, labelfont=dict(size=12), tickfont=dict(size=10)))
