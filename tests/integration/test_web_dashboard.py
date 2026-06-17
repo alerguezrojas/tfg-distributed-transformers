@@ -169,9 +169,12 @@ def test_home_sections(tabs_source):
     System/hardware and per-class snapshots were intentionally removed from Home
     to de-duplicate them (they live in System / Run results).
     """
-    assert "Project overview" in tabs_source
+    assert '"## Overview"' in tabs_source
     assert "All runs" in tabs_source
     assert "Selected run" in tabs_source
+    # wandb-style hub: nav cards + a Val F1 sparkline column.
+    assert "_NAV_CARDS" in tabs_source
+    assert "LineChartColumn" in tabs_source
 
 
 def test_show_and_dl_csv_defined_in_charts(charts_source):
