@@ -3,7 +3,9 @@ name: CI
 # Runs the test suite on every push and pull request. The tests are CPU-only
 # (no GPU/dataset needed), so they run on the standard GitHub-hosted runners.
 
-on:
+# Quoted so YAML 1.1 parsers (VS Code) don't coerce the key `on` to the boolean
+# `true` (the "Norway problem"); GitHub Actions reads it the same either way.
+"on":
   push:
     branches: [main, develop]
   pull_request:
