@@ -142,7 +142,7 @@ def test_app_is_thin_orchestrator(app_source):
 def test_sidebar_nav_sections(app_source):
     """The single-level icon-menu navigation labels (English) live in app.py."""
     for t in ('"Overview"', '"Run results"', '"Compare"', '"Feasibility"',
-              '"Data & runs"'):
+              '"Import"'):
         assert t in app_source, f"missing nav item {t}"
     # Icon menu (streamlit-option-menu), single level, session-state driven.
     assert "option_menu" in app_source
@@ -156,8 +156,7 @@ def test_sub_tab_names(tabs_source):
     summary + speedup vs baseline + radar + energy + overlays).
     """
     for t in ('"Curves"', '"Per-class"', '"Confusions"', '"Batch"', '"Details"',
-              '"Import runs"', '"Predict"', '"Validate"',
-              '"Dataset"', '"Models"'):
+              '"Predict"', '"Validate"'):
         assert t in tabs_source, f"missing sub-tab {t}"
     # The unified Compare keeps its key sections.
     for s in ("Speedup analysis", "Baseline run (= 1.00×)", "Energy consumption",

@@ -117,8 +117,8 @@ runs = _get_runs()
 # System was removed: the live hardware monitor was not useful with the Kaggle
 # workflow, and "Import runs" now lives under "Data & runs".
 _NAV_KEYS = ["overview", "run", "compare", "feasibility", "data"]
-_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Data & runs"]
-_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "database"]
+_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Import"]
+_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "box-arrow-in-down"]
 _PAGES = {
     "overview": home.render,
     "run": run_tab.render,

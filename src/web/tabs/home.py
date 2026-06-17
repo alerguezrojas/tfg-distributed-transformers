@@ -128,10 +128,73 @@ def render(ctx: DashboardContext) -> None:
             st.caption("Runs by strategy")
             _strategy_donut(mode_counts)
 
+    # ── Dataset at a glance (moved here from the old Dataset section) ───────────
+    _dataset_panel()
+
     # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
     st.caption("Click a row to make that run active across the dashboard.")
     _all_runs_table(runs, curve_by_label)
+
+
+_META_CANDIDATES = [
+    "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet",
+    "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet",
+]
+_ROOT_CANDIDATES = [
+    "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2",
+    "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2",
+]
+
+
+def _dataset_panel() -> None:
+    """Compact dataset summary: splits + top classes + a few example patches."""
+    meta = next((p for p in _META_CANDIDATES if Path(p).exists()), None)
+    root = next((p for p in _ROOT_CANDIDATES if Path(p).exists()), None)
+
+    st.markdown("#### Dataset — BigEarthNet-S2")
+    d_left, d_right = st.columns([1, 1.2])
+    with d_left:
+        with st.container(border=True):
+            s1, s2, s3 = st.columns(3)
+            s1.metric("Train", f"{SPLIT_SIZES['train']:,}")
+            s2.metric("Val", f"{SPLIT_SIZES['val']:,}")
+            s3.metric("Test", f"{SPLIT_SIZES['test']:,}")
+            st.caption(f"{sum(SPLIT_SIZES.values()):,} patches · 19 CORINE classes · "
+                       "multi-label · RGB proxy (B04/B03/B02)")
+            dist = _load_class_distribution(str(meta)) if meta else None
+            if dist is None:
+                dist = class_distribution_approximate()
+            top = dist.sort_values("train_count").tail(8)
+            fig = go.Figure(go.Bar(
+                y=top["class"], x=top["train_count"], orientation="h",
+                marker_color=COLORS[2]))
+            fig.update_layout(
+                height=210, margin=dict(l=10, r=10, t=6, b=6),
+                paper_bgcolor="white", plot_bgcolor="#f8fafc", showlegend=False)
+            fig.update_xaxes(visible=False)
+            fig.update_yaxes(automargin=True, tickfont=dict(size=9))
+            _show(fig, "hub_dataset_dist")
+    with d_right:
+        with st.container(border=True):
+            st.caption("Example patches")
+            if meta and root:
+                demo = [c for c in ["Marine waters", "Coniferous forest",
+                                    "Arable land", "Urban fabric"] if c in CLASS_NAMES]
+                demo = (demo or CLASS_NAMES[:4])[:4]
+                imgs = []
+                for cls in demo:
+                    for _pid, im in _load_example_images(str(meta), str(root), cls, n=1):
+                        imgs.append((cls, im))
+                if imgs:
+                    cols = st.columns(len(imgs))
+                    for col, (cls, im) in zip(cols, imgs):
+                        col.image(im, caption=cls, use_container_width=True)
+                else:
+                    st.caption("Dataset images not available on this machine.")
+            else:
+                st.caption("Dataset not mounted on this machine — splits and class "
+                           "counts shown from metadata.")
 
 
 def _epoch_time_bars(time_by_label: dict[str, float]) -> None:
