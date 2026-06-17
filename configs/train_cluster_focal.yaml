@@ -1,0 +1,48 @@
+# Configuración v5 Verode — BigEarthNet-S2 (V100-PCIE 32 GB)
+# Ataca el techo de F1 macro (~0.68): focal loss para que el modelo no ignore
+# las clases raras (p.ej. clase 6 "Land principally occupied by agriculture",
+# F1=0.0 en v4). Resto idéntico a v3 para que la comparación sea apples-to-apples.
+#
+# Alternativa BCE + pos_weight (descomentar abajo): re-pondera el término positivo
+# de cada clase por neg/pos calculado del propio metadata de train.
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet"
+  num_workers: 4
+
+model:
+  name: "vit_base_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.3
+
+training:
+  epochs: 30
+  batch_size: 64
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.1
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 100
+
+  label_smoothing: 0.1
+  mixup_alpha: 0.2
+
+  # ── Lever contra el techo de F1 macro (desbalance de clases) ────────────────
+  loss: focal               # 'bce' (defecto) | 'focal'
+  focal_gamma: 2.0          # 0 = BCE; 2.0 enfoca en los ejemplos difíciles/raros
+  # focal_alpha: 0.25       # opcional: balanceo positivo/negativo (negativo = off)
+
+  # Alternativa BCE re-ponderada (en vez de focal): comentar 'loss: focal' arriba
+  # loss: bce
+  # pos_weight: auto        # calcula neg/pos por clase del metadata de train
+
+checkpoint:
+  dir: "checkpoints/verode"
+
+output:
+  env: "verode"

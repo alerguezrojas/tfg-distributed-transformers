@@ -1,0 +1,36 @@
+name: CI
+
+# Runs the test suite on every push and pull request. The tests are CPU-only
+# (no GPU/dataset needed), so they run on the standard GitHub-hosted runners.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies (CPU-only torch)
+        run: |
+          uv sync --frozen
+          # Replace the CUDA torch wheel from the lock with the CPU build:
+          # the CI runners have no GPU and the CUDA wheel is multi-GB.
+          uv pip install torch torchvision \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run test suite
+        run: uv run pytest -q

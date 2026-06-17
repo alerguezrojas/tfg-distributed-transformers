@@ -1,0 +1,38 @@
+# Prueba FUNCIONAL local (RTX 3060 Ti) — vit_tiny, subset 5000/1500, focal loss.
+# Objetivo: verificar las mejoras (focal loss + train-F1 corregido) end-to-end con
+# datos reales en pocos minutos, y comparar por clase contra el gemelo BCE.
+
+data:
+  root: "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/media/alejandro/SSD/datasets/bigearthnet/metadata_demo.parquet"
+  num_workers: 8
+
+model:
+  name: "vit_tiny_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.3
+
+training:
+  epochs: 4
+  batch_size: 96
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.1
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 5
+
+  label_smoothing: 0.1
+  mixup_alpha: 0.2
+
+  loss: focal
+  focal_gamma: 2.0
+
+checkpoint:
+  dir: "checkpoints/local"
+
+output:
+  env: "local"

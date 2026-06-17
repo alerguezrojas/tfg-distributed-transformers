@@ -209,6 +209,11 @@ class TrainingSessionBuilder:
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         precision = cfg["training"].get("precision", "fp32")
         checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / mode / model_slug)
+
+        # ── Loss / criterion (lever against the rare-class macro-F1 ceiling) ───
+        # training.loss: 'bce' (default) | 'focal'; training.pos_weight: list | 'auto'
+        criterion = self._build_criterion(cfg, model_name)
+
         if self._distributed and self._hetero_local_batch_size is not None:
             from src.training.heterogeneous_ddp_trainer import HeterogeneousDDPTrainer
             base = HeterogeneousDDPTrainer(
@@ -233,6 +238,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
@@ -247,6 +253,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
@@ -337,6 +344,46 @@ class TrainingSessionBuilder:
                                        epoch_csv=epoch_csv)
 
         return trainer
+
+    # ── Criterion ──────────────────────────────────────────────────────────────
+
+    def _build_criterion(self, cfg: dict, model_name: str):
+        """Build the loss from config: 'bce' (+ optional pos_weight) or 'focal'.
+
+        Returns None to keep the Trainer's default BCEWithLogitsLoss when the
+        config asks for plain BCE with no pos_weight (preserves prior behaviour).
+        """
+        from src.training.losses import build_criterion, pos_weight_from_metadata
+
+        train_cfg = cfg["training"]
+        loss_kind = str(train_cfg.get("loss", "bce")).lower()
+        pos_weight_cfg = train_cfg.get("pos_weight")
+
+        if self._hetero_local_batch_size is not None and loss_kind == "focal":
+            print("  [aviso] loss=focal no soportado en el trainer heterogéneo; "
+                  "se usará BCE en ese path.")
+            return None
+
+        if loss_kind == "bce" and pos_weight_cfg is None:
+            return None  # default path — Trainer creates plain BCEWithLogitsLoss
+
+        pos_weight = None
+        if loss_kind == "bce" and pos_weight_cfg is not None:
+            if isinstance(pos_weight_cfg, str) and pos_weight_cfg.lower() == "auto":
+                pos_weight = pos_weight_from_metadata(
+                    cfg["data"]["metadata"], split="train"
+                ).to(self._device)
+                print(f"  [loss] pos_weight='auto' computado del metadata "
+                      f"(min={pos_weight.min():.2f}, max={pos_weight.max():.2f})")
+            else:
+                pos_weight = torch.tensor(
+                    pos_weight_cfg, dtype=torch.float32, device=self._device
+                )
+        criterion = build_criterion(train_cfg, pos_weight=pos_weight)
+        if loss_kind == "focal":
+            print(f"  [loss] focal (gamma={train_cfg.get('focal_gamma', 2.0)}, "
+                  f"alpha={train_cfg.get('focal_alpha', -1.0)})")
+        return criterion
 
     # ── Informational summary ─────────────────────────────────────────────────
 
