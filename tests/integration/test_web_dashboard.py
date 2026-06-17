@@ -154,8 +154,8 @@ def test_sub_tab_names(tabs_source):
     Compare has no sub-tabs anymore: it is ONE unified section (multiselect →
     summary + speedup vs baseline + radar + energy + overlays).
     """
-    for t in ('"Curves"', '"Per-class"', '"Batch"', '"Time"', '"Info"',
-              '"Import runs"', '"Prediction vs reality"',
+    for t in ('"Curves"', '"Per-class"', '"Confusions"', '"Batch"', '"Details"',
+              '"Import runs"', '"Predict"', '"Validate"',
               '"Dataset"', '"Models"'):
         assert t in tabs_source, f"missing sub-tab {t}"
     # The unified Compare keeps its key sections.
