@@ -24,7 +24,7 @@ from src.web.tabs import (
     run as run_tab,
     comparison,
     feasibility,
-    data_models,
+    dataset,
 )
 
 # ── Page configuration ──────────────────────────────────────────────────────────
@@ -55,14 +55,14 @@ runs = _get_runs()
 # System was removed: the live hardware monitor was not useful with the Kaggle
 # workflow, and "Import runs" now lives under "Data & runs".
 _NAV_KEYS = ["overview", "run", "compare", "feasibility", "data"]
-_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Import"]
-_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "box-arrow-in-down"]
+_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Dataset"]
+_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "database"]
 _PAGES = {
     "overview": home.render,
     "run": run_tab.render,
     "compare": comparison.render,
     "feasibility": feasibility.render,
-    "data": data_models.render,
+    "data": dataset.render,
 }
 
 with st.sidebar:
