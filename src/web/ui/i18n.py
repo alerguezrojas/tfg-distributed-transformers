@@ -151,6 +151,18 @@ TRANSLATIONS: dict[str, str] = {
     # Section headers
     "Project overview": "Vista general del proyecto", "All runs": "Todos los runs",
     "Selected run": "Run seleccionado",
+    "Sections": "Secciones", "Top run": "Run destacado", "Open": "Abrir",
+    "A bit of everything in one place — global stats, the selected run, quick links and all runs. Drill into any section from the cards below.":
+        "Un poco de todo en un sitio — estadísticas globales, el run seleccionado, accesos rápidos y todos los runs. Entra a cada sección desde las tarjetas de abajo.",
+    "Curves, per-class, batch & metadata of one run":
+        "Curvas, por clase, batch y metadatos de un run",
+    "Speedup, energy & overlays across runs":
+        "Speedup, energía y curvas superpuestas entre runs",
+    "Predict time, memory & cost before training":
+        "Predice tiempo, memoria y coste antes de entrenar",
+    "BigEarthNet explorer & timm models": "Explorador BigEarthNet y modelos timm",
+    "Hardware monitor & import remote runs":
+        "Monitor de hardware e importación de runs remotos",
     "Executive summary: global stats, the selected run at a glance, and all runs.":
         "Resumen ejecutivo: estadísticas globales, el run seleccionado de un vistazo y todos los runs.",
     "Curves, per-class metrics, batch detail and metadata of the run selected in the sidebar.":
