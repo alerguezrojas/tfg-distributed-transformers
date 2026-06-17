@@ -165,13 +165,15 @@ def test_sub_tab_names(tabs_source):
 
 
 def test_home_sections(tabs_source):
-    """The Overview hub must keep its core building blocks: KPIs, the active-run
-    card, the section cards and a selectable All-runs table with sparklines."""
+    """The Overview hub: KPIs, the active-run card, relevant charts (no
+    redundant nav cards — navigation is the sidebar) and a selectable All-runs
+    table with sparklines."""
     assert '"## Overview"' in tabs_source
     assert "All runs" in tabs_source
     assert "Active run" in tabs_source
-    # Compact hub: nav cards, a Val F1 sparkline column and row selection.
-    assert "_NAV_CARDS" in tabs_source
+    # Charts replaced the old 'Open' nav cards.
+    assert "Runs by strategy" in tabs_source
+    assert "Training speed" in tabs_source
     assert "LineChartColumn" in tabs_source
     assert 'selection_mode="single-row"' in tabs_source
 

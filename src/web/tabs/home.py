@@ -38,31 +38,24 @@ from src.web.ui.helpers import (
 )
 
 
-# Sections reachable from the hub cards (key, title, one-line description).
-_NAV_CARDS = [
-    ("run", "Run results", "Curves, per-class, batch & metadata of one run"),
-    ("compare", "Compare", "Speedup, energy & overlays across runs"),
-    ("feasibility", "Feasibility", "Predict time, memory & cost before training"),
-    ("data", "Data & runs", "Dataset explorer, models & import runs"),
-]
-
-
 def render(ctx: DashboardContext) -> None:
     runs = ctx.runs
     selected_run = ctx.selected_run
     st.markdown("## Overview")
-    st.caption("Project at a glance. Click a row in the table to make a run active; "
-               "open any section from the cards.")
+    st.caption("Project at a glance. Click a row in the table to make a run active.")
 
-    # ── One pass over the runs (stats + per-run val_f1 curve) ───────────────────
+    # ── One pass over the runs (stats + per-run val_f1 curve + epoch time) ──────
     best_f1_global = float("-inf")
     best_run_label = "—"
     best_run_df = pd.DataFrame()
     total_gpu_h = 0.0
     feasibility_csvs_home = _get_feasibility_csvs()
     curve_by_label: dict[str, list[float]] = {}
+    time_by_label: dict[str, float] = {}   # avg epoch time (s)
+    mode_counts: dict[str, int] = {}
 
     for r in runs:
+        mode_counts[r.mode] = mode_counts.get(r.mode, 0) + 1
         try:
             df_r = _load_df(str(r.log_path),
                             str(r.epoch_csv_path) if r.epoch_csv_path else None)
@@ -71,15 +64,14 @@ def render(ctx: DashboardContext) -> None:
                 run_best = _safe_max(df_r["val_f1"])
                 if not pd.isna(run_best) and run_best > best_f1_global:
                     best_f1_global, best_run_label, best_run_df = run_best, r.label, df_r
-            if not df_r.empty and "epoch_time" in df_r.columns:
+            if not df_r.empty and "epoch_time" in df_r.columns and df_r["epoch_time"].notna().any():
                 total_gpu_h += float(df_r["epoch_time"].dropna().sum()) / 3600
+                time_by_label[r.label] = float(df_r["epoch_time"].dropna().mean())
         except Exception:
             pass
 
-    # ── Compact dashboard grid (KPIs · top run · best-F1 ranking · sections) ────
-    # Row 1: KPIs (left) + the selected run's curves (right) — dense, no scroll.
+    # ── Row 1: KPIs (left) + active-run curves (right) ──────────────────────────
     left, right = st.columns([1, 1.4])
-
     with left:
         k1, k2 = st.columns(2)
         _kpi(k1, "Runs", str(len(runs)))
@@ -109,20 +101,61 @@ def render(ctx: DashboardContext) -> None:
             else:
                 st.info("No metrics for this run.")
 
-    # ── Section cards (compact, one row) ────────────────────────────────────────
-    nav_cols = st.columns(len(_NAV_CARDS))
-    for col, (key, title, desc) in zip(nav_cols, _NAV_CARDS):
-        with col.container(border=True):
-            st.markdown(f"**{title}**")
-            st.caption(desc)
-            if st.button("Open", key=f"hub_nav_{key}", use_container_width=True):
-                st.session_state["_nav_jump"] = key
-                st.rerun()
+    # ── Row 2: relevant charts (where the nav cards used to be) ─────────────────
+    g_left, g_right = st.columns([1.4, 1])
+    with g_left:
+        with st.container(border=True):
+            st.caption("Training speed — average time per epoch (fastest 8, min)")
+            _epoch_time_bars(time_by_label)
+    with g_right:
+        with st.container(border=True):
+            st.caption("Runs by strategy")
+            _strategy_donut(mode_counts)
 
     # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
     st.caption("Click a row to make that run active across the dashboard.")
     _all_runs_table(runs, curve_by_label)
+
+
+def _epoch_time_bars(time_by_label: dict[str, float]) -> None:
+    """Fastest 8 runs by average epoch time (min) — the speed at a glance."""
+    rows = sorted(time_by_label.items(), key=lambda x: x[1])[:8]
+    if not rows:
+        st.info("No runs with timing data.")
+        return
+    labels = [l for l, _ in rows][::-1]
+    mins = [v / 60 for _, v in rows][::-1]
+    fig = go.Figure(go.Bar(
+        y=labels, x=mins, orientation="h", marker_color=COLORS[2],
+        text=[f"{m:.1f}" for m in mins], textposition="outside",
+    ))
+    fig.update_layout(
+        height=40 + 30 * len(rows), margin=dict(l=10, r=30, t=6, b=6),
+        paper_bgcolor="white", plot_bgcolor="#f8fafc", showlegend=False,
+    )
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(automargin=True, tickfont=dict(size=9))
+    _show(fig, "hub_epoch_time")
+
+
+def _strategy_donut(mode_counts: dict[str, int]) -> None:
+    """How many runs of each strategy (single / ddp / model_parallel / hetero)."""
+    if not mode_counts:
+        st.info("No runs.")
+        return
+    _names = {"single": "Single-GPU", "ddp": "DDP", "model_parallel": "Model-parallel",
+              "ddp_hetero": "Heterogeneous"}
+    labels = [_names.get(k, k) for k in mode_counts]
+    fig = go.Figure(go.Pie(
+        labels=labels, values=list(mode_counts.values()), hole=0.55,
+        marker=dict(colors=COLORS), textinfo="value",
+    ))
+    fig.update_layout(
+        height=240, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="white",
+        legend=dict(orientation="h", yanchor="top", y=-0.05, font=dict(size=10)),
+    )
+    _show(fig, "hub_strategy_donut")
 
 
 def _kpi(col, label: str, value: str) -> None:
