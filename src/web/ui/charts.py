@@ -1,17 +1,32 @@
-"""Plotly chart helpers and shared styling for the dashboard."""
+"""Plotly chart helpers for the dashboard.
+
+Styling (font, palette, grid, margins, legend, hover) lives in the global
+``tfg`` template registered in ``theme.py`` — every figure inherits it, so these
+helpers only set what is chart-specific (titles, axis labels, height). No more
+per-chart background / gridcolor / legend tweaks.
+"""
 from __future__ import annotations
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-COLORS = ["#2563eb", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#64748b", "#ec4899", "#94a3b8"]
+from src.web.ui import theme
+
+# Ensure the design-system template is the Plotly default whenever charts are used.
+theme.register_plotly_template()
+
+# Backwards-compatible alias: the categorical palette from the design system.
+COLORS = theme.CATEGORICAL
 
 # ── Chart helpers ───────────────────────────────────────────────────────────────
 
+# No displayModeBar key → Plotly shows the toolbar only on hover (cleaner than a
+# permanently-visible bar colliding with the title/legend). PNG download stays
+# available on hover, at 2× scale.
 _PLOTLY_CFG = {
-    "displayModeBar": True,
-    "modeBarButtonsToRemove": ["select2d", "lasso2d"],
+    "displaylogo": False,
+    "modeBarButtonsToRemove": ["select2d", "lasso2d", "autoScale2d"],
     "toImageButtonOptions": {"format": "png", "scale": 2},
 }
 
@@ -30,24 +45,18 @@ def _dl_csv(df: pd.DataFrame, filename: str = "data.csv", label: str = "Download
 
 
 def _base_layout(height: int = 320, title: str = "", margin: dict | None = None) -> dict:
-    return dict(
-        title=dict(text=title, font=dict(size=13)),
-        height=height,
-        margin=margin if margin is not None else dict(l=50, r=16, t=48, b=40),
-        # Same legend slot as _metric_fig/_overlay_fig: inside top-left,
-        # translucent — clear of the outside title and the modebar.
-        legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01,
-                    bgcolor="rgba(255,255,255,0.65)"),
-        paper_bgcolor="white", plot_bgcolor="#f8fafc",
-        xaxis=dict(gridcolor="#e2e8f0"), yaxis=dict(gridcolor="#e2e8f0"),
-    )
+    """Chart-specific layout only; the rest is inherited from the tfg template."""
+    d = dict(title=dict(text=title), height=height)
+    if margin is not None:
+        d["margin"] = margin
+    return d
 
 
 def _metric_fig(
     df: pd.DataFrame,
     col_train: str, col_val: str,
     title: str, y_label: str,
-    color_train: str = COLORS[0], color_val: str = COLORS[1],
+    color_train: str = theme.CATEGORICAL[0], color_val: str = theme.CATEGORICAL[1],
     extra_traces: list | None = None,
     height: int = 320,
 ) -> go.Figure:
@@ -55,26 +64,18 @@ def _metric_fig(
     if col_train in df.columns and df[col_train].notna().any():
         fig.add_trace(go.Scatter(
             x=df["epoch"], y=df[col_train], name="Train",
-            mode="lines+markers", line=dict(color=color_train, width=2), marker=dict(size=4),
+            mode="lines+markers", line=dict(color=color_train),
         ))
     if col_val in df.columns and df[col_val].notna().any():
         fig.add_trace(go.Scatter(
             x=df["epoch"], y=df[col_val], name="Val",
-            mode="lines+markers", line=dict(color=color_val, width=2), marker=dict(size=4),
+            mode="lines+markers", line=dict(color=color_val),
         ))
     for tr in (extra_traces or []):
         fig.add_trace(tr)
     fig.update_layout(
-        title=dict(text=title, font=dict(size=13)),
-        xaxis_title="Epoch", yaxis_title=y_label,
-        height=height, margin=dict(l=50, r=16, t=48, b=40),
-        # Legend inside the plot (top-left, translucent): clear of both the
-        # outside title (top-left margin) and the modebar (top-right corner).
-        legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01,
-                    bgcolor="rgba(255,255,255,0.65)"),
-        hovermode="x unified",
-        paper_bgcolor="white", plot_bgcolor="#f8fafc",
-        xaxis=dict(gridcolor="#e2e8f0"), yaxis=dict(gridcolor="#e2e8f0"),
+        title=dict(text=title), xaxis_title="Epoch", yaxis_title=y_label,
+        height=height, hovermode="x unified",
     )
     return fig
 
@@ -90,21 +91,18 @@ def _overlay_fig(
         if col in df.columns and df[col].notna().any():
             n_series += 1
             fig.add_trace(go.Scatter(
-                x=df["epoch"], y=df[col],
-                name=label, mode="lines+markers",
-                line=dict(color=COLORS[i % len(COLORS)], width=2), marker=dict(size=4),
+                x=df["epoch"], y=df[col], name=label, mode="lines+markers",
+                line=dict(color=COLORS[i % len(COLORS)]),
             ))
-    # Full run labels need room: legend below the plot, one row per run, and
-    # the figure grows with the number of series so the plot area keeps its size.
+    # Many runs with long labels: legend below the plot (one row per run), and the
+    # figure grows so the plot area keeps its size. Overrides the template's
+    # top-right legend, which only fits a couple of short series.
     legend_px = 20 * max(n_series, 1)
     fig.update_layout(
-        title=dict(text=title, font=dict(size=13)),
-        xaxis_title="Epoch", yaxis_title=y_label,
-        height=height + legend_px, margin=dict(l=50, r=16, t=48, b=60 + legend_px),
+        title=dict(text=title), xaxis_title="Epoch", yaxis_title=y_label,
+        height=height + legend_px, margin=dict(b=60 + legend_px),
         legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="left", x=0,
                     font=dict(size=11)),
-        paper_bgcolor="white", plot_bgcolor="#f8fafc",
-        xaxis=dict(gridcolor="#e2e8f0"), yaxis=dict(gridcolor="#e2e8f0"),
     )
     return fig
 

@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 import streamlit as st
 from streamlit_option_menu import option_menu
 
-from src.web.ui import i18n
+from src.web.ui import i18n, theme
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import _get_runs
 from src.web.tabs import (
@@ -41,71 +41,9 @@ st.set_page_config(
 _lang = st.session_state.get("_lang", "en")
 i18n.install(_lang)
 
-st.markdown("""
-<style>
-  [data-testid="stSidebar"] { min-width: 300px; max-width: 320px; }
-  .block-container { padding-top: 2.4rem; padding-left: 1.5rem; padding-right: 1.5rem; }
-  /* Headings: Streamlit's own rules win over bare element selectors, so scope
-     to the markdown container and force a compact, professional scale. */
-  [data-testid="stMarkdownContainer"] h1 { font-size: 1.45rem !important; font-weight: 650 !important; }
-  [data-testid="stMarkdownContainer"] h2 {
-    font-size: 1.25rem !important; font-weight: 650 !important;
-    margin-top: 0.4rem; padding-bottom: 0.2rem;
-  }
-  [data-testid="stMarkdownContainer"] h3 {
-    font-size: 1.02rem !important; font-weight: 600 !important; margin-top: 0.8rem;
-  }
-  [data-testid="stMarkdownContainer"] h4 { font-size: 0.92rem !important; font-weight: 600 !important; }
-  [data-testid="stMetricValue"] { font-size: 1.1rem; }
-  [data-testid="stMetricLabel"] { opacity: 0.75; }
-  [data-baseweb="tab-list"] {
-    overflow-x: auto !important; flex-wrap: nowrap !important;
-    scrollbar-width: thin; gap: 0 !important;
-    border-bottom: 1px solid #e5e7eb;
-  }
-  [data-baseweb="tab-list"]::-webkit-scrollbar { height: 3px; }
-  [data-baseweb="tab-list"]::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-  [data-baseweb="tab"] {
-    white-space: nowrap !important; font-size: 0.82rem !important;
-    padding-left: 0.75rem !important; padding-right: 0.75rem !important;
-    min-width: unset !important;
-  }
-  /* Sidebar: compact — everything (nav + run selector + language) must fit
-     without scrolling. Tighter gaps, slim dividers, less top padding. */
-  [data-testid="stSidebarUserContent"] { padding-top: 1.2rem; }
-  [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.45rem; }
-  [data-testid="stSidebar"] hr { margin: 0.45rem 0; }
-  /* Sidebar navigation: borderless menu items; the active page keeps the
-     filled accent (primary button). */
-  [data-testid="stSidebar"] .stButton button {
-    justify-content: flex-start; text-align: left; font-weight: 500;
-    padding-top: 0.22rem; padding-bottom: 0.22rem; min-height: 1.9rem;
-  }
-  /* The label lives in a nested <p>; align it too or the text stays centered. */
-  [data-testid="stSidebar"] .stButton button div { justify-content: flex-start; }
-  [data-testid="stSidebar"] .stButton button p { text-align: left; width: 100%; }
-  [data-testid="stSidebar"] .stButton button[kind="secondary"] {
-    border: none; background: transparent;
-  }
-  [data-testid="stSidebar"] .stButton button[kind="secondary"]:hover {
-    background: rgba(26, 82, 118, 0.08); color: inherit;
-  }
-  [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
-    margin-top: 0.4rem; letter-spacing: 0.04em; opacity: 0.7;
-  }
-  /* Active-run box in the sidebar: full name, wraps, small. */
-  [data-testid="stSidebar"] .active-run {
-    font-size: 0.8rem; line-height: 1.3; word-break: break-word;
-    background: #f1f5f9; border-radius: 0.4rem; padding: 0.4rem 0.55rem;
-  }
-  /* Compact KPI strip (Overview): denser than st.metric cards. */
-  .kpi-strip { display: flex; gap: 0.5rem; margin: 0.2rem 0 0.7rem; flex-wrap: wrap; }
-  .kpi { flex: 1; min-width: 90px; background: #f8fafc; border: 1px solid #e5e7eb;
-         border-radius: 0.5rem; padding: 0.4rem 0.6rem; }
-  .kpi .v { font-size: 1.15rem; font-weight: 650; color: #1A5276; line-height: 1.2; }
-  .kpi .l { font-size: 0.72rem; color: #64748b; }
-</style>
-""", unsafe_allow_html=True)
+# Design system: one global Plotly template + the typography/layout CSS.
+theme.register_plotly_template()
+theme.inject_css()
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
