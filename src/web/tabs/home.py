@@ -184,13 +184,13 @@ def _dataset_panel() -> None:
     if gallery:
         st.caption("One example patch per class — caption shows train patches and "
                    "the share of training images that contain the class.")
-        ncols = 6
+        ncols = 8
         for i in range(0, len(gallery), ncols):
             cols = st.columns(ncols)
             for col, (cls, cnt, pct, img) in zip(cols, gallery[i:i + ncols]):
-                col.image(img, use_container_width=True)
+                col.image(img, width=104)
                 col.markdown(
-                    f"<div style='font-size:0.72rem;line-height:1.2'><b>{cls}</b><br>"
+                    f"<div style='font-size:0.68rem;line-height:1.15'><b>{cls}</b><br>"
                     f"{cnt:,} · {pct:.0f}%</div>", unsafe_allow_html=True)
     elif not (meta and root):
         st.caption("Dataset not mounted on this machine — splits and class counts "
