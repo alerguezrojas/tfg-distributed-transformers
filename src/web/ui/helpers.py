@@ -283,23 +283,6 @@ def _gpu_usage() -> dict | None:
         return None
 
 
-def _launch_process(cmd: str, placeholder) -> int:
-    output_lines: list[str] = []
-    try:
-        proc = subprocess.Popen(
-            cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1, cwd=str(ROOT),
-        )
-        for raw in proc.stdout:  # type: ignore[union-attr]
-            output_lines.append(raw.rstrip())
-            placeholder.code("\n".join(output_lines[-120:]), language="text")
-        proc.wait()
-        return proc.returncode
-    except Exception as exc:
-        placeholder.error(str(exc))
-        return -1
-
-
 def _color_f1_cell(v: float) -> str:
     if v >= 0.6:
         return "background-color: #d1fae5; color: #065f46"

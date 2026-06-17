@@ -34,7 +34,7 @@ from src.web.ui.helpers import (
     _feas_label, _run_config, _load_class_distribution, _load_example_images, _class_gallery,
     _safe_max, _safe_idxmax, _safe_val_at_best, _throughput_col, _dur_str,
     _get_configs, _detect_anomalies, _read_log_tail, _parse_log_progress,
-    _gpu_usage, _launch_process, _color_f1_cell,
+    _gpu_usage, _color_f1_cell,
 )
 
 
