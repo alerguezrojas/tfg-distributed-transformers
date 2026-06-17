@@ -390,6 +390,29 @@ package "src.support" as support #FDFEFE {
     + estimate_costs(total_hours_ref, ref_gpu): list[dict]
   }
 
+  class Prediction <<dataclass>> {
+    ' src.performance_model — predictor analítico
+    + strategy / model_name / gpu_name: str
+    + time_per_epoch_train_s / time_total_train_s: float
+    + speedup / efficiency: float
+    + bottleneck: str  ' compute | io | sync
+    + vram_per_gpu_gb: float
+    + fits_in_memory: bool
+    + recommended_batch: int
+    + calibrated: bool
+  }
+
+  note as perfmodel_note
+    **performance_model.py** — motor analítico
+    (sin GPU, testeable). Estima sin benchmark:
+    estimate_rc = MFU·TFLOPS/FLOPs_train
+    estimate_rio / estimate_vram_gb / max_batch
+    predict_epoch (fórmula maestra T(n,π) por
+    estrategia: single/ddp/model_parallel/hetero)
+    predict(...) → Prediction
+    Tablas GpuSpec / ModelSpec. Calibrado <10%.
+  end note
+
   note as precision_note
     **precision.py** — selector de Tensor cores
     ALL_PRECISIONS = fp32 | tf32 | amp | bf16
@@ -633,13 +656,18 @@ package "src.web" #FDFEFE {
     **dataset_stats.py**
     class_distribution_from_parquet (ndarray)
     find_example_patches / load_rgb_image
+    helpers._class_gallery (1 patch/clase, 1 lectura)
+
+    **run_import.py** (puro, testeable)
+    import_run_archive(zip) / import_run_folder
+    _dest_relpath (corta desde logs/, anti-traversal)
   end note
 
   note as web_arch_note
-    **app.py** — orquestador delgado (~180 ln, SRP)
+    **app.py** — orquestador (~220 ln, SRP)
     page config + tema (.streamlit/config.toml) +
-    sidebar EN/ES + nav agrupada
-    (ANALYZE/PLAN/DATA & OPS) → despacha render(ctx)
+    menú de iconos (streamlit-option-menu) +
+    selector de run activo → despacha render(ctx)
 
     **ui/** (SRP): context (DashboardContext),
     charts (_show/_dl_csv/_metric_fig/_overlay_fig),
@@ -647,11 +675,10 @@ package "src.web" #FDFEFE {
     i18n (capa EN→ES que parchea st.* / DeltaGenerator)
 
     **tabs/** — cada uno expone render(ctx):
-    home · run · comparison · feasibility ·
-    data_models · system
-    (6 páginas; Compare = sección única:
-    speedup vs baseline + radar + energía
-    + overlays, sin sub-pestañas)
+    home (Overview compacto) · run · comparison ·
+    feasibility (Predict/Validate/Measure) ·
+    data_models (Import)
+    (5 secciones, máx. 1 nivel de pestañas)
   end note
 
 }
@@ -754,6 +781,10 @@ DashboardContext o-- RunInfo
 web_arch_note ..> SpeedupModel : overlays (Report) >
 web_arch_note ..> CloudOption : cloud cost (Report) >
 web_arch_note ..> GpuSpecs : shows cores (Monitor) >
+web_arch_note ..> Prediction : Feasibility → Predict >
+perfmodel_note ..> Prediction : returns >
+perfmodel_note ..> GpuSpecs : specs por GPU >
+perfmodel_note ..> CloudOption : coste (estimate_costs) >
 
 FeasibilityComparison *-- ComparisonRow
 cmp_note ..> FeasibilityComparison : builds >
