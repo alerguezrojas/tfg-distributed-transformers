@@ -149,7 +149,7 @@ def _epoch_time_bars(time_by_label: dict[str, float]) -> None:
     ))
     fig.update_layout(
         height=40 + 30 * len(rows), margin=dict(l=10, r=30, t=6, b=6),
-        paper_bgcolor="white", plot_bgcolor="#f8fafc", showlegend=False,
+        paper_bgcolor="white", showlegend=False,
     )
     fig.update_xaxes(visible=False)
     fig.update_yaxes(automargin=True, tickfont=dict(size=9))
@@ -204,7 +204,7 @@ def _best_f1_bars(runs, curve_by_label: dict[str, list[float]]) -> None:
     ))
     fig.update_layout(
         height=40 + 30 * len(rows), margin=dict(l=10, r=30, t=6, b=6),
-        paper_bgcolor="white", plot_bgcolor="#f8fafc", showlegend=False,
+        paper_bgcolor="white", showlegend=False,
     )
     fig.update_xaxes(range=[0, 1], visible=False)
     fig.update_yaxes(automargin=True, tickfont=dict(size=9))
