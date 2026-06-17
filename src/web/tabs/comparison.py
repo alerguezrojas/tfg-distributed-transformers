@@ -13,6 +13,7 @@ import streamlit as st
 from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
 from src.web.run_registry import RunInfo
 
+from src.web.ui import theme
 from src.web.ui.charts import COLORS, _show, _dl_csv, _base_layout, _overlay_fig
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (
@@ -195,17 +196,27 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
 
     st.dataframe(pd.DataFrame(rows).set_index("Run"), use_container_width=True)
 
+    # Ranked bar: sort by speedup (fastest on top) and colour by faster / slower
+    # than the baseline, so "scales up" vs "penalises" reads instantly.
+    order = sorted(range(len(bar_vals)), key=lambda i: bar_vals[i])
+    s_lbls = [bar_lbls[i] for i in order]
+    s_vals = [bar_vals[i] for i in order]
+    s_cols = ["#94A3B8" if abs(v - 1.0) < 0.05 else (theme.GOOD if v > 1.0 else theme.BAD)
+              for v in s_vals]
     fig_sp = go.Figure(go.Bar(
-        y=bar_lbls, x=bar_vals, orientation="h", marker_color=bar_colors,
-        text=[f"{v:.2f}×" for v in bar_vals], textposition="outside",
+        y=s_lbls, x=s_vals, orientation="h", marker_color=s_cols,
+        text=[f"{v:.2f}×" for v in s_vals], textposition="outside",
+        cliponaxis=False,
     ))
     fig_sp.update_layout(
-        **_base_layout(150 + 40 * len(bar_lbls), "Speedup vs baseline",
-                       margin=dict(l=10, r=60, t=48, b=40)),
-        xaxis_title="× (higher is faster)", showlegend=False,
+        **_base_layout(150 + 40 * len(s_lbls), "Speedup vs baseline",
+                       margin=dict(l=10, r=64, t=48, b=40)),
+        xaxis_title="× speedup  (green = faster than baseline, red = slower)",
+        showlegend=False,
     )
-    fig_sp.update_yaxes(autorange="reversed", automargin=True)
-    fig_sp.add_vline(x=1.0, line_dash="dash", line_color="#64748b")
+    fig_sp.update_yaxes(automargin=True)
+    fig_sp.add_vline(x=1.0, line_dash="dash", line_color="#475569",
+                     annotation_text="baseline 1.0×", annotation_position="top")
     _show(fig_sp, "compare_speedup")
 
     # One pedagogical banner per special mode present in the selection.
