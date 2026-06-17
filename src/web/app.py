@@ -23,6 +23,7 @@ from src.web.tabs import (
     home,
     run as run_tab,
     comparison,
+    analysis,
     feasibility,
     dataset,
 )
@@ -54,13 +55,14 @@ runs = _get_runs()
 # module full-width. Pages keep at most ONE row of tabs inside — never 3 levels.
 # System was removed: the live hardware monitor was not useful with the Kaggle
 # workflow, and "Import runs" now lives under "Data & runs".
-_NAV_KEYS = ["overview", "run", "compare", "feasibility", "data"]
-_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Dataset"]
-_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "database"]
+_NAV_KEYS = ["overview", "run", "compare", "analysis", "feasibility", "data"]
+_NAV_LABELS = ["Overview", "Run results", "Compare", "Analysis", "Feasibility", "Dataset"]
+_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "diagram-3", "speedometer2", "database"]
 _PAGES = {
     "overview": home.render,
     "run": run_tab.render,
     "compare": comparison.render,
+    "analysis": analysis.render,
     "feasibility": feasibility.render,
     "data": dataset.render,
 }

@@ -92,7 +92,7 @@ _MODULES = [
     "app.py",
     "ui/__init__.py", "ui/context.py", "ui/charts.py", "ui/helpers.py",
     "tabs/__init__.py", "tabs/home.py", "tabs/run.py", "tabs/comparison.py",
-    "tabs/feasibility.py", "tabs/dataset.py", "tabs/data_models.py",
+    "tabs/analysis.py", "tabs/feasibility.py", "tabs/dataset.py", "tabs/data_models.py",
 ]
 
 
@@ -113,7 +113,7 @@ def charts_source() -> str:
 @pytest.fixture(scope="module")
 def tabs_source() -> str:
     return "\n".join(_src(f"tabs/{m}") for m in (
-        "home.py", "run.py", "comparison.py", "feasibility.py",
+        "home.py", "run.py", "comparison.py", "analysis.py", "feasibility.py",
         "dataset.py", "data_models.py",
     ))
 
@@ -134,14 +134,14 @@ def test_app_is_thin_orchestrator(app_source):
     n_lines = len(app_source.splitlines())
     # Thin = page config + CSS + sidebar + dispatch (not the old 3000-line monolith).
     assert n_lines < 280, f"app.py has {n_lines} lines — expected a thin orchestrator"
-    for mod in ("home", "comparison", "feasibility", "dataset"):
+    for mod in ("home", "comparison", "analysis", "feasibility", "dataset"):
         assert f"{mod}.render" in app_source, mod
     assert "run_tab.render" in app_source
 
 
 def test_sidebar_nav_sections(app_source):
     """The single-level icon-menu navigation labels (English) live in app.py."""
-    for t in ('"Overview"', '"Run results"', '"Compare"', '"Feasibility"',
+    for t in ('"Overview"', '"Run results"', '"Compare"', '"Analysis"', '"Feasibility"',
               '"Dataset"'):
         assert t in app_source, f"missing nav item {t}"
     # Icon menu (streamlit-option-menu), single level, session-state driven.
