@@ -25,7 +25,6 @@ from src.web.tabs import (
     comparison,
     feasibility,
     data_models,
-    system,
 )
 
 # ── Page configuration ──────────────────────────────────────────────────────────
@@ -114,16 +113,17 @@ runs = _get_runs()
 
 # Single-level sidebar navigation (icon menu). Each entry renders one page
 # module full-width. Pages keep at most ONE row of tabs inside — never 3 levels.
-_NAV_KEYS = ["overview", "run", "compare", "feasibility", "data", "system"]
-_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Data & models", "System"]
-_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "database", "cpu"]
+# System was removed: the live hardware monitor was not useful with the Kaggle
+# workflow, and "Import runs" now lives under "Data & runs".
+_NAV_KEYS = ["overview", "run", "compare", "feasibility", "data"]
+_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Data & runs"]
+_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "database"]
 _PAGES = {
     "overview": home.render,
     "run": run_tab.render,
     "compare": comparison.render,
     "feasibility": feasibility.render,
     "data": data_models.render,
-    "system": system.render,
 }
 
 with st.sidebar:
@@ -152,35 +152,32 @@ with st.sidebar:
     st.session_state["nav"] = _page
 
     st.markdown("---")
-    # ── Run selector (shared context across pages) ────────────────────────────
+    # ── Active run (shared across pages) ──────────────────────────────────────
+    # Source of truth: st.session_state["run_label"]. It is set here OR by
+    # clicking a row in the Overview "All runs" table (wandb-style selection).
     if not runs:
         st.warning("No runs found in logs/.")
         selected_run = None
         run = None
     else:
-        trace_filter = st.selectbox("Trace mode", ["all", "simple", "deep"])
-        filtered = [r for r in runs if trace_filter == "all" or r.trace_mode == trace_filter]
+        _labels = [r.label for r in runs]
+        _by_label = {r.label: r for r in runs}
+        _active = st.session_state.get("run_label")
+        if _active not in _by_label:
+            _active = _labels[0]
+        run = _by_label[_active]
+        selected_run = run
 
-        if not filtered:
-            st.warning("No runs match this filter.")
-            selected_run = None
-            run = None
-        else:
-            run_labels = {r.label: r for r in filtered}
-            selected_label = st.selectbox("Run", list(run_labels.keys()))
-            run = run_labels[selected_label]
-            selected_run = run
-
-            # The label already carries env/model/mode/precision — only add
-            # what it doesn't: the log filename and which CSVs exist.
-            has_csv = run.epoch_csv_path is not None and run.epoch_csv_path.exists()
-            _csv_bits = " · ".join(
-                f"{name} {'✓' if ok else '—'}"
-                for name, ok in (("epoch", has_csv),
-                                 ("batch", run.batch_csv_path is not None),
-                                 ("per-class", run.perclass_csv_path is not None))
-            )
-            st.caption(f"{run.log_path.name}  \nCSV: {_csv_bits}")
+        st.caption("**Active run**")
+        st.markdown(f"<div style='font-size:0.82rem;line-height:1.3'>{_active}</div>",
+                    unsafe_allow_html=True)
+        with st.popover("Change run", use_container_width=True):
+            _picked = st.radio("Run", _labels, index=_labels.index(_active),
+                               label_visibility="collapsed", key="run_radio")
+            if _picked != _active:
+                st.session_state["run_label"] = _picked
+                st.rerun()
+        st.caption("Tip: you can also click a row in the Overview table.")
 
     st.markdown("---")
     # ── Language (least-used control — keep it at the bottom) ─────────────────

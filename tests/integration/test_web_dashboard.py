@@ -92,7 +92,7 @@ _MODULES = [
     "app.py",
     "ui/__init__.py", "ui/context.py", "ui/charts.py", "ui/helpers.py",
     "tabs/__init__.py", "tabs/home.py", "tabs/run.py", "tabs/comparison.py",
-    "tabs/feasibility.py", "tabs/data_models.py", "tabs/system.py",
+    "tabs/feasibility.py", "tabs/data_models.py",
 ]
 
 
@@ -114,7 +114,7 @@ def charts_source() -> str:
 def tabs_source() -> str:
     return "\n".join(_src(f"tabs/{m}") for m in (
         "home.py", "run.py", "comparison.py", "feasibility.py",
-        "data_models.py", "system.py",
+        "data_models.py",
     ))
 
 
@@ -133,7 +133,7 @@ def test_app_is_thin_orchestrator(app_source):
     """app.py must be a thin orchestrator that dispatches to the page modules."""
     n_lines = len(app_source.splitlines())
     assert n_lines < 220, f"app.py has {n_lines} lines — expected a thin orchestrator"
-    for mod in ("home", "comparison", "feasibility", "data_models", "system"):
+    for mod in ("home", "comparison", "feasibility", "data_models"):
         assert f"{mod}.render" in app_source, mod
     assert "run_tab.render" in app_source
 
@@ -141,7 +141,7 @@ def test_app_is_thin_orchestrator(app_source):
 def test_sidebar_nav_sections(app_source):
     """The single-level icon-menu navigation labels (English) live in app.py."""
     for t in ('"Overview"', '"Run results"', '"Compare"', '"Feasibility"',
-              '"Data & models"', '"System"'):
+              '"Data & runs"'):
         assert t in app_source, f"missing nav item {t}"
     # Icon menu (streamlit-option-menu), single level, session-state driven.
     assert "option_menu" in app_source
@@ -155,7 +155,7 @@ def test_sub_tab_names(tabs_source):
     summary + speedup vs baseline + radar + energy + overlays).
     """
     for t in ('"Curves"', '"Per-class"', '"Batch"', '"Time"', '"Info"',
-              '"Monitor"', '"Import runs"', '"Prediction vs reality"',
+              '"Import runs"', '"Prediction vs reality"',
               '"Dataset"', '"Models"'):
         assert t in tabs_source, f"missing sub-tab {t}"
     # The unified Compare keeps its key sections.
@@ -165,17 +165,15 @@ def test_sub_tab_names(tabs_source):
 
 
 def test_home_sections(tabs_source):
-    """The home screen (executive summary) must keep its core sections.
-
-    System/hardware and per-class snapshots were intentionally removed from Home
-    to de-duplicate them (they live in System / Run results).
-    """
+    """The Overview hub must keep its core building blocks: KPIs, the active-run
+    card, the section cards and a selectable All-runs table with sparklines."""
     assert '"## Overview"' in tabs_source
     assert "All runs" in tabs_source
-    assert "Selected run" in tabs_source
-    # wandb-style hub: nav cards + a Val F1 sparkline column.
+    assert "Active run" in tabs_source
+    # Compact hub: nav cards, a Val F1 sparkline column and row selection.
     assert "_NAV_CARDS" in tabs_source
     assert "LineChartColumn" in tabs_source
+    assert 'selection_mode="single-row"' in tabs_source
 
 
 def test_show_and_dl_csv_defined_in_charts(charts_source):
