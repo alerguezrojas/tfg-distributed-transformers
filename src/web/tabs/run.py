@@ -27,6 +27,7 @@ from src.web.perclass_parser import parse_perclass_csv
 from src.web.run_registry import RunInfo
 from src.web.system_monitor import get_snapshot
 
+from src.web.ui import theme
 from src.web.ui.charts import (
     COLORS, _show, _dl_csv, _base_layout, _metric_fig, _overlay_fig,
     _CLASS_GROUPS, _CLASS_GROUP_COLOR,
@@ -210,27 +211,39 @@ def _per_class(ctx: DashboardContext) -> None:
     epochs_available = sorted(pcdf["epoch"].unique().tolist())
     selected_ep = st.selectbox("Epoch", epochs_available, index=len(epochs_available) - 1,
                                format_func=lambda e: f"Epoch {e}")
-    ep_df = pcdf[pcdf["epoch"] == selected_ep].copy().sort_values("f1", ascending=False)
+    # Dot/lollipop plot (sorted by F1): one row per class, a connector showing the
+    # precision↔recall↔F1 spread, and three dots. Far more legible than 57 grouped
+    # bars, and the F1 dot is colour-coded by performance for an at-a-glance read.
+    ep_df = pcdf[pcdf["epoch"] == selected_ep].copy().sort_values("f1", ascending=True)
+    classes = ep_df["class_name"].tolist()
 
-    colors_f1 = [
-        COLORS[2] if v >= 0.6 else (COLORS[1] if v >= 0.3 else COLORS[3])
-        for v in ep_df["f1"]
-    ]
+    conn_x: list = []
+    conn_y: list = []
+    for _, r in ep_df.iterrows():
+        lo, hi = min(r.precision, r.recall, r.f1), max(r.precision, r.recall, r.f1)
+        conn_x += [lo, hi, None]
+        conn_y += [r.class_name, r.class_name, None]
+
+    f1_colors = [theme.GOOD if v >= 0.6 else theme.WARN if v >= 0.3 else theme.BAD
+                 for v in ep_df["f1"]]
+
     fig_pc = go.Figure()
-    fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["precision"],
-                            name="Precision", orientation="h",
-                            marker_color=COLORS[0], opacity=0.8))
-    fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["recall"],
-                            name="Recall", orientation="h",
-                            marker_color=COLORS[1], opacity=0.8))
-    fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["f1"],
-                            name="F1", orientation="h", marker_color=colors_f1))
+    fig_pc.add_trace(go.Scatter(x=conn_x, y=conn_y, mode="lines",
+                                line=dict(color="#CBD5E1", width=2),
+                                hoverinfo="skip", showlegend=False))
+    fig_pc.add_trace(go.Scatter(x=ep_df["precision"], y=classes, mode="markers",
+                                name="Precision",
+                                marker=dict(color=theme.CATEGORICAL[0], size=9)))
+    fig_pc.add_trace(go.Scatter(x=ep_df["recall"], y=classes, mode="markers",
+                                name="Recall",
+                                marker=dict(color=theme.CATEGORICAL[1], size=9)))
+    fig_pc.add_trace(go.Scatter(x=ep_df["f1"], y=classes, mode="markers", name="F1",
+                                marker=dict(color=f1_colors, size=13, symbol="diamond",
+                                            line=dict(color="white", width=1.2))))
     fig_pc.update_layout(
-        barmode="group",
-        title=dict(text=f"Per-class metrics — Epoch {selected_ep}", font=dict(size=13)),
-        xaxis_title="Score", xaxis=dict(range=[0, 1]),
-        height=600, margin=dict(l=200, r=16, t=36, b=40),
-        paper_bgcolor="white", plot_bgcolor="#f8fafc",
+        title=dict(text=f"Per-class metrics — Epoch {selected_ep}"),
+        xaxis_title="Score", xaxis=dict(range=[0, 1.02]),
+        height=max(360, 26 * len(classes) + 90), margin=dict(l=210),
     )
     _show(fig_pc, f"per_class_ep{selected_ep}")
 
