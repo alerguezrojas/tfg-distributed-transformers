@@ -1,0 +1,39 @@
+2026-06-17 16:09:05 [INFO ] Configuración: modelo=vit_tiny_patch16_224 | batch=96/GPU (global=96) | epochs=4 | lr=0.0001 | precision=fp32 | loss=bce | train=5000 | val=1500
+2026-06-17 16:09:05 [INFO ] Iniciando entrenamiento — 4 epochs
+2026-06-17 16:09:05 [INFO ] 
+── Epoch 001/004 ────────────────────────────
+2026-06-17 16:09:18 [INFO ]   loss           train=0.5997  val=0.3706
+2026-06-17 16:09:18 [INFO ]   f1             train=0.1256  val=0.0473
+2026-06-17 16:09:18 [INFO ]   accuracy       train=0.7297  val=0.8478
+2026-06-17 16:09:18 [INFO ]   precision      val=0.1424
+2026-06-17 16:09:18 [INFO ]   recall         val=0.0352
+2026-06-17 16:09:18 [INFO ] [Epoch 001] Checkpoint guardado
+2026-06-17 16:09:18 [INFO ]   ETA: 0h 00m  (11s/epoch, best_f1=0.0473)  (threshold óptimo=0.30, F1=0.1770)
+2026-06-17 16:09:18 [INFO ] 
+── Epoch 002/004 ────────────────────────────
+2026-06-17 16:09:30 [INFO ]   loss           train=0.4033  val=0.2947
+2026-06-17 16:09:30 [INFO ]   f1             train=0.1453  val=0.2212
+2026-06-17 16:09:30 [INFO ]   accuracy       train=0.8709  val=0.8797
+2026-06-17 16:09:30 [INFO ]   precision      val=0.4054
+2026-06-17 16:09:30 [INFO ]   recall         val=0.1828
+2026-06-17 16:09:30 [INFO ] [Epoch 002] Checkpoint guardado
+2026-06-17 16:09:30 [INFO ]   ETA: 0h 00m  (10s/epoch, best_f1=0.2212)  (threshold óptimo=0.30, F1=0.3297)
+2026-06-17 16:09:30 [INFO ] 
+── Epoch 003/004 ────────────────────────────
+2026-06-17 16:09:42 [INFO ]   loss           train=0.3783  val=0.2741
+2026-06-17 16:09:42 [INFO ]   f1             train=0.2345  val=0.2218
+2026-06-17 16:09:42 [INFO ]   accuracy       train=0.8893  val=0.8864
+2026-06-17 16:09:42 [INFO ]   precision      val=0.4168
+2026-06-17 16:09:42 [INFO ]   recall         val=0.1768
+2026-06-17 16:09:42 [INFO ] [Epoch 003] Checkpoint guardado
+2026-06-17 16:09:42 [INFO ]   ETA: 0h 00m  (10s/epoch, best_f1=0.2218)  (threshold óptimo=0.30, F1=0.3495)
+2026-06-17 16:09:42 [INFO ] 
+── Epoch 004/004 ────────────────────────────
+2026-06-17 16:09:54 [INFO ]   loss           train=0.3710  val=0.2739
+2026-06-17 16:09:54 [INFO ]   f1             train=0.2590  val=0.2603
+2026-06-17 16:09:54 [INFO ]   accuracy       train=0.8915  val=0.8875
+2026-06-17 16:09:54 [INFO ]   precision      val=0.4068
+2026-06-17 16:09:54 [INFO ]   recall         val=0.2189
+2026-06-17 16:09:54 [INFO ] [Epoch 004] Checkpoint guardado
+2026-06-17 16:09:54 [INFO ]   ETA: 0h 00m  (10s/epoch, best_f1=0.2603)  (threshold óptimo=0.30, F1=0.3734)
+2026-06-17 16:09:54 [INFO ] Entrenamiento completado — mejor Val F1: 0.2603

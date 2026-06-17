@@ -208,10 +208,15 @@ def main():
     # Registrar la configuración en el log (visible en la web → Información)
     _bs = cfg["training"]["batch_size"]
     _prec = cfg["training"].get("precision", "fp32")
+    _loss = str(cfg["training"].get("loss", "bce")).lower()
+    if _loss == "focal":
+        _loss = f"focal(g={cfg['training'].get('focal_gamma', 2.0)})"
+    elif cfg["training"].get("pos_weight") is not None:
+        _loss = "bce+pos_weight"
     logging.getLogger("trainer").info(
         f"Configuración: modelo={model_name} | batch={_bs}/GPU (global={_bs}) | "
         f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-        f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)}"
+        f"precision={_prec} | loss={_loss} | train={len(train_ds)} | val={len(val_ds)}"
     )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

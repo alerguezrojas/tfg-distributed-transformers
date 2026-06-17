@@ -100,7 +100,7 @@ find ~/datasets/bigearthnet/BigEarthNet-S2/ -mindepth 2 -maxdepth 2 -type d | wc
 - **Splits:** Train 237 871 | Val 122 342 | Test 119 825
 - **Bandas:** B04, B03, B02 (proxy RGB), reflectancia / 10 000, clipped [0, 1]
 - **Tarea:** clasificación multi-label, 19 clases CORINE Land Cover
-- **Pérdida:** `BCEWithLogitsLoss` (sin sigmoid en el modelo)
+- **Pérdida:** `BCEWithLogitsLoss` por defecto (sin sigmoid en el modelo); opcionalmente `FocalLoss` o `pos_weight` vía `training.loss`/`pos_weight` (ver `src/training/losses.py`)
 - **Métricas:** macro F1 + sample-averaged accuracy + precision + recall
 
 ---
@@ -155,6 +155,8 @@ src/training/
   trainer.py               # implementación pura, usa metrics.py; devuelve _preds/_labels en eval_epoch
   builder.py               # TrainingSessionBuilder — fluent API para montar el stack de decoradores
   metrics.py               # f1_score, precision, recall, accuracy, eta_str
+  losses.py                # FocalLoss multi-label + pos_weight ('auto' del metadata) + build_criterion
+  config_validator.py      # validate_config() — valida el YAML antes de entrenar
   logger_setup.py          # setup_logger() con formato timestamp
   fn_decorators.py         # decoradores @ de Python: timed, log_call, measure_energy, retry_on_cuda_oom
   decorators/
@@ -1042,9 +1044,17 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Rediseño compacto + selección por tabla + Feasibility en 3 fases (17/06/26):** tercera iteración tras feedback ("hazla más compacta, útil y publicable"). (1) **Overview compacto tipo dashboard** (inspirado en NanoEdge): KPIs en tarjetas + barra "Best Val F1 by run (top 8)" + tarjeta del run activo con mini F1/loss + tarjetas de sección + **tabla "All runs" seleccionable** (clicar una fila activa ese run en todo el dashboard, vía `st.dataframe(on_select=...)` + guard `_last_table_row` para no pelear con la sidebar). (2) **Selector de run rehecho**: la sidebar muestra el run activo compacto + popover "Change run" (fuera el desplegable que se desbordaba). (3) **System eliminado** (el monitor de hardware no servía con el flujo Kaggle); "Import runs" movido a **Data & runs** → 5 secciones. (4) **Feasibility de 5 pestañas a 3 fases claras**: **Predict** (predictor analítico = la respuesta del profesor), **Validate** (predicho vs real), **Measure (advanced)** (benchmark real: generar informe + verlo + estudio de convergencia, apilados en scroll). (5) **Run results** de 6 a 5 pestañas (Time+Info → "Details"). Rama: `feature/web-compact-redesign`.
 - [x] **Overview más denso + dataset y predictor enriquecidos (17/06/26):** continuación del afinado. (1) **Selector de run definitivo**: caja del run activo a nombre completo + filtro por entorno + selectbox con etiquetas cortas distinguibles (`21:43 vit_large [model_parallel]`) — sin popover ni desbordamiento. (2) Las tarjetas "Open" redundantes (la nav ya está en el menú) se sustituyen por **gráficas relevantes**: velocidad media/epoch (8 más rápidos) y **donut de estrategias**. (3) **Tira de 8 KPIs** compacta (Runs, Best F1, Fastest epoch, GPU time, Energy, Models, Environments, Feasibility). (4) **Dataset movido al Overview** (sección Dataset/Models eliminada → la sección queda solo "Import"): splits + **subset usado por los runs recientes** (leído de su config) + clases frecuentes + **galería de las 19 clases** (un patch distinto por clase, rejilla uniforme de 10 col) con **info multi-etiqueta** (media de clases/patch, `+k` y tooltip con todas las clases del patch). (5) El **Predictor** añade **coste en la nube** para la config elegida → predice tiempo+speedup+memoria+coste de una vez (la "fórmula potente" del tutor, completa). Helper cacheado `_class_gallery` (una sola lectura del parquet). Ramas: `feature/web-compact-redesign` (continuación).
 
+#### Arreglos críticos tras auditoría (17/06/26) — rama `feature/critical-fixes`, PR #22 → develop
+- [x] **Train F1 insesgado:** `Trainer` y `DeepTracingDecorator` calculan el F1 de entrenamiento sobre las etiquetas **originales**, no las mezcladas por mixup (antes umbralizaban las soft labels a 0.5 → "verdad" inventada). Sesgaba el argumento del gap train-val en las configs con mixup (v3+).
+- [x] **Selección de modelo justa:** `EpochController.select_metric` (`f1` por defecto | `f1_optimal`); `training.select_by` en el config. Elige el mejor checkpoint y el early stopping por el F1 al **umbral óptimo** — imprescindible para focal (baja las probabilidades → su F1 a 0.5 sale bajo a propósito).
+- [x] **Losses contra el techo ~0.68:** `src/training/losses.py` — `FocalLoss` multi-label + `pos_weight` (`'auto'` del metadata) + factory `build_criterion`. Conectado en el builder (`training.loss` / `focal_gamma` / `pos_weight`) y validado. Configs `train_cluster_focal.yaml` + `train_cluster_bce.yaml` (pareja apples-to-apples) + pareja local de demo. **Demo local vit_tiny (subset): focal redujo las clases con F1=0 de 8 a 6** (rescató Industrial units y Permanent crops). Run grande vit_base/dataset-completo pendiente de Verode libre (runbook: `docs/verode_focal_runbook.md`).
+- [x] **Coherencia de diseño:** `Trainer.fit()` lanza `NotImplementedError` — el bucle vive solo en `EpochController` (Template Method). Documentado el invariante "controlador vs aspecto" en `DeepTracingDecorator`.
+- [x] **Honestidad documental:** `docs/performance_model.md` separa calibración (in-sample) de validación out-of-sample (los speedups cancelan la MFU → predicción genuina).
+- [x] **Proceso:** README real (antes 1 línea) + CI (`.github/workflows/ci.yml`, pytest en cada push/PR). **Suite en 333 tests.**
+
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
-- [ ] (Opcional) Tratar las clases raras (pos_weight / focal loss) para subir el F1 macro por encima del techo ~0.68.
+- [ ] (Opcional, **ya implementado, falta correr**) Run focal-vs-BCE en Verode (V100, dataset completo) para confirmar a escala si focal sube el F1 macro / rescata la clase 6. Capacidad y configs listas; solo falta GPU libre.
 
 ---
 
@@ -1059,7 +1069,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 
 ### Trabajo futuro (mejoras opcionales, si sobra tiempo)
 - **`rico-hdl` — atacar el cuello de I/O (la mejora de mayor impacto):** convertir BigEarthNet-S2 a un formato de lectura rápida (LMDB) con [rico-hdl](https://github.com/rsim-tu-berlin/rico-hdl), uno de los "Additional Links" del dataset. El estudio demostró que con modelos ligeros el cuello es el **I/O del NFS** (vit_tiny escaló solo 1.27× en 2×T4 vs 1.90× de vit_base compute-bound; en Verode el heterogéneo penaliza por I/O + desbalance). Convertir a LMDB aceleraría el data loading → **mejoraría el escalado distribuido de modelos ligeros y el throughput general**. Requiere re-convertir el dataset y adaptar `BigEarthNetDataset`.
-- **Clases raras:** `pos_weight` en `BCEWithLogitsLoss` o focal loss para romper el techo de F1 macro ~0.68 (la clase 6 "Land principally occupied by agriculture" da F1=0; varias clases raras tiran el macro hacia abajo).
+- **Clases raras:** `pos_weight` y focal loss **ya implementados** (`src/training/losses.py`, `training.loss`/`pos_weight`) para romper el techo de F1 macro ~0.68 (la clase 6 "Land principally occupied by agriculture" da F1=0). Validado en demo local (clases con F1=0: 8→6 con focal); falta el run grande en Verode para confirmar a escala.
 - **Más espectro:** usar las 12 bandas de Sentinel-2 (ahora solo RGB proxy B04/B03/B02) o fusión S1 (radar) + S2 (óptico). Extensión grande, fuera del alcance actual.
 - **Recomendación de batch global en `recommend_config`:** afinar la sugerencia de batch/lr (regla de escalado lineal) cuando recomienda varias GPUs.
 

@@ -1,0 +1,36 @@
+# Gemelo BCE de configs/train_local_demo_focal.yaml — idéntico salvo la pérdida.
+# Línea base para comparar, por clase, el efecto de la focal loss en las clases raras.
+
+data:
+  root: "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/media/alejandro/SSD/datasets/bigearthnet/metadata_demo.parquet"
+  num_workers: 8
+
+model:
+  name: "vit_tiny_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.3
+
+training:
+  epochs: 4
+  batch_size: 96
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.1
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 5
+
+  label_smoothing: 0.1
+  mixup_alpha: 0.2
+
+  loss: bce
+
+checkpoint:
+  dir: "checkpoints/local"
+
+output:
+  env: "local"

@@ -100,22 +100,36 @@ fits and flags OOM for any (model, GPU).
 
 ---
 
-## 4. Validation (predicted → real)
+## 4. Calibration vs. validation (be honest about which is which)
 
-Constants calibrated against the real Kaggle 2×T4 session (subset 5000/1500,
-vit_base, 15 epochs, global batch 96). All reproduced by the unit tests in
-`tests/unit/test_performance_model.py`.
+The model has **two** fitted constants, each pinned by **one** measurement:
 
-| Quantity | Predicted | Real | Error |
-|----------|-----------|------|-------|
-| Single fp32, train/epoch | 192 s | 194 s | +1% |
-| DDP 2×T4 speedup | 1.95× | 1.96× | <1% |
-| FP32 → AMP speedup | 3.80× | 3.80× | ~0% |
-| Model-parallel speedup | 1.00× | 1.02× | −2% |
-| vit_tiny DDP regime | I/O-bound, <1.4× | 1.27× | ✓ |
-| vit_large @ batch 32, T4 | 13.8 GB, fits | 13.78 GB, fits | <1% |
-| vit_large @ batch 48, T4 | OOM | OOM | ✓ |
-| Heterogeneous V100+CPU | < 1× | 0.12× | ✓ (penalizes) |
+* `MFU = 0.17` — from the single-GPU fp32 throughput of vit_base on a T4.
+* `k = 0.86e-9` — from the measured vit_large OOM point (13.78 GB @ batch 32, T4).
+
+Reproducing those two points is therefore **interpolation, not prediction** — they
+are *calibration targets*, marked **(in-sample)** below.
+
+The genuinely predictive results are the **speedups and regimes**, and they are
+**out-of-sample because they do not depend on the fitted constants**. A speedup is
+a ratio `S(n)=T(1)/T(n)`: in the compute-bound regime `MFU` cancels, so `S→n`
+regardless of its value; the FP32→AMP factor is the separately-measured `π` from
+`GPU_TABLE` (not `MFU`); the I/O-bound and heterogeneous regimes are set by
+`r_io`/β, again independent of the calibration. These are the rows that actually
+test the model.
+
+| Quantity | Predicted | Real | Error | Kind |
+|----------|-----------|------|-------|------|
+| Single fp32, train/epoch | 192 s | 194 s | +1% | calibration (in-sample) |
+| vit_large @ batch 32, T4 | 13.8 GB, fits | 13.78 GB, fits | <1% | calibration (in-sample) |
+| **DDP 2×T4 speedup** | **1.95×** | **1.96×** | **<1%** | **validation (out-of-sample)** |
+| **FP32 → AMP speedup** | **3.80×** | **3.80×** | **~0%** | **validation (out-of-sample)** |
+| **Model-parallel speedup** | **1.00×** | **1.02×** | **−2%** | **validation (out-of-sample)** |
+| **vit_tiny DDP regime** | I/O-bound, <1.4× | 1.27× | ✓ | **validation (out-of-sample)** |
+| **vit_large @ batch 48, T4** | OOM | OOM | ✓ | **validation (out-of-sample)** |
+| **Heterogeneous V100+CPU** | < 1× | 0.12× | ✓ (penalizes) | **validation (out-of-sample)** |
+
+All rows are reproduced by the unit tests in `tests/unit/test_performance_model.py`.
 
 ---
 

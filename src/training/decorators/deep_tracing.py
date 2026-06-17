@@ -9,6 +9,25 @@ Features:
   grad-monitor   — forward/backward/param hooks (activation & gradient stats)
   batch-table    — per-layer table logged every log_every batches (requires hooks)
   anomalies      — dead-neuron / vanishing / exploding gradient alerts at epoch end
+
+Design note — why this is a *controller*, not a composable aspect
+-----------------------------------------------------------------
+When `batch-table` is active this decorator OWNS the training loop
+(`_train_epoch_deep`) instead of delegating to the wrapped chain — it needs to
+fire the per-layer table mid-epoch, which the standard `train_epoch` cannot
+expose. The deliberate consequence: in that mode the inner decorators'
+`train_epoch` is bypassed, so the metric reporters, `LayerHooksDecorator` and
+`@fn`-decorated `train_epoch` do NOT run (deep registers its own richer hooks and
+manages its own metrics; `PlottingDecorator` is fed via `_propagate_train_result`).
+
+This is *by design*, not a leaky abstraction: in this codebase a "controller"
+(EpochController and its subclasses) is categorically different from an "aspect"
+(TrainerDecorator subclasses). Only ONE controller may sit in a stack and it must
+be outermost — it governs the loop, so two controllers, or a controller that also
+delegated, would be contradictory. The aspects remain freely composable among
+themselves; the controller is the single exception, enforced by the builder. A
+stronger design would encode "controller vs aspect" in the type system rather than
+by convention — noted as future work.
 """
 
 import logging
@@ -89,8 +108,10 @@ class DeepTracingDecorator(TracingDecorator):
         log_every: int = 100,
         patience: int | None = None,
         features: set[str] | None = None,
+        select_metric: str = "f1",
     ):
-        super().__init__(trainer, logger=logger, patience=patience)
+        super().__init__(trainer, logger=logger, patience=patience,
+                         select_metric=select_metric)
         self._features: frozenset[str] = (
             frozenset(features) if features is not None else ALL_INSPECT_FEATURES
         )
@@ -250,14 +271,19 @@ class DeepTracingDecorator(TracingDecorator):
         for batch_idx, (images, labels) in enumerate(loader, 1):
             images, labels = images.to(device), labels.to(device)
 
-            if mixup_alpha > 0.0 and random.random() < 0.5:
-                images, labels = mixup_batch(images, labels, mixup_alpha)
+            # `labels` stays the original 0/1 targets (for metrics); the loss uses
+            # the augmented ones. Mirrors the fix in Trainer.train_epoch — never
+            # threshold mixed labels into the reported train F1.
+            train_images, train_labels = images, labels
+            mixed = mixup_alpha > 0.0 and random.random() < 0.5
+            if mixed:
+                train_images, train_labels = mixup_batch(images, labels, mixup_alpha)
             if label_smoothing > 0.0:
-                labels = labels * (1.0 - label_smoothing) + 0.5 * label_smoothing
+                train_labels = train_labels * (1.0 - label_smoothing) + 0.5 * label_smoothing
 
             optimizer.zero_grad()
-            logits = model(images)
-            loss = criterion(logits, labels)
+            logits = model(train_images)
+            loss = criterion(logits, train_labels)
             loss.backward()
             grad_clip = getattr(self._trainer, "grad_clip", None)
             if grad_clip is not None:
@@ -266,10 +292,11 @@ class DeepTracingDecorator(TracingDecorator):
 
             total_loss += loss.item()
             with torch.no_grad():
-                hard_labels = (labels > 0.5).long()
+                hard_labels = (labels > 0.5).long()      # ORIGINAL targets
                 preds = (torch.sigmoid(logits) > 0.5).long()
-                all_preds.append(preds.cpu())
-                all_labels.append(hard_labels.cpu())
+                if not mixed:                            # skip blended batches
+                    all_preds.append(preds.cpu())
+                    all_labels.append(hard_labels.cpu())
 
             if batch_idx % self.log_every == 0:
                 self._log_layer_table(self._current_epoch, batch_idx, len(loader))
@@ -277,6 +304,10 @@ class DeepTracingDecorator(TracingDecorator):
         scheduler = getattr(self._trainer, "scheduler", None)
         if scheduler:
             scheduler.step()
+
+        if not all_preds:                                # degenerate: all batches mixed
+            all_preds.append(preds.cpu())
+            all_labels.append(hard_labels.cpu())
 
         all_preds_t = torch.cat(all_preds)
         all_labels_t = torch.cat(all_labels)

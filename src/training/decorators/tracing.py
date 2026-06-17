@@ -39,8 +39,9 @@ class TracingDecorator(EpochController):
         logger: logging.Logger | None = None,
         patience: int | None = None,
         epoch_csv: Path | None = None,
+        select_metric: str = "f1",
     ):
-        super().__init__(trainer, patience=patience)
+        super().__init__(trainer, patience=patience, select_metric=select_metric)
         self._logger = logger
         self._epoch_csv = epoch_csv
         self._fit_start_time: float = 0.0
