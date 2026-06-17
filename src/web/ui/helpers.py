@@ -9,7 +9,7 @@ import streamlit as st
 
 from src.web.batch_parser import parse_batch_csv
 from src.web.dataset_stats import (
-    class_distribution_from_parquet, find_example_patches, load_rgb_image,
+    CLASS_NAMES, class_distribution_from_parquet, find_example_patches, load_rgb_image,
 )
 from src.web.feasibility_parser import parse_feasibility_csv
 from src.web.log_parser import parse_log
@@ -123,6 +123,37 @@ def _load_example_images(parquet_str: str, root_str: str, class_name: str, n: in
         if img is not None:
             images.append((pid, img))
     return images
+
+
+@st.cache_data(ttl=900)
+def _class_gallery(parquet_str: str, root_str: str):
+    """One example RGB image per class + its train statistics, in a SINGLE pass
+    over the parquet (find_example_patches re-reads it per class — too slow for
+    19 classes). Returns [(class_name, count, pct_of_train_patches, image)]."""
+    try:
+        df = pd.read_parquet(parquet_str, columns=["patch_id", "labels", "split"])
+    except Exception:
+        return []
+    df = df[df["split"] == "train"]
+    n_train = max(len(df), 1)
+    first_pid: dict[str, str] = {}
+    counts: dict[str, int] = {c: 0 for c in CLASS_NAMES}
+    for pid, arr in zip(df["patch_id"], df["labels"]):
+        if arr is None:
+            continue
+        for c in arr:
+            if c in counts:
+                counts[c] += 1
+                first_pid.setdefault(c, pid)
+    out = []
+    for c in CLASS_NAMES:
+        pid = first_pid.get(c)
+        if not pid:
+            continue
+        img = load_rgb_image(Path(root_str), pid)
+        if img is not None:
+            out.append((c, counts[c], counts[c] / n_train * 100, img))
+    return out
 
 
 # ── General helpers ─────────────────────────────────────────────────────────────

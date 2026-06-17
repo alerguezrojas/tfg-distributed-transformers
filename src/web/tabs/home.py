@@ -31,7 +31,7 @@ from src.web.ui.charts import (
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (
     ROOT, _load_df, _load_batch, _load_perclass, _get_runs, _get_feasibility_csvs,
-    _feas_label, _run_config, _load_class_distribution, _load_example_images,
+    _feas_label, _run_config, _load_class_distribution, _load_example_images, _class_gallery,
     _safe_max, _safe_idxmax, _safe_val_at_best, _throughput_col, _dur_str,
     _get_configs, _detect_anomalies, _read_log_tail, _parse_log_progress,
     _gpu_usage, _launch_process, _color_f1_cell,
@@ -153,7 +153,7 @@ def _dataset_panel() -> None:
     root = next((p for p in _ROOT_CANDIDATES if Path(p).exists()), None)
 
     st.markdown("#### Dataset — BigEarthNet-S2")
-    d_left, d_right = st.columns([1, 1.2])
+    d_left, d_right = st.columns([1, 1.1])
     with d_left:
         with st.container(border=True):
             s1, s2, s3 = st.columns(3)
@@ -162,39 +162,39 @@ def _dataset_panel() -> None:
             s3.metric("Test", f"{SPLIT_SIZES['test']:,}")
             st.caption(f"{sum(SPLIT_SIZES.values()):,} patches · 19 CORINE classes · "
                        "multi-label · RGB proxy (B04/B03/B02)")
+    with d_right:
+        with st.container(border=True):
             dist = _load_class_distribution(str(meta)) if meta else None
             if dist is None:
                 dist = class_distribution_approximate()
             top = dist.sort_values("train_count").tail(8)
+            st.caption("Most frequent classes (train patches)")
             fig = go.Figure(go.Bar(
                 y=top["class"], x=top["train_count"], orientation="h",
                 marker_color=COLORS[2]))
             fig.update_layout(
-                height=210, margin=dict(l=10, r=10, t=6, b=6),
+                height=190, margin=dict(l=10, r=10, t=6, b=6),
                 paper_bgcolor="white", plot_bgcolor="#f8fafc", showlegend=False)
             fig.update_xaxes(visible=False)
             fig.update_yaxes(automargin=True, tickfont=dict(size=9))
             _show(fig, "hub_dataset_dist")
-    with d_right:
-        with st.container(border=True):
-            st.caption("Example patches")
-            if meta and root:
-                demo = [c for c in ["Marine waters", "Coniferous forest",
-                                    "Arable land", "Urban fabric"] if c in CLASS_NAMES]
-                demo = (demo or CLASS_NAMES[:4])[:4]
-                imgs = []
-                for cls in demo:
-                    for _pid, im in _load_example_images(str(meta), str(root), cls, n=1):
-                        imgs.append((cls, im))
-                if imgs:
-                    cols = st.columns(len(imgs))
-                    for col, (cls, im) in zip(cols, imgs):
-                        col.image(im, caption=cls, use_container_width=True)
-                else:
-                    st.caption("Dataset images not available on this machine.")
-            else:
-                st.caption("Dataset not mounted on this machine — splits and class "
-                           "counts shown from metadata.")
+
+    # ── Gallery: one example patch per class, captioned with its statistics ─────
+    gallery = _class_gallery(str(meta), str(root)) if (meta and root) else []
+    if gallery:
+        st.caption("One example patch per class — caption shows train patches and "
+                   "the share of training images that contain the class.")
+        ncols = 6
+        for i in range(0, len(gallery), ncols):
+            cols = st.columns(ncols)
+            for col, (cls, cnt, pct, img) in zip(cols, gallery[i:i + ncols]):
+                col.image(img, use_container_width=True)
+                col.markdown(
+                    f"<div style='font-size:0.72rem;line-height:1.2'><b>{cls}</b><br>"
+                    f"{cnt:,} · {pct:.0f}%</div>", unsafe_allow_html=True)
+    elif not (meta and root):
+        st.caption("Dataset not mounted on this machine — splits and class counts "
+                   "shown from metadata.")
 
 
 def _epoch_time_bars(time_by_label: dict[str, float]) -> None:
