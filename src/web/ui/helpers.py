@@ -144,7 +144,13 @@ def _class_gallery(parquet_str: str, root_str: str):
         for c in arr:
             if c in counts:
                 counts[c] += 1
-                first_pid.setdefault(c, pid)
+        # Assign this patch as the example for at most ONE class that still needs
+        # one — so each class shows a DISTINCT image (patches are multi-label, so
+        # reusing a patch would make different classes look like duplicates).
+        for c in arr:
+            if c in counts and c not in first_pid:
+                first_pid[c] = pid
+                break
     out = []
     for c in CLASS_NAMES:
         pid = first_pid.get(c)
