@@ -4,7 +4,10 @@
   const D = window.DASHBOARD_DATA || { runs: [], dataset: {} };
   const RUNS = D.runs || [];
   const byId = Object.fromEntries(RUNS.map(r => [r.id, r]));
-  const PALETTE = ['#4f46e5', '#2563eb', '#06b6d4', '#16a34a', '#d97706', '#db2777', '#9333ea', '#64748b'];
+  // Earth-observation palette (cartographic / land-cover tones), not neon defaults.
+  const PALETTE = ['#0E7C6B', '#C0772C', '#3E5C76', '#A8543E', '#6E8B4A', '#7C5E96', '#3F8EA6', '#B59055'];
+  const GOOD = '#2C8A5B', WARN = '#C0772C', BAD = '#BC5340';
+  const FONT = 'IBM Plex Sans, sans-serif', MONO = 'IBM Plex Mono, monospace';
   const charts = [];   // live ECharts instances (disposed on re-render)
 
   const $ = sel => document.querySelector(sel);
@@ -18,7 +21,7 @@
   function mount(el, option) {
     const c = echarts.init(el, null, { renderer: 'canvas' });
     const t = tc();
-    option.textStyle = { fontFamily: 'Inter, sans-serif', color: t.muted };
+    option.textStyle = { fontFamily: FONT, color: t.muted };
     option.grid = Object.assign({ left: 48, right: 22, top: 30, bottom: 36, containLabel: true }, option.grid || {});
     c.setOption(option);
     charts.push(c);
@@ -26,11 +29,11 @@
   }
   const axisX = (extra = {}) => Object.assign({
     type: 'category', axisLine: { lineStyle: { color: tc().axis } },
-    axisTick: { show: false }, axisLabel: { color: tc().muted, fontSize: 11 },
+    axisTick: { show: false }, axisLabel: { color: tc().muted, fontSize: 11, fontFamily: MONO },
   }, extra);
   const axisY = (extra = {}) => Object.assign({
     type: 'value', splitLine: { lineStyle: { color: tc().grid } },
-    axisLabel: { color: tc().muted, fontSize: 11 },
+    axisLabel: { color: tc().muted, fontSize: 11, fontFamily: MONO },
   }, extra);
   const tip = () => ({ trigger: 'axis', backgroundColor: isDark() ? '#1a2436' : '#fff',
     borderColor: tc().axis, textStyle: { color: tc().ink, fontSize: 12 },
@@ -115,7 +118,7 @@
     const tt = ranked.slice(0, 8).reverse();
     barH($('#ovBars'), tt.map(r => r.model + ' · ' + r.date.slice(0, 5)), tt.map(r => r.best_f1),
       { max: 1, showLabel: true, labelFmt: v => v.toFixed(3), left: 170,
-        colors: tt.map(r => r.best_f1 >= 0.6 ? '#16a34a' : r.best_f1 >= 0.4 ? '#d97706' : '#4f46e5') });
+        colors: tt.map(r => r.best_f1 >= 0.6 ? GOOD : r.best_f1 >= 0.4 ? WARN : PALETTE[0]) });
     const counts = {}; RUNS.forEach(r => counts[r.mode_label] = (counts[r.mode_label] || 0) + 1);
     donut($('#ovDonut'), Object.entries(counts).map(([name, value]) => ({ name, value })));
     bindRows();
@@ -150,16 +153,16 @@
         <div class="card-title">Per-class F1 — last epoch (sorted)</div>
         <div class="chart" id="rcPC" style="height:${Math.max(360, sel.perclass.length * 24 + 60)}px"></div></div>` : ''}`;
     lineChart($('#rcF1'), cu.epoch, [
-      { name: 'Train', data: cu.train_f1, color: '#4f46e5' },
-      { name: 'Val', data: cu.val_f1, color: '#06b6d4', area: true }]);
+      { name: 'Train', data: cu.train_f1, color: '#3E5C76' },
+      { name: 'Val', data: cu.val_f1, color: PALETTE[0], area: true }]);
     lineChart($('#rcLoss'), cu.epoch, [
-      { name: 'Train', data: cu.train_loss, color: '#4f46e5' },
-      { name: 'Val', data: cu.val_loss, color: '#db2777' }]);
+      { name: 'Train', data: cu.train_loss, color: '#3E5C76' },
+      { name: 'Val', data: cu.val_loss, color: PALETTE[1] }]);
     if (sel.perclass.length) {
       const pc = [...sel.perclass].sort((a, b) => a.f1 - b.f1);
       barH($('#rcPC'), pc.map(p => p.cls), pc.map(p => p.f1),
         { max: 1, showLabel: true, labelFmt: v => v.toFixed(2), left: 230,
-          colors: pc.map(p => p.f1 >= 0.6 ? '#16a34a' : p.f1 >= 0.3 ? '#d97706' : '#dc2626') });
+          colors: pc.map(p => p.f1 >= 0.6 ? GOOD : p.f1 >= 0.3 ? WARN : BAD) });
     }
     $('#runPick').onchange = e => { state.runId = e.target.value; render(); };
   };
@@ -211,7 +214,7 @@
       <div class="chart" id="dumb" style="height:${Math.max(360, cls.length * 24 + 60)}px"></div>
       <div class="verdict">B improves <b>${better}</b> class(es) and loses ${worse}
         — macro F1 ${fmt(avg(Object.values(ma)))} → ${fmt(avg(Object.values(mb)))}.</div></div>`;
-    const acc = isDark() ? '#6366f1' : '#4f46e5';
+    const acc = PALETTE[0];
     mount($('#dumb'), {
       tooltip: { trigger: 'item', backgroundColor: isDark() ? '#1a2436' : '#fff', borderColor: tc().axis,
         textStyle: { color: tc().ink }, formatter: p => `${cls[p.value[0]]}<br>A ${p.value[1].toFixed(3)} · B ${p.value[2].toFixed(3)}` },
@@ -222,7 +225,7 @@
         type: 'custom', encode: { x: [1, 2], y: 0 },
         renderItem: (params, api) => {
           const cat = api.value(0), a = api.coord([api.value(1), cat]), b = api.coord([api.value(2), cat]);
-          const up = api.value(2) >= api.value(1), col = Math.abs(api.value(2) - api.value(1)) < 0.01 ? '#94a3b8' : (up ? '#16a34a' : '#dc2626');
+          const up = api.value(2) >= api.value(1), col = Math.abs(api.value(2) - api.value(1)) < 0.01 ? '#94a3b8' : (up ? GOOD : BAD);
           return { type: 'group', children: [
             { type: 'line', shape: { x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, style: { stroke: col, lineWidth: 2.5 } },
             { type: 'circle', shape: { cx: a[0], cy: a[1], r: 5 }, style: { fill: '#94a3b8' } },
@@ -231,6 +234,48 @@
       }],
     });
   }
+
+  VIEWS.feasibility = () => {
+    setHead('Feasibility', 'What the analytic model predicts — before running anything.');
+    $('#topbarActions').innerHTML = '';
+    const f = D.feasibility || {};
+    const c = $('#content');
+    if (!f.scenarios || !f.scenarios.length) { c.innerHTML = empty('Feasibility predictions not available.'); return; }
+    c.innerHTML = `
+      <div class="row fade" style="margin-bottom:14px">
+        ${badge(f.model, 'accent')} ${badge('on ' + f.gpu)}
+        <span class="small muted">closed-form prediction · subset 5000 · batch 96 · 15 epochs</span>
+      </div>
+      <div class="kpis fade">
+        ${f.scenarios.map(s => `<div class="kpi"><div class="l">${s.name}</div>
+          <div class="v">${s.speedup != null ? s.speedup.toFixed(2) + '×' : '—'}</div>
+          <div class="small muted" style="margin-top:4px">${s.time}s/ep · ${s.vram} GB · ${s.bottleneck}</div></div>`).join('')}
+      </div>
+      <div class="grid grid-2 fade">
+        <div class="card"><div class="card-title">DDP scaling — predicted speedup vs GPUs</div>
+          <div class="chart" id="feScale" style="height:300px"></div></div>
+        <div class="card"><div class="card-title">Predicted vs real · validation</div>
+          <table class="tbl"><thead><tr><th>Quantity</th><th>Predicted</th><th>Real</th></tr></thead><tbody>
+          ${f.validation.map(v => `<tr><td>${v.q}</td><td class="num" style="color:var(--accent)">${v.pred}</td><td class="num">${v.real}</td></tr>`).join('')}
+          </tbody></table>
+          <div class="verdict">The analytic model reproduces the measured Kaggle 2×T4 results within a few percent.
+            Speedups are independent of its single calibration constant — genuine out-of-sample predictions.</div></div>
+      </div>`;
+    mount($('#feScale'), {
+      tooltip: { trigger: 'axis', backgroundColor: isDark() ? '#1a2436' : '#fff', borderColor: tc().axis, textStyle: { color: tc().ink, fontSize: 12 } },
+      legend: { top: 0, right: 0, icon: 'roundRect', itemWidth: 11, itemHeight: 11, textStyle: { color: tc().muted, fontSize: 12 } },
+      xAxis: { type: 'value', min: 1, max: 8, name: 'GPUs', nameLocation: 'middle', nameGap: 28,
+        nameTextStyle: { color: tc().muted, fontFamily: MONO }, splitLine: { show: false },
+        axisLine: { lineStyle: { color: tc().axis } }, axisLabel: { color: tc().muted, fontFamily: MONO } },
+      yAxis: axisY({ name: 'speedup ×', nameTextStyle: { color: tc().muted, fontFamily: MONO } }),
+      series: [
+        { name: 'Ideal (linear)', type: 'line', data: f.scaling.map(s => [s.n, s.n]), symbol: 'none', lineStyle: { type: 'dashed', color: tc().muted, width: 1.5 } },
+        { name: 'Predicted', type: 'line', data: f.scaling.map(s => [s.n, s.speedup]), smooth: 0.2, symbolSize: 7,
+          lineStyle: { width: 2.8, color: PALETTE[0] }, itemStyle: { color: PALETTE[0] },
+          areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [{ offset: 0, color: PALETTE[0] + '33' }, { offset: 1, color: PALETTE[0] + '00' }]) } },
+      ],
+    });
+  };
 
   VIEWS.dataset = () => {
     setHead('Dataset', 'BigEarthNet-S2 — splits, classes and the imbalance.');
@@ -260,7 +305,7 @@
           data: cls.map(d => ({ name: d.cls, value: d.count })) }],
       });
       const sorted = [...cls].sort((a, b) => a.count - b.count);
-      barH($('#dsBar'), sorted.map(d => d.cls), sorted.map(d => d.count), { left: 230, colors: sorted.map(() => '#2563eb') });
+      barH($('#dsBar'), sorted.map(d => d.cls), sorted.map(d => d.count), { left: 230, colors: sorted.map(() => PALETTE[0]) });
     } else { $('#dsTree').parentElement.parentElement.innerHTML = empty('Dataset metadata not available.'); }
   };
 
