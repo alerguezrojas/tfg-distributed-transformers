@@ -129,7 +129,7 @@ def render(ctx: DashboardContext) -> None:
             _strategy_donut(mode_counts)
 
     # ── Dataset at a glance (moved here from the old Dataset section) ───────────
-    _dataset_panel()
+    _dataset_panel(runs)
 
     # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
@@ -147,10 +147,26 @@ _ROOT_CANDIDATES = [
 ]
 
 
-def _dataset_panel() -> None:
-    """Compact dataset summary: splits + top classes + a few example patches."""
+def _dataset_panel(runs) -> None:
+    """Compact dataset summary: splits, the subset used by recent runs, the
+    most-frequent classes and one example patch per class (multi-label info)."""
     meta = next((p for p in _META_CANDIDATES if Path(p).exists()), None)
     root = next((p for p in _ROOT_CANDIDATES if Path(p).exists()), None)
+
+    # Subset actually used in the most recent runs (from their config line).
+    subset = ""
+    for r in runs[:5]:
+        cfg = _run_config(str(r.log_path))
+        if cfg.get("train") and cfg.get("val"):
+            try:
+                tr, va = int(cfg["train"]), int(cfg["val"])
+            except ValueError:
+                continue
+            full = tr >= SPLIT_SIZES["train"] * 0.9
+            subset = (f"Latest runs use the **full** set ({tr:,}/{va:,})" if full
+                      else f"Latest runs use a **subset**: {tr:,} train / {va:,} val "
+                           f"({tr / SPLIT_SIZES['train'] * 100:.1f}% of train)")
+            break
 
     st.markdown("#### Dataset — BigEarthNet-S2")
     d_left, d_right = st.columns([1, 1.1])
@@ -162,6 +178,8 @@ def _dataset_panel() -> None:
             s3.metric("Test", f"{SPLIT_SIZES['test']:,}")
             st.caption(f"{sum(SPLIT_SIZES.values()):,} patches · 19 CORINE classes · "
                        "multi-label · RGB proxy (B04/B03/B02)")
+            if subset:
+                st.caption(subset)
     with d_right:
         with st.container(border=True):
             dist = _load_class_distribution(str(meta)) if meta else None
@@ -179,21 +197,29 @@ def _dataset_panel() -> None:
             fig.update_yaxes(automargin=True, tickfont=dict(size=9))
             _show(fig, "hub_dataset_dist")
 
-    # ── Gallery: one example patch per class, captioned with its statistics ─────
-    gallery = _class_gallery(str(meta), str(root)) if (meta and root) else []
+    # ── Gallery: one example patch per class, with multi-label info ─────────────
+    avg_labels, gallery = _class_gallery(str(meta), str(root)) if (meta and root) else (0.0, [])
     if gallery:
-        st.caption("One example patch per class — caption shows train patches and "
-                   "the share of training images that contain the class.")
+        st.caption(
+            f"One example patch per class. Each patch is **multi-label** "
+            f"(~{avg_labels:.1f} classes per patch on average): the caption shows the "
+            f"class shown, how many other labels the patch also has (**+k**), and that "
+            f"class's train count and share. Hover an image for its full label list."
+        )
         # Uniform column width (use_container_width) → even gaps; a fixed-height
         # caption box keeps the rows aligned despite different name lengths.
         ncols = 10
         for i in range(0, len(gallery), ncols):
             cols = st.columns(ncols, gap="small")
-            for col, (cls, cnt, pct, img) in zip(cols, gallery[i:i + ncols]):
+            for col, (cls, cnt, pct, img, labels) in zip(cols, gallery[i:i + ncols]):
                 col.image(img, use_container_width=True)
+                others = max(len(labels) - 1, 0)
+                extra = f" <span style='color:#64748b'>+{others}</span>" if others else ""
+                title = " · ".join(labels).replace("'", "")
                 col.markdown(
-                    "<div style='font-size:0.66rem;line-height:1.1;height:3.0rem;"
-                    f"overflow:hidden'><b>{cls}</b><br>{cnt:,} · {pct:.0f}%</div>",
+                    f"<div title='{title}' style='font-size:0.66rem;line-height:1.1;"
+                    f"height:3.0rem;overflow:hidden'><b>{cls}</b>{extra}<br>"
+                    f"{cnt:,} · {pct:.0f}%</div>",
                     unsafe_allow_html=True)
     elif not (meta and root):
         st.caption("Dataset not mounted on this machine — splits and class counts "

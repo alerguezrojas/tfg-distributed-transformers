@@ -127,30 +127,40 @@ def _load_example_images(parquet_str: str, root_str: str, class_name: str, n: in
 
 @st.cache_data(ttl=900)
 def _class_gallery(parquet_str: str, root_str: str):
-    """One example RGB image per class + its train statistics, in a SINGLE pass
-    over the parquet (find_example_patches re-reads it per class — too slow for
-    19 classes). Returns [(class_name, count, pct_of_train_patches, image)]."""
+    """One example RGB patch per class + statistics, in a SINGLE pass over the
+    parquet (find_example_patches re-reads it per class — too slow for 19).
+
+    Returns ``(avg_labels_per_patch, items)`` where each item is
+    ``(class_name, count, pct_of_train_patches, image, all_labels_of_the_patch)``.
+    The task is multi-label, so each example patch carries several classes.
+    """
     try:
         df = pd.read_parquet(parquet_str, columns=["patch_id", "labels", "split"])
     except Exception:
-        return []
+        return 0.0, []
     df = df[df["split"] == "train"]
     n_train = max(len(df), 1)
     first_pid: dict[str, str] = {}
+    first_labels: dict[str, list[str]] = {}
     counts: dict[str, int] = {c: 0 for c in CLASS_NAMES}
+    total_label_occurrences = 0
     for pid, arr in zip(df["patch_id"], df["labels"]):
         if arr is None:
             continue
-        for c in arr:
+        labs = list(arr)
+        total_label_occurrences += len(labs)
+        for c in labs:
             if c in counts:
                 counts[c] += 1
         # Assign this patch as the example for at most ONE class that still needs
         # one — so each class shows a DISTINCT image (patches are multi-label, so
         # reusing a patch would make different classes look like duplicates).
-        for c in arr:
+        for c in labs:
             if c in counts and c not in first_pid:
                 first_pid[c] = pid
+                first_labels[c] = labs
                 break
+    avg_labels = total_label_occurrences / n_train
     out = []
     for c in CLASS_NAMES:
         pid = first_pid.get(c)
@@ -158,8 +168,8 @@ def _class_gallery(parquet_str: str, root_str: str):
             continue
         img = load_rgb_image(Path(root_str), pid)
         if img is not None:
-            out.append((c, counts[c], counts[c] / n_train * 100, img))
-    return out
+            out.append((c, counts[c], counts[c] / n_train * 100, img, first_labels[c]))
+    return avg_labels, out
 
 
 # ── General helpers ─────────────────────────────────────────────────────────────
