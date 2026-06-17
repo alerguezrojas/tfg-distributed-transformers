@@ -119,6 +119,11 @@ def _check_training(train: dict, errors: list) -> None:
         if lk not in ("bce", "bcewithlogits", "bce_with_logits", "focal"):
             errors.append(f"training.loss must be 'bce' or 'focal', got {train['loss']!r}")
 
+    if "select_by" in train:
+        sb = str(train["select_by"]).lower()
+        if sb not in ("f1", "f1_optimal"):
+            errors.append(f"training.select_by must be 'f1' or 'f1_optimal', got {train['select_by']!r}")
+
     if "focal_gamma" in train:
         g = train["focal_gamma"]
         if not isinstance(g, (int, float)) or float(g) < 0:

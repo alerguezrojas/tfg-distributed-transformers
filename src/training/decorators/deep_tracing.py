@@ -108,8 +108,10 @@ class DeepTracingDecorator(TracingDecorator):
         log_every: int = 100,
         patience: int | None = None,
         features: set[str] | None = None,
+        select_metric: str = "f1",
     ):
-        super().__init__(trainer, logger=logger, patience=patience)
+        super().__init__(trainer, logger=logger, patience=patience,
+                         select_metric=select_metric)
         self._features: frozenset[str] = (
             frozenset(features) if features is not None else ALL_INSPECT_FEATURES
         )

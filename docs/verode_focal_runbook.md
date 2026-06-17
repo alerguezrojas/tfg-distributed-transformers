@@ -5,12 +5,19 @@ para ver si focal rescata las clases raras (p.ej. clase 6 "Land principally
 occupied by agriculture", F1=0 en v4) y sube el F1 macro por encima del techo ~0.68.
 
 **Pareja apples-to-apples** (idénticas salvo la pérdida, ambas fp32, 30 epochs con
-early stopping patience=10):
-- BCE  : `configs/train_cluster_v3.yaml`     (tu baseline documentado, ~0.68)
+early stopping patience=10, y **selección del mejor modelo por umbral óptimo**
+— `select_by: f1_optimal` — para que focal no salga penalizada):
+- BCE  : `configs/train_cluster_bce.yaml`    (brazo de control)
 - Focal: `configs/train_cluster_focal.yaml`  (igual + `loss: focal`, `focal_gamma: 2.0`)
 
+> Por qué un config BCE nuevo y no `train_cluster_v3.yaml`: para no alterar el
+> baseline documentado (v1–v4) y que ambos brazos compartan exactamente la misma
+> regla de selección (umbral óptimo). El v4 documentado (Val F1=0.6816) sigue
+> sirviendo como referencia.
+
 Código necesario en la rama **`feature/critical-fixes`** (focal loss + train-F1
-corregido). No hace falta `uv sync` (sin dependencias nuevas).
+corregido + selección por umbral óptimo). No hace falta `uv sync` (sin
+dependencias nuevas).
 
 ---
 
@@ -45,7 +52,7 @@ cd ~/tfg-distributed-transformers
 ```bash
 # (A) BASELINE BCE — ~18-20h con early stopping
 .venv/bin/python scripts/train_single_gpu.py \
-  --config configs/train_cluster_v3.yaml \
+  --config configs/train_cluster_bce.yaml \
   --trace simple --layers confusion batch-monitor --fn energy timing
 
 # (B) FOCAL — ~18-20h con early stopping
@@ -77,6 +84,28 @@ el log reporta en cada epoch como `threshold óptimo=… F1=…`. Mira:
 - el `threshold óptimo` y su `F1` (no solo el F1 a 0.5),
 - el CSV por clase `perclass_metrics_*.csv` → **¿sube la F1 de las clases raras
   (clase 6, etc.) respecto al BCE?** Ese es el resultado clave.
+
+## 4b. Evaluación final en TEST (número honesto para la memoria)
+
+Hasta ahora todas las cifras son de *validación*. Para el resultado final, evalúa
+el mejor checkpoint de cada brazo en el split de **test** (que nunca se toca en el
+entrenamiento). `eval.py` busca el umbral óptimo y saca F1 por clase:
+
+```bash
+# Ajusta el nombre del checkpoint al "mejor epoch" que indique cada log:
+.venv/bin/python scripts/eval.py \
+  --config configs/train_cluster_bce.yaml \
+  --checkpoint checkpoints/verode/single/vit_base_patch16_224/checkpoint_epoch_0XX.pt \
+  --split test --output logs/verode/single/vit_base_patch16_224/test_bce.csv
+
+.venv/bin/python scripts/eval.py \
+  --config configs/train_cluster_focal.yaml \
+  --checkpoint checkpoints/verode/single/vit_base_patch16_224/checkpoint_epoch_0YY.pt \
+  --split test --output logs/verode/single/vit_base_patch16_224/test_focal.csv
+```
+
+Compara las dos tablas por clase: **la pregunta clave es si focal sube la F1 de
+las clases raras (clase 6, etc.) respecto a BCE**, y si el F1 macro en test mejora.
 
 ## 5. Subir los resultados (al terminar)
 

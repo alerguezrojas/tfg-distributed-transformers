@@ -1,0 +1,40 @@
+# Gemelo BCE de configs/train_cluster_focal.yaml — IDÉNTICO salvo la pérdida.
+# Es el brazo de control del experimento focal-vs-BCE en Verode (V100, dataset
+# completo). Misma selección por umbral óptimo, para que la comparación sea justa.
+# (No reutilizamos train_cluster_v3.yaml para no alterar el baseline documentado.)
+
+data:
+  root: "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2"
+  metadata: "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet"
+  num_workers: 4
+
+model:
+  name: "vit_base_patch16_224"
+  pretrained: true
+  num_classes: 19
+  dropout: 0.3
+
+training:
+  epochs: 30
+  batch_size: 64
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.1
+  warmup_epochs: 5
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 10
+  log_batch_every: 100
+
+  label_smoothing: 0.1
+  mixup_alpha: 0.2
+
+  select_by: f1_optimal
+
+  loss: bce                 # brazo de control (la pérdida de siempre)
+
+checkpoint:
+  dir: "checkpoints/verode"
+
+output:
+  env: "verode"

@@ -322,6 +322,8 @@ class TrainingSessionBuilder:
 
         # ── 5. Controller (outermost) ─────────────────────────────────────────
         patience = cfg["training"].get("early_stopping_patience", None)
+        # Model-selection / early-stopping metric (default: F1 at threshold 0.5).
+        select_metric = str(cfg["training"].get("select_by", "f1")).lower()
         epoch_csv = log_dir / f"epoch_metrics_{self._timestamp}.csv" if self._trace != "off" else None
 
         if use_deep:
@@ -336,12 +338,14 @@ class TrainingSessionBuilder:
                 log_every=cfg["training"].get("log_batch_every", 100),
                 patience=patience,
                 features=features,
+                select_metric=select_metric,
             )
         elif self._trace == "off":
-            trainer = TracingDecorator(inner, patience=patience)
+            trainer = TracingDecorator(inner, patience=patience,
+                                       select_metric=select_metric)
         else:  # simple
             trainer = TracingDecorator(inner, logger=logger, patience=patience,
-                                       epoch_csv=epoch_csv)
+                                       epoch_csv=epoch_csv, select_metric=select_metric)
 
         return trainer
 

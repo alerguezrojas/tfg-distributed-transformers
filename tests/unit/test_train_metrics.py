@@ -88,3 +88,58 @@ def test_bare_trainer_fit_raises(tmp_path):
     trainer = _make_trainer(tmp_path)
     with pytest.raises(NotImplementedError):
         trainer.fit(_ones_loader(), _ones_loader(), epochs=1)
+
+
+# ── Model selection: f1@0.5 vs f1@optimal-threshold (fairness for focal) ────────
+
+from src.training.base_trainer import BaseTrainer
+from src.training.decorators.base import EpochController
+
+
+class _ScriptedTrainer(BaseTrainer):
+    """Returns a scripted sequence of val metrics; records which epochs are saved."""
+
+    def __init__(self, val_seq):
+        self.val_seq = val_seq
+        self.saved: list[int] = []
+        self._i = 0
+
+    def train_epoch(self, loader):
+        return {"f1": 0.0, "loss": 0.0, "accuracy": 0.0, "time": 0.0}
+
+    def eval_epoch(self, loader):
+        m = self.val_seq[self._i]
+        self._i += 1
+        return m
+
+    def save_checkpoint(self, epoch, metrics):
+        self.saved.append(epoch)
+
+    def fit(self, *a):
+        pass
+
+
+# Epoch 2 is best by optimal-threshold F1 (0.70) but NOT by 0.5-F1 (0.40 < 0.50).
+_SEQ = [
+    {"f1": 0.50, "_f1_at_optimal_threshold": 0.50},
+    {"f1": 0.40, "_f1_at_optimal_threshold": 0.70},
+    {"f1": 0.45, "_f1_at_optimal_threshold": 0.60},
+]
+
+
+def test_selection_by_f1_threshold_05():
+    t = _ScriptedTrainer([dict(d) for d in _SEQ])
+    EpochController(t, patience=None, select_metric="f1").fit(None, None, epochs=3)
+    assert t.saved == [1]                 # only epoch 1 beats the 0.5-F1 baseline
+
+
+def test_selection_by_optimal_threshold():
+    t = _ScriptedTrainer([dict(d) for d in _SEQ])
+    EpochController(t, patience=None, select_metric="f1_optimal").fit(None, None, epochs=3)
+    assert t.saved == [1, 2]              # epoch 2 wins on optimal-threshold F1
+
+
+def test_selection_default_is_f1():
+    t = _ScriptedTrainer([dict(d) for d in _SEQ])
+    EpochController(t, patience=None).fit(None, None, epochs=3)
+    assert t.saved == [1]                 # back-compat: default selects by 0.5-F1
