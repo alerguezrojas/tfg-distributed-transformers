@@ -119,6 +119,11 @@ def _check_training(train: dict, errors: list) -> None:
         if lk not in ("bce", "bcewithlogits", "bce_with_logits", "focal"):
             errors.append(f"training.loss must be 'bce' or 'focal', got {train['loss']!r}")
 
+    if "seed" in train and train["seed"] is not None:
+        s = train["seed"]
+        if not isinstance(s, int) or s < 0:
+            errors.append(f"training.seed must be a non-negative integer or null, got {s!r}")
+
     if "select_by" in train:
         sb = str(train["select_by"]).lower()
         if sb not in ("f1", "f1_optimal"):

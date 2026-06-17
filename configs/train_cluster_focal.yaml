@@ -32,6 +32,10 @@ training:
   label_smoothing: 0.1
   mixup_alpha: 0.2
 
+  # Misma semilla en ambos brazos (focal y BCE) → la única diferencia es la
+  # pérdida (init de cabeza, barajado, augmentations y mixup deterministas).
+  seed: 42
+
   # Selección del mejor modelo / early stopping por el F1 al UMBRAL ÓPTIMO, no a
   # 0.5. Imprescindible con focal (baja las probabilidades → su F1 a 0.5 sale
   # bajo a propósito); así la comparación con el gemelo BCE es justa.

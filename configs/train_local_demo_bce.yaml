@@ -27,6 +27,8 @@ training:
   label_smoothing: 0.1
   mixup_alpha: 0.2
 
+  seed: 42
+
   loss: bce
 
 checkpoint:

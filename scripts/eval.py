@@ -33,7 +33,7 @@ from src.data.dataset import BigEarthNetDataset, get_transforms
 from src.models.vit import build_model
 from src.training import metrics as m
 
-_THRESHOLD_GRID = [0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
+_THRESHOLD_GRID = m.THRESHOLD_GRID
 
 CLASS_NAMES = [
     "Urban fabric",

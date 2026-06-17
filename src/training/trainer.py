@@ -14,7 +14,7 @@ from src.training.base_trainer import BaseTrainer
 from src.training import metrics as m
 from src.training.augmentations import mixup_batch
 
-_THRESHOLD_GRID = [0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60]
+_THRESHOLD_GRID = m.THRESHOLD_GRID
 
 
 class Trainer(BaseTrainer):
