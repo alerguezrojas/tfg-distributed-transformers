@@ -21,8 +21,8 @@ from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
 from src.web.model_explorer import ALL_FAMILIES, CURATED_MODELS, compare_models
 from src.web.perclass_parser import parse_perclass_csv
+from src.web.run_import import import_run_archive, import_run_folder, summarize_import
 from src.web.run_registry import RunInfo
-from src.web.system_monitor import get_snapshot
 
 from src.web.ui.charts import (
     COLORS, _show, _dl_csv, _base_layout, _metric_fig, _overlay_fig,
@@ -39,13 +39,79 @@ from src.web.ui.helpers import (
 
 
 def render(ctx: DashboardContext) -> None:
-    st.markdown("## Data & models")
-    st.caption("BigEarthNet-S2 v2.0 dataset explorer and timm model comparison.")
-    sub = st.tabs(["Dataset", "Models"])
+    st.markdown("## Data & runs")
+    st.caption("BigEarthNet-S2 dataset explorer, timm model comparison and "
+               "importer for runs trained elsewhere.")
+    sub = st.tabs(["Dataset", "Models", "Import runs"])
     with sub[0]:
         _dataset(ctx)
     with sub[1]:
         _models(ctx)
+    with sub[2]:
+        _import_runs(ctx)
+
+
+def _import_runs(ctx: DashboardContext) -> None:
+    """Import the artifacts of a run trained on Kaggle / the cluster (zip or
+    folder) into logs/ so the dashboard discovers it. Moved here from System."""
+    st.markdown("### Import runs trained elsewhere")
+    st.caption(
+        "Trainings run on Kaggle or the cluster and produce a `logs/` folder. "
+        "Download it as a zip (or copy it to this machine) and import it here — "
+        "the artifacts are copied into the repo's `logs/` tree and appear in the "
+        "dashboard immediately."
+    )
+    logs_root = ROOT / "logs"
+
+    st.markdown("#### From a zip file")
+    uploaded = st.file_uploader(
+        "Drop a zip of the run's `logs/` folder (or its contents)",
+        type=["zip"], accept_multiple_files=False,
+    )
+    if uploaded is not None and st.button("Import zip", type="primary"):
+        try:
+            rel = import_run_archive(uploaded.getvalue(), logs_root)
+        except Exception as e:
+            st.error(f"Could not read the zip: {e}")
+            rel = []
+        _report_import(rel)
+
+    st.markdown("#### From a folder on this machine")
+    st.caption("Useful when you already copied the `logs/` folder somewhere "
+               "(for example via `scp` from the cluster).")
+    folder_str = st.text_input("Folder path", placeholder="/home/alejandro/Downloads/kaggle_logs")
+    if folder_str and st.button("Import folder"):
+        folder = Path(folder_str).expanduser()
+        if not folder.is_dir():
+            st.error(f"Not a folder: {folder}")
+        else:
+            _report_import(import_run_folder(folder, logs_root))
+
+    runs = ctx.runs
+    envs = sorted({r.env for r in runs})
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Runs indexed", len(runs))
+    c2.metric("Feasibility reports", len(_get_feasibility_csvs()))
+    c3.metric("Environments", ", ".join(envs) if envs else "—")
+
+
+def _report_import(rel_paths: list[str]) -> None:
+    if not rel_paths:
+        st.warning("No recognizable artifacts found "
+                   "(expected train_*.log / *_metrics_*.csv / confusion_matrix_*.csv / "
+                   "feasibility_*).")
+        return
+    s = summarize_import(rel_paths)
+    _get_runs.clear()
+    _get_feasibility_csvs.clear()
+    st.success(
+        f"Imported {s['total']} file(s): {s['runs']} run log(s), "
+        f"{s['metric_csvs']} metric CSV(s), {s['feasibility']} feasibility report(s)."
+    )
+    with st.expander("Imported files"):
+        for p in rel_paths:
+            st.write(f"`logs/{p}`")
+    st.info("Select the new run in the sidebar to explore it.")
 
 
 def _dataset(ctx: DashboardContext) -> None:

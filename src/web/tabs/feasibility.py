@@ -47,17 +47,35 @@ def render(ctx: DashboardContext) -> None:
     run = ctx.run
     refresh_interval = ctx.refresh_interval
     st.markdown("## Feasibility")
-    st.caption("Plan before training: hardware profile, predicted time and cost, "
-               "and how past predictions held up against reality.")
-    (subtab_predictor, subtab_report, subtab_predreal, subtab_study, subtab_run_feas) = st.tabs(
-        ["Predictor", "Report", "Prediction vs reality", "Real study", "Run analysis"]
+    st.caption("Plan before training. **Predict** with the analytic model (no run "
+               "needed), **Validate** predictions against real trainings, or "
+               "**Measure** on this machine to calibrate.")
+    # Three clear stages instead of five overlapping tabs:
+    #   Predict  → the analytic predictor (formulas, no benchmark) — the main tool
+    #   Validate → predicted vs actual (evidence the formulas work)
+    #   Measure  → run the real benchmark on this machine (advanced/calibration):
+    #              generate a report, view it, run the convergence study
+    tab_predict, tab_validate, tab_measure = st.tabs(
+        ["Predict", "Validate", "Measure (advanced)"]
     )
 
-    with subtab_predictor:
+    with tab_predict:
         _analytic_predictor()
-    # subtab_ddp_opt and subtab_prediction are no longer their own tabs: they are
-    # filled as sections inside "Report" and "Prediction vs reality" respectively
-    # (containers created further down, in their parent blocks).
+
+    # Validate = the old "Prediction vs reality" block fills this tab.
+    subtab_predreal = tab_validate
+
+    # Measure = a single scrolling page (no nested tab row): the three blocks
+    # below fill these containers in order — generate, view report, study.
+    with tab_measure:
+        st.caption("Run the real benchmark on the machine you are on. Use it to "
+                   "calibrate the predictor or to profile this hardware.")
+        st.markdown("#### Generate a report")
+        subtab_run_feas = st.container()
+        st.markdown("#### Report")
+        subtab_report = st.container()
+        st.markdown("#### Convergence study")
+        subtab_study = st.container()
 
     # Shared load of the selected report
     feasibility_csvs = _get_feasibility_csvs()

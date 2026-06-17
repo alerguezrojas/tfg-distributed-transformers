@@ -46,7 +46,7 @@ def render(ctx: DashboardContext) -> None:
     st.caption("Metrics and metadata of the run selected in the sidebar.")
     # One level of tabs only — the per-class trend and the confusion views used
     # to be a second nested row; they are now top-level tabs.
-    sub = st.tabs(["Curves", "Per-class", "Confusions", "Batch", "Time", "Info"])
+    sub = st.tabs(["Curves", "Per-class", "Confusions", "Batch", "Details"])
     with sub[0]:
         _curves(ctx)
     with sub[1]:
@@ -56,8 +56,9 @@ def render(ctx: DashboardContext) -> None:
     with sub[3]:
         _batch(ctx)
     with sub[4]:
+        # "Details" merges timing and metadata (config, anomalies, log).
         _time(ctx)
-    with sub[5]:
+        st.markdown("---")
         _info(ctx)
 
 

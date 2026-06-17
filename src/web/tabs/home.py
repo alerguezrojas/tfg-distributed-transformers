@@ -43,8 +43,7 @@ _NAV_CARDS = [
     ("run", "Run results", "Curves, per-class, batch & metadata of one run"),
     ("compare", "Compare", "Speedup, energy & overlays across runs"),
     ("feasibility", "Feasibility", "Predict time, memory & cost before training"),
-    ("data", "Data & models", "BigEarthNet explorer & timm models"),
-    ("system", "System", "Hardware monitor & import remote runs"),
+    ("data", "Data & runs", "Dataset explorer, models & import runs"),
 ]
 
 
@@ -52,10 +51,10 @@ def render(ctx: DashboardContext) -> None:
     runs = ctx.runs
     selected_run = ctx.selected_run
     st.markdown("## Overview")
-    st.caption("Global statistics, the selected run, quick links and all runs. "
-               "Open any section from the cards below.")
+    st.caption("Project at a glance. Click a row in the table to make a run active; "
+               "open any section from the cards.")
 
-    # ── Global statistics (one pass over the runs) ──────────────────────────────
+    # ── One pass over the runs (stats + per-run val_f1 curve) ───────────────────
     best_f1_global = float("-inf")
     best_run_label = "—"
     best_run_df = pd.DataFrame()
@@ -77,19 +76,40 @@ def render(ctx: DashboardContext) -> None:
         except Exception:
             pass
 
-    k1, k2, k3, k4 = st.columns(4)
-    for col, label, value in (
-        (k1, "Total runs", str(len(runs))),
-        (k2, "Best Val F1", f"{best_f1_global:.4f}" if best_f1_global > float("-inf") else "—"),
-        (k3, "Total GPU time", f"{total_gpu_h:.1f} h"),
-        (k4, "Feasibility reports", str(len(feasibility_csvs_home))),
-    ):
-        with col.container(border=True):
-            st.caption(label)
-            st.markdown(f"#### {value}")
+    # ── Compact dashboard grid (KPIs · top run · best-F1 ranking · sections) ────
+    # Row 1: KPIs (left) + the selected run's curves (right) — dense, no scroll.
+    left, right = st.columns([1, 1.4])
 
-    # ── Quick-nav cards (drill into each section) ───────────────────────────────
-    st.markdown("#### Sections")
+    with left:
+        k1, k2 = st.columns(2)
+        _kpi(k1, "Runs", str(len(runs)))
+        _kpi(k2, "Best Val F1", f"{best_f1_global:.3f}" if best_f1_global > float("-inf") else "—")
+        k3, k4 = st.columns(2)
+        _kpi(k3, "GPU time", f"{total_gpu_h:.0f} h")
+        _kpi(k4, "Feasibility", str(len(feasibility_csvs_home)))
+        with st.container(border=True):
+            st.caption("Best Val F1 by run (top 8)")
+            _best_f1_bars(runs, curve_by_label)
+
+    with right:
+        with st.container(border=True):
+            _df_active = best_run_df
+            _title = best_run_label
+            if selected_run is not None and selected_run.label in curve_by_label:
+                try:
+                    _df_active = _load_df(
+                        str(selected_run.log_path),
+                        str(selected_run.epoch_csv_path) if selected_run.epoch_csv_path else None)
+                    _title = selected_run.label
+                except Exception:
+                    pass
+            st.caption(f"Active run — {_title}")
+            if not _df_active.empty and "val_f1" in _df_active.columns:
+                _run_highlight(_df_active)
+            else:
+                st.info("No metrics for this run.")
+
+    # ── Section cards (compact, one row) ────────────────────────────────────────
     nav_cols = st.columns(len(_NAV_CARDS))
     for col, (key, title, desc) in zip(nav_cols, _NAV_CARDS):
         with col.container(border=True):
@@ -99,29 +119,43 @@ def render(ctx: DashboardContext) -> None:
                 st.session_state["_nav_jump"] = key
                 st.rerun()
 
-    # ── Highlight: the best run so far ──────────────────────────────────────────
-    if not best_run_df.empty:
-        st.markdown("#### Top run")
-        with st.container(border=True):
-            st.caption(best_run_label)
-            _run_highlight(best_run_df)
-
-    # ── Selected run at a glance ────────────────────────────────────────────────
-    if selected_run is not None and selected_run.label != best_run_label:
-        try:
-            df_sel = _load_df(str(selected_run.log_path),
-                              str(selected_run.epoch_csv_path) if selected_run.epoch_csv_path else None)
-        except Exception:
-            df_sel = pd.DataFrame()
-        if not df_sel.empty and "val_f1" in df_sel.columns:
-            st.markdown("#### Selected run")
-            with st.container(border=True):
-                st.caption(selected_run.label)
-                _run_highlight(df_sel, anomalies_path=selected_run.log_path)
-
-    # ── All runs with Val F1 sparklines ─────────────────────────────────────────
+    # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
+    st.caption("Click a row to make that run active across the dashboard.")
     _all_runs_table(runs, curve_by_label)
+
+
+def _kpi(col, label: str, value: str) -> None:
+    with col.container(border=True):
+        st.caption(label)
+        st.markdown(f"#### {value}")
+
+
+def _best_f1_bars(runs, curve_by_label: dict[str, list[float]]) -> None:
+    """Compact horizontal bar of the best Val F1 of the top-8 runs."""
+    rows = []
+    for r in runs:
+        curve = curve_by_label.get(r.label)
+        if curve:
+            rows.append((r.label, max(curve)))
+    rows.sort(key=lambda x: x[1], reverse=True)
+    rows = rows[:8]
+    if not rows:
+        st.info("No runs with metrics.")
+        return
+    labels = [l for l, _ in rows][::-1]
+    vals = [v for _, v in rows][::-1]
+    fig = go.Figure(go.Bar(
+        y=labels, x=vals, orientation="h", marker_color=COLORS[0],
+        text=[f"{v:.3f}" for v in vals], textposition="outside",
+    ))
+    fig.update_layout(
+        height=40 + 30 * len(rows), margin=dict(l=10, r=30, t=6, b=6),
+        paper_bgcolor="white", plot_bgcolor="#f8fafc", showlegend=False,
+    )
+    fig.update_xaxes(range=[0, 1], visible=False)
+    fig.update_yaxes(automargin=True, tickfont=dict(size=9))
+    _show(fig, "hub_bestf1_bars")
 
 
 def _run_highlight(df: pd.DataFrame, anomalies_path=None) -> None:
@@ -149,7 +183,7 @@ def _run_highlight(df: pd.DataFrame, anomalies_path=None) -> None:
                                      line=dict(color=COLORS[0], width=2)))
         fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_f1"], name="Val",
                                  line=dict(color=COLORS[1], width=2)))
-        fig.update_layout(**_base_layout(200, "F1 (macro)"), xaxis_title="Epoch", yaxis_title="F1")
+        fig.update_layout(**_base_layout(170, "F1 (macro)"), xaxis_title="Epoch", yaxis_title="F1")
         _show(fig, "hub_f1")
     with cc2:
         if "val_loss" in df.columns:
@@ -159,7 +193,7 @@ def _run_highlight(df: pd.DataFrame, anomalies_path=None) -> None:
                                          line=dict(color=COLORS[0], width=2)))
             fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_loss"], name="Val",
                                      line=dict(color=COLORS[3], width=2)))
-            fig.update_layout(**_base_layout(200, "Loss (BCE)"), xaxis_title="Epoch", yaxis_title="Loss")
+            fig.update_layout(**_base_layout(170, "Loss (BCE)"), xaxis_title="Epoch", yaxis_title="Loss")
             _show(fig, "hub_loss")
 
     # One-line verdict: overfitting gap at the best epoch.
@@ -170,10 +204,6 @@ def _run_highlight(df: pd.DataFrame, anomalies_path=None) -> None:
             note = " — overfitting" if gap > 0.1 else ""
             st.caption(f"Best Val F1 {best_f1:.3f} at epoch {int(best_ep)} · "
                        f"train–val gap {gap:+.2f}{note}")
-    if anomalies_path is not None:
-        anoms = _detect_anomalies(anomalies_path)
-        (st.warning if anoms else st.success)(
-            f"{len(anoms)} anomaly(ies) in the log" if anoms else "No anomalies detected")
 
 
 def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
@@ -214,9 +244,10 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
 
     ov_df = pd.DataFrame(rows)
     _f1 = ov_df["Best Val F1"]
-    st.dataframe(
+    event = st.dataframe(
         ov_df,
         use_container_width=True, hide_index=True,
+        on_select="rerun", selection_mode="single-row", key="runs_table",
         column_config={
             "Val F1 curve": st.column_config.LineChartColumn(
                 "Val F1 curve", y_min=0.0, y_max=float(_f1.max()) + 0.05, width="medium"),
@@ -225,5 +256,15 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
                 format="%.4f"),
         },
     )
+    # Clicking a row makes that run active across the whole dashboard. We act
+    # only when the selected ROW changes (tracked in _last_table_row); otherwise
+    # a stale table selection would override a run picked from the sidebar.
+    sel = event.selection.rows if event and event.selection else []
+    if sel:
+        chosen = ov_df.iloc[sel[0]]["Run"]
+        if st.session_state.get("_last_table_row") != chosen:
+            st.session_state["_last_table_row"] = chosen
+            st.session_state["run_label"] = chosen
+            st.rerun()
     _dl_csv(ov_df.drop(columns=["Val F1 curve"]), "runs_summary.csv", "Download runs table")
 
