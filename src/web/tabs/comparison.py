@@ -169,7 +169,7 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
         sp = base_t / t if t > 0 else float("nan")
         notes = []
         if r.model != base_r.model:
-            notes.append("different model — not apples-to-apples")
+            notes.append("different model — not directly comparable")
         if _prec(r) != _prec(base_r):
             notes.append(f"precision {_prec(r)} vs {_prec(base_r)} (Tensor cores ~3-4×)")
         if r.mode == "ddp":
@@ -212,18 +212,18 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
     others = [(lbl, r, base_t / t) for lbl, r, t in timed if lbl != base_lbl]
     if any(r.mode == "model_parallel" for _, r, _ in others):
         st.info(
-            "**Model parallelism does not accelerate, and that is the expected result.** "
-            "The naive pipeline serializes the stages (while one GPU computes, the other "
-            "waits), so ≈1× is the theoretical ceiling. Its value is **fitting models that "
-            "do not fit on one GPU**: vit_large OOMs on a single T4 but trains split 12/24 "
-            "across both."
+            "**Model parallelism is not expected to accelerate training (≈1×).** "
+            "The naive pipeline runs the stages sequentially — one GPU is idle while the "
+            "other computes — so the theoretical ceiling is ≈1×. Its purpose is to **train "
+            "models that do not fit on a single GPU**: vit_large exceeds the memory of one "
+            "T4 but trains when split 12/24 across both."
         )
     if any(r.mode == "ddp_hetero" and sp < 1 for _, r, sp in others):
         st.warning(
-            "**Heterogeneous DDP slower than the GPU alone** — the expected result of "
-            "**synchronous** DDP with imbalanced hardware (V100 + CPU): on every batch the "
-            "GPU waits for the CPU (~50× slower), so the system runs at the pace of the "
-            "slowest node. It shows *when NOT to distribute*."
+            "**Heterogeneous DDP is slower than the GPU alone** — the expected outcome of "
+            "**synchronous** DDP on imbalanced hardware (V100 + CPU): on every batch the "
+            "GPU stalls on the CPU (~50× slower), so the system runs at the pace of the "
+            "slowest worker. An example of when distribution is not beneficial."
         )
 
     # Feasibility validation: predicted vs measured for the first homogeneous

@@ -53,10 +53,24 @@ class EpochController(TrainerDecorator):
     it sits at the outermost position of the decorator stack.
     """
 
-    def __init__(self, trainer: BaseTrainer, patience: int | None = None):
+    def __init__(self, trainer: BaseTrainer, patience: int | None = None,
+                 select_metric: str = "f1"):
         super().__init__(trainer)
         # None = disabled; positive int = stop after N epochs without improvement
         self._patience = patience
+        # Metric used to pick the best checkpoint and drive early stopping:
+        #   "f1"         → Val F1 at the fixed 0.5 threshold (default; back-compat)
+        #   "f1_optimal" → Val F1 at the per-epoch optimal threshold.
+        # The latter is the FAIR criterion when the loss shifts the probability
+        # scale (e.g. focal loss pushes probabilities down, so 0.5-F1 understates
+        # it). Applied identically to every arm, the comparison stays clean.
+        self._select_metric = select_metric
+
+    def _selection_value(self, val_m: dict) -> float:
+        """Value used to decide 'is this the best epoch so far?'."""
+        if self._select_metric == "f1_optimal":
+            return val_m.get("_f1_at_optimal_threshold", val_m["f1"])
+        return val_m["f1"]
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         # Stack invariant: EpochController (controller) sits outermost; aspect decorators
@@ -75,8 +89,8 @@ class EpochController(TrainerDecorator):
             val_m = self.eval_epoch(val_loader)
             epoch_times.append(time.time() - t0)
 
-            if val_m["f1"] > best_f1:
-                best_f1 = val_m["f1"]
+            if self._selection_value(val_m) > best_f1:
+                best_f1 = self._selection_value(val_m)
                 epochs_no_improve = 0
                 metrics_clean = {k: v for k, v in val_m.items() if not k.startswith("_")}
                 self.save_checkpoint(epoch, metrics_clean)

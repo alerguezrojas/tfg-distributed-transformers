@@ -114,6 +114,33 @@ def _check_training(train: dict, errors: list) -> None:
         if isinstance(ls, (int, float)) and not (0.0 <= float(ls) <= 0.5):
             errors.append(f"training.label_smoothing should be in [0, 0.5], got {ls}")
 
+    if "loss" in train:
+        lk = str(train["loss"]).lower()
+        if lk not in ("bce", "bcewithlogits", "bce_with_logits", "focal"):
+            errors.append(f"training.loss must be 'bce' or 'focal', got {train['loss']!r}")
+
+    if "select_by" in train:
+        sb = str(train["select_by"]).lower()
+        if sb not in ("f1", "f1_optimal"):
+            errors.append(f"training.select_by must be 'f1' or 'f1_optimal', got {train['select_by']!r}")
+
+    if "focal_gamma" in train:
+        g = train["focal_gamma"]
+        if not isinstance(g, (int, float)) or float(g) < 0:
+            errors.append(f"training.focal_gamma must be a number >= 0, got {g!r}")
+
+    if "pos_weight" in train:
+        pw = train["pos_weight"]
+        ok = (isinstance(pw, str) and pw.lower() == "auto") or (
+            isinstance(pw, (list, tuple))
+            and all(isinstance(x, (int, float)) and x > 0 for x in pw)
+        )
+        if not ok:
+            errors.append(
+                "training.pos_weight must be 'auto' or a list of positive numbers, "
+                f"got {pw!r}"
+            )
+
     if "early_stopping_patience" in train:
         p = train["early_stopping_patience"]
         if p is not None and (not isinstance(p, int) or p <= 0):

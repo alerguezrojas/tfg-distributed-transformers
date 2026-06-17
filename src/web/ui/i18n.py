@@ -114,6 +114,35 @@ TRANSLATIONS: dict[str, str] = {
     "Curves": "Curvas", "Per-class": "Por clase", "Time": "Tiempo", "Info": "Información",
     "Single vs Distributed": "Single vs Distribuido", "Overlay runs": "Superponer runs",
     "Models": "Modelos", "Live": "En vivo", "Launcher": "Lanzador",
+    "Import runs": "Importar runs",
+    "Predictor": "Predictor",
+    "Predict for any model / GPU / strategy (no benchmark)":
+        "Predice para cualquier modelo / GPU / estrategia (sin benchmark)",
+    "Strategy": "Estrategia", "Number of GPUs": "Número de GPUs",
+    "Train images / epoch": "Imágenes de train / epoch",
+    "Global batch size": "Tamaño de batch global",
+    "Prediction": "Predicción", "Train / epoch": "Train / epoch",
+    "Total train": "Train total", "Throughput": "Throughput",
+    "VRAM / GPU": "VRAM / GPU", "Fits in memory": "Cabe en memoria",
+    "Max batch that fits": "Batch máximo que cabe",
+    "Scaling 1 → 8 GPUs (predicted)": "Escalado 1 → 8 GPUs (predicho)",
+    "Confusions": "Confusiones",
+    "Recall by class": "Recall por clase",
+    "Label confusions": "Confusiones de etiquetas",
+    "Per-class profile": "Perfil por clase",
+    "When this class is truly present…": "Cuando esta clase está realmente presente…",
+    "Full 19×19 co-activation matrix (advanced)":
+        "Matriz de co-activación 19×19 completa (avanzado)",
+    "Download confusions table": "Descargar tabla de confusiones",
+    "Import zip": "Importar zip", "Import folder": "Importar carpeta",
+    "Import runs trained elsewhere": "Importar runs entrenados en otra máquina",
+    "From a zip file": "Desde un archivo zip",
+    "From a folder on this machine": "Desde una carpeta de esta máquina",
+    "Folder path": "Ruta de la carpeta",
+    "Runs indexed": "Runs indexados", "Environments": "Entornos",
+    "Imported files": "Archivos importados",
+    "Select the new run in the sidebar to explore it.":
+        "Selecciona el nuevo run en la barra lateral para explorarlo.",
     "Report": "Informe", "Prediction vs reality": "Predicción vs realidad",
     "Real study": "Estudio real", "Run analysis": "Ejecutar análisis",
     "Per epoch": "Por epoch", "Global history": "Historia global",
@@ -122,6 +151,18 @@ TRANSLATIONS: dict[str, str] = {
     # Section headers
     "Project overview": "Vista general del proyecto", "All runs": "Todos los runs",
     "Selected run": "Run seleccionado",
+    "Sections": "Secciones", "Top run": "Run destacado", "Open": "Abrir",
+    "Global statistics, the selected run, quick links and all runs. Open any section from the cards below.":
+        "Estadísticas globales, el run seleccionado, accesos rápidos y todos los runs. Abre cualquier sección desde las tarjetas de abajo.",
+    "Curves, per-class, batch & metadata of one run":
+        "Curvas, por clase, batch y metadatos de un run",
+    "Speedup, energy & overlays across runs":
+        "Speedup, energía y curvas superpuestas entre runs",
+    "Predict time, memory & cost before training":
+        "Predice tiempo, memoria y coste antes de entrenar",
+    "BigEarthNet explorer & timm models": "Explorador BigEarthNet y modelos timm",
+    "Hardware monitor & import remote runs":
+        "Monitor de hardware e importación de runs remotos",
     "Executive summary: global stats, the selected run at a glance, and all runs.":
         "Resumen ejecutivo: estadísticas globales, el run seleccionado de un vistazo y todos los runs.",
     "Curves, per-class metrics, batch detail and metadata of the run selected in the sidebar.":

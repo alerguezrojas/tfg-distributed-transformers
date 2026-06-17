@@ -11,7 +11,10 @@ import plotly.graph_objects as go
 import plotly.express as px
 import streamlit as st
 
-from src.web.confusion_matrix_parser import get_matrix_for_epoch, parse_confusion_matrix_csv
+from src.web.confusion_matrix_parser import (
+    get_matrix_for_epoch, parse_confusion_matrix_csv,
+    recall_by_class, top_confusions, confusion_profile,
+)
 from src.web.dataset_stats import (
     CLASS_NAMES, SPLIT_SIZES,
     class_distribution_approximate, class_distribution_from_parquet,
@@ -40,17 +43,22 @@ from src.web.ui.helpers import (
 
 def render(ctx: DashboardContext) -> None:
     st.markdown("## Run results")
-    st.caption("Curves, per-class metrics, batch detail and metadata of the run selected in the sidebar.")
-    sub = st.tabs(["Curves", "Per-class", "Batch", "Time", "Info"])
+    st.caption("Metrics and metadata of the run selected in the sidebar.")
+    # One level of tabs only — the per-class trend and the confusion views used
+    # to be a second nested row; they are now top-level tabs.
+    sub = st.tabs(["Curves", "Per-class", "Confusions", "Batch", "Details"])
     with sub[0]:
         _curves(ctx)
     with sub[1]:
         _per_class(ctx)
     with sub[2]:
-        _batch(ctx)
+        _confusions_tab(ctx)
     with sub[3]:
-        _time(ctx)
+        _batch(ctx)
     with sub[4]:
+        # "Details" merges timing and metadata (config, anomalies, log).
+        _time(ctx)
+        st.markdown("---")
         _info(ctx)
 
 
@@ -187,158 +195,233 @@ def _curves(ctx: DashboardContext) -> None:
 
 
 def _per_class(ctx: DashboardContext) -> None:
-    runs = ctx.runs
+    """Per-class metrics at one epoch (bars + table) and their trend across
+    epochs — on a single page, no nested tabs."""
     selected_run = ctx.selected_run
     run = ctx.run
-    refresh_interval = ctx.refresh_interval
     if selected_run is None:
         st.info("Select a run in the sidebar.")
-    else:
-        subtab_bars, subtab_trend, subtab_cm = st.tabs(
-            ["Per-class", "Trend", "Confusion matrix"]
+        return
+    if not (run.perclass_csv_path and run.perclass_csv_path.exists()):
+        st.info("No per-class data. Use `--layers confusion` to generate it.")
+        return
+
+    pcdf = _load_perclass(str(run.perclass_csv_path))
+    epochs_available = sorted(pcdf["epoch"].unique().tolist())
+    selected_ep = st.selectbox("Epoch", epochs_available, index=len(epochs_available) - 1,
+                               format_func=lambda e: f"Epoch {e}")
+    ep_df = pcdf[pcdf["epoch"] == selected_ep].copy().sort_values("f1", ascending=False)
+
+    colors_f1 = [
+        COLORS[2] if v >= 0.6 else (COLORS[1] if v >= 0.3 else COLORS[3])
+        for v in ep_df["f1"]
+    ]
+    fig_pc = go.Figure()
+    fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["precision"],
+                            name="Precision", orientation="h",
+                            marker_color=COLORS[0], opacity=0.8))
+    fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["recall"],
+                            name="Recall", orientation="h",
+                            marker_color=COLORS[1], opacity=0.8))
+    fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["f1"],
+                            name="F1", orientation="h", marker_color=colors_f1))
+    fig_pc.update_layout(
+        barmode="group",
+        title=dict(text=f"Per-class metrics — Epoch {selected_ep}", font=dict(size=13)),
+        xaxis_title="Score", xaxis=dict(range=[0, 1]),
+        height=600, margin=dict(l=200, r=16, t=36, b=40),
+        paper_bgcolor="white", plot_bgcolor="#f8fafc",
+    )
+    _show(fig_pc, f"per_class_ep{selected_ep}")
+
+    with st.expander("Per-class table"):
+        styled = (
+            ep_df[["class_name", "f1", "precision", "recall"]]
+            .style.map(_color_f1_cell, subset=["f1"])
+            .format({"f1": "{:.3f}", "precision": "{:.3f}", "recall": "{:.3f}"})
         )
+        st.dataframe(styled, use_container_width=True, height=280)
+        _dl_csv(ep_df[["class_name", "f1", "precision", "recall"]],
+                f"perclass_ep{selected_ep}.csv", "Download per-class table")
 
-        with subtab_bars:
-            if run.perclass_csv_path and run.perclass_csv_path.exists():
-                pcdf = _load_perclass(str(run.perclass_csv_path))
-                epochs_available = sorted(pcdf["epoch"].unique().tolist())
-                selected_ep = st.selectbox("Epoch", epochs_available, format_func=lambda e: f"Epoch {e}")
-                ep_df = pcdf[pcdf["epoch"] == selected_ep].copy().sort_values("f1", ascending=False)
+    st.markdown("#### Trend across epochs")
+    classes = sorted(pcdf["class_name"].unique().tolist())
+    col_sel, col_met = st.columns([3, 1])
+    with col_sel:
+        selected_classes = st.multiselect("Classes (max 8)", classes,
+                                           default=classes[:4], max_selections=8)
+    with col_met:
+        metric_sel = st.radio("Metric", ["f1", "precision", "recall"])
+    if selected_classes:
+        fig_trend = go.Figure()
+        for i, cls in enumerate(selected_classes):
+            cdf = pcdf[pcdf["class_name"] == cls].sort_values("epoch")
+            fig_trend.add_trace(go.Scatter(
+                x=cdf["epoch"], y=cdf[metric_sel], name=cls, mode="lines+markers",
+                line=dict(color=COLORS[i % len(COLORS)], width=2), marker=dict(size=4),
+            ))
+        fig_trend.update_layout(
+            **_base_layout(400, f"{metric_sel.capitalize()} per class across epochs"),
+            xaxis_title="Epoch",
+        )
+        fig_trend.update_yaxes(range=[0, 1])
+        _show(fig_trend, "class_trend")
 
-                styled = (
-                    ep_df[["class_name", "f1", "precision", "recall"]]
-                    .style.map(_color_f1_cell, subset=["f1"])
-                    .format({"f1": "{:.3f}", "precision": "{:.3f}", "recall": "{:.3f}"})
-                )
-                st.dataframe(styled, use_container_width=True, height=280)
-                _dl_csv(ep_df[["class_name", "f1", "precision", "recall"]],
-                        f"perclass_ep{selected_ep}.csv", "Download per-class table")
 
-                colors_f1 = [
-                    COLORS[2] if v >= 0.6 else (COLORS[1] if v >= 0.3 else COLORS[3])
-                    for v in ep_df["f1"]
-                ]
-                fig_pc = go.Figure()
-                fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["precision"],
-                                        name="Precision", orientation="h",
-                                        marker_color=COLORS[0], opacity=0.8))
-                fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["recall"],
-                                        name="Recall", orientation="h",
-                                        marker_color=COLORS[1], opacity=0.8))
-                fig_pc.add_trace(go.Bar(y=ep_df["class_name"], x=ep_df["f1"],
-                                        name="F1", orientation="h", marker_color=colors_f1))
-                fig_pc.update_layout(
-                    barmode="group",
-                    title=dict(text=f"Per-class metrics — Epoch {selected_ep}", font=dict(size=13)),
-                    xaxis_title="Score", xaxis=dict(range=[0, 1]),
-                    height=600, margin=dict(l=200, r=16, t=36, b=40),
-                    paper_bgcolor="white", plot_bgcolor="#f8fafc",
-                )
-                _show(fig_pc, f"per_class_ep{selected_ep}")
-            else:
-                st.info("No per-class data. Use `--layers confusion` to generate it.")
+def _confusions_tab(ctx: DashboardContext) -> None:
+    if ctx.selected_run is None:
+        st.info("Select a run in the sidebar.")
+        return
+    _confusions_view(ctx.run)
 
-        with subtab_trend:
-            if run.perclass_csv_path and run.perclass_csv_path.exists():
-                pcdf = _load_perclass(str(run.perclass_csv_path))
-                classes = sorted(pcdf["class_name"].unique().tolist())
-                col_sel, col_met = st.columns([3, 1])
-                with col_sel:
-                    selected_classes = st.multiselect("Classes (max 8)", classes, default=classes[:4], max_selections=8)
-                with col_met:
-                    metric_sel = st.radio("Metric", ["f1", "precision", "recall"])
 
-                if selected_classes:
-                    fig_trend = go.Figure()
-                    for i, cls in enumerate(selected_classes):
-                        cdf = pcdf[pcdf["class_name"] == cls].sort_values("epoch")
-                        fig_trend.add_trace(go.Scatter(
-                            x=cdf["epoch"], y=cdf[metric_sel],
-                            name=cls[:30], mode="lines+markers",
-                            line=dict(color=COLORS[i % len(COLORS)], width=2), marker=dict(size=4),
-                        ))
-                    fig_trend.update_layout(
-                        **_base_layout(400, f"{metric_sel.capitalize()} per class across epochs"),
-                        xaxis_title="Epoch",
-                    )
-                    fig_trend.update_yaxes(range=[0, 1])
-                    _show(fig_trend, "class_trend")
-            else:
-                st.info("No per-class CSV for this run.")
+def _confusions_view(run) -> None:
+    """Multi-label confusion diagnostics.
 
-        with subtab_cm:
-            if run.confusion_matrix_csv_path and run.confusion_matrix_csv_path.exists():
-                cm_df = parse_confusion_matrix_csv(run.confusion_matrix_csv_path)
-                epochs_cm = sorted(cm_df["epoch"].unique().tolist())
+    This is a multi-label task, so a classic N×N confusion matrix does not apply.
+    Instead we show the three things that ARE interpretable from the stored
+    co-activation matrix: recall per class (did the model catch the class), the
+    strongest label confusions, and a per-class 'what else fires' profile. The
+    full 19×19 matrix stays available as an advanced view.
+    """
+    if not (run.confusion_matrix_csv_path and run.confusion_matrix_csv_path.exists()):
+        st.info("No confusion data. Use `--layers confusion` to generate it.")
+        return
 
-                col_cm1, col_cm2 = st.columns([3, 1])
-                with col_cm1:
-                    selected_cm_ep = st.selectbox("Epoch", epochs_cm,
-                                                   format_func=lambda e: f"Epoch {e}", key="cm_epoch_sel")
-                with col_cm2:
-                    cm_mode = st.radio("Mode", ["Normalized", "Absolute"], key="cm_mode")
+    cm_df = parse_confusion_matrix_csv(run.confusion_matrix_csv_path)
+    epochs_cm = sorted(cm_df["epoch"].unique().tolist())
+    ep = st.selectbox("Epoch", epochs_cm, index=len(epochs_cm) - 1,
+                      format_func=lambda e: f"Epoch {e}", key="cm_epoch_sel")
 
-                pivot = get_matrix_for_epoch(cm_df, selected_cm_ep)
-                class_order = list(pivot.index)
-                z_norm = pivot.reindex(index=class_order, columns=class_order).values
-                n_classes = len(class_order)
+    st.caption(
+        "Multi-label task: each image can carry several of the 19 classes, so there "
+        "is no single 'predicted class' to confuse. These views read the model's "
+        "label co-activation: **recall** (whether each class is detected) and which "
+        "other labels are predicted when a class is present (confusion / co-occurrence)."
+    )
 
-                if cm_mode == "Absolute":
-                    row_sums = z_norm.sum(axis=1, keepdims=True)
-                    z_abs = (z_norm * row_sums).round().astype(int)
-                    z_plot = z_abs.tolist()
-                    text = [[str(v) if v > 0 else "" for v in row] for row in z_abs]
-                    zmin, zmax, cb_title = 0, None, "Samples"
-                else:
-                    z_plot = z_norm.tolist()
-                    text = [[f"{v:.2f}" if v >= 0.05 else "" for v in row] for row in z_norm]
-                    zmin, zmax, cb_title = 0, 1, "P(pred j | true i)"
+    # ── 1) Recall per class (the diagonal) ────────────────────────────────────
+    st.markdown("#### Recall by class")
+    rec = recall_by_class(cm_df, ep)
+    if not rec.empty:
+        bar_colors = [
+            COLORS[3] if v < 0.3 else (COLORS[1] if v < 0.6 else COLORS[2])
+            for v in rec.values
+        ]
+        fig_rec = go.Figure(go.Bar(
+            y=list(rec.index), x=list(rec.values), orientation="h",
+            marker_color=bar_colors, text=[f"{v:.2f}" for v in rec.values],
+            textposition="outside",
+        ))
+        fig_rec.update_layout(
+            **_base_layout(120 + 26 * len(rec), "Recall by class (red < 0.30, amber < 0.60, green ≥ 0.60)",
+                           margin=dict(l=200, r=40, t=48, b=40)),
+            showlegend=False,
+        )
+        fig_rec.update_xaxes(range=[0, 1], title="Recall")
+        fig_rec.update_yaxes(automargin=True)
+        _show(fig_rec, f"recall_by_class_ep{ep}")
+        failed = rec[rec < 0.3]
+        if not failed.empty:
+            st.warning(
+                f"**{len(failed)} class(es) the model rarely catches** (recall < 0.30): "
+                + ", ".join(f"{c} ({v:.2f})" for c, v in failed.items())
+                + ". Typically rare classes, which lower the macro-F1."
+            )
 
-                shapes = []
-                for group_name, (idxs, color) in _CLASS_GROUPS.items():
-                    positions = [i for i, cls in enumerate(class_order) if i in idxs]
-                    if not positions:
-                        continue
-                    lo, hi = min(positions), max(positions)
-                    shapes.append(dict(
-                        type="rect", x0=lo - 0.5, x1=hi + 0.5, y0=lo - 0.5, y1=hi + 0.5,
-                        line=dict(color=color, width=2.5), fillcolor="rgba(0,0,0,0)", layer="above",
-                    ))
+    st.markdown("---")
 
-                fig_cm = go.Figure(go.Heatmap(
-                    z=z_plot, x=class_order, y=class_order,
-                    colorscale="Blues", zmin=zmin, zmax=zmax,
-                    text=text, texttemplate="%{text}", textfont={"size": 8},
-                    hovertemplate="True: %{y}<br>Predicted: %{x}<br>Value: %{z:.3f}<extra></extra>",
-                    colorbar=dict(title=cb_title),
-                ))
-                fig_cm.update_layout(
-                    title=dict(text=f"Confusion matrix ({cm_mode.lower()}) — Epoch {selected_cm_ep}",
-                               font=dict(size=13)),
-                    xaxis=dict(title="Predicted", tickangle=45, tickfont=dict(size=9),
-                               tickmode="array", tickvals=list(range(n_classes)), ticktext=class_order),
-                    yaxis=dict(title="True", tickfont=dict(size=9), autorange="reversed",
-                               tickmode="array", tickvals=list(range(n_classes)), ticktext=class_order),
-                    height=660, margin=dict(l=180, r=20, t=50, b=180),
-                    paper_bgcolor="white", shapes=shapes,
-                )
-                _show(fig_cm, f"confusion_matrix_ep{selected_cm_ep}")
+    # ── 2) Strongest confusions (off-diagonal) ────────────────────────────────
+    st.markdown("#### Label confusions")
+    st.caption("When the class on the left is truly present, the model also predicts "
+               "the class on the right this often. Some pairs are real confusion, "
+               "others are natural co-occurrence (e.g. forest types share scenes).")
+    top = top_confusions(cm_df, ep, k=12)
+    if top.empty:
+        st.info("No strong off-diagonal confusions at this epoch.")
+    else:
+        pair_labels = [f"{r.true_class}  →  {r.pred_class}" for r in top.itertuples()]
+        fig_top = go.Figure(go.Bar(
+            y=pair_labels, x=list(top["value"]), orientation="h",
+            marker_color=COLORS[0], text=[f"{v:.2f}" for v in top["value"]],
+            textposition="outside",
+        ))
+        fig_top.update_layout(
+            **_base_layout(120 + 28 * len(top), "Top confusions (true → also predicted)",
+                           margin=dict(l=300, r=40, t=48, b=40)),
+            showlegend=False,
+        )
+        fig_top.update_xaxes(range=[0, 1], title="P(also predicts the right label | left is present)")
+        fig_top.update_yaxes(automargin=True, autorange="reversed")
+        _show(fig_top, f"top_confusions_ep{ep}")
+        _dl_csv(top, f"top_confusions_ep{ep}.csv", "Download confusions table")
 
-                legend_html = " &nbsp; ".join(
-                    f'<span style="display:inline-block;width:12px;height:12px;background:{color};'
-                    f'border-radius:2px;margin-right:4px;vertical-align:middle"></span>'
-                    f'<span style="font-size:0.8rem">{name}</span>'
-                    for name, (_, color) in _CLASS_GROUPS.items()
-                )
-                st.markdown(
-                    f"<div style='margin-top:4px'>{legend_html}</div>"
-                    "<div style='font-size:0.75rem;color:#64748b;margin-top:4px'>"
-                    "The colored borders group classes by ecosystem type. "
-                    "The diagonal = per-class recall.</div>",
-                    unsafe_allow_html=True,
-                )
-            else:
-                st.info("No confusion matrix. Use `--layers confusion` to generate it.")
+    st.markdown("---")
+
+    # ── 3) Per-class confusion profile ────────────────────────────────────────
+    st.markdown("#### Per-class profile")
+    all_classes = sorted(cm_df["true_class"].unique().tolist())
+    sel_cls = st.selectbox("When this class is truly present…", all_classes, key="cm_profile_cls")
+    prof = confusion_profile(cm_df, ep, sel_cls).head(10)
+    diag = recall_by_class(cm_df, ep).get(sel_cls, float("nan"))
+    st.caption(f"Recall of **{sel_cls}**: {diag:.2f} — detected in {diag*100:.0f}% of "
+               f"cases. Below: the other labels also predicted when it is present.")
+    if not prof.empty and prof.max() > 0:
+        fig_prof = go.Figure(go.Bar(
+            y=list(prof.index), x=list(prof.values), orientation="h",
+            marker_color=COLORS[5], text=[f"{v:.2f}" for v in prof.values],
+            textposition="outside",
+        ))
+        fig_prof.update_layout(
+            **_base_layout(120 + 26 * len(prof), f"Also predicted when '{sel_cls}' is present",
+                           margin=dict(l=200, r=40, t=48, b=40)),
+            showlegend=False,
+        )
+        fig_prof.update_xaxes(range=[0, 1], title="Frequency")
+        fig_prof.update_yaxes(automargin=True, autorange="reversed")
+        _show(fig_prof, f"profile_{ep}")
+    else:
+        st.info("The model rarely turns on other labels for this class.")
+
+    # ── 4) Full matrix (advanced) ─────────────────────────────────────────────
+    with st.expander("Full 19×19 co-activation matrix (advanced)"):
+        st.caption("Cell (row i, column j) = P(model predicts j | class i is truly "
+                   "present). The diagonal is recall; bright off-diagonal cells are "
+                   "the confusions above. Colored borders group classes by ecosystem.")
+        pivot = get_matrix_for_epoch(cm_df, ep)
+        class_order = list(pivot.index)
+        z_norm = pivot.reindex(index=class_order, columns=class_order).values
+        n_classes = len(class_order)
+        text = [[f"{v:.2f}" if v >= 0.05 else "" for v in row] for row in z_norm]
+
+        shapes = []
+        for _gname, (idxs, color) in _CLASS_GROUPS.items():
+            positions = [i for i in range(n_classes) if i in idxs]
+            if not positions:
+                continue
+            lo, hi = min(positions), max(positions)
+            shapes.append(dict(
+                type="rect", x0=lo - 0.5, x1=hi + 0.5, y0=lo - 0.5, y1=hi + 0.5,
+                line=dict(color=color, width=2.5), fillcolor="rgba(0,0,0,0)", layer="above",
+            ))
+
+        fig_cm = go.Figure(go.Heatmap(
+            z=z_norm.tolist(), x=class_order, y=class_order,
+            colorscale="Blues", zmin=0, zmax=1,
+            text=text, texttemplate="%{text}", textfont={"size": 8},
+            hovertemplate="True: %{y}<br>Also predicts: %{x}<br>P = %{z:.3f}<extra></extra>",
+            colorbar=dict(title="P(pred j | true i)"),
+        ))
+        fig_cm.update_layout(
+            title=dict(text=f"Co-activation matrix — Epoch {ep}", font=dict(size=13)),
+            xaxis=dict(title="Also predicted", tickangle=45, tickfont=dict(size=9),
+                       tickmode="array", tickvals=list(range(n_classes)), ticktext=class_order),
+            yaxis=dict(title="True class", tickfont=dict(size=9), autorange="reversed",
+                       tickmode="array", tickvals=list(range(n_classes)), ticktext=class_order),
+            height=660, margin=dict(l=180, r=20, t=50, b=180),
+            paper_bgcolor="white", shapes=shapes,
+        )
+        _show(fig_cm, f"confusion_matrix_ep{ep}")
 
 
 
@@ -356,11 +439,6 @@ def _batch(ctx: DashboardContext) -> None:
             "With `--batch-log-every 1` you get one record per individual batch."
         )
     else:
-        # ── Sub-tabs: per epoch | global history | learning rate ───────────────
-        subtab_by_ep, subtab_global, subtab_lr = st.tabs(
-            ["Per epoch", "Global history", "Learning rate"]
-        )
-
         # Load with a short TTL so the live refresh works
         @st.cache_data(ttl=5)
         def _load_batch_live(p: str) -> pd.DataFrame:
@@ -403,8 +481,12 @@ def _batch(ctx: DashboardContext) -> None:
             if has_lr:
                 bc4.metric("Initial LR", f"{bdf['lr'].iloc[0]:.2e}")
 
-            # ── Tab: per epoch ─────────────────────────────────────────────────
-            with subtab_by_ep:
+            # Single-level view switcher (replaces the old nested tab row).
+            view = st.radio("View", ["Per epoch", "Global history", "Learning rate"],
+                            horizontal=True, key="batch_view")
+
+            # ── View: per epoch ────────────────────────────────────────────────
+            if view == "Per epoch":
                 col_ep, col_met, col_ma = st.columns([2, 2, 2])
                 with col_ep:
                     selected_epochs_b = st.multiselect(
@@ -472,8 +554,8 @@ def _batch(ctx: DashboardContext) -> None:
                     with st.expander("Raw data"):
                         st.dataframe(sel_bdf, use_container_width=True)
 
-            # ── Tab: global history (x axis = global batch) ────────────────────
-            with subtab_global:
+            # ── View: global history (x axis = global batch) ───────────────────
+            elif view == "Global history":
                 st.markdown(
                     "Full view of the entire training history on a single axis. "
                     "The vertical lines mark the epoch boundaries."
@@ -528,8 +610,8 @@ def _batch(ctx: DashboardContext) -> None:
                     _show(fig_g, "batch_global_history")
                     _dl_csv(bdf, "batch_metrics_full.csv", "Download full history")
 
-            # ── Tab: learning rate ─────────────────────────────────────────────
-            with subtab_lr:
+            # ── View: learning rate ────────────────────────────────────────────
+            elif view == "Learning rate":
                 if not has_lr:
                     st.info(
                         "No learning-rate data. "

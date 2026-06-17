@@ -17,6 +17,9 @@ from src.web.dataset_stats import (
     class_distribution_approximate, class_distribution_from_parquet,
     get_country_distribution, find_example_patches, load_rgb_image,
 )
+from src.performance_model import (
+    GPU_TABLE, MODEL_TABLE, predict, estimate_rc, gpu_spec, model_spec,
+)
 from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
 from src.web.model_explorer import ALL_FAMILIES, CURATED_MODELS, compare_models
@@ -44,14 +47,35 @@ def render(ctx: DashboardContext) -> None:
     run = ctx.run
     refresh_interval = ctx.refresh_interval
     st.markdown("## Feasibility")
-    st.caption("Plan before training: hardware profile, predicted time and cost, "
-               "and how past predictions held up against reality.")
-    (subtab_report, subtab_predreal, subtab_study, subtab_run_feas) = st.tabs(
-        ["Report", "Prediction vs reality", "Real study", "Run analysis"]
+    st.caption("Plan before training. **Predict** with the analytic model (no run "
+               "needed), **Validate** predictions against real trainings, or "
+               "**Measure** on this machine to calibrate.")
+    # Three clear stages instead of five overlapping tabs:
+    #   Predict  → the analytic predictor (formulas, no benchmark) — the main tool
+    #   Validate → predicted vs actual (evidence the formulas work)
+    #   Measure  → run the real benchmark on this machine (advanced/calibration):
+    #              generate a report, view it, run the convergence study
+    tab_predict, tab_validate, tab_measure = st.tabs(
+        ["Predict", "Validate", "Measure (advanced)"]
     )
-    # subtab_ddp_opt and subtab_prediction are no longer their own tabs: they are
-    # filled as sections inside "Report" and "Prediction vs reality" respectively
-    # (containers created further down, in their parent blocks).
+
+    with tab_predict:
+        _analytic_predictor()
+
+    # Validate = the old "Prediction vs reality" block fills this tab.
+    subtab_predreal = tab_validate
+
+    # Measure = a single scrolling page (no nested tab row): the three blocks
+    # below fill these containers in order — generate, view report, study.
+    with tab_measure:
+        st.caption("Run the real benchmark on the machine you are on. Use it to "
+                   "calibrate the predictor or to profile this hardware.")
+        st.markdown("#### Generate a report")
+        subtab_run_feas = st.container()
+        st.markdown("#### Report")
+        subtab_report = st.container()
+        st.markdown("#### Convergence study")
+        subtab_study = st.container()
 
     # Shared load of the selected report
     feasibility_csvs = _get_feasibility_csvs()
@@ -66,7 +90,7 @@ def render(ctx: DashboardContext) -> None:
 
     # ── Prediction vs reality (auto-paired with the run in the sidebar) ─────────
     with subtab_predreal:
-        st.markdown("### Feasibility prediction vs what actually happened")
+        st.markdown("### Predicted vs actual")
         st.caption(
             "The feasibility runs **on 1 GPU**: from there it (A) estimates the "
             "single-GPU time and (B) **predicts** the speedup when distributing. There "
@@ -162,9 +186,9 @@ def render(ctx: DashboardContext) -> None:
                                 _x = (f" Likely cause: **I/O-bound** (ratio≈{_io:.1f}) — the synthetic "
                                       "benchmark does not include disk reads (NFS)."
                                       if _io and _io > 1 else "")
-                                st.warning(f"**Optimistic estimate** — the real run was {abs(_e):.0f}% slower.{_x}")
+                                st.warning(f"**Optimistic estimate** — the run was {abs(_e):.0f}% slower than predicted.{_x}")
                             else:
-                                st.info(f"**Pessimistic estimate** — the real run was {_e:.0f}% faster than expected.")
+                                st.info(f"**Conservative estimate** — the run was {_e:.0f}% faster than predicted.")
                         # Simple chart: estimated vs real time, same unit (min)
                         _tm = [(n, _rows.get(k)) for n, k in
                                (("Train", "Train time / epoch"),
@@ -239,12 +263,13 @@ def render(ctx: DashboardContext) -> None:
             st.info("No feasibility CSVs found. Run the analysis from the 'Run analysis' sub-tab.")
             subtab_ddp_opt = st.container()
         else:
-            # Grouped by purpose so the report reads as summary-first, not one
-            # long scroll. 'Distributed scaling' holds the DDP-scenarios section.
-            _rt = st.tabs([
+            # One scrolling page with collapsible sections (no nested tab row).
+            # The first is open; the rest start collapsed → summary-first.
+            _rt_titles = [
                 "Hardware & precision", "Dataset I/O & memory",
                 "Throughput & time", "Distributed scaling", "Cloud cost",
-            ])
+            ]
+            _rt = [st.expander(t, expanded=(i == 0)) for i, t in enumerate(_rt_titles)]
 
             with _rt[0]:
                 # ── System profile ─────────────────────────────────────────────
@@ -1009,3 +1034,129 @@ def render(ctx: DashboardContext) -> None:
                     st.error("Error during the analysis:")
                     out_ph.code(result.stderr[-2000:])
 
+
+
+def _analytic_predictor() -> None:
+    """Closed-form predictor: estimate time/speedup/memory/cost for ANY
+    (strategy, model, GPU, n_gpus, dataset, batch, precision) from specs — no
+    benchmark required. Powered by src/performance_model.py."""
+    st.markdown("### Estimate a training before running it")
+    st.caption(
+        "Choose the parameters and get the full estimate — time, speedup, memory "
+        "(and OOM), and cloud cost — from analytic formulas calibrated on real "
+        "data, **without running anything**. Plan here first, then run the matching "
+        "training and compare in Validate. Errors vs the real Kaggle 2×T4 runs: "
+        "time +4%, DDP speedup <1%, AMP <2%."
+    )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        model_name = st.selectbox("Model", list(MODEL_TABLE.keys()),
+                                  index=list(MODEL_TABLE.keys()).index("vit_base_patch16_224"))
+        gpu_name = st.selectbox("GPU", list(GPU_TABLE.keys()),
+                                index=list(GPU_TABLE.keys()).index("Tesla T4"))
+    with c2:
+        strategy = st.selectbox("Strategy", ["single", "ddp", "model_parallel", "heterogeneous"])
+        n_gpus = st.number_input("Number of GPUs", 1, 8, 2 if strategy != "single" else 1)
+    with c3:
+        precision = st.selectbox("Precision", ["fp32", "amp", "tf32", "bf16"])
+        disk_type = st.selectbox("Disk", ["ssd", "nvme", "hdd", "nfs"])
+
+    c4, c5, c6 = st.columns(3)
+    with c4:
+        dataset_size = st.number_input("Train images / epoch", 100, 300000, 5000, step=500)
+    with c5:
+        batch = st.number_input("Global batch size", 1, 1024, 96, step=8)
+    with c6:
+        epochs = st.number_input("Epochs", 1, 200, 15)
+
+    if strategy == "single":
+        n_gpus = 1
+    nfs = disk_type == "nfs"
+
+    p = predict(strategy, model_name, gpu_name, n_gpus=int(n_gpus),
+                dataset_size=int(dataset_size), batch=int(batch), precision=precision,
+                epochs=int(epochs), disk_type=disk_type, nfs=nfs)
+    if p is None:
+        st.error("Unknown model or GPU spec.")
+        return
+
+    st.markdown("#### Prediction")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Train / epoch", _fmt_secs(p.time_per_epoch_train_s))
+    m2.metric("Total train", _fmt_secs(p.time_total_train_s))
+    if strategy != "single":
+        m3.metric("Speedup", f"{p.speedup:.2f}×")
+        m4.metric("Efficiency", f"{p.efficiency * 100:.0f}%")
+    else:
+        m3.metric("Throughput", f"{dataset_size / p.time_per_epoch_train_s:.0f} img/s")
+        m4.metric("Bottleneck", p.bottleneck)
+
+    m5, m6, m7 = st.columns(3)
+    m5.metric("VRAM / GPU", f"{p.vram_per_gpu_gb:.1f} GB")
+    m6.metric("Fits in memory", "yes" if p.fits_in_memory else "NO — OOM")
+    m7.metric("Max batch that fits", p.recommended_batch)
+
+    if not p.fits_in_memory:
+        st.error(f"**Out of memory**: needs ~{p.vram_per_gpu_gb:.1f} GB but "
+                 f"{gpu_spec(gpu_name).vram_gb:.0f} GB available. "
+                 f"Largest batch that fits: **{p.recommended_batch}**.")
+    for note in p.notes:
+        st.info(note)
+
+    # ── Estimated cloud cost for this exact configuration ──────────────────────
+    from src.cloud_cost import estimate_costs
+    total_h = p.time_total_train_s / 3600 * (n_gpus if strategy in ("ddp", "heterogeneous") else 1)
+    cost_rows = estimate_costs(total_h, gpu_name)
+    own = next((r for r in cost_rows if (gpu_name.split()[-1] in r["gpu"] or r["gpu"] in gpu_name)
+                and r["usd_per_hour"] > 0), None)
+    st.markdown("#### Estimated cost")
+    cc1, cc2 = st.columns([1, 2])
+    with cc1:
+        st.metric(f"On {gpu_name}",
+                  f"${own['cost_usd']:.2f}" if own else "free / n/a",
+                  help="GPU-hours × on-demand price for this exact run.")
+        st.caption(f"≈ {total_h:.1f} GPU-hours")
+    with cc2:
+        cheap = [r for r in cost_rows if r["usd_per_hour"] > 0][:4]
+        if cheap:
+            cdf = pd.DataFrame([
+                {"Provider": r["provider"], "GPU": r["gpu"],
+                 "$/h": r["usd_per_hour"], "Cost ($)": r["cost_usd"]}
+                for r in cheap
+            ])
+            st.dataframe(cdf, hide_index=True, use_container_width=True)
+        st.caption("Cheapest paid options for an equivalent run (free tiers like "
+                   "Kaggle/Colab omitted). Prices are a ballpark, editable in "
+                   "`src/cloud_cost.py`.")
+
+    # Speedup curve across 1..8 GPUs (data-parallel scaling at a glance).
+    if strategy in ("ddp", "heterogeneous"):
+        st.markdown("#### Scaling 1 → 8 GPUs (predicted)")
+        ns = [1, 2, 4, 8]
+        sp = []
+        for n in ns:
+            pn = predict(strategy, model_name, gpu_name, n_gpus=n,
+                         dataset_size=int(dataset_size), batch=int(batch),
+                         precision=precision, epochs=1, disk_type=disk_type, nfs=nfs)
+            sp.append(pn.speedup if pn else 0.0)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=ns, y=ns, name="Ideal (linear)",
+                                 line=dict(color=COLORS[4], dash="dash")))
+        fig.add_trace(go.Scatter(x=ns, y=sp, name="Predicted", mode="lines+markers",
+                                 line=dict(color=COLORS[0], width=2), marker=dict(size=8)))
+        fig.update_layout(**_base_layout(320, "Speedup vs number of GPUs"),
+                          xaxis_title="GPUs", yaxis_title="Speedup ×")
+        fig.update_xaxes(tickvals=ns)
+        _show(fig, "predictor_scaling")
+        st.caption("The curve flattens when the I/O total (fixed, shared disk) or "
+                   "the gradient-sync term overtakes the per-GPU compute — exactly "
+                   "the compute/IO/sync regimes of the analytic model.")
+
+
+def _fmt_secs(s: float) -> str:
+    if s < 90:
+        return f"{s:.0f} s"
+    if s < 5400:
+        return f"{s / 60:.1f} min"
+    return f"{s / 3600:.1f} h"

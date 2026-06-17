@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import streamlit as st
+from streamlit_option_menu import option_menu
 
 from src.web.ui import i18n
 from src.web.ui.context import DashboardContext
@@ -24,7 +25,6 @@ from src.web.tabs import (
     comparison,
     feasibility,
     data_models,
-    system,
 )
 
 # ── Page configuration ──────────────────────────────────────────────────────────
@@ -43,7 +43,7 @@ i18n.install(_lang)
 
 st.markdown("""
 <style>
-  [data-testid="stSidebar"] { min-width: 240px; max-width: 260px; }
+  [data-testid="stSidebar"] { min-width: 300px; max-width: 320px; }
   .block-container { padding-top: 2.4rem; padding-left: 1.5rem; padding-right: 1.5rem; }
   /* Headings: Streamlit's own rules win over bare element selectors, so scope
      to the markdown container and force a compact, professional scale. */
@@ -93,16 +93,17 @@ st.markdown("""
   [data-testid="stSidebar"] [data-testid="stCaptionContainer"] {
     margin-top: 0.4rem; letter-spacing: 0.04em; opacity: 0.7;
   }
-  /* Selectbox dropdowns copy the control's width (~200px in the sidebar),
-     truncating the run tags. Widening the popover itself breaks its centered
-     positioning, so instead let the option list overflow it to the right. */
-  [data-baseweb="popover"], [data-baseweb="popover"] > div,
-  [data-baseweb="popover"] > div > div { overflow: visible !important; }
-  [data-testid="stSelectboxVirtualDropdown"] {
-    min-width: 27rem !important;
-    background: white; box-shadow: 0 4px 16px rgba(0,0,0,0.16); border-radius: 0.5rem;
+  /* Active-run box in the sidebar: full name, wraps, small. */
+  [data-testid="stSidebar"] .active-run {
+    font-size: 0.8rem; line-height: 1.3; word-break: break-word;
+    background: #f1f5f9; border-radius: 0.4rem; padding: 0.4rem 0.55rem;
   }
-  [data-testid="stSelectboxVirtualDropdown"] li { white-space: nowrap !important; }
+  /* Compact KPI strip (Overview): denser than st.metric cards. */
+  .kpi-strip { display: flex; gap: 0.5rem; margin: 0.2rem 0 0.7rem; flex-wrap: wrap; }
+  .kpi { flex: 1; min-width: 90px; background: #f8fafc; border: 1px solid #e5e7eb;
+         border-radius: 0.5rem; padding: 0.4rem 0.6rem; }
+  .kpi .v { font-size: 1.15rem; font-weight: 650; color: #1A5276; line-height: 1.2; }
+  .kpi .l { font-size: 0.72rem; color: #64748b; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -111,68 +112,90 @@ st.markdown("""
 
 runs = _get_runs()
 
-# Grouped sidebar navigation: a single, always-visible map of the dashboard,
-# organized by task. Each entry renders one tab module (full-width main area).
-_NAV = [
-    ("ANALYZE", [("overview", "Overview"), ("run", "Run results"), ("compare", "Compare")]),
-    ("PLAN", [("feasibility", "Feasibility")]),
-    ("DATA & OPS", [("data", "Data & models"), ("system", "System")]),
-]
+# Single-level sidebar navigation (icon menu). Each entry renders one page
+# module full-width. Pages keep at most ONE row of tabs inside — never 3 levels.
+# System was removed: the live hardware monitor was not useful with the Kaggle
+# workflow, and "Import runs" now lives under "Data & runs".
+_NAV_KEYS = ["overview", "run", "compare", "feasibility", "data"]
+_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Import"]
+_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "box-arrow-in-down"]
 _PAGES = {
     "overview": home.render,
     "run": run_tab.render,
     "compare": comparison.render,
     "feasibility": feasibility.render,
     "data": data_models.render,
-    "system": system.render,
 }
 
-# Everything must fit without scrolling: navigation first, then the run
-# selector; the language toggle goes last (used once per session at most).
 with st.sidebar:
     st.markdown("### Training Dashboard")
 
-    # ── Navigation (grouped, always visible) ──────────────────────────────────
-    _page = st.session_state.get("nav", "overview")
-    for _group, _items in _NAV:
-        st.caption(_group)
-        for _key, _label in _items:
-            if st.button(_label, key=f"nav_{_key}", use_container_width=True,
-                         type="primary" if _page == _key else "secondary"):
-                st.session_state["nav"] = _key
-                st.rerun()
-    _page = st.session_state.get("nav", "overview")
+    # ── Navigation (icon menu, single level) ──────────────────────────────────
+    if "nav" not in st.session_state:
+        st.session_state["nav"] = "overview"
+    # A hub card (or any page) can request a jump via "_nav_jump"; option_menu's
+    # manual_select forces the menu to that entry on the next run.
+    _manual = None
+    if st.session_state.get("_nav_jump"):
+        _manual = _NAV_KEYS.index(st.session_state.pop("_nav_jump"))
+    _chosen = option_menu(
+        menu_title=None, options=_NAV_LABELS, icons=_NAV_ICONS,
+        default_index=_NAV_KEYS.index(st.session_state["nav"]),
+        manual_select=_manual, key="navmenu",
+        styles={
+            "container": {"padding": "0", "background-color": "transparent"},
+            "nav-link": {"font-size": "0.9rem", "padding": "0.45rem 0.7rem",
+                         "margin": "0.1rem 0"},
+            "nav-link-selected": {"background-color": "#1A5276"},
+        },
+    )
+    _page = _NAV_KEYS[_NAV_LABELS.index(_chosen)]
+    st.session_state["nav"] = _page
 
     st.markdown("---")
-    # ── Run selector (shared context across pages) ────────────────────────────
+    # ── Active run (shared across pages) ──────────────────────────────────────
+    # Source of truth: st.session_state["run_label"]. It is set here OR by
+    # clicking a row in the Overview "All runs" table (wandb-style selection).
     if not runs:
         st.warning("No runs found in logs/.")
         selected_run = None
         run = None
     else:
-        trace_filter = st.selectbox("Trace mode", ["all", "simple", "deep"])
-        filtered = [r for r in runs if trace_filter == "all" or r.trace_mode == trace_filter]
+        _by_label = {r.label: r for r in runs}
+        _active = st.session_state.get("run_label")
+        if _active not in _by_label:
+            _active = runs[0].label
+        run = _by_label[_active]
+        selected_run = run
 
-        if not filtered:
-            st.warning("No runs match this filter.")
-            selected_run = None
-            run = None
-        else:
-            run_labels = {r.label: r for r in filtered}
-            selected_label = st.selectbox("Run", list(run_labels.keys()))
-            run = run_labels[selected_label]
-            selected_run = run
+        st.caption("**Active run**")
+        st.markdown(f"<div class='active-run'>{_active}</div>", unsafe_allow_html=True)
 
-            # The label already carries env/model/mode/precision — only add
-            # what it doesn't: the log filename and which CSVs exist.
-            has_csv = run.epoch_csv_path is not None and run.epoch_csv_path.exists()
-            _csv_bits = " · ".join(
-                f"{name} {'✓' if ok else '—'}"
-                for name, ok in (("epoch", has_csv),
-                                 ("batch", run.batch_csv_path is not None),
-                                 ("per-class", run.perclass_csv_path is not None))
-            )
-            st.caption(f"{run.log_path.name}  \nCSV: {_csv_bits}")
+        # Quick switch: filter by environment first (cuts the list to a few) so
+        # each dropdown is short and readable. Browsing all runs at once is done
+        # in the Overview table (full names, tags, sparklines).
+        _envs = ["all"] + sorted({r.env for r in runs})
+        _env_idx = _envs.index(run.env) if run.env in _envs else 0
+        _env = st.selectbox("Environment", _envs, index=_env_idx, key="run_env_filter")
+        _opts = [r.label for r in runs if _env == "all" or r.env == _env]
+        if _active not in _opts:
+            _opts = [_active] + _opts
+
+        def _short(lbl: str) -> str:
+            # Drop the date (all same-ish) and, when filtering by env, the [env]
+            # tag, so the distinguishing part (time + model + tags) fits the box.
+            import re
+            s = re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
+            if _env != "all":
+                s = s.replace(f"[{_env}] ", "")
+            return s
+
+        _picked = st.selectbox("Switch run", _opts, index=_opts.index(_active),
+                               format_func=_short, key="run_switch")
+        if _picked != _active:
+            st.session_state["run_label"] = _picked
+            st.rerun()
+        st.caption("Browse all runs in the Overview table.")
 
     st.markdown("---")
     # ── Language (least-used control — keep it at the bottom) ─────────────────

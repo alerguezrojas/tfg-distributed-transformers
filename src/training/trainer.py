@@ -103,15 +103,21 @@ class Trainer(BaseTrainer):
             images = images.to(self.device)
             labels = labels.to(self.device)
 
-            if self.mixup_alpha > 0.0 and random.random() < 0.5:
-                images, labels = mixup_batch(images, labels, self.mixup_alpha)
+            # `labels` keeps the original 0/1 multi-hot targets — used for METRICS.
+            # The loss is computed on the augmented targets (`train_labels`); mixing
+            # those into the reported train F1 would bias it (thresholding a soft
+            # mixed label at 0.5 fabricates wrong "true" labels). See test_trainer.
+            train_images, train_labels = images, labels
+            mixed = self.mixup_alpha > 0.0 and random.random() < 0.5
+            if mixed:
+                train_images, train_labels = mixup_batch(images, labels, self.mixup_alpha)
             if self.label_smoothing > 0.0:
-                labels = labels * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
+                train_labels = train_labels * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
 
             self.optimizer.zero_grad()
             with self._autocast():
-                logits = self.model(images)
-                loss = self.criterion(logits, labels)
+                logits = self.model(train_images)
+                loss = self.criterion(logits, train_labels)
             self._scaler.scale(loss).backward()
             if self.grad_clip is not None:
                 self._scaler.unscale_(self.optimizer)
@@ -121,12 +127,16 @@ class Trainer(BaseTrainer):
 
             total_loss += loss.item()
             with torch.no_grad():
-                hard_labels = (labels > 0.5).long()
+                hard_labels = (labels > 0.5).long()      # ORIGINAL targets, not mixed
                 preds = (torch.sigmoid(logits) > 0.5).long()
                 preds_cpu = preds.cpu()
                 hard_labels_cpu = hard_labels.cpu()
-                all_preds.append(preds_cpu)
-                all_labels.append(hard_labels_cpu)
+                # Epoch train metrics aggregate only un-mixed batches: on a mixed
+                # batch the image itself is a blend, so preds-vs-original-labels is
+                # not a clean signal. (When mixup is off, every batch is kept.)
+                if not mixed:
+                    all_preds.append(preds_cpu)
+                    all_labels.append(hard_labels_cpu)
 
             if self._batch_hooks:
                 batch_metrics = {
@@ -142,6 +152,12 @@ class Trainer(BaseTrainer):
 
         if self.scheduler:
             self.scheduler.step()
+
+        # Degenerate fallback: if every batch was mixed (tiny loader + mixup), keep
+        # the last batch so the epoch metric is defined rather than crashing on cat([]).
+        if not all_preds:
+            all_preds.append(preds_cpu)
+            all_labels.append(hard_labels_cpu)
 
         all_preds_t = torch.cat(all_preds)
         all_labels_t = torch.cat(all_labels)
@@ -226,10 +242,17 @@ class Trainer(BaseTrainer):
         return ckpt
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
-        best_f1 = 0.0
-        for epoch in range(1, epochs + 1):
-            self.train_epoch(train_loader)
-            val_metrics = self.eval_epoch(val_loader)
-            if val_metrics["f1"] > best_f1:
-                best_f1 = val_metrics["f1"]
-                self.save_checkpoint(epoch, val_metrics)
+        """Not implemented on a bare Trainer — the training loop is owned by the
+        controller (Template Method in ``EpochController``), the single source of
+        truth for epoch iteration, best-model tracking, early stopping and DDP
+        barriers. A bare ``Trainer.fit`` would silently lack all of those.
+
+        Wrap the trainer with a controller (use ``TrainingSessionBuilder`` or
+        ``TracingDecorator``) and call ``.fit()`` on the wrapped object instead.
+        """
+        raise NotImplementedError(
+            "Trainer.fit() is intentionally not implemented: the training loop "
+            "lives only in EpochController (Template Method). Build the trainer "
+            "with TrainingSessionBuilder, or wrap it in a TracingDecorator, and "
+            "call .fit() on that."
+        )

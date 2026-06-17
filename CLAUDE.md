@@ -100,7 +100,7 @@ find ~/datasets/bigearthnet/BigEarthNet-S2/ -mindepth 2 -maxdepth 2 -type d | wc
 - **Splits:** Train 237 871 | Val 122 342 | Test 119 825
 - **Bandas:** B04, B03, B02 (proxy RGB), reflectancia / 10 000, clipped [0, 1]
 - **Tarea:** clasificación multi-label, 19 clases CORINE Land Cover
-- **Pérdida:** `BCEWithLogitsLoss` (sin sigmoid en el modelo)
+- **Pérdida:** `BCEWithLogitsLoss` por defecto (sin sigmoid en el modelo); opcionalmente `FocalLoss` o `pos_weight` vía `training.loss`/`pos_weight` (ver `src/training/losses.py`)
 - **Métricas:** macro F1 + sample-averaged accuracy + precision + recall
 
 ---
@@ -155,6 +155,8 @@ src/training/
   trainer.py               # implementación pura, usa metrics.py; devuelve _preds/_labels en eval_epoch
   builder.py               # TrainingSessionBuilder — fluent API para montar el stack de decoradores
   metrics.py               # f1_score, precision, recall, accuracy, eta_str
+  losses.py                # FocalLoss multi-label + pos_weight ('auto' del metadata) + build_criterion
+  config_validator.py      # validate_config() — valida el YAML antes de entrenar
   logger_setup.py          # setup_logger() con formato timestamp
   fn_decorators.py         # decoradores @ de Python: timed, log_call, measure_energy, retry_on_cuda_oom
   decorators/
@@ -848,31 +850,33 @@ uv pip install torch torchvision \
     --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
 ```
 
-Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `rasterio`, `pandas`, `pyarrow`, `pyyaml`, `matplotlib`, `nvidia-ml-py`, `streamlit`, `plotly`
+Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `rasterio`, `pandas`, `pyarrow`, `pyyaml`, `matplotlib`, `nvidia-ml-py`, `streamlit`, `streamlit-option-menu`, `plotly`
 
 ---
 
 ## Dashboard web
 
-`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~180 líneas) que monta page config + sidebar + las 6 páginas y delega en módulos `render(ctx)`. **Tema visual** en `.streamlit/config.toml` (primario azul #1A5276, toolbar mínima) — sin él Streamlit usa su rojo por defecto.
+`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~220 líneas: page config + CSS + sidebar + dispatch) que monta el menú de iconos + las 5 páginas y delega en módulos `render(ctx)`. **Tema visual** en `.streamlit/config.toml` (primario azul #1A5276, toolbar mínima) — sin él Streamlit usa su rojo por defecto.
 
 ```
 .streamlit/config.toml      # tema (primaryColor azul, toolbarMode minimal)
 src/web/
   __init__.py
-  app.py                    # orquestador delgado: page config + CSS + sidebar + dispatch a tabs/
+  app.py                    # orquestador: page config + CSS + menú de iconos (streamlit-option-menu)
+                            #   + selector de run activo + dispatch a tabs/
   ui/
     context.py              # DashboardContext (runs, selected_run, run, refresh_interval) → ctx
     charts.py               # helpers Plotly + estilo: _show, _dl_csv, _metric_fig, _overlay_fig,
                             #   _base_layout, COLORS, _CLASS_GROUPS (única llamada a st.plotly_chart)
-    helpers.py              # loaders cacheados (_load_df, _get_runs, _feas_label…) + helpers (gpu/log/launch)
+    helpers.py              # loaders cacheados (_load_df, _get_runs, _class_gallery…) + utilidades
   tabs/
-    home.py                 # render(ctx) — pantalla principal con cuadrícula
-    run.py                  # Curves / Per-class / Batch / Time / Info
+    home.py                 # render(ctx) — Overview compacto: tira de KPIs + ranking F1 + run activo
+                            #   + velocidad/epoch + donut de estrategias + panel dataset (galería 19 clases) + tabla seleccionable
+    run.py                  # Curves / Per-class / Confusions / Batch / Details (una fila de pestañas)
     comparison.py           # Compare unificado: multiselect → resumen + speedup vs baseline + radar + energía + overlays
-    feasibility.py          # Report / Prediction vs reality / Real study / Run analysis
-    data_models.py          # Dataset / Models
-    system.py               # Monitor / Live / Launcher
+    feasibility.py          # Predict (predictor analítico) / Validate (predicho vs real) / Measure (benchmark, avanzado)
+    data_models.py          # Import runs (subir zip / apuntar a carpeta → copia a logs/)
+  run_import.py             # import_run_archive (zip) / import_run_folder / _dest_relpath (puro, testeable)
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
                             # RunInfo con env, mode, model, precision (leída del log) y CSV paths;
                             # label compacto con tags [ddp]/[amp]/[deep] (defaults implícitos)
@@ -881,10 +885,12 @@ src/web/
   perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
   feasibility_parser.py     # lee feasibility_*.csv → (metadata dict, benchmark DataFrame); bloque #gpu
   confusion_matrix_parser.py # lee confusion_matrix_*.csv → matriz numpy por epoch
-  system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo enriquecido con specs de GPU
+  system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo con specs de GPU (usado por el predictor)
 ```
 
-**Specs de GPU** (`src/gpu_specs.py`): deriva núcleos CUDA y Tensor de cada GPU a partir de su compute capability (→ arquitectura → cores/SM) × nº de SMs (V100 5120/640, T4 2560/320, RTX 3060 Ti 4864/152). Se muestran en **System → Monitor** y **Feasibility → Report**; el `check_feasibility.py` los registra (bloque CSV `#gpu`) y acepta `--device INDEX` para elegir GPU en máquinas multi-GPU (selector en el formulario "Run analysis").
+**Motor analítico de predicción** (`src/performance_model.py`): predice tiempo/speedup/memoria/cuello/coste de **cualquier** (estrategia, modelo, GPU, nº GPUs, dataset, batch, precisión) **sin benchmark** (fórmula maestra `T(n,π)`, estimación de `r_c/r_io/π` por specs, modelo de memoria/OOM). Calibrado contra los datos reales de Kaggle (<10%). Expuesto en **Feasibility → Predict**. Derivación en `docs/performance_model.md`. Ver sección "Mejoras post-reunión 11/06".
+
+**Specs de GPU** (`src/gpu_specs.py`): deriva núcleos CUDA y Tensor de cada GPU a partir de su compute capability (→ arquitectura → cores/SM) × nº de SMs (V100 5120/640, T4 2560/320, RTX 3060 Ti 4864/152). El `check_feasibility.py` los registra (bloque CSV `#gpu`) y acepta `--device INDEX`; el predictor analítico los usa para estimar `r_c`.
 
 **Modelos de speedup seleccionables** (`src/estimation_models.py`): leyes analíticas Linear / Amdahl / Gustafson (puras, con fórmula), superponibles sobre la estimación compute/IO-aware del feasibility en **Feasibility → Report (DDP)**, con slider de fracción serial *s*.
 
@@ -895,18 +901,17 @@ uv run streamlit run src/web/app.py
 # Abre http://localhost:8501
 ```
 
-### Estructura (v7 — 6 pestañas de nivel superior con sub-pestañas)
+### Estructura (v9 — menú de iconos, 5 secciones, selección de run por tabla)
 
-Reorganización de 14 pestañas planas → **6 con sub-secciones lógicas** (más intuitiva). Las antiguas pestañas se anidan como sub-pestañas (Streamlit coloca cada contenedor donde se crea, así que los bloques `with tab_X:` se rellenan en su posición anidada sin reescribir su contenido).
+**Navegación:** menú lateral con iconos (`streamlit-option-menu`) — **5 secciones**. **Regla de diseño: nunca más de un nivel de pestañas dentro de una sección.** El **run activo** es estado compartido (`session_state["run_label"]`): se elige clicando una fila de la tabla del Overview (`st.dataframe(on_select)`) o con el selector compacto de la sidebar (filtro de entorno + etiquetas cortas, sin desbordamiento). System se eliminó (el monitor de hardware no servía con el flujo Kaggle) y "Import runs" vive en su propia sección.
 
-| Pestaña (nivel sup.) | Sub-pestañas / contenido |
+| Sección (menú) | Contenido |
 |---|---|
-| **Inicio** | Pantalla principal con cuadrícula: métricas globales, run seleccionado, sistema, top clases, tabla de runs |
-| **Run** (detalle del run de la barra lateral) | **Curvas** (F1/loss/acc, tiempo, energía) · **Por clase** (ranking, tendencia, heatmap 19×19) · **Batch** (running loss, MA, LR) · **Tiempo** (real vs estimación) · **Información** (config, anomalías, log) |
-| **Comparativa** | **Sección única unificada**: multiselect (hasta 8 runs) → resumen · speedup frente a una baseline (tabla + barras + veredictos por modo + validación feasibility + escalado teórico) · radar · energía · overlays por epoch |
-| **Viabilidad** | **Informe** (perfil sistema/I/O, benchmark, estimaciones, **escenarios DDP**) · **Predicción vs realidad** (auto-emparejada con el run; titular + semáforo + barras de error por métrica + curva F1 histórica; tabla de fórmulas plegada) · **Estudio real** (LR range, convergencia, gradient noise) · **Ejecutar análisis** |
-| **Datos y modelos** | **Dataset** (splits, clases, imágenes de ejemplo) · **Modelos** (explorador timm) |
-| **Sistema** | **Monitor** (CPU/RAM/GPU auto-refresh) · **En vivo** (run en curso) · **Lanzador** (lanzar single/DDP) |
+| **Overview** | Dashboard compacto: tira de 8 KPIs · ranking Best F1 · tarjeta del run activo (mini F1/loss + veredicto) · velocidad media/epoch · donut de estrategias · **panel del dataset** (splits, subset usado por los runs recientes, clases frecuentes, **galería de las 19 clases** con info multi-etiqueta) · tabla "All runs" seleccionable con sparklines |
+| **Run results** | **Una fila de pestañas**: Curves · Per-class (barras+tendencia) · Confusions (diagnósticos multi-etiqueta) · Batch (selector de vista) · Details (tiempo + config/anomalías/log) |
+| **Compare** | **Sección única**: multiselect (≤8 runs) → resumen · speedup vs baseline (tabla+barras+veredictos+validación feasibility+escalado) · radar · energía · overlays |
+| **Feasibility** | **Predict** (predictor analítico: tiempo/speedup/memoria/coste para cualquier config sin benchmark + curva 1→8 GPUs) · **Validate** (predicho vs real) · **Measure (advanced)** (benchmark real en esta máquina: generar informe + verlo en expanders + estudio de convergencia) |
+| **Import** | Importar runs entrenados en otra máquina (zip o carpeta → copia a `logs/`) |
 
 **Predicción vs realidad** (rediseño de la antigua "Comparar vs training"): elige el run en la barra lateral → auto-empareja su feasibility (mismo modelo/entorno); muestra estimado vs real con semáforo y un veredicto en lenguaje natural (precisa / optimista por I/O / pesimista). Avisa si el run es distribuido (la estimación es single-GPU → la diferencia incluye el speedup).
 
@@ -1029,9 +1034,27 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Compare unificado en una sola sección (11/06/26):** fuera las 2 sub-pestañas ("Single vs Distributed" / "Overlay runs") — un único multiselect (hasta 8 runs) alimenta todo: resumen (con columnas Mode/Precision), **Speedup analysis generalizado** (todos los runs frente a una **baseline** elegible — default inteligente: single+fp32+no-deep, recalculado al cambiar la selección; el `key` fijo congelaba la elección de la primera renderización), tabla con notas por run (eficiencia vs 2× ideal para ddp, "≈1× expected" para MP, mismatch de modelo/precisión/traza), barras horizontales de speedup, banners pedagógicos (MP/hetero) una sola vez, validación del feasibility (predicho vs medido si hay par single+ddp comparable) y escalado teórico con un punto por run distribuido; después radar + energía + overlays. Reproduce en vivo la tabla de 5 estrategias (1.97×/1.03×/3.69×/5.50× sobre el single fp32). Rama: `feature/web-compare-unified`.
 - [x] **Claridad del Speedup analysis + default de sesión (11/06/26):** el selector de baseline confundía (parecía un picker de par de 2 runs) — caption explicativa ("todos los seleccionados arriba se comparan contra UNO — la baseline, que cuenta como 1.00×") + label extendido + aviso si algún run seleccionado no tiene tiempos; el **default del multiselect pasa a ser la última sesión** (runs del mismo entorno y día que el más reciente, máx 8) → Compare abre con las 5 estrategias de Kaggle ya cargadas y la baseline en el single fp32; el "% of ideal 2×" de ddp solo se muestra si la precisión coincide con la baseline (con AMP mezclaba el efecto Tensor cores en la eficiencia DDP). Rama: `feature/web-speedup-clarity`.
 
+#### Mejoras post-reunión 11/06 (4 encargos del tutor)
+- [x] **System: fuera Lanzador/En vivo → Importar runs (11/06/26):** el Lanzador y el monitor En vivo no servían con el flujo real (se entrena en Kaggle/Verode, no desde esta máquina). `System` queda en **Monitor** (hardware local) + **Importar runs**: subir el zip que produce un entrenamiento remoto (o apuntar a una carpeta) → `src/web/run_import.py` (puro, testeable: `import_run_archive`/`import_run_folder`/`_dest_relpath` que corta desde el segmento `logs/`, acepta zips de `logs/` o de su contenido, rechaza path traversal) copia los artefactos a `logs/` y el dashboard los descubre. Caches invalidadas tras importar. 6 tests. Rama: `feature/web-import-runs`.
+- [x] **Matriz de confusión → diagnósticos multi-etiqueta (11/06/26):** una 19×19 clásica no encaja en multi-label (cada imagen tiene varias de las 19 clases), por eso costaba leerla. El sub-tab **Confusions** muestra lo interpretable de la matriz de co-activación: **recall por clase** (la diagonal, coloreada, con veredicto de las clases que casi nunca detecta), **top confusiones** ("cuando X está presente, el modelo también predice Y"), **perfil por clase**, y la 19×19 completa en un expander con guía de lectura. Quitado el toggle "Absolute" (era erróneo: multiplicaba por la suma de la fila normalizada, no por el soporte real). Helpers testeables `recall_by_class`/`top_confusions`/`confusion_profile` (4 tests). Rama: `feature/web-confusion-multilabel`.
+- [x] **Motor analítico del feasibility — `src/performance_model.py` (11/06/26):** predictor de forma cerrada (puro, sin GPU) para tiempo/speedup/memoria/cuello de **cualquier** (estrategia, modelo, GPU, nº GPUs, dataset, batch, precisión) **sin benchmark**, según el brief del tutor. Estima `r_c = MFU·TFLOPS_fp32/FLOPs_train` (MFU=0.17 calibrado), `π` de tabla Tensor-core medida, `r_io` de tabla de disco; fórmula maestra `T(n,π)=φ·[max(compute/n, io)+sync]` por estrategia (single/ddp/model_parallel/heterogéneo) con los regímenes compute/io/sync; modelo de memoria→OOM+batch máx (calibrado a vit_large 13.78 GB@b32 T4); `predict()` unificada con calibración opcional vía `rc_measured`. 16 tests reproducen la tabla real Kaggle 2×T4 (<10%: single +1%, DDP 1.95×, AMP 3.80×, MP 1.00×, vit_tiny I/O-bound, OOM de vit_large). Expuesto en **Viabilidad → Predictor** (formulario + curva 1→8 GPUs). `docs/performance_model.md` con derivación + tabla de validación. Rama: `feature/feasibility-analytic-model`.
+- [x] **Rediseño web — hub tipo wandb (11/06/26):** **Inicio (Overview)** pasa a ser un hub: KPIs en tarjetas (`container(border=True)`), fila de **tarjetas de navegación** a cada sección (botón Open → `st.session_state['nav']`), run destacado + run seleccionado en tarjetas con mini F1/loss + veredicto, y tabla "All runs" con **sparkline de Val F1 por run** (`st.column_config.LineChartColumn`) + barra de Best F1 (`ProgressColumn`) + tags mode/precision/env. Verificado con Playwright (EN+ES). Rama: `feature/web-hub-redesign`.
+- [x] **Suite de tests en 311** (+26 sobre 285: run_import 6, confusion multi-label 4, performance_model 16; dashboard/i18n actualizados).
+- [x] **Rediseño de arquitectura de información + copy neutro (17/06/26):** segundo encargo del tutor sobre la interfaz (seguía liosa). (1) **Menú lateral de iconos** (`streamlit-option-menu`) en vez de botones; las tarjetas "Open" del hub saltan vía `_nav_jump`+`manual_select`. (2) **Eliminado el anidamiento de 3 niveles** (la causa de la confusión): Run results pasa a **una sola fila** (Curves · Per-class · Confusions · Batch · Time · Info) — Confusions y la tendencia suben al primer nivel, Batch usa un selector de vista horizontal; **Feasibility → Report** pasa de 5 sub-sub-pestañas a **expanders plegables** en una página (summary-first). (3) **Pasada de copy a registro neutro/profesional** (fuera "Did the model catch each class?", "what gets confused with what", "the GPU waits for the CPU", "in front of you", "drag the macro-F1 down"…). Herramienta: se mantiene Streamlit (correcto y publicable; hosting gratis en Streamlit Community Cloud). Verificado con Playwright (nav, aplanado, expanders, tarjetas Open, EN/ES). Rama: `feature/web-ia-redesign`.
+- [x] **Rediseño compacto + selección por tabla + Feasibility en 3 fases (17/06/26):** tercera iteración tras feedback ("hazla más compacta, útil y publicable"). (1) **Overview compacto tipo dashboard** (inspirado en NanoEdge): KPIs en tarjetas + barra "Best Val F1 by run (top 8)" + tarjeta del run activo con mini F1/loss + tarjetas de sección + **tabla "All runs" seleccionable** (clicar una fila activa ese run en todo el dashboard, vía `st.dataframe(on_select=...)` + guard `_last_table_row` para no pelear con la sidebar). (2) **Selector de run rehecho**: la sidebar muestra el run activo compacto + popover "Change run" (fuera el desplegable que se desbordaba). (3) **System eliminado** (el monitor de hardware no servía con el flujo Kaggle); "Import runs" movido a **Data & runs** → 5 secciones. (4) **Feasibility de 5 pestañas a 3 fases claras**: **Predict** (predictor analítico = la respuesta del profesor), **Validate** (predicho vs real), **Measure (advanced)** (benchmark real: generar informe + verlo + estudio de convergencia, apilados en scroll). (5) **Run results** de 6 a 5 pestañas (Time+Info → "Details"). Rama: `feature/web-compact-redesign`.
+- [x] **Overview más denso + dataset y predictor enriquecidos (17/06/26):** continuación del afinado. (1) **Selector de run definitivo**: caja del run activo a nombre completo + filtro por entorno + selectbox con etiquetas cortas distinguibles (`21:43 vit_large [model_parallel]`) — sin popover ni desbordamiento. (2) Las tarjetas "Open" redundantes (la nav ya está en el menú) se sustituyen por **gráficas relevantes**: velocidad media/epoch (8 más rápidos) y **donut de estrategias**. (3) **Tira de 8 KPIs** compacta (Runs, Best F1, Fastest epoch, GPU time, Energy, Models, Environments, Feasibility). (4) **Dataset movido al Overview** (sección Dataset/Models eliminada → la sección queda solo "Import"): splits + **subset usado por los runs recientes** (leído de su config) + clases frecuentes + **galería de las 19 clases** (un patch distinto por clase, rejilla uniforme de 10 col) con **info multi-etiqueta** (media de clases/patch, `+k` y tooltip con todas las clases del patch). (5) El **Predictor** añade **coste en la nube** para la config elegida → predice tiempo+speedup+memoria+coste de una vez (la "fórmula potente" del tutor, completa). Helper cacheado `_class_gallery` (una sola lectura del parquet). Ramas: `feature/web-compact-redesign` (continuación).
+
+#### Arreglos críticos tras auditoría (17/06/26) — rama `feature/critical-fixes`, PR #22 → develop
+- [x] **Train F1 insesgado:** `Trainer` y `DeepTracingDecorator` calculan el F1 de entrenamiento sobre las etiquetas **originales**, no las mezcladas por mixup (antes umbralizaban las soft labels a 0.5 → "verdad" inventada). Sesgaba el argumento del gap train-val en las configs con mixup (v3+).
+- [x] **Selección de modelo justa:** `EpochController.select_metric` (`f1` por defecto | `f1_optimal`); `training.select_by` en el config. Elige el mejor checkpoint y el early stopping por el F1 al **umbral óptimo** — imprescindible para focal (baja las probabilidades → su F1 a 0.5 sale bajo a propósito).
+- [x] **Losses contra el techo ~0.68:** `src/training/losses.py` — `FocalLoss` multi-label + `pos_weight` (`'auto'` del metadata) + factory `build_criterion`. Conectado en el builder (`training.loss` / `focal_gamma` / `pos_weight`) y validado. Configs `train_cluster_focal.yaml` + `train_cluster_bce.yaml` (pareja apples-to-apples) + pareja local de demo. **Demo local vit_tiny (subset): focal redujo las clases con F1=0 de 8 a 6** (rescató Industrial units y Permanent crops). Run grande vit_base/dataset-completo pendiente de Verode libre (runbook: `docs/verode_focal_runbook.md`).
+- [x] **Coherencia de diseño:** `Trainer.fit()` lanza `NotImplementedError` — el bucle vive solo en `EpochController` (Template Method). Documentado el invariante "controlador vs aspecto" en `DeepTracingDecorator`.
+- [x] **Honestidad documental:** `docs/performance_model.md` separa calibración (in-sample) de validación out-of-sample (los speedups cancelan la MFU → predicción genuina).
+- [x] **Proceso:** README real (antes 1 línea) + CI (`.github/workflows/ci.yml`, pytest en cada push/PR). **Suite en 333 tests.**
+
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
-- [ ] (Opcional) Tratar las clases raras (pos_weight / focal loss) para subir el F1 macro por encima del techo ~0.68.
+- [ ] (Opcional, **ya implementado, falta correr**) Run focal-vs-BCE en Verode (V100, dataset completo) para confirmar a escala si focal sube el F1 macro / rescata la clase 6. Capacidad y configs listas; solo falta GPU libre.
 
 ---
 
@@ -1046,7 +1069,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 
 ### Trabajo futuro (mejoras opcionales, si sobra tiempo)
 - **`rico-hdl` — atacar el cuello de I/O (la mejora de mayor impacto):** convertir BigEarthNet-S2 a un formato de lectura rápida (LMDB) con [rico-hdl](https://github.com/rsim-tu-berlin/rico-hdl), uno de los "Additional Links" del dataset. El estudio demostró que con modelos ligeros el cuello es el **I/O del NFS** (vit_tiny escaló solo 1.27× en 2×T4 vs 1.90× de vit_base compute-bound; en Verode el heterogéneo penaliza por I/O + desbalance). Convertir a LMDB aceleraría el data loading → **mejoraría el escalado distribuido de modelos ligeros y el throughput general**. Requiere re-convertir el dataset y adaptar `BigEarthNetDataset`.
-- **Clases raras:** `pos_weight` en `BCEWithLogitsLoss` o focal loss para romper el techo de F1 macro ~0.68 (la clase 6 "Land principally occupied by agriculture" da F1=0; varias clases raras tiran el macro hacia abajo).
+- **Clases raras:** `pos_weight` y focal loss **ya implementados** (`src/training/losses.py`, `training.loss`/`pos_weight`) para romper el techo de F1 macro ~0.68 (la clase 6 "Land principally occupied by agriculture" da F1=0). Validado en demo local (clases con F1=0: 8→6 con focal); falta el run grande en Verode para confirmar a escala.
 - **Más espectro:** usar las 12 bandas de Sentinel-2 (ahora solo RGB proxy B04/B03/B02) o fusión S1 (radar) + S2 (óptico). Extensión grande, fuera del alcance actual.
 - **Recomendación de batch global en `recommend_config`:** afinar la sugerencia de batch/lr (regla de escalado lineal) cuando recomienda varias GPUs.
 
