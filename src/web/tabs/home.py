@@ -52,8 +52,8 @@ def render(ctx: DashboardContext) -> None:
     runs = ctx.runs
     selected_run = ctx.selected_run
     st.markdown("## Overview")
-    st.caption("A bit of everything in one place — global stats, the selected run, "
-               "quick links and all runs. Drill into any section from the cards below.")
+    st.caption("Global statistics, the selected run, quick links and all runs. "
+               "Open any section from the cards below.")
 
     # ── Global statistics (one pass over the runs) ──────────────────────────────
     best_f1_global = float("-inf")
@@ -96,7 +96,7 @@ def render(ctx: DashboardContext) -> None:
             st.markdown(f"**{title}**")
             st.caption(desc)
             if st.button("Open", key=f"hub_nav_{key}", use_container_width=True):
-                st.session_state["nav"] = key
+                st.session_state["_nav_jump"] = key
                 st.rerun()
 
     # ── Highlight: the best run so far ──────────────────────────────────────────

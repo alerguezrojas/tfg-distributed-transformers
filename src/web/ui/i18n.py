@@ -127,8 +127,8 @@ TRANSLATIONS: dict[str, str] = {
     "Max batch that fits": "Batch máximo que cabe",
     "Scaling 1 → 8 GPUs (predicted)": "Escalado 1 → 8 GPUs (predicho)",
     "Confusions": "Confusiones",
-    "Did the model catch each class? (recall)": "¿Detectó el modelo cada clase? (recall)",
-    "What gets confused with what": "Qué se confunde con qué",
+    "Recall by class": "Recall por clase",
+    "Label confusions": "Confusiones de etiquetas",
     "Per-class profile": "Perfil por clase",
     "When this class is truly present…": "Cuando esta clase está realmente presente…",
     "Full 19×19 co-activation matrix (advanced)":
@@ -152,8 +152,8 @@ TRANSLATIONS: dict[str, str] = {
     "Project overview": "Vista general del proyecto", "All runs": "Todos los runs",
     "Selected run": "Run seleccionado",
     "Sections": "Secciones", "Top run": "Run destacado", "Open": "Abrir",
-    "A bit of everything in one place — global stats, the selected run, quick links and all runs. Drill into any section from the cards below.":
-        "Un poco de todo en un sitio — estadísticas globales, el run seleccionado, accesos rápidos y todos los runs. Entra a cada sección desde las tarjetas de abajo.",
+    "Global statistics, the selected run, quick links and all runs. Open any section from the cards below.":
+        "Estadísticas globales, el run seleccionado, accesos rápidos y todos los runs. Abre cualquier sección desde las tarjetas de abajo.",
     "Curves, per-class, batch & metadata of one run":
         "Curvas, por clase, batch y metadatos de un run",
     "Speedup, energy & overlays across runs":

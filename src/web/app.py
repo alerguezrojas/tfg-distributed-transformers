@@ -14,6 +14,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import streamlit as st
+from streamlit_option_menu import option_menu
 
 from src.web.ui import i18n
 from src.web.ui.context import DashboardContext
@@ -111,13 +112,11 @@ st.markdown("""
 
 runs = _get_runs()
 
-# Grouped sidebar navigation: a single, always-visible map of the dashboard,
-# organized by task. Each entry renders one tab module (full-width main area).
-_NAV = [
-    ("ANALYZE", [("overview", "Overview"), ("run", "Run results"), ("compare", "Compare")]),
-    ("PLAN", [("feasibility", "Feasibility")]),
-    ("DATA & OPS", [("data", "Data & models"), ("system", "System")]),
-]
+# Single-level sidebar navigation (icon menu). Each entry renders one page
+# module full-width. Pages keep at most ONE row of tabs inside — never 3 levels.
+_NAV_KEYS = ["overview", "run", "compare", "feasibility", "data", "system"]
+_NAV_LABELS = ["Overview", "Run results", "Compare", "Feasibility", "Data & models", "System"]
+_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "database", "cpu"]
 _PAGES = {
     "overview": home.render,
     "run": run_tab.render,
@@ -127,21 +126,30 @@ _PAGES = {
     "system": system.render,
 }
 
-# Everything must fit without scrolling: navigation first, then the run
-# selector; the language toggle goes last (used once per session at most).
 with st.sidebar:
     st.markdown("### Training Dashboard")
 
-    # ── Navigation (grouped, always visible) ──────────────────────────────────
-    _page = st.session_state.get("nav", "overview")
-    for _group, _items in _NAV:
-        st.caption(_group)
-        for _key, _label in _items:
-            if st.button(_label, key=f"nav_{_key}", use_container_width=True,
-                         type="primary" if _page == _key else "secondary"):
-                st.session_state["nav"] = _key
-                st.rerun()
-    _page = st.session_state.get("nav", "overview")
+    # ── Navigation (icon menu, single level) ──────────────────────────────────
+    if "nav" not in st.session_state:
+        st.session_state["nav"] = "overview"
+    # A hub card (or any page) can request a jump via "_nav_jump"; option_menu's
+    # manual_select forces the menu to that entry on the next run.
+    _manual = None
+    if st.session_state.get("_nav_jump"):
+        _manual = _NAV_KEYS.index(st.session_state.pop("_nav_jump"))
+    _chosen = option_menu(
+        menu_title=None, options=_NAV_LABELS, icons=_NAV_ICONS,
+        default_index=_NAV_KEYS.index(st.session_state["nav"]),
+        manual_select=_manual, key="navmenu",
+        styles={
+            "container": {"padding": "0", "background-color": "transparent"},
+            "nav-link": {"font-size": "0.9rem", "padding": "0.45rem 0.7rem",
+                         "margin": "0.1rem 0"},
+            "nav-link-selected": {"background-color": "#1A5276"},
+        },
+    )
+    _page = _NAV_KEYS[_NAV_LABELS.index(_chosen)]
+    st.session_state["nav"] = _page
 
     st.markdown("---")
     # ── Run selector (shared context across pages) ────────────────────────────
