@@ -139,12 +139,13 @@ def test_app_is_thin_orchestrator(app_source):
 
 
 def test_sidebar_nav_sections(app_source):
-    """The grouped sidebar navigation labels (English) live in app.py."""
+    """The single-level icon-menu navigation labels (English) live in app.py."""
     for t in ('"Overview"', '"Run results"', '"Compare"', '"Feasibility"',
               '"Data & models"', '"System"'):
         assert t in app_source, f"missing nav item {t}"
-    # Grouped, always-visible navigation (no top tab bar).
-    assert "_NAV" in app_source and "st.session_state" in app_source
+    # Icon menu (streamlit-option-menu), single level, session-state driven.
+    assert "option_menu" in app_source
+    assert "_NAV_KEYS" in app_source and "st.session_state" in app_source
 
 
 def test_sub_tab_names(tabs_source):

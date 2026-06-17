@@ -72,7 +72,7 @@ def render(ctx: DashboardContext) -> None:
 
     # ── Prediction vs reality (auto-paired with the run in the sidebar) ─────────
     with subtab_predreal:
-        st.markdown("### Feasibility prediction vs what actually happened")
+        st.markdown("### Predicted vs actual")
         st.caption(
             "The feasibility runs **on 1 GPU**: from there it (A) estimates the "
             "single-GPU time and (B) **predicts** the speedup when distributing. There "
@@ -168,9 +168,9 @@ def render(ctx: DashboardContext) -> None:
                                 _x = (f" Likely cause: **I/O-bound** (ratio≈{_io:.1f}) — the synthetic "
                                       "benchmark does not include disk reads (NFS)."
                                       if _io and _io > 1 else "")
-                                st.warning(f"**Optimistic estimate** — the real run was {abs(_e):.0f}% slower.{_x}")
+                                st.warning(f"**Optimistic estimate** — the run was {abs(_e):.0f}% slower than predicted.{_x}")
                             else:
-                                st.info(f"**Pessimistic estimate** — the real run was {_e:.0f}% faster than expected.")
+                                st.info(f"**Conservative estimate** — the run was {_e:.0f}% faster than predicted.")
                         # Simple chart: estimated vs real time, same unit (min)
                         _tm = [(n, _rows.get(k)) for n, k in
                                (("Train", "Train time / epoch"),
@@ -245,12 +245,13 @@ def render(ctx: DashboardContext) -> None:
             st.info("No feasibility CSVs found. Run the analysis from the 'Run analysis' sub-tab.")
             subtab_ddp_opt = st.container()
         else:
-            # Grouped by purpose so the report reads as summary-first, not one
-            # long scroll. 'Distributed scaling' holds the DDP-scenarios section.
-            _rt = st.tabs([
+            # One scrolling page with collapsible sections (no nested tab row).
+            # The first is open; the rest start collapsed → summary-first.
+            _rt_titles = [
                 "Hardware & precision", "Dataset I/O & memory",
                 "Throughput & time", "Distributed scaling", "Cloud cost",
-            ])
+            ]
+            _rt = [st.expander(t, expanded=(i == 0)) for i, t in enumerate(_rt_titles)]
 
             with _rt[0]:
                 # ── System profile ─────────────────────────────────────────────
@@ -1026,7 +1027,7 @@ def _analytic_predictor() -> None:
         "Analytic engine: from curated GPU and model specs it estimates compute "
         "throughput, I/O, gradient-sync and memory, then applies the master "
         "formula per strategy. Use it to plan a run on hardware you don't have "
-        "in front of you. The constants are calibrated against the real Kaggle "
+        "available. The constants are calibrated against the real Kaggle "
         "2×T4 measurements (single +4%, DDP speedup <1%, AMP <2%)."
     )
 

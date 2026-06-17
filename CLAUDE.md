@@ -848,7 +848,7 @@ uv pip install torch torchvision \
     --index-url https://download.pytorch.org/whl/cu118 --force-reinstall
 ```
 
-Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `rasterio`, `pandas`, `pyarrow`, `pyyaml`, `matplotlib`, `nvidia-ml-py`, `streamlit`, `plotly`
+Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `rasterio`, `pandas`, `pyarrow`, `pyyaml`, `matplotlib`, `nvidia-ml-py`, `streamlit`, `streamlit-option-menu`, `plotly`
 
 ---
 
@@ -895,14 +895,14 @@ uv run streamlit run src/web/app.py
 # Abre http://localhost:8501
 ```
 
-### Estructura (v7 — 6 pestañas de nivel superior con sub-pestañas)
+### Estructura (v8 — menú lateral de iconos + máx. 2 niveles)
 
-Reorganización de 14 pestañas planas → **6 con sub-secciones lógicas** (más intuitiva). Las antiguas pestañas se anidan como sub-pestañas (Streamlit coloca cada contenedor donde se crea, así que los bloques `with tab_X:` se rellenan en su posición anidada sin reescribir su contenido).
+**Navegación:** menú lateral con iconos (`streamlit-option-menu`) — 6 secciones de nivel superior. **Regla de diseño: nunca más de un nivel de pestañas dentro de una sección** (se eliminó el anidamiento de 3 niveles que hacía la web liosa). Donde antes había sub-sub-pestañas: Run results subió Confusions y la tendencia al primer nivel y Batch usa un selector de vista; el Report de Feasibility pasó a expanders plegables en una sola página.
 
 | Pestaña (nivel sup.) | Sub-pestañas / contenido |
 |---|---|
 | **Inicio (Overview)** | **Hub tipo wandb**: KPIs en tarjetas · tarjetas de navegación a cada sección (botón Open) · run destacado + run seleccionado en tarjetas (mini F1/loss + veredicto) · tabla "All runs" con **sparkline de Val F1** (`LineChartColumn`) + barra de Best F1 (`ProgressColumn`) + tags mode/precision/env |
-| **Run** (detalle del run de la barra lateral) | **Curvas** (F1/loss/acc, tiempo, energía) · **Por clase** (ranking, tendencia) · **Confusions** (diagnósticos multi-etiqueta: recall por clase, top confusiones, perfil por clase, matriz 19×19 en expander) · **Batch** (running loss, MA, LR) · **Tiempo** (real vs estimación) · **Información** (config, anomalías, log) |
+| **Run** (detalle del run de la barra lateral) | **Una sola fila de pestañas** (sin anidar): Curvas · Por clase (bars+tendencia en scroll) · Confusions (diagnósticos multi-etiqueta) · Batch (selector de vista: per-epoch/global/LR) · Tiempo · Información |
 | **Comparativa** | **Sección única unificada**: multiselect (hasta 8 runs) → resumen · speedup frente a una baseline (tabla + barras + veredictos por modo + validación feasibility + escalado teórico) · radar · energía · overlays por epoch |
 | **Viabilidad** | **Predictor** (motor analítico `predict()`: tiempo/speedup/memoria/cuello para cualquier modelo·GPU·estrategia·n sin benchmark + curva 1→8 GPUs) · **Informe** (perfil sistema/I/O, benchmark, estimaciones, escenarios DDP) · **Predicción vs realidad** · **Estudio real** (LR range, convergencia, gradient noise) · **Ejecutar análisis** |
 | **Datos y modelos** | **Dataset** (splits, clases, imágenes de ejemplo) · **Modelos** (explorador timm) |
@@ -1035,6 +1035,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Motor analítico del feasibility — `src/performance_model.py` (11/06/26):** predictor de forma cerrada (puro, sin GPU) para tiempo/speedup/memoria/cuello de **cualquier** (estrategia, modelo, GPU, nº GPUs, dataset, batch, precisión) **sin benchmark**, según el brief del tutor. Estima `r_c = MFU·TFLOPS_fp32/FLOPs_train` (MFU=0.17 calibrado), `π` de tabla Tensor-core medida, `r_io` de tabla de disco; fórmula maestra `T(n,π)=φ·[max(compute/n, io)+sync]` por estrategia (single/ddp/model_parallel/heterogéneo) con los regímenes compute/io/sync; modelo de memoria→OOM+batch máx (calibrado a vit_large 13.78 GB@b32 T4); `predict()` unificada con calibración opcional vía `rc_measured`. 16 tests reproducen la tabla real Kaggle 2×T4 (<10%: single +1%, DDP 1.95×, AMP 3.80×, MP 1.00×, vit_tiny I/O-bound, OOM de vit_large). Expuesto en **Viabilidad → Predictor** (formulario + curva 1→8 GPUs). `docs/performance_model.md` con derivación + tabla de validación. Rama: `feature/feasibility-analytic-model`.
 - [x] **Rediseño web — hub tipo wandb (11/06/26):** **Inicio (Overview)** pasa a ser un hub: KPIs en tarjetas (`container(border=True)`), fila de **tarjetas de navegación** a cada sección (botón Open → `st.session_state['nav']`), run destacado + run seleccionado en tarjetas con mini F1/loss + veredicto, y tabla "All runs" con **sparkline de Val F1 por run** (`st.column_config.LineChartColumn`) + barra de Best F1 (`ProgressColumn`) + tags mode/precision/env. Verificado con Playwright (EN+ES). Rama: `feature/web-hub-redesign`.
 - [x] **Suite de tests en 311** (+26 sobre 285: run_import 6, confusion multi-label 4, performance_model 16; dashboard/i18n actualizados).
+- [x] **Rediseño de arquitectura de información + copy neutro (17/06/26):** segundo encargo del tutor sobre la interfaz (seguía liosa). (1) **Menú lateral de iconos** (`streamlit-option-menu`) en vez de botones; las tarjetas "Open" del hub saltan vía `_nav_jump`+`manual_select`. (2) **Eliminado el anidamiento de 3 niveles** (la causa de la confusión): Run results pasa a **una sola fila** (Curves · Per-class · Confusions · Batch · Time · Info) — Confusions y la tendencia suben al primer nivel, Batch usa un selector de vista horizontal; **Feasibility → Report** pasa de 5 sub-sub-pestañas a **expanders plegables** en una página (summary-first). (3) **Pasada de copy a registro neutro/profesional** (fuera "Did the model catch each class?", "what gets confused with what", "the GPU waits for the CPU", "in front of you", "drag the macro-F1 down"…). Herramienta: se mantiene Streamlit (correcto y publicable; hosting gratis en Streamlit Community Cloud). Verificado con Playwright (nav, aplanado, expanders, tarjetas Open, EN/ES). Rama: `feature/web-ia-redesign`.
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
