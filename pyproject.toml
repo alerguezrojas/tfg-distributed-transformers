@@ -5,6 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "dash>=4.2.0",
+    "dash-iconify>=0.1.2",
+    "dash-mantine-components>=2.8.0",
     "matplotlib>=3.10.8",
     "numpy>=2.4.4",
     "nvidia-ml-py>=13.595.45",
