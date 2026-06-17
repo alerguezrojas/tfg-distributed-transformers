@@ -729,7 +729,7 @@ def _time(ctx: DashboardContext) -> None:
                 except Exception:
                     pass
             if warmup_ep:
-                fig_time.add_vrect(x0=0.5, x1=warmup_ep + 0.5, fillcolor="#f59e0b", opacity=0.07,
+                fig_time.add_vrect(x0=0.5, x1=warmup_ep + 0.5, fillcolor="#A8823E", opacity=0.08,
                                    annotation_text=f"Warmup ({warmup_ep} ep)",
                                    annotation_position="top left")
 

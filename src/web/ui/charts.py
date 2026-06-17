@@ -109,14 +109,15 @@ def _overlay_fig(
 
 # ── Class groups (for the confusion matrix) ──────────────────────────────────
 
+# Muted, paper-grade group colours (cartographic but desaturated).
 _CLASS_GROUPS = {
-    "Urban":        ([0, 1],             "#6b7280"),
-    "Agricultural": ([2, 3, 4, 5, 6, 7], "#d97706"),
-    "Forest":       ([8, 9, 10, 13],     "#16a34a"),
-    "Scrub/grass":  ([11, 12],           "#84cc16"),
-    "Bare/coastal": ([14],               "#92400e"),
-    "Wetlands":     ([15, 16],           "#0891b2"),
-    "Water":        ([17, 18],           "#1d4ed8"),
+    "Urban":        ([0, 1],             "#5F6470"),
+    "Agricultural": ([2, 3, 4, 5, 6, 7], "#9C6B3E"),
+    "Forest":       ([8, 9, 10, 13],     "#4E7A6A"),
+    "Scrub/grass":  ([11, 12],           "#6B7A55"),
+    "Bare/coastal": ([14],               "#8A6A4A"),
+    "Wetlands":     ([15, 16],           "#4E6E7A"),
+    "Water":        ([17, 18],           "#3A536B"),
 }
 _CLASS_GROUP_COLOR: dict[int, str] = {
     idx: color for name, (idxs, color) in _CLASS_GROUPS.items() for idx in idxs
