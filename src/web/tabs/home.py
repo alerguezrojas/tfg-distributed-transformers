@@ -49,6 +49,8 @@ def render(ctx: DashboardContext) -> None:
     best_run_label = "—"
     best_run_df = pd.DataFrame()
     total_gpu_h = 0.0
+    fastest_min = float("inf")
+    total_energy_wh = 0.0
     feasibility_csvs_home = _get_feasibility_csvs()
     curve_by_label: dict[str, list[float]] = {}
     time_by_label: dict[str, float] = {}   # avg epoch time (s)
@@ -66,19 +68,33 @@ def render(ctx: DashboardContext) -> None:
                     best_f1_global, best_run_label, best_run_df = run_best, r.label, df_r
             if not df_r.empty and "epoch_time" in df_r.columns and df_r["epoch_time"].notna().any():
                 total_gpu_h += float(df_r["epoch_time"].dropna().sum()) / 3600
-                time_by_label[r.label] = float(df_r["epoch_time"].dropna().mean())
+                avg_s = float(df_r["epoch_time"].dropna().mean())
+                time_by_label[r.label] = avg_s
+                fastest_min = min(fastest_min, avg_s / 60)
+            for _c in ("energy_train_wh", "energy_eval_wh"):
+                if _c in df_r.columns and df_r[_c].notna().any():
+                    total_energy_wh += float(df_r[_c].dropna().sum())
         except Exception:
             pass
 
-    # ── Row 1: KPIs (left) + active-run curves (right) ──────────────────────────
+    n_models = len({r.model for r in runs if r.model})
+    n_envs = len({r.env for r in runs})
+
+    # ── Compact KPI strip (one dense row) ───────────────────────────────────────
+    _kpi_strip([
+        ("Runs", str(len(runs))),
+        ("Best Val F1", f"{best_f1_global:.3f}" if best_f1_global > float("-inf") else "—"),
+        ("Fastest epoch", f"{fastest_min:.1f} min" if fastest_min < float("inf") else "—"),
+        ("GPU time", f"{total_gpu_h:.0f} h"),
+        ("Energy", f"{total_energy_wh:.0f} Wh" if total_energy_wh else "—"),
+        ("Models", str(n_models)),
+        ("Environments", str(n_envs)),
+        ("Feasibility", str(len(feasibility_csvs_home))),
+    ])
+
+    # ── Row 1: best-F1 ranking (left) + active-run curves (right) ───────────────
     left, right = st.columns([1, 1.4])
     with left:
-        k1, k2 = st.columns(2)
-        _kpi(k1, "Runs", str(len(runs)))
-        _kpi(k2, "Best Val F1", f"{best_f1_global:.3f}" if best_f1_global > float("-inf") else "—")
-        k3, k4 = st.columns(2)
-        _kpi(k3, "GPU time", f"{total_gpu_h:.0f} h")
-        _kpi(k4, "Feasibility", str(len(feasibility_csvs_home)))
         with st.container(border=True):
             st.caption("Best Val F1 by run (top 8)")
             _best_f1_bars(runs, curve_by_label)
@@ -158,10 +174,13 @@ def _strategy_donut(mode_counts: dict[str, int]) -> None:
     _show(fig, "hub_strategy_donut")
 
 
-def _kpi(col, label: str, value: str) -> None:
-    with col.container(border=True):
-        st.caption(label)
-        st.markdown(f"#### {value}")
+def _kpi_strip(items: list[tuple[str, str]]) -> None:
+    """One dense row of stat cards (much more compact than st.metric cards)."""
+    cells = "".join(
+        f"<div class='kpi'><div class='v'>{v}</div><div class='l'>{l}</div></div>"
+        for l, v in items
+    )
+    st.markdown(f"<div class='kpi-strip'>{cells}</div>", unsafe_allow_html=True)
 
 
 def _best_f1_bars(runs, curve_by_label: dict[str, list[float]]) -> None:

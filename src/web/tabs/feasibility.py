@@ -1040,13 +1040,13 @@ def _analytic_predictor() -> None:
     """Closed-form predictor: estimate time/speedup/memory/cost for ANY
     (strategy, model, GPU, n_gpus, dataset, batch, precision) from specs — no
     benchmark required. Powered by src/performance_model.py."""
-    st.markdown("### Predict for any model / GPU / strategy (no benchmark)")
+    st.markdown("### Estimate a training before running it")
     st.caption(
-        "Analytic engine: from curated GPU and model specs it estimates compute "
-        "throughput, I/O, gradient-sync and memory, then applies the master "
-        "formula per strategy. Use it to plan a run on hardware you don't have "
-        "available. The constants are calibrated against the real Kaggle "
-        "2×T4 measurements (single +4%, DDP speedup <1%, AMP <2%)."
+        "Choose the parameters and get the full estimate — time, speedup, memory "
+        "(and OOM), and cloud cost — from analytic formulas calibrated on real "
+        "data, **without running anything**. Plan here first, then run the matching "
+        "training and compare in Validate. Errors vs the real Kaggle 2×T4 runs: "
+        "time +4%, DDP speedup <1%, AMP <2%."
     )
 
     c1, c2, c3 = st.columns(3)
@@ -1103,6 +1103,32 @@ def _analytic_predictor() -> None:
                  f"Largest batch that fits: **{p.recommended_batch}**.")
     for note in p.notes:
         st.info(note)
+
+    # ── Estimated cloud cost for this exact configuration ──────────────────────
+    from src.cloud_cost import estimate_costs
+    total_h = p.time_total_train_s / 3600 * (n_gpus if strategy in ("ddp", "heterogeneous") else 1)
+    cost_rows = estimate_costs(total_h, gpu_name)
+    own = next((r for r in cost_rows if (gpu_name.split()[-1] in r["gpu"] or r["gpu"] in gpu_name)
+                and r["usd_per_hour"] > 0), None)
+    st.markdown("#### Estimated cost")
+    cc1, cc2 = st.columns([1, 2])
+    with cc1:
+        st.metric(f"On {gpu_name}",
+                  f"${own['cost_usd']:.2f}" if own else "free / n/a",
+                  help="GPU-hours × on-demand price for this exact run.")
+        st.caption(f"≈ {total_h:.1f} GPU-hours")
+    with cc2:
+        cheap = [r for r in cost_rows if r["usd_per_hour"] > 0][:4]
+        if cheap:
+            cdf = pd.DataFrame([
+                {"Provider": r["provider"], "GPU": r["gpu"],
+                 "$/h": r["usd_per_hour"], "Cost ($)": r["cost_usd"]}
+                for r in cheap
+            ])
+            st.dataframe(cdf, hide_index=True, use_container_width=True)
+        st.caption("Cheapest paid options for an equivalent run (free tiers like "
+                   "Kaggle/Colab omitted). Prices are a ballpark, editable in "
+                   "`src/cloud_cost.py`.")
 
     # Speedup curve across 1..8 GPUs (data-parallel scaling at a glance).
     if strategy in ("ddp", "heterogeneous"):

@@ -98,6 +98,12 @@ st.markdown("""
     font-size: 0.8rem; line-height: 1.3; word-break: break-word;
     background: #f1f5f9; border-radius: 0.4rem; padding: 0.4rem 0.55rem;
   }
+  /* Compact KPI strip (Overview): denser than st.metric cards. */
+  .kpi-strip { display: flex; gap: 0.5rem; margin: 0.2rem 0 0.7rem; flex-wrap: wrap; }
+  .kpi { flex: 1; min-width: 90px; background: #f8fafc; border: 1px solid #e5e7eb;
+         border-radius: 0.5rem; padding: 0.4rem 0.6rem; }
+  .kpi .v { font-size: 1.15rem; font-weight: 650; color: #1A5276; line-height: 1.2; }
+  .kpi .l { font-size: 0.72rem; color: #64748b; }
 </style>
 """, unsafe_allow_html=True)
 
