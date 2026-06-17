@@ -141,6 +141,12 @@ def inject_css() -> None:
   .kpi:last-child { border-right: none; }
   .kpi .v { font-size: 1.18rem; font-weight: 600; color: #1A1A1A; line-height: 1.2; }
   .kpi .l { font-size: 0.7rem; color: #5B626B; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* Run selector dropdown: show the FULL run label (date · [env] · model · tags)
+     without clipping. The baseweb popover copies the control width, so let the
+     option list grow to its content and overflow rather than truncate. */
+  [data-baseweb="popover"] [role="listbox"] { min-width: max-content !important; }
+  [data-baseweb="popover"] li { white-space: nowrap !important; }
 </style>
 """,
         unsafe_allow_html=True,
