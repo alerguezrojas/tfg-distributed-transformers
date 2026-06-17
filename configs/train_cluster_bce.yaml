@@ -29,6 +29,8 @@ training:
   label_smoothing: 0.1
   mixup_alpha: 0.2
 
+  seed: 42                  # misma semilla que el brazo focal → comparación controlada
+
   select_by: f1_optimal
 
   loss: bce                 # brazo de control (la pérdida de siempre)

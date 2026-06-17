@@ -1,5 +1,13 @@
 import torch
 
+# Single source of truth for the optimal-threshold search (used by Trainer.eval_epoch
+# and scripts/eval.py). The floor goes well below 0.5 because losses that lower the
+# probability scale (focal loss) have their optimal operating point below 0.30 — a
+# higher floor would systematically understate them.
+THRESHOLD_GRID: list[float] = [
+    0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60,
+]
+
 
 def f1_score(preds: torch.Tensor, labels: torch.Tensor) -> float:
     """Macro-averaged F1 for multi-label classification."""

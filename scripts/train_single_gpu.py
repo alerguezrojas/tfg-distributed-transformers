@@ -60,6 +60,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.dataset import BigEarthNetDataset, get_transforms
 from src.training.builder import TrainingSessionBuilder
+from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
 def parse_args():
@@ -136,6 +137,19 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
 
+    # ── Reproducibilidad ───────────────────────────────────────────────────────
+    # Si training.seed está definido, fija todas las RNG ANTES de crear datos y
+    # modelo → init de la cabeza, barajado, augmentations y mixup deterministas.
+    # Imprescindible para que focal-vs-BCE difiera solo en la pérdida.
+    seed = cfg["training"].get("seed")
+    loader_generator = None
+    worker_init = None
+    if seed is not None:
+        set_seed(int(seed))
+        loader_generator = make_generator(int(seed))
+        worker_init = seed_worker
+        print(f"Semilla     : {seed} (run determinista)")
+
     metrics = args.metrics if args.metrics is not None else []
     layers = args.layers or []
     fn = args.fn or []
@@ -155,10 +169,12 @@ def main():
     train_loader = DataLoader(
         train_ds, batch_size=cfg["training"]["batch_size"],
         shuffle=True, num_workers=cfg["data"]["num_workers"], pin_memory=True,
+        generator=loader_generator, worker_init_fn=worker_init,
     )
     val_loader = DataLoader(
         val_ds, batch_size=cfg["training"]["batch_size"],
         shuffle=False, num_workers=cfg["data"]["num_workers"], pin_memory=True,
+        worker_init_fn=worker_init,
     )
 
     # ── Construcción del stack via Builder ───────────────────────────────────
