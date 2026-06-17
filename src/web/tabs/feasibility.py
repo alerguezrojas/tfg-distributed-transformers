@@ -1,6 +1,7 @@
 """Tab render module — see src/web/app.py for the orchestrator."""
 from __future__ import annotations
 
+import shlex
 import subprocess
 import time
 from pathlib import Path
@@ -37,7 +38,7 @@ from src.web.ui.helpers import (
     _feas_label, _run_config, _load_class_distribution, _load_example_images,
     _safe_max, _safe_idxmax, _safe_val_at_best, _throughput_col, _dur_str,
     _get_configs, _detect_anomalies, _read_log_tail, _parse_log_progress,
-    _gpu_usage, _launch_process, _color_f1_cell,
+    _gpu_usage, _color_f1_cell,
 )
 
 
@@ -998,34 +999,35 @@ def render(ctx: DashboardContext) -> None:
             if not feas_batches:
                 st.error("Select at least one batch size.")
             else:
-                parts = [
-                    "uv run python scripts/check_feasibility.py",
-                    f"--model {feas_model}",
-                    f"--batch-sizes {' '.join(str(b) for b in feas_batches)}",
-                    f"--epochs {feas_epochs}",
-                    f"--trace-modes {' '.join(feas_traces) if feas_traces else 'off'}",
+                # Build an argv LIST and run WITHOUT shell=True so free-text fields
+                # (e.g. the dataset path) can never be interpreted as shell syntax.
+                argv = [
+                    "uv", "run", "python", "scripts/check_feasibility.py",
+                    "--model", feas_model,
+                    "--batch-sizes", *[str(b) for b in feas_batches],
+                    "--epochs", str(feas_epochs),
+                    "--trace-modes", *(feas_traces if feas_traces else ["off"]),
                 ]
                 if feas_nfs != 1.0:
-                    parts.append(f"--nfs-factor {feas_nfs}")
+                    argv += ["--nfs-factor", str(feas_nfs)]
                 if feas_config != "(none)":
-                    parts.append(f"--config configs/{feas_config}")
+                    argv += ["--config", f"configs/{feas_config}"]
                 if feas_dataset_path.strip():
-                    parts.append(f'--dataset-path "{feas_dataset_path.strip()}"')
+                    argv += ["--dataset-path", feas_dataset_path.strip()]
                 if feas_no_disk:
-                    parts.append("--no-disk-profile")
+                    argv.append("--no-disk-profile")
                 if feas_study:
-                    parts.append(f"--convergence-study --study-steps {feas_study_steps}")
+                    argv += ["--convergence-study", "--study-steps", str(feas_study_steps)]
                 if feas_device:
-                    parts.append(f"--device {feas_device}")
+                    argv += ["--device", str(feas_device)]
                 if feas_precision and feas_precision != "fp32":
-                    parts.append(f"--precision {feas_precision}")
+                    argv += ["--precision", feas_precision]
                 if feas_compare_prec:
-                    parts.append("--compare-precision")
-                cmd = " ".join(parts)
-                st.code(cmd, language="bash")
+                    argv.append("--compare-precision")
+                st.code(" ".join(shlex.quote(a) for a in argv), language="bash")
                 out_ph = st.empty()
                 with st.spinner("Running full analysis…"):
-                    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=str(ROOT))
+                    result = subprocess.run(argv, capture_output=True, text=True, cwd=str(ROOT))
                 if result.returncode == 0:
                     st.success("Analysis complete.")
                     out_ph.code(result.stdout[-4000:] if len(result.stdout) > 4000 else result.stdout)
