@@ -17,6 +17,9 @@ from src.web.dataset_stats import (
     class_distribution_approximate, class_distribution_from_parquet,
     get_country_distribution, find_example_patches, load_rgb_image,
 )
+from src.performance_model import (
+    GPU_TABLE, MODEL_TABLE, predict, estimate_rc, gpu_spec, model_spec,
+)
 from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
 from src.web.model_explorer import ALL_FAMILIES, CURATED_MODELS, compare_models
@@ -46,9 +49,12 @@ def render(ctx: DashboardContext) -> None:
     st.markdown("## Feasibility")
     st.caption("Plan before training: hardware profile, predicted time and cost, "
                "and how past predictions held up against reality.")
-    (subtab_report, subtab_predreal, subtab_study, subtab_run_feas) = st.tabs(
-        ["Report", "Prediction vs reality", "Real study", "Run analysis"]
+    (subtab_predictor, subtab_report, subtab_predreal, subtab_study, subtab_run_feas) = st.tabs(
+        ["Predictor", "Report", "Prediction vs reality", "Real study", "Run analysis"]
     )
+
+    with subtab_predictor:
+        _analytic_predictor()
     # subtab_ddp_opt and subtab_prediction are no longer their own tabs: they are
     # filled as sections inside "Report" and "Prediction vs reality" respectively
     # (containers created further down, in their parent blocks).
@@ -1009,3 +1015,103 @@ def render(ctx: DashboardContext) -> None:
                     st.error("Error during the analysis:")
                     out_ph.code(result.stderr[-2000:])
 
+
+
+def _analytic_predictor() -> None:
+    """Closed-form predictor: estimate time/speedup/memory/cost for ANY
+    (strategy, model, GPU, n_gpus, dataset, batch, precision) from specs — no
+    benchmark required. Powered by src/performance_model.py."""
+    st.markdown("### Predict for any model / GPU / strategy (no benchmark)")
+    st.caption(
+        "Analytic engine: from curated GPU and model specs it estimates compute "
+        "throughput, I/O, gradient-sync and memory, then applies the master "
+        "formula per strategy. Use it to plan a run on hardware you don't have "
+        "in front of you. The constants are calibrated against the real Kaggle "
+        "2×T4 measurements (single +4%, DDP speedup <1%, AMP <2%)."
+    )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        model_name = st.selectbox("Model", list(MODEL_TABLE.keys()),
+                                  index=list(MODEL_TABLE.keys()).index("vit_base_patch16_224"))
+        gpu_name = st.selectbox("GPU", list(GPU_TABLE.keys()),
+                                index=list(GPU_TABLE.keys()).index("Tesla T4"))
+    with c2:
+        strategy = st.selectbox("Strategy", ["single", "ddp", "model_parallel", "heterogeneous"])
+        n_gpus = st.number_input("Number of GPUs", 1, 8, 2 if strategy != "single" else 1)
+    with c3:
+        precision = st.selectbox("Precision", ["fp32", "amp", "tf32", "bf16"])
+        disk_type = st.selectbox("Disk", ["ssd", "nvme", "hdd", "nfs"])
+
+    c4, c5, c6 = st.columns(3)
+    with c4:
+        dataset_size = st.number_input("Train images / epoch", 100, 300000, 5000, step=500)
+    with c5:
+        batch = st.number_input("Global batch size", 1, 1024, 96, step=8)
+    with c6:
+        epochs = st.number_input("Epochs", 1, 200, 15)
+
+    if strategy == "single":
+        n_gpus = 1
+    nfs = disk_type == "nfs"
+
+    p = predict(strategy, model_name, gpu_name, n_gpus=int(n_gpus),
+                dataset_size=int(dataset_size), batch=int(batch), precision=precision,
+                epochs=int(epochs), disk_type=disk_type, nfs=nfs)
+    if p is None:
+        st.error("Unknown model or GPU spec.")
+        return
+
+    st.markdown("#### Prediction")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Train / epoch", _fmt_secs(p.time_per_epoch_train_s))
+    m2.metric("Total train", _fmt_secs(p.time_total_train_s))
+    if strategy != "single":
+        m3.metric("Speedup", f"{p.speedup:.2f}×")
+        m4.metric("Efficiency", f"{p.efficiency * 100:.0f}%")
+    else:
+        m3.metric("Throughput", f"{dataset_size / p.time_per_epoch_train_s:.0f} img/s")
+        m4.metric("Bottleneck", p.bottleneck)
+
+    m5, m6, m7 = st.columns(3)
+    m5.metric("VRAM / GPU", f"{p.vram_per_gpu_gb:.1f} GB")
+    m6.metric("Fits in memory", "yes" if p.fits_in_memory else "NO — OOM")
+    m7.metric("Max batch that fits", p.recommended_batch)
+
+    if not p.fits_in_memory:
+        st.error(f"**Out of memory**: needs ~{p.vram_per_gpu_gb:.1f} GB but "
+                 f"{gpu_spec(gpu_name).vram_gb:.0f} GB available. "
+                 f"Largest batch that fits: **{p.recommended_batch}**.")
+    for note in p.notes:
+        st.info(note)
+
+    # Speedup curve across 1..8 GPUs (data-parallel scaling at a glance).
+    if strategy in ("ddp", "heterogeneous"):
+        st.markdown("#### Scaling 1 → 8 GPUs (predicted)")
+        ns = [1, 2, 4, 8]
+        sp = []
+        for n in ns:
+            pn = predict(strategy, model_name, gpu_name, n_gpus=n,
+                         dataset_size=int(dataset_size), batch=int(batch),
+                         precision=precision, epochs=1, disk_type=disk_type, nfs=nfs)
+            sp.append(pn.speedup if pn else 0.0)
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=ns, y=ns, name="Ideal (linear)",
+                                 line=dict(color=COLORS[4], dash="dash")))
+        fig.add_trace(go.Scatter(x=ns, y=sp, name="Predicted", mode="lines+markers",
+                                 line=dict(color=COLORS[0], width=2), marker=dict(size=8)))
+        fig.update_layout(**_base_layout(320, "Speedup vs number of GPUs"),
+                          xaxis_title="GPUs", yaxis_title="Speedup ×")
+        fig.update_xaxes(tickvals=ns)
+        _show(fig, "predictor_scaling")
+        st.caption("The curve flattens when the I/O total (fixed, shared disk) or "
+                   "the gradient-sync term overtakes the per-GPU compute — exactly "
+                   "the compute/IO/sync regimes of the analytic model.")
+
+
+def _fmt_secs(s: float) -> str:
+    if s < 90:
+        return f"{s:.0f} s"
+    if s < 5400:
+        return f"{s / 60:.1f} min"
+    return f"{s / 3600:.1f} h"
