@@ -113,31 +113,38 @@ with st.sidebar:
         st.caption("**Active run**")
         st.markdown(f"<div class='active-run'>{_active}</div>", unsafe_allow_html=True)
 
-        # Quick switch: filter by environment first (cuts the list to a few) so
-        # each dropdown is short and readable. Browsing all runs at once is done
-        # in the Overview table (full names, tags, sparklines).
-        _envs = ["all"] + sorted({r.env for r in runs})
-        _env_idx = _envs.index(run.env) if run.env in _envs else 0
-        _env = st.selectbox("Environment", _envs, index=_env_idx, key="run_env_filter")
-        _opts = [r.label for r in runs if _env == "all" or r.env == _env]
+        # Optional environment filter to narrow the list; the selector itself shows
+        # the FULL distinguishing label (date · [env] · model · [mode] · [precision])
+        # and is type-to-search, so runs are easy to tell apart and find.
+        _envs = ["all environments"] + sorted({r.env for r in runs})
+        _env = st.selectbox("Filter by environment", _envs, index=0, key="run_env_filter")
+        _opts = [r.label for r in runs if _env == "all environments" or r.env == _env]
         if _active not in _opts:
             _opts = [_active] + _opts
 
-        def _short(lbl: str) -> str:
-            # Drop the date (all same-ish) and, when filtering by env, the [env]
-            # tag, so the distinguishing part (time + model + tags) fits the box.
-            import re
-            s = re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
-            if _env != "all":
-                s = s.replace(f"[{_env}] ", "")
-            return s
+        def _disp(lbl: str) -> str:
+            # Front-load the distinguishing parts (model · tags · env) so runs are
+            # told apart at a glance and the date is what truncates, not the tags.
+            r = _by_label.get(lbl)
+            if r is None:
+                return lbl
+            tags = []
+            if r.mode != "single":
+                tags.append(f"[{r.mode}]")
+            if r.precision and r.precision != "fp32":
+                tags.append(f"[{r.precision}]")
+            if r.trace_mode == "deep":
+                tags.append("[deep]")
+            model = (r.model or "?").replace("_patch16_224", "")
+            head = " ".join([model] + tags)
+            return f"{head} · {r.env} · {lbl[:16]}"
 
         _picked = st.selectbox("Switch run", _opts, index=_opts.index(_active),
-                               format_func=_short, key="run_switch")
+                               format_func=_disp, key="run_switch")
         if _picked != _active:
             st.session_state["run_label"] = _picked
             st.rerun()
-        st.caption("Browse all runs in the Overview table.")
+        st.caption("Model · tags · env · date. Type to search, or click a row in Overview.")
 
     st.markdown("---")
     # ── Language (least-used control — keep it at the bottom) ─────────────────
