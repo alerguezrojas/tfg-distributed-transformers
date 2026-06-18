@@ -117,28 +117,31 @@ def inject_css() -> None:
   /* Dataframes: quiet, sharp. */
   [data-testid="stDataFrame"] { border: 1px solid #E2E4E7; border-radius: 2px; }
 
-  /* Sidebar: austere; hide the option-menu icon column for a text-only nav. */
-  [data-testid="stSidebar"] { min-width: 300px; max-width: 320px;
+  /* Sidebar: austere; hide the option-menu icon column for a text-only nav.
+     Wide enough that the longest run label fits on one line (like the Overview
+     table), e.g. "10/06/2026 21:43 [kaggle] vit_large [model_parallel]". */
+  [data-testid="stSidebar"] { min-width: 470px; max-width: 470px;
     background: #FBFBFC; border-right: 1px solid #E2E4E7; }
   [data-testid="stSidebarUserContent"] { padding-top: 1.1rem; }
   /* Breathing room between sidebar widgets so labels never touch the box above. */
   [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.7rem; }
   [data-testid="stSidebar"] hr { margin: 0.5rem 0; border-color: #E2E4E7; }
   [data-testid="stSidebar"] .nav-link i, [data-testid="stSidebar"] i.bi { display: none !important; }
+  /* Sidebar buttons = the run-list rows (nav is the option_menu iframe, not a
+     button). Left-aligned, compact, and each row stays on ONE line — the inner
+     label element is a div, so target the button and all its children. */
   [data-testid="stSidebar"] .stButton button { justify-content: flex-start; text-align: left;
-    font-weight: 500; padding: 0.22rem 0.5rem; min-height: 1.9rem; }
+    font-weight: 500; font-size: 0.8rem; padding: 0.2rem 0.45rem; min-height: 1.7rem; }
+  [data-testid="stSidebar"] .stButton button,
+  [data-testid="stSidebar"] .stButton button * {
+    white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
   [data-testid="stSidebar"] .stButton button[kind="secondary"] { border: none; background: transparent; }
   [data-testid="stSidebar"] .stButton button[kind="secondary"]:hover {
     background: #EAEEF2; color: inherit; }
-  [data-testid="stSidebar"] .active-run { font-size: 0.8rem; line-height: 1.3; word-break: break-word;
+  [data-testid="stSidebar"] .active-run { font-size: 0.8rem; line-height: 1.3; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis;
     background: #E8F1F8; border: 1px solid #CFE2F0; border-radius: 6px; padding: 0.45rem 0.6rem;
     color: #1A5276; margin-bottom: 0.4rem; }
-  /* Run list: the scrollable bordered container of run rows. Tight gap so the
-     rows read as a list, and a clear highlighted active row. */
-  [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"]
-    [data-testid="stVerticalBlock"] { gap: 0.12rem; }
-  [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] .stButton button {
-    font-size: 0.8rem; min-height: 1.7rem; padding: 0.2rem 0.45rem; }
 
   /* KPI strip — flat, sharp, near-black numbers. */
   .kpi-strip { display: flex; gap: 0; margin: 0.3rem 0 0.9rem; flex-wrap: wrap;
