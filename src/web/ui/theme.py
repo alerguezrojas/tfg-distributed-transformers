@@ -12,32 +12,32 @@ import plotly.io as pio
 import streamlit as st
 
 # ── Colour system ─────────────────────────────────────────────────────────────────
-ACCENT = "#3A536B"          # muted slate-blue — the single accent
-ACCENT_SOFT = "#EAEEF2"     # faint accent surface
+ACCENT = "#2272B4"          # MLflow blue — the accent
+ACCENT_SOFT = "#E8F1F8"     # faint accent surface
 
 INK = "#1A1A1A"             # near-black text
-MUTED = "#5B626B"           # secondary text / axis labels
-GRID = "#EDEEF0"            # gridlines (very light)
-BORDER = "#E2E4E7"          # hairline borders
+MUTED = "#6B7280"           # secondary text / axis labels
+GRID = "#EEF0F2"            # gridlines (very light)
+BORDER = "#E4E7EB"          # hairline borders
 SURFACE = "#FFFFFF"
 
-# Muted, desaturated, print-friendly categorical palette (no neon).
+# MLflow-style categorical palette: one colour per run — clean, distinct, not neon.
 CATEGORICAL = [
-    "#3A536B",  # slate blue
-    "#9C6B3E",  # ochre
-    "#4E7A6A",  # muted teal
-    "#8A4F57",  # muted maroon
-    "#5F6470",  # slate grey
-    "#7A8794",  # blue-grey
-    "#A98B5A",  # muted gold
-    "#6B7A55",  # olive
+    "#2272B4",  # blue
+    "#2CA02C",  # green
+    "#C57B27",  # ochre
+    "#9E3A47",  # maroon
+    "#7E5AA2",  # purple
+    "#4AA3DF",  # light blue
+    "#D44E8C",  # pink
+    "#6B7785",  # slate
 ]
 SEQUENTIAL = "Blues"
-DIVERGING = ["#8A4F57", "#E2E4E7", "#3A536B"]   # worse → neutral → better (muted)
+DIVERGING = ["#9E3A47", "#E4E7EB", "#2272B4"]   # worse → neutral → better
 
-GOOD, WARN, BAD = "#4A7A5A", "#A8823E", "#9C5046"   # muted green / amber / red
+GOOD, WARN, BAD = "#2E8B57", "#C57B27", "#B0413E"   # green / amber / red
 
-_FONT = "'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif"
+_FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
 
 # ── Plotly template ─────────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ def inject_css() -> None:
         """
 <style>
   html, body, [class*="css"], [data-testid="stAppViewContainer"] {
-    font-family: 'Helvetica Neue', Helvetica, Arial, system-ui, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   .block-container { padding-top: 2.2rem; padding-left: 2.2rem; padding-right: 2.2rem;
@@ -88,11 +88,11 @@ def inject_css() -> None:
   [data-testid="stMarkdownContainer"] h1 { font-size: 1.5rem !important; font-weight: 600 !important;
     letter-spacing: -0.01em; color: #1A1A1A; }
   [data-testid="stMarkdownContainer"] h2 { font-size: 1.18rem !important; font-weight: 600 !important;
-    margin-top: 0.7rem; color: #1A1A1A; padding-bottom: 0.25rem; border-bottom: 1px solid #E2E4E7; }
+    margin-top: 0.7rem; color: #1A1A1A; }
   [data-testid="stMarkdownContainer"] h3 { font-size: 1.0rem !important; font-weight: 600 !important;
     margin-top: 1.0rem; color: #1A1A1A; }
-  [data-testid="stMarkdownContainer"] h4 { font-size: 0.82rem !important; font-weight: 600 !important;
-    text-transform: uppercase; letter-spacing: 0.06em; color: #5B626B; }
+  [data-testid="stMarkdownContainer"] h4 { font-size: 0.9rem !important; font-weight: 600 !important;
+    color: #374151; }
   [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li { color: #2B2F35; }
   [data-testid="stCaptionContainer"] { color: #5B626B; }
 
@@ -102,9 +102,9 @@ def inject_css() -> None:
     letter-spacing: 0.04em; font-size: 0.72rem; }
   [data-testid="stMetricDelta"] { font-size: 0.78rem; }
 
-  /* Flat surfaces — no rounded cards, no shadows. Hairline rule, sharp corners. */
-  [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 2px !important;
-    box-shadow: none !important; border: 1px solid #E2E4E7 !important; }
+  /* Clean MLflow-style cards: white, hairline border, gentle radius + faint shadow. */
+  [data-testid="stVerticalBlockBorderWrapper"] { border-radius: 8px !important;
+    box-shadow: 0 1px 2px rgba(16,24,40,.04) !important; border: 1px solid #E4E7EB !important; }
 
   /* Tabs: a thin underline, restrained. */
   [data-baseweb="tab-list"] { overflow-x: auto !important; flex-wrap: nowrap !important;
@@ -130,12 +130,12 @@ def inject_css() -> None:
   [data-testid="stSidebar"] .stButton button[kind="secondary"]:hover {
     background: #EAEEF2; color: inherit; }
   [data-testid="stSidebar"] .active-run { font-size: 0.8rem; line-height: 1.3; word-break: break-word;
-    background: #F2F3F5; border: 1px solid #E2E4E7; border-radius: 2px; padding: 0.45rem 0.6rem;
-    color: #1A1A1A; }
+    background: #E8F1F8; border: 1px solid #CFE2F0; border-radius: 6px; padding: 0.45rem 0.6rem;
+    color: #1A5276; }
 
   /* KPI strip — flat, sharp, near-black numbers. */
   .kpi-strip { display: flex; gap: 0; margin: 0.3rem 0 0.9rem; flex-wrap: wrap;
-    border: 1px solid #E2E4E7; border-radius: 2px; overflow: hidden; }
+    border: 1px solid #E4E7EB; border-radius: 8px; overflow: hidden; }
   .kpi { flex: 1; min-width: 96px; background: #fff; padding: 0.6rem 0.8rem;
     border-right: 1px solid #E2E4E7; }
   .kpi:last-child { border-right: none; }
