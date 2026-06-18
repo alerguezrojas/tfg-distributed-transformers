@@ -83,6 +83,102 @@ def _start_ms(sort_key: str) -> int:
         return int(datetime.now().timestamp() * 1000)
 
 
+def ingest_feasibility(client: MlflowClient) -> None:
+    """The analytic feasibility model as its own MLflow experiment: one run per
+    strategy scenario (speedup/time/VRAM), a DDP scaling curve, and predicted-vs-real."""
+    try:
+        from src.performance_model import predict
+    except Exception:
+        return
+    GPU, MODEL = "Tesla T4", "vit_base_patch16_224"
+
+    def P(strat, n, prec):
+        return predict(strat, MODEL, GPU, n_gpus=n, dataset_size=5000, batch=96,
+                       precision=prec, epochs=15)
+
+    base = P("single", 1, "fp32")
+    if base is None:
+        return
+    bt = base.time_per_epoch_train_s
+    exp_id = client.create_experiment("Feasibility — analytic predictions",
+                                      artifact_location=f"file:{ROOT / 'mlartifacts'}")
+
+    for nm, strat, n, prec in [("Single · fp32", "single", 1, "fp32"),
+                               ("DDP 2-GPU · fp32", "ddp", 2, "fp32"),
+                               ("Single · AMP", "single", 1, "amp"),
+                               ("DDP 2-GPU · AMP", "ddp", 2, "amp")]:
+        p = P(strat, n, prec)
+        rid = client.create_run(exp_id, run_name=nm,
+                                tags={"strategy": strat, "precision": prec, "gpu": GPU,
+                                      "bottleneck": p.bottleneck}).info.run_id
+        for k, v in {"model": "vit_base", "strategy": strat, "n_gpus": n, "precision": prec, "gpu": GPU}.items():
+            client.log_param(rid, k, str(v))
+        client.log_metric(rid, "speedup", round(bt / p.time_per_epoch_train_s, 3))
+        client.log_metric(rid, "time_per_epoch_s", round(p.time_per_epoch_train_s, 1))
+        client.log_metric(rid, "vram_gb", round(p.vram_per_gpu_gb, 2))
+        client.set_terminated(rid)
+
+    rid = client.create_run(exp_id, run_name="DDP scaling (vit_base · T4)").info.run_id
+    for n in (1, 2, 3, 4, 6, 8):
+        client.log_metric(rid, "predicted_speedup", round(bt / P("ddp", n, "fp32").time_per_epoch_train_s, 3), step=n)
+        client.log_metric(rid, "ideal_linear", float(n), step=n)
+    client.set_terminated(rid)
+
+    rid = client.create_run(exp_id, run_name="Predicted vs real (Kaggle 2×T4)").info.run_id
+    client.log_metric(rid, "ddp_speedup_predicted", round(bt / P("ddp", 2, "fp32").time_per_epoch_train_s, 2))
+    client.log_metric(rid, "ddp_speedup_real", 1.96)
+    client.log_metric(rid, "amp_speedup_predicted", round(bt / P("single", 1, "amp").time_per_epoch_train_s, 2))
+    client.log_metric(rid, "amp_speedup_real", 3.80)
+    client.set_terminated(rid)
+    print("  · Feasibility experiment: 4 scenarios + scaling curve + validation")
+
+
+def ingest_dataset(client: MlflowClient) -> None:
+    """The dataset as its own experiment: splits + per-class train counts + an
+    imbalance bar chart artifact."""
+    from src.web.dataset_stats import SPLIT_SIZES, class_distribution_approximate
+    meta = next((Path(p) for p in (
+        "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet",
+        str(ROOT / "metadata.parquet")) if Path(p).exists()), None)
+    dist = None
+    if meta is not None:
+        try:
+            from src.web.dataset_stats import class_distribution_from_parquet
+            dist = class_distribution_from_parquet(meta)
+        except Exception:
+            dist = None
+    if dist is None:
+        dist = class_distribution_approximate()
+    dist = dist.sort_values("train_count", ascending=False)
+
+    exp_id = client.create_experiment("Dataset — BigEarthNet-S2",
+                                      artifact_location=f"file:{ROOT / 'mlartifacts'}")
+    rid = client.create_run(exp_id, run_name="BigEarthNet-S2 (train split)").info.run_id
+    for k, v in SPLIT_SIZES.items():
+        client.log_param(rid, f"split_{k}", v)
+    client.log_param(rid, "n_classes", len(dist))
+    for _, row in dist.iterrows():
+        nm = re.sub(r"[^0-9A-Za-z]+", "_", str(row["class"]))[:50].strip("_")
+        client.log_metric(rid, f"count_{nm}", int(row["train_count"]))
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    d = dist.sort_values("train_count")
+    fig, ax = plt.subplots(figsize=(7.5, 6))
+    ax.barh(d["class"], d["train_count"], color="#3A536B")
+    ax.set_title("BigEarthNet-S2 — class frequency in the train split (imbalance)")
+    ax.set_xlabel("patches")
+    fig.tight_layout()
+    png = ROOT / "_dataset_bar.png"
+    fig.savefig(png, dpi=120)
+    plt.close(fig)
+    client.log_artifact(rid, str(png), "figures")
+    png.unlink(missing_ok=True)
+    client.set_terminated(rid)
+    print("  · Dataset experiment: splits + class counts + imbalance chart")
+
+
 def main() -> None:
     # The store is fully derived from logs/, so rebuild it from scratch each run →
     # idempotent (no duplicated runs when re-ingesting after new trainings).
@@ -166,8 +262,11 @@ def main() -> None:
         n += 1
         print(f"  · {r.label}" + (f"  (best F1 {best:.3f})" if best else ""))
 
-    print(f"\n✓ {n} runs ingested into ./mlruns (experiment '{EXPERIMENT}').")
-    print("  Launch the UI with:  .venv-mlflow/bin/mlflow ui")
+    ingest_feasibility(client)
+    ingest_dataset(client)
+
+    print(f"\n✓ {n} runs ingested + Feasibility & Dataset experiments.")
+    print("  Launch the UI with:  bash scripts/run_mlflow.sh")
 
 
 if __name__ == "__main__":
