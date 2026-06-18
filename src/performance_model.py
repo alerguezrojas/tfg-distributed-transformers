@@ -320,3 +320,134 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         vram_per_gpu_gb=vram, fits_in_memory=fits, recommended_batch=rec_b,
         calibrated=bool(rc_measured or rio_measured), notes=notes,
     )
+
+
+# ── Quality model: expected best-F1 vs dataset size (empirical prior) ─────────────
+# This is the honest counterpart to the time model. It does NOT pretend to predict
+# an exact F1 from first principles — that would require training. Instead it is an
+# EMPIRICAL PRIOR: anchored to our documented BigEarthNet-S2 runs and extended to
+# any dataset fraction with the standard log-linear data-scaling law
+#
+#     F1_inf(N) = F1_full − k · log10(N_full / N)
+#
+# (more data → higher F1 with diminishing returns; the same shape used by the
+# Hestness/Kaplan data-scaling studies). It is calibrated against TWO real points
+# for vit_base — full dataset = 0.68, the 5 000-image subset = 0.55 — which pins
+# k ≈ 0.078. Smaller families lose more F1 on little data (steeper k). For families
+# we have not run to convergence the confidence is flagged low. The MEASURED
+# alternative is the convergence study (LR range test + real mini-training); this
+# prior is for planning a run before spending the GPU hours.
+
+N_FULL_TRAIN: int = 237_871   # BigEarthNet-S2 train split (the anchor for N_full)
+
+# family → (F1_full, best_epoch, early_stop_epoch, data_sensitivity_k, confidence)
+_QUALITY_ANCHORS: dict[str, tuple[float, int, int, float, str]] = {
+    "vit_base":     (0.68, 7, 17, 0.078, "high"),    # v1–v4, full ↔ subset both measured
+    "vit_small":    (0.64, 8, 18, 0.110, "medium"),
+    "vit_tiny":     (0.59, 8, 18, 0.190, "medium"),  # subset 5k ≈ 0.27 measured (Kaggle)
+    "vit_large":    (0.69, 7, 16, 0.070, "low"),     # not run to convergence
+    "resnet50":     (0.60, 10, 22, 0.130, "low"),
+    "efficientnet": (0.56, 9, 20, 0.140, "low"),
+}
+_CONF_BAND = {"high": 0.020, "medium": 0.035, "low": 0.050}  # ± F1 by confidence
+
+
+def _quality_family(name: str) -> str:
+    n = (name or "").lower()
+    for fam in ("vit_base", "vit_small", "vit_tiny", "vit_large", "resnet", "efficientnet"):
+        if fam in n:
+            return "resnet50" if fam == "resnet" else fam
+    if "deit" in n:
+        return "vit_base"          # DeiT behaves like ViT
+    return "vit_base"
+
+
+@dataclass
+class QualityPrediction:
+    model_name: str
+    dataset_size: int
+    expected_best_f1: float
+    best_epoch: int
+    early_stop_epoch: int
+    confidence: str               # "high" | "medium" | "low"
+    band: float                   # ± F1 uncertainty (widens as confidence drops)
+    method: str                   # always "empirical-prior" here (vs the study's "measured")
+    curve_epochs: list[int] = field(default_factory=list)
+    curve_val_f1: list[float] = field(default_factory=list)
+    curve_train_f1: list[float] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+
+
+def expected_best_f1(model_name: str, dataset_size: int = N_FULL_TRAIN) -> tuple[float, str, float]:
+    """Empirical-prior best Val F1 for a model on N training images.
+
+    Returns ``(f1, confidence, band)``. Uses the log-linear data-scaling law
+    anchored to the documented full-dataset plateau of the model family.
+    """
+    fam = _quality_family(model_name)
+    f_full, _, _, k, conf = _QUALITY_ANCHORS[fam]
+    n = max(1, int(dataset_size))
+    drop = k * math.log10(max(1.0, N_FULL_TRAIN / n))
+    f1 = max(0.0, min(f_full, f_full - drop))
+    return round(f1, 3), conf, _CONF_BAND[conf]
+
+
+def _learning_curve(f_inf: float, best_epoch: int, epochs: list[int]
+                    ) -> tuple[list[float], list[float]]:
+    """Standard saturating learning curve, normalised to peak f_inf at best_epoch.
+
+    Val rises as f_inf·(1−e^(−t/τ)) (renormalised so val(best_epoch)=f_inf), then
+    decays slightly from overfitting. Train rises higher and faster (the gap)."""
+    tau = max(1.5, best_epoch / 2.2)
+    denom = 1.0 - math.exp(-best_epoch / tau)
+    ceil_train = min(0.97, f_inf + 0.22)
+    tau_train = tau * 0.7
+    val, train = [], []
+    for e in epochs:
+        if e <= best_epoch:
+            v = f_inf * (1.0 - math.exp(-e / tau)) / denom
+        else:
+            v = max(f_inf * 0.96, f_inf - min(0.03, (e - best_epoch) * 0.0015))
+        val.append(round(v, 3))
+        train.append(round(ceil_train * (1.0 - math.exp(-e / tau_train)), 3))
+    return val, train
+
+
+def predict_quality(model_name: str, dataset_size: int = N_FULL_TRAIN,
+                    epochs: int = 30) -> QualityPrediction | None:
+    """Empirical-prior quality estimate (best Val F1 + a learning curve).
+
+    The honest planning counterpart to ``predict``: anchored to documented runs,
+    extended to any dataset size by the data-scaling law. Not a measurement — for
+    that, run the convergence study. Returns ``None`` for an unknown family only
+    in the sense that it always falls back to the ViT-Base prior (so never None
+    here, but kept Optional for symmetry with ``predict``)."""
+    fam = _quality_family(model_name)
+    f_full, best_ep, stop_ep, _k, _conf = _QUALITY_ANCHORS[fam]
+    f1, conf, band = expected_best_f1(model_name, dataset_size)
+
+    n_show = max(best_ep + 2, min(int(epochs), 40))
+    curve_epochs = list(range(1, n_show + 1))
+    val, train = _learning_curve(f1, best_ep, curve_epochs)
+    stop = min(stop_ep, n_show) if epochs >= stop_ep else min(epochs, n_show)
+
+    frac = dataset_size / N_FULL_TRAIN
+    notes = [
+        f"Empirical prior anchored to documented {fam} runs on BigEarthNet-S2; "
+        f"confidence {conf}.",
+        f"Dataset = {int(dataset_size):,} train images "
+        f"({frac*100:.0f}% of the full {N_FULL_TRAIN:,}).",
+    ]
+    if frac < 0.9:
+        notes.append(f"Smaller dataset lowers the expected F1 (full-set plateau ≈ {f_full:.2f}).")
+    notes.append("This is a planning prior, not a measurement — run the convergence "
+                 "study for a measured estimate.")
+
+    return QualityPrediction(
+        model_name=model_name, dataset_size=int(dataset_size),
+        expected_best_f1=f1, best_epoch=best_ep,
+        early_stop_epoch=stop, confidence=conf, band=band,
+        method="empirical-prior",
+        curve_epochs=curve_epochs, curve_val_f1=val, curve_train_f1=train,
+        notes=notes,
+    )

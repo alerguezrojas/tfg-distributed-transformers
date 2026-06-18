@@ -106,7 +106,7 @@ def test_performance_predictor_vit_base_v3():
     assert pred.predicted_best_f1 > 0.6, "ViT-Base debería alcanzar F1 > 0.6"
     assert 1 <= pred.predicted_best_epoch <= 30
     assert pred.predicted_early_stop_epoch > pred.predicted_best_epoch
-    assert pred.confidence in ("alta", "media", "baja")
+    assert pred.confidence in ("high", "medium", "low")
     assert len(pred.curve_f1_val) == 30
     assert len(pred.curve_f1_train) == 30
 

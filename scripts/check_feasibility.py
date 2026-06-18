@@ -37,6 +37,7 @@ import torch.nn as nn
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.models.vit import build_model
+from src.performance_model import N_FULL_TRAIN, predict_quality
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Value objects
@@ -406,22 +407,16 @@ class DatasetProfiler:
 # PerformancePredictor — predicción empírica de curva F1
 # ═════════════════════════════════════════════════════════════════════════════
 
-# Datos históricos reales de BigEarthNet-ViT (del CLAUDE.md)
-_HISTORICAL_CURVES = {
-    # (model_family, config_level): (best_f1, best_epoch, early_stop_epoch, tau, confidence)
-    # tau = constante de tiempo del crecimiento exponencial
-    ("vit_base", "v3"):    (0.68, 7,  17, 3.0, "alta"),
-    ("vit_base", "v2"):    (0.67, 7,  17, 3.5, "alta"),
-    ("vit_base", "v1"):    (0.66, 28, 30, 5.0, "media"),
-    ("vit_small", "v3"):   (0.63, 8,  18, 3.0, "media"),
-    ("vit_tiny", "v3"):    (0.53, 8,  18, 3.0, "media"),
-    ("resnet50", "v3"):    (0.55, 10, 22, 4.0, "baja"),
-    ("efficientnet", "v3"): (0.52, 9, 20, 3.5, "baja"),
-}
-
-
 class PerformancePredictor:
-    """Predicción empírica de la curva F1 de validación basada en datos históricos."""
+    """Empirical-prior Val-F1 estimate — a thin wrapper over the single quality
+    engine in ``src/performance_model.py`` (``predict_quality``).
+
+    Until now this held a hardcoded per-family lookup that ignored the dataset
+    size (it returned ~0.68 for vit_base whether the run used the full 237k
+    images or the 5 000-image subset, where the real result was ~0.55). It now
+    delegates to the data-scaling-aware quality model so the F1 estimate moves
+    with the dataset, and so there is ONE prediction engine (time + memory +
+    cost + quality) instead of two."""
 
     def predict(
         self,
@@ -429,101 +424,20 @@ class PerformancePredictor:
         n_epochs: int,
         has_llrd: bool = True,
         has_label_smoothing: bool = True,
+        dataset_size: int = N_FULL_TRAIN,
     ) -> PerformancePrediction:
-        family = self._model_family(model_name)
-        config = "v3" if (has_llrd and has_label_smoothing) else ("v2" if has_llrd else "v1")
-
-        key = (family, config)
-        if key not in _HISTORICAL_CURVES:
-            key = (family, "v3") if (family, "v3") in _HISTORICAL_CURVES else None
-
-        if key:
-            best_f1, best_epoch, early_stop_ep, tau, confidence = _HISTORICAL_CURVES[key]
-        else:
-            best_f1, best_epoch, early_stop_ep, tau, confidence = 0.50, 10, 20, 4.0, "baja"
-
-        curve_epochs = list(range(1, min(n_epochs, 30) + 1))
-        curve_val, curve_train = self._generate_curves(
-            best_f1=best_f1,
-            best_epoch=best_epoch,
-            tau=tau,
-            epochs=curve_epochs,
-        )
-
-        notes = self._build_notes(family, config, best_f1, best_epoch, early_stop_ep)
-
+        q = predict_quality(model_name, dataset_size=dataset_size, epochs=n_epochs)
         return PerformancePrediction(
             model_name=model_name,
-            predicted_best_f1=best_f1,
-            predicted_best_epoch=best_epoch,
-            predicted_early_stop_epoch=min(early_stop_ep, n_epochs),
-            confidence=confidence,
-            curve_epochs=curve_epochs,
-            curve_f1_train=curve_train,
-            curve_f1_val=curve_val,
-            notes=notes,
+            predicted_best_f1=q.expected_best_f1,
+            predicted_best_epoch=q.best_epoch,
+            predicted_early_stop_epoch=q.early_stop_epoch,
+            confidence=q.confidence,
+            curve_epochs=q.curve_epochs,
+            curve_f1_train=q.curve_train_f1,
+            curve_f1_val=q.curve_val_f1,
+            notes=" | ".join(q.notes),
         )
-
-    @staticmethod
-    def _model_family(name: str) -> str:
-        n = name.lower()
-        if "vit_base" in n:
-            return "vit_base"
-        if "vit_small" in n:
-            return "vit_small"
-        if "vit_tiny" in n:
-            return "vit_tiny"
-        if "resnet" in n:
-            return "resnet50"
-        if "efficientnet" in n:
-            return "efficientnet"
-        if "deit" in n:
-            return "vit_base"  # DeiT se comporta similar a ViT
-        return "vit_base"
-
-    @staticmethod
-    def _generate_curves(
-        best_f1: float,
-        best_epoch: int,
-        tau: float,
-        epochs: list[int],
-    ) -> tuple[list[float], list[float]]:
-        """Genera curvas de F1 val y train como series de números."""
-        val_curve = []
-        train_curve = []
-        for ep in epochs:
-            # Val: sube rápido hasta best_epoch, luego plateau con ligera degradación
-            if ep <= best_epoch:
-                # Crecimiento exponencial hacia best_f1
-                frac = 1 - math.exp(-ep / tau)
-                val_f1 = round(best_f1 * frac * 0.95 + 0.05 * best_f1, 3)
-            else:
-                # Degradación lenta por overfitting
-                degradation = min(0.02, (ep - best_epoch) * 0.001)
-                val_f1 = round(max(best_f1 - degradation, best_f1 * 0.97), 3)
-            val_curve.append(val_f1)
-
-            # Train: sube más alto que val (overfitting gradual)
-            train_frac = 1 - math.exp(-ep / (tau * 0.6))
-            train_ceiling = min(0.98, best_f1 + 0.25)  # tren puede llegar mucho más alto
-            train_f1 = round(train_ceiling * train_frac, 3)
-            train_curve.append(train_f1)
-
-        return val_curve, train_curve
-
-    @staticmethod
-    def _build_notes(family: str, config: str, best_f1: float, best_epoch: int, early_stop: int) -> str:
-        lines = []
-        lines.append(f"Estimación empírica basada en {len(_HISTORICAL_CURVES)} runs históricos en BigEarthNet-S2.")
-        if family == "vit_base":
-            lines.append(f"ViT-Base pretrained ImageNet suele alcanzar Val F1 ≈ {best_f1:.2f} en epoch ≈ {best_epoch}.")
-        elif family == "vit_tiny":
-            lines.append(f"ViT-Tiny converge más rápido pero con menor techo ({best_f1:.2f}).")
-        lines.append(f"Early stopping recomendado (patience=10) detiene en epoch ≈ {early_stop}.")
-        lines.append("Variabilidad observada: ±0.008 F1 entre runs con mismo config.")
-        if config != "v3":
-            lines.append("Con label smoothing + mixup (v3 config) se reduce el gap train-val.")
-        return " | ".join(lines)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1475,6 +1389,7 @@ class FeasibilityChecker:
                 n_epochs=target_epochs,
                 has_llrd=has_llrd,
                 has_label_smoothing=has_ls,
+                dataset_size=self._dataset_train,
             )
 
         # Análisis DDP

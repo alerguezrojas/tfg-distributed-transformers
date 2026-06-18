@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from src.performance_model import (
     estimate_rc, estimate_rio, estimate_vram_gb, fits_in_memory, max_batch,
     gpu_spec, model_spec, predict, predict_epoch,
+    expected_best_f1, predict_quality, N_FULL_TRAIN,
 )
 
 
@@ -132,3 +133,46 @@ def test_measured_rc_overrides_estimate():
 def test_unknown_specs_return_none():
     assert predict("single", "nonexistent_model", "Tesla T4") is None
     assert predict("single", "vit_base_patch16_224", "nonexistent_gpu") is None
+
+
+# ── Quality model: expected Val F1 vs dataset size (the honest prior) ─────────────
+
+def test_quality_vit_base_full_matches_documented():
+    """Full BigEarthNet-S2 → the documented ~0.68 plateau (v1–v4)."""
+    f1, conf, _ = expected_best_f1("vit_base_patch16_224", N_FULL_TRAIN)
+    assert f1 == pytest.approx(0.68, abs=0.01)
+    assert conf == "high"
+
+
+def test_quality_vit_base_subset_matches_kaggle():
+    """5 000-image subset → ~0.55, the REAL Kaggle vit_base result (data-scaling)."""
+    f1, _, _ = expected_best_f1("vit_base_patch16_224", 5000)
+    assert f1 == pytest.approx(0.55, abs=0.02)
+
+
+def test_quality_vit_tiny_subset_matches_real():
+    """vit_tiny on the 5 000 subset measured ~0.27 (Kaggle/Verode)."""
+    f1, _, _ = expected_best_f1("vit_tiny_patch16_224", 5000)
+    assert f1 == pytest.approx(0.27, abs=0.04)
+
+
+def test_quality_more_data_is_never_worse():
+    big, _, _ = expected_best_f1("vit_base_patch16_224", 100_000)
+    small, _, _ = expected_best_f1("vit_base_patch16_224", 5000)
+    assert big > small
+
+
+def test_quality_prediction_curve_and_fields():
+    q = predict_quality("vit_base_patch16_224", dataset_size=5000, epochs=15)
+    assert q.method == "empirical-prior"
+    assert q.early_stop_epoch > q.best_epoch
+    assert len(q.curve_val_f1) == len(q.curve_epochs)
+    # learning curve rises early, train sits above val (the overfitting gap)
+    assert q.curve_val_f1[4] > q.curve_val_f1[0]
+    assert q.curve_train_f1[-1] >= q.curve_val_f1[-1]
+    assert any("planning prior" in n for n in q.notes)
+
+
+def test_quality_unknown_model_falls_back_to_vit_base():
+    q = predict_quality("some_unknown_xyz", dataset_size=N_FULL_TRAIN)
+    assert q.expected_best_f1 == pytest.approx(0.68, abs=0.01)
