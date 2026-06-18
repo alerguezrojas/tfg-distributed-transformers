@@ -86,8 +86,8 @@ with st.sidebar:
             "container": {"padding": "0", "background-color": "transparent"},
             "icon": {"display": "none"},
             "nav-link": {"font-size": "0.88rem", "font-weight": "500", "color": "#2B2F35",
-                         "padding": "0.4rem 0.7rem", "margin": "0.05rem 0", "border-radius": "2px"},
-            "nav-link-selected": {"background-color": "#EAEEF2", "color": "#1A1A1A",
+                         "padding": "0.4rem 0.7rem", "margin": "0.05rem 0", "border-radius": "6px"},
+            "nav-link-selected": {"background-color": "#E8F1F8", "color": "#2272B4",
                                   "font-weight": "600"},
         },
     )

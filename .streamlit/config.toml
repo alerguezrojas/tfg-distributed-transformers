@@ -1,12 +1,10 @@
-# Dashboard theme — scientific / paper-grade: a single muted accent, flat surfaces.
-# primaryColor drives the active controls (radio, slider, focus ring, progress);
-# kept restrained (muted slate-blue) so nothing reads as a colourful product UI.
+# Dashboard theme — MLflow-inspired: clean white, calm blue accent, light surfaces.
 
 [theme]
 base = "light"
-primaryColor = "#3A536B"            # muted slate-blue — single restrained accent
+primaryColor = "#2272B4"            # MLflow blue
 backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#F7F8F9"
+secondaryBackgroundColor = "#F7F8FA"
 textColor = "#1A1A1A"
 
 [client]
