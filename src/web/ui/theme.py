@@ -121,7 +121,8 @@ def inject_css() -> None:
   [data-testid="stSidebar"] { min-width: 300px; max-width: 320px;
     background: #FBFBFC; border-right: 1px solid #E2E4E7; }
   [data-testid="stSidebarUserContent"] { padding-top: 1.1rem; }
-  [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.45rem; }
+  /* Breathing room between sidebar widgets so labels never touch the box above. */
+  [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.7rem; }
   [data-testid="stSidebar"] hr { margin: 0.5rem 0; border-color: #E2E4E7; }
   [data-testid="stSidebar"] .nav-link i, [data-testid="stSidebar"] i.bi { display: none !important; }
   [data-testid="stSidebar"] .stButton button { justify-content: flex-start; text-align: left;
@@ -131,7 +132,13 @@ def inject_css() -> None:
     background: #EAEEF2; color: inherit; }
   [data-testid="stSidebar"] .active-run { font-size: 0.8rem; line-height: 1.3; word-break: break-word;
     background: #E8F1F8; border: 1px solid #CFE2F0; border-radius: 6px; padding: 0.45rem 0.6rem;
-    color: #1A5276; }
+    color: #1A5276; margin-bottom: 0.4rem; }
+  /* Run list: the scrollable bordered container of run rows. Tight gap so the
+     rows read as a list, and a clear highlighted active row. */
+  [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"]
+    [data-testid="stVerticalBlock"] { gap: 0.12rem; }
+  [data-testid="stSidebar"] [data-testid="stVerticalBlockBorderWrapper"] .stButton button {
+    font-size: 0.8rem; min-height: 1.7rem; padding: 0.2rem 0.45rem; }
 
   /* KPI strip — flat, sharp, near-black numbers. */
   .kpi-strip { display: flex; gap: 0; margin: 0.3rem 0 0.9rem; flex-wrap: wrap;
@@ -141,12 +148,6 @@ def inject_css() -> None:
   .kpi:last-child { border-right: none; }
   .kpi .v { font-size: 1.18rem; font-weight: 600; color: #1A1A1A; line-height: 1.2; }
   .kpi .l { font-size: 0.7rem; color: #5B626B; text-transform: uppercase; letter-spacing: 0.04em; }
-
-  /* Run selector dropdown: show the FULL run label (date · [env] · model · tags)
-     without clipping. The baseweb popover copies the control width, so let the
-     option list grow to its content and overflow rather than truncate. */
-  [data-baseweb="popover"] [role="listbox"] { min-width: max-content !important; }
-  [data-baseweb="popover"] li { white-space: nowrap !important; }
 </style>
 """,
         unsafe_allow_html=True,

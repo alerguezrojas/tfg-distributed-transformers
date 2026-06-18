@@ -108,9 +108,7 @@ with st.sidebar:
         st.caption("**Active run**")
         st.markdown(f"<div class='active-run'>{_active}</div>", unsafe_allow_html=True)
 
-        # Optional environment filter to narrow the list; the selector itself shows
-        # the FULL distinguishing label (date · [env] · model · [mode] · [precision])
-        # and is type-to-search, so runs are easy to tell apart and find.
+        # Environment filter to narrow the list below.
         _envs = ["all environments"] + sorted({r.env for r in runs})
         _env = st.selectbox("Filter by environment", _envs, index=0, key="run_env_filter")
         _opts = [r.label for r in runs if _env == "all environments" or r.env == _env]
@@ -134,12 +132,17 @@ with st.sidebar:
             head = " ".join([model] + tags)
             return f"{head} · {r.env} · {lbl[:16]}"
 
-        _picked = st.selectbox("Switch run", _opts, index=_opts.index(_active),
-                               format_func=_disp, key="run_switch")
-        if _picked != _active:
-            st.session_state["run_label"] = _picked
-            st.rerun()
-        st.caption("Model · tags · env · date. Type to search, or click a row in Overview.")
+        # A scrollable vertical list (not a dropdown): one row per run, click to
+        # select it directly. The active run is the highlighted (primary) row.
+        st.caption("Select a run")
+        with st.container(height=300, border=True):
+            for _lbl in _opts:
+                if st.button(_disp(_lbl), key=f"runpick::{_lbl}",
+                             use_container_width=True,
+                             type="primary" if _lbl == _active else "secondary"):
+                    st.session_state["run_label"] = _lbl
+                    st.rerun()
+        st.caption("Click a run, or a row in Overview.")
 
 # ── Build shared context and render the selected page ───────────────────────────
 # (The refresh slider lives in System — Monitor/Live are the only consumers.)
