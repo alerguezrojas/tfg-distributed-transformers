@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from scripts.check_feasibility import (
+from src.feasibility import (
     BenchmarkResult, ModelInfo, HardwareInfo, FeasibilityReport,
     TimeEstimator,
 )
