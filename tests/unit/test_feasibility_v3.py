@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 
 def test_hardware_probe_cpu_returns_cpu_info():
-    from scripts.check_feasibility import HardwareProbe
+    from src.feasibility import HardwareProbe
     probe = HardwareProbe()
     cpu = probe.probe_cpu()
     assert cpu.logical_cores >= 1
@@ -24,7 +24,7 @@ def test_hardware_probe_cpu_returns_cpu_info():
 
 
 def test_hardware_probe_gpu_returns_hardware_info():
-    from scripts.check_feasibility import HardwareProbe
+    from src.feasibility import HardwareProbe
     probe = HardwareProbe()
     gpu = probe.probe_gpu()
     assert gpu.device_name != ""
@@ -33,7 +33,7 @@ def test_hardware_probe_gpu_returns_hardware_info():
 
 
 def test_disk_probe_nonexistent_path_returns_zeroes():
-    from scripts.check_feasibility import DiskProbe
+    from src.feasibility import DiskProbe
     probe = DiskProbe()
     disk = probe.probe("/nonexistent/path/that/cannot/exist")
     assert disk.read_mb_per_s == 0.0
@@ -41,7 +41,7 @@ def test_disk_probe_nonexistent_path_returns_zeroes():
 
 
 def test_disk_probe_none_path():
-    from scripts.check_feasibility import DiskProbe
+    from src.feasibility import DiskProbe
     probe = DiskProbe()
     disk = probe.probe(None)
     assert disk.dataset_path == ""
@@ -49,7 +49,7 @@ def test_disk_probe_none_path():
 
 
 def test_disk_probe_existing_path():
-    from scripts.check_feasibility import DiskProbe
+    from src.feasibility import DiskProbe
     with tempfile.TemporaryDirectory() as tmp:
         disk = DiskProbe().probe(tmp)
         # Debe devolver algo, sin crashear
@@ -60,14 +60,14 @@ def test_disk_probe_existing_path():
 
 
 def test_dataset_profiler_no_dataset():
-    from scripts.check_feasibility import DatasetProfiler
+    from src.feasibility import DatasetProfiler
     dp = DatasetProfiler(None, None).profile(0.5, 32)
     assert dp.n_files_total_est == 0
     assert dp.io_bottleneck_ratio == 0.0
 
 
 def test_dataset_profiler_compute_bottleneck():
-    from scripts.check_feasibility import DatasetProfiler, DiskInfo
+    from src.feasibility import DatasetProfiler, DiskInfo
     # Si files_per_second es muy alto, el ratio debe ser < 1 (compute-bound)
     fast_disk = DiskInfo(
         dataset_path="/fake",
@@ -82,7 +82,7 @@ def test_dataset_profiler_compute_bottleneck():
 
 
 def test_dataset_profiler_io_bottleneck():
-    from scripts.check_feasibility import DatasetProfiler, DiskInfo
+    from src.feasibility import DatasetProfiler, DiskInfo
     # Si files_per_second es muy bajo, el ratio debe ser > 1 (I/O-bound)
     slow_disk = DiskInfo(
         dataset_path="/fake",
@@ -100,7 +100,7 @@ def test_dataset_profiler_io_bottleneck():
 
 
 def test_performance_predictor_vit_base_v3():
-    from scripts.check_feasibility import PerformancePredictor
+    from src.feasibility import PerformancePredictor
     pred = PerformancePredictor().predict("vit_base_patch16_224", n_epochs=30,
                                           has_llrd=True, has_label_smoothing=True)
     assert pred.predicted_best_f1 > 0.6, "ViT-Base debería alcanzar F1 > 0.6"
@@ -112,14 +112,14 @@ def test_performance_predictor_vit_base_v3():
 
 
 def test_performance_predictor_vit_tiny():
-    from scripts.check_feasibility import PerformancePredictor
+    from src.feasibility import PerformancePredictor
     pred = PerformancePredictor().predict("vit_tiny_patch16_224", n_epochs=20)
     # ViT-Tiny tiene menor techo que ViT-Base
     assert pred.predicted_best_f1 < 0.65
 
 
 def test_performance_predictor_curve_monotone_increasing_initially():
-    from scripts.check_feasibility import PerformancePredictor
+    from src.feasibility import PerformancePredictor
     pred = PerformancePredictor().predict("vit_base_patch16_224", n_epochs=15,
                                           has_llrd=True, has_label_smoothing=True)
     # Los primeros 5 epochs deben mostrar crecimiento
@@ -128,7 +128,7 @@ def test_performance_predictor_curve_monotone_increasing_initially():
 
 
 def test_performance_predictor_train_above_val():
-    from scripts.check_feasibility import PerformancePredictor
+    from src.feasibility import PerformancePredictor
     pred = PerformancePredictor().predict("vit_base_patch16_224", n_epochs=10)
     # Train F1 siempre debe ser ≥ Val F1 (efecto overfitting)
     for tr, va in zip(pred.curve_f1_train[3:], pred.curve_f1_val[3:]):
@@ -136,7 +136,7 @@ def test_performance_predictor_train_above_val():
 
 
 def test_performance_predictor_unknown_model():
-    from scripts.check_feasibility import PerformancePredictor
+    from src.feasibility import PerformancePredictor
     # No debe fallar con modelos desconocidos
     pred = PerformancePredictor().predict("some_unknown_model_xyz", n_epochs=10)
     assert pred.predicted_best_f1 > 0
@@ -146,7 +146,7 @@ def test_performance_predictor_unknown_model():
 
 
 def _make_ddp_optimizer():
-    from scripts.check_feasibility import (
+    from src.feasibility import (
         DDPOptimizer, ModelInfo, HardwareInfo, CPUInfo, DiskInfo, BenchmarkResult,
     )
     model_info = ModelInfo(
@@ -185,7 +185,7 @@ def test_ddp_optimizer_compute_scenarios():
 
 
 def test_ddp_optimizer_single_gpu_efficiency_100():
-    from scripts.check_feasibility import DDPOptimizer
+    from src.feasibility import DDPOptimizer
     optimizer = _make_ddp_optimizer()
     scenarios = optimizer.compute_scenarios(n_epochs=5)
     single = next(s for s in scenarios if s.n_gpus == 1)
@@ -195,7 +195,7 @@ def test_ddp_optimizer_single_gpu_efficiency_100():
 
 def test_ddp_optimizer_more_gpus_faster_when_compute_bound():
     """Con un disco rápido (compute-bound), más GPUs → menos tiempo total."""
-    from scripts.check_feasibility import (
+    from src.feasibility import (
         DDPOptimizer, ModelInfo, HardwareInfo, CPUInfo, DiskInfo, BenchmarkResult,
     )
     mi = ModelInfo(name="vit_base", total_params=86_000_000, trainable_params=86_000_000,
@@ -256,7 +256,7 @@ def test_recommend_io_bound_stays_single_gpu():
 
 def test_recommend_compute_bound_scales_out():
     """Compute-bound (disco rápido) → recomienda >1 GPU con eficiencia alta."""
-    from scripts.check_feasibility import (
+    from src.feasibility import (
         DDPOptimizer, ModelInfo, HardwareInfo, CPUInfo, DiskInfo, BenchmarkResult,
     )
     mi = ModelInfo(name="vit_base", total_params=86_000_000, trainable_params=86_000_000,
