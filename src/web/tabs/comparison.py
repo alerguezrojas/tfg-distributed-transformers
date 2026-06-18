@@ -6,6 +6,8 @@ old "Single vs Distributed" pair), radar, energy and per-epoch overlays.
 """
 from __future__ import annotations
 
+import re
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -17,7 +19,7 @@ from src.web.ui import theme
 from src.web.ui.charts import COLORS, _show, _dl_csv, _base_layout, _overlay_fig
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (
-    _load_df, _load_perclass, _get_feasibility_csvs,
+    _load_df, _load_perclass, _run_config, _get_feasibility_csvs,
     _safe_max, _safe_val_at_best, _dur_str,
 )
 from pathlib import Path
@@ -93,6 +95,8 @@ def render(ctx: DashboardContext) -> None:
 
     _summary_table(compare_runs_list, df_by_label)
     st.markdown("---")
+    _config_diff_section(compare_runs_list)
+    st.markdown("---")
     _speedup_section(compare_runs_list, df_by_label)
     st.markdown("---")
     _perclass_compare_section(compare_runs_list)
@@ -126,6 +130,53 @@ def _summary_table(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.Dat
     sum_df = pd.DataFrame(summary_rows).set_index("Run")
     st.dataframe(sum_df, use_container_width=True)
     _dl_csv(sum_df.reset_index(), "runs_comparison.csv", "Download comparison")
+
+
+# ── Configuration diff (W&B style) ────────────────────────────────────────────────
+
+def _config_diff_section(sel: list[tuple[str, RunInfo]]) -> None:
+    """Side-by-side hyperparameters with the differing rows highlighted — makes the
+    apples-to-apples explicit (which params change between runs, which stay fixed)."""
+    st.markdown("### Configuration")
+    st.caption("Hyperparameters side by side; rows that differ between the selected "
+               "runs are highlighted. Lets you confirm the comparison is apples-to-apples.")
+
+    def _col(lbl: str, r: RunInfo) -> dict:
+        cfg = _run_config(str(r.log_path))
+        return {
+            "Model": r.model.replace("_patch16_224", "") or "—",
+            "Strategy": r.mode,
+            "Precision": r.precision or "fp32",
+            "Loss": cfg.get("loss", "—"),
+            "Batch": cfg.get("batch", "—"),
+            "Learning rate": cfg.get("lr", "—"),
+            "Train / Val": f"{cfg.get('train', '?')}/{cfg.get('val', '?')}",
+            "Environment": r.env,
+            "Trace": r.trace_mode,
+        }
+
+    def _short(lbl: str) -> str:
+        return re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
+
+    cols = {_short(lbl): _col(lbl, r) for lbl, r in sel}
+    params = list(next(iter(cols.values())).keys())
+    df = pd.DataFrame({c: [cols[c][p] for p in params] for c in cols}, index=params)
+    differs = df.apply(lambda row: row.nunique() > 1, axis=1)
+
+    only_diff = st.checkbox("Show only parameters that differ", value=True, key="cfg_only_diff")
+    view = df[differs] if only_diff else df
+    if view.empty:
+        st.info("The selected runs share the same configuration — a clean apples-to-apples set.")
+        return
+    diff_idx = set(view.index[view.apply(lambda r: r.nunique() > 1, axis=1)])
+
+    def _hl(row):
+        on = row.name in diff_idx
+        return [("background-color:#FBECEC" if on else "") for _ in row]
+
+    st.dataframe(view.style.apply(_hl, axis=1), use_container_width=True)
+    n = int(differs.sum())
+    st.caption(f"{n} of {len(params)} parameters differ across the {len(sel)} selected runs.")
 
 
 # ── Per-class comparison (dumbbell) ───────────────────────────────────────────────
