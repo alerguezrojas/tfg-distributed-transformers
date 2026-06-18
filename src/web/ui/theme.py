@@ -130,8 +130,19 @@ def inject_css() -> None:
   /* Sidebar buttons = the run-list rows (nav is the option_menu iframe, not a
      button). Left-aligned, compact, and each row stays on ONE line — the inner
      label element is a div, so target the button and all its children. */
-  [data-testid="stSidebar"] .stButton button { justify-content: flex-start; text-align: left;
+  /* Run-list rows: the element containers are ~content width and get centred in
+     the list; force them to fill the width (margin 0, max-width none) and push
+     the label flush against the left edge. */
+  [data-testid="stSidebar"] [data-testid="stElementContainer"],
+  [data-testid="stSidebar"] .stButton {
+    width: 100% !important; max-width: 100% !important; margin: 0 !important; }
+  [data-testid="stSidebar"] .stButton button {
+    width: 100% !important; justify-content: flex-start !important; text-align: left !important;
     font-weight: 500; font-size: 0.8rem; padding: 0.2rem 0.45rem; min-height: 1.7rem; }
+  /* The button's inner content div is display:flex; justify-content:center —
+     that is what centres the label. Force it to start so the text sits left. */
+  [data-testid="stSidebar"] .stButton button > * {
+    width: 100% !important; justify-content: flex-start !important; text-align: left !important; }
   [data-testid="stSidebar"] .stButton button,
   [data-testid="stSidebar"] .stButton button * {
     white-space: nowrap !important; overflow: hidden; text-overflow: ellipsis; }
