@@ -1,0 +1,63 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  18/06/2026 17:54:41
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               vit_base_patch16_224
+  Parámetros totales:   85,813,267 (85.8M)
+  FLOPs/imagen:         200.8 MFLOPs
+  Memoria estática:     1.34 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: fp32 (CUDA cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 4750 MHz
+  RAM: 16.6 GB total / 6.5 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+  Velocidad lectura: 27 MB/s  |  2136 patches/s
+  Patches encontrados: ~403,880
+  ✓ Compute-bound (ratio=0.09) — GPU es el cuello de botella
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch   Total est.      Estado
+     32       6.41 GB        ✓ OK
+     64      11.48 GB       OOM ✗
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     32  simple           67.5       209.9   4.94 GB
+     64  simple              OOM
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  30 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     32  simple      0h 58m   0h 09m    1h 08m   34h 12m
+     64  simple    OOM
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         32            32        8    1.00×  100.0%   compute
+     2         32            64        8    1.83×   91.7%   compute
+     4         32           128        4    3.67×   91.7%   compute
+     8         32           256        2    7.34×   91.7%   compute
+
+  Configuración recomendada: 1 GPU(s) con batch=32/GPU
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: vit_base_patch16_224
+  Val F1 esperado:    ~0.680  (epoch ≈ 7)
+  Early stop aprox.:  epoch ≈ 17  (patience=10)
+  Confianza:          high
+  Nota: Empirical prior anchored to documented vit_base runs on BigEarthNet-S2; confidence high. | Dataset =
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  ✗ Ningún batch size viable
