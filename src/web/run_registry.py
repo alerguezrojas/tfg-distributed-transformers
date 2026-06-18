@@ -46,6 +46,10 @@ class RunInfo:
     batch_csv_path: Path | None = None
     epoch_csv_path: Path | None = None
     perclass_csv_path: Path | None = None
+    # Held-out test-set results (from scripts/eval.py). Keyed by folder, not
+    # timestamp — eval CSVs are named by loss/config (test_bce.csv …), so all
+    # test_*.csv in the run's folder are offered against runs of that model.
+    test_csv_paths: list[Path] = field(default_factory=list)
 
     @property
     def sort_key(self) -> str:
@@ -152,6 +156,17 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
         m = _TIMESTAMP_RE.search(csv_path.stem)
         if m and m.group(1) in runs and runs[m.group(1)].confusion_matrix_csv_path is None:
             runs[m.group(1)].confusion_matrix_csv_path = csv_path
+
+    # Held-out test CSVs: associate by folder (they carry no run timestamp).
+    # Every test_*.csv / eval_*.csv in a run's directory is offered to runs there.
+    _test_by_dir: dict[Path, list[Path]] = {}
+    for pat in ("test_*.csv", "eval_*.csv"):
+        for csv_path in logs_root.rglob(pat):
+            _test_by_dir.setdefault(csv_path.parent, []).append(csv_path)
+    for r in runs.values():
+        found = _test_by_dir.get(r.log_path.parent, [])
+        if found:
+            r.test_csv_paths = sorted(found)
 
     return sorted(runs.values(), key=lambda r: r.sort_key, reverse=True)
 

@@ -72,15 +72,20 @@ def parse_args():
                         help="CSV path to save per-class results")
     parser.add_argument("--split", choices=["test", "val"], default="test",
                         help="Dataset split to evaluate on (default: test)")
+    parser.add_argument("--metadata", type=str, default=None,
+                        help="Override metadata.parquet path (e.g. a demo subset)")
+    parser.add_argument("--max-batches", type=int, default=None,
+                        help="Stop after N batches (quick sanity check)")
     return parser.parse_args()
 
 
 @torch.no_grad()
-def evaluate(model, loader, device):
+def evaluate(model, loader, device, max_batches=None):
     """Run inference and return probabilities + labels."""
     model.eval()
     all_probs, all_labels = [], []
     total_loss = 0.0
+    n_batches = 0
     criterion = torch.nn.BCEWithLogitsLoss()
 
     for images, labels in loader:
@@ -89,10 +94,13 @@ def evaluate(model, loader, device):
         total_loss += criterion(logits, labels).item()
         all_probs.append(torch.sigmoid(logits).cpu())
         all_labels.append(labels.cpu())
+        n_batches += 1
+        if max_batches and n_batches >= max_batches:
+            break
 
     probs = torch.cat(all_probs)
     labels = torch.cat(all_labels)
-    return probs, labels, total_loss / len(loader)
+    return probs, labels, total_loss / n_batches
 
 
 def threshold_search(probs, labels):
@@ -147,11 +155,12 @@ def main():
     print(f"Dispositivo: {device}")
 
     # ── Build model ───────────────────────────────────────────────────────────
+    # dropout is a no-op at eval time (model.eval() disables it) and does not
+    # affect the state_dict shape, so build_model need not take it.
     model = build_model(
         model_name=model_name,
         num_classes=num_classes,
         pretrained=False,
-        dropout=cfg["model"].get("dropout", 0.1),
     )
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
     model.load_state_dict(ckpt["model_state_dict"])
@@ -160,8 +169,9 @@ def main():
     print(f"Epoch      : {resumed_epoch}")
 
     # ── Dataset ───────────────────────────────────────────────────────────────
+    metadata_path = args.metadata or cfg["data"]["metadata"]
     ds = BigEarthNetDataset(
-        cfg["data"]["root"], cfg["data"]["metadata"], split=args.split,
+        cfg["data"]["root"], metadata_path, split=args.split,
         transform=get_transforms("val"),
     )
     loader = DataLoader(
@@ -169,9 +179,14 @@ def main():
         num_workers=cfg["data"].get("num_workers", 4), pin_memory=True,
     )
     print(f"Patches    : {len(ds)}")
+    if len(ds) == 0:
+        print(f"\nERROR: the '{args.split}' split is empty in {metadata_path}. "
+              "This metadata may not contain that split (e.g. the demo subset has "
+              "only train/val). Use --split val or a full-dataset metadata.")
+        sys.exit(1)
 
     # ── Evaluate ──────────────────────────────────────────────────────────────
-    probs, labels, avg_loss = evaluate(model, loader, device)
+    probs, labels, avg_loss = evaluate(model, loader, device, max_batches=args.max_batches)
     preds_05 = (probs > 0.5).long()
 
     f1_05     = m.f1_score(preds_05, labels)

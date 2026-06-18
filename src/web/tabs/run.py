@@ -24,6 +24,7 @@ from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
 from src.web.model_explorer import ALL_FAMILIES, CURATED_MODELS, compare_models
 from src.web.perclass_parser import parse_perclass_csv
+from src.web.eval_parser import parse_eval_csv
 from src.web.run_registry import RunInfo
 from src.web.system_monitor import get_snapshot
 
@@ -45,6 +46,7 @@ from src.web.ui.helpers import (
 def render(ctx: DashboardContext) -> None:
     st.markdown("## Run results")
     st.caption("Metrics and metadata of the run selected in the sidebar.")
+    _test_callout(ctx)
     # One level of tabs only — the per-class trend and the confusion views used
     # to be a second nested row; they are now top-level tabs.
     sub = st.tabs(["Curves", "Per-class", "Confusions", "Batch", "Details"])
@@ -61,6 +63,49 @@ def render(ctx: DashboardContext) -> None:
         _time(ctx)
         st.markdown("---")
         _info(ctx)
+
+
+def _test_callout(ctx: DashboardContext) -> None:
+    """Held-out TEST-set results (from scripts/eval.py), shown above the tabs.
+
+    Every metric elsewhere in the dashboard is *validation*; this is the honest
+    final number on the test split that training never touches. Appears only
+    when a test_*.csv sits in the run's folder."""
+    run = ctx.run
+    if run is None or not getattr(run, "test_csv_paths", None):
+        return
+    with st.container(border=True):
+        st.markdown("#### Held-out test set")
+        st.caption(
+            "Evaluated on the **test** split (never seen in training) with "
+            "`scripts/eval.py`. Every other figure here is validation — this is "
+            "the final generalization number."
+        )
+        for p in run.test_csv_paths:
+            pcdf, agg = parse_eval_csv(p)
+            if not agg and pcdf.empty:
+                continue
+            st.markdown(f"**{p.name}**")
+            cols = st.columns(4)
+            if "f1_t05" in agg:
+                cols[0].metric("Macro F1 (t=0.50)", f"{float(agg['f1_t05']):.4f}")
+            if "f1_opt" in agg:
+                _t = agg.get("threshold")
+                cols[1].metric("Macro F1 (optimal)", f"{float(agg['f1_opt']):.4f}",
+                               delta=f"t={float(_t):.2f}" if _t is not None else None,
+                               delta_color="off")
+            if "accuracy" in agg:
+                cols[2].metric("Accuracy", f"{float(agg['accuracy']):.4f}")
+            if "loss" in agg:
+                cols[3].metric("BCE loss", f"{float(agg['loss']):.4f}")
+            if not pcdf.empty and "class_name" in pcdf.columns:
+                zeros = pcdf[pcdf["f1"] == 0]["class_name"].tolist()
+                if zeros:
+                    st.caption(f"Classes with F1=0 on test ({len(zeros)}): "
+                               + ", ".join(zeros[:6]) + ("…" if len(zeros) > 6 else ""))
+                with st.expander("Per-class test metrics"):
+                    st.dataframe(pcdf, use_container_width=True, hide_index=True)
+                    _dl_csv(pcdf, f"{p.stem}.csv", "Download")
 
 
 def _curves(ctx: DashboardContext) -> None:
