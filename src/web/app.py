@@ -115,29 +115,14 @@ with st.sidebar:
         if _active not in _opts:
             _opts = [_active] + _opts
 
-        def _disp(lbl: str) -> str:
-            # Front-load the distinguishing parts (model · tags · env) so runs are
-            # told apart at a glance and the date is what truncates, not the tags.
-            r = _by_label.get(lbl)
-            if r is None:
-                return lbl
-            tags = []
-            if r.mode != "single":
-                tags.append(f"[{r.mode}]")
-            if r.precision and r.precision != "fp32":
-                tags.append(f"[{r.precision}]")
-            if r.trace_mode == "deep":
-                tags.append("[deep]")
-            model = (r.model or "?").replace("_patch16_224", "")
-            head = " ".join([model] + tags)
-            return f"{head} · {r.env} · {lbl[:16]}"
-
         # A scrollable vertical list (not a dropdown): one row per run, click to
-        # select it directly. The active run is the highlighted (primary) row.
+        # select it directly. Rows use the SAME label as the Overview "All runs"
+        # table (RunInfo.label: date [env] model [mode] [precision]) — one naming
+        # convention across the dashboard. The active run is the highlighted row.
         st.caption("Select a run")
         with st.container(height=300, border=True):
             for _lbl in _opts:
-                if st.button(_disp(_lbl), key=f"runpick::{_lbl}",
+                if st.button(_lbl, key=f"runpick::{_lbl}",
                              use_container_width=True,
                              type="primary" if _lbl == _active else "secondary"):
                     st.session_state["run_label"] = _lbl
