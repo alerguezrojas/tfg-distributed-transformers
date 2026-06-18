@@ -1,0 +1,64 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  18/06/2026 17:16:28
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               vit_tiny_patch16_224
+  Parámetros totales:   5,528,083 (5.5M)
+  FLOPs/imagen:         34.3 MFLOPs
+  Memoria estática:     0.09 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: fp32 (CUDA cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 4457 MHz
+  RAM: 16.6 GB total / 6.4 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+  Velocidad lectura: 42 MB/s  |  2967 patches/s
+  Patches encontrados: ~403,880
+  ✓ Compute-bound (ratio=0.54) — GPU es el cuello de botella
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch   Total est.      Estado
+     32       1.35 GB        ✓ OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     32  off             538.1      1734.5   1.07 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  15 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     32  off         0h 00m   0h 00m    0h 00m    0h 02m
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         32            32        8    1.00×  100.0%   compute
+     2         32            64        8    1.76×   88.1%   compute
+     4         32           128        4    1.80×   45.0%        io
+     8         32           256        2    1.82×   22.7%        io
+
+  Configuración recomendada: 1 GPU(s) con batch=32/GPU
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: vit_tiny_patch16_224
+  Val F1 esperado:    ~0.271  (epoch ≈ 8)
+  Early stop aprox.:  epoch ≈ 15  (patience=10)
+  Confianza:          medium
+  Nota: Empirical prior anchored to documented vit_tiny runs on BigEarthNet-S2; confidence medium. | Dataset
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  ✓ Batch size óptimo: 32 (538.1 imgs/s)
+  → --trace off      15 epochs: ~0h 02m  [DDP×2: ~0.0h]
+
+  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+
