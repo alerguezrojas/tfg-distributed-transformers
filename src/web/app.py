@@ -123,7 +123,7 @@ with st.sidebar:
         with st.container(height=300, border=True):
             for _lbl in _opts:
                 if st.button(_lbl, key=f"runpick::{_lbl}",
-                             use_container_width=True,
+                             width="stretch",   # full row width (Streamlit ≥1.57)
                              type="primary" if _lbl == _active else "secondary"):
                     st.session_state["run_label"] = _lbl
                     st.rerun()
