@@ -88,6 +88,11 @@ def test_dur_str_exact():
 
 # ── module layout ─────────────────────────────────────────────────────────────
 
+_CMP_PKG = [
+    "tabs/comparison/__init__.py", "tabs/comparison/_common.py",
+    "tabs/comparison/summary.py", "tabs/comparison/perclass.py",
+    "tabs/comparison/speedup.py", "tabs/comparison/charts.py",
+]
 _RUN_PKG = [
     "tabs/run/__init__.py", "tabs/run/curves.py", "tabs/run/perclass.py",
     "tabs/run/confusions.py", "tabs/run/batch.py", "tabs/run/details.py",
@@ -95,10 +100,11 @@ _RUN_PKG = [
 _MODULES = [
     "app.py",
     "ui/__init__.py", "ui/context.py", "ui/charts.py", "ui/helpers.py",
-    "tabs/__init__.py", "tabs/home.py", "tabs/comparison.py",
+    "tabs/__init__.py", "tabs/home.py",
     "tabs/analysis.py", "tabs/feasibility.py", "tabs/feasibility_predict.py",
     "tabs/dataset.py", "tabs/data_models.py",
     *_RUN_PKG,
+    *_CMP_PKG,
 ]
 
 
@@ -118,10 +124,13 @@ def charts_source() -> str:
 
 @pytest.fixture(scope="module")
 def tabs_source() -> str:
-    mods = ["home.py", "comparison.py", "analysis.py", "feasibility.py",
+    mods = ["home.py", "analysis.py", "feasibility.py",
             "dataset.py", "data_models.py",
             "run/curves.py", "run/perclass.py", "run/confusions.py",
-            "run/batch.py", "run/details.py", "run/__init__.py"]
+            "run/batch.py", "run/details.py", "run/__init__.py",
+            "comparison/summary.py", "comparison/perclass.py",
+            "comparison/speedup.py", "comparison/charts.py",
+            "comparison/__init__.py"]
     return "\n".join(_src(f"tabs/{m}") for m in mods)
 
 
