@@ -439,9 +439,9 @@ package "src.data" #FDFEFE {
 }
 
 ' ════════════════════════════════════════════════════════════════
-' PACKAGE: scripts.check_feasibility (v4)
+' PACKAGE: src.feasibility (SRP package; scripts/check_feasibility.py is now a thin CLI)
 ' ════════════════════════════════════════════════════════════════
-package "scripts.check_feasibility" #FDFEFE {
+package "src.feasibility" #FDFEFE {
 
   class ModelInfo <<dataclass>> {
     + name: str
@@ -672,15 +672,38 @@ package "src.web" #FDFEFE {
     **ui/** (SRP): context (DashboardContext),
     charts (_show/_dl_csv/_metric_fig/_overlay_fig),
     helpers (loaders cacheados + utilidades),
-    i18n (capa EN→ES que parchea st.* / DeltaGenerator)
+    theme (.streamlit/config.toml + CSS)
 
     **tabs/** — cada uno expone render(ctx):
-    home (Overview compacto) · run · comparison ·
-    feasibility (Predict/Validate/Measure) ·
-    data_models (Import)
+    home (Overview) · comparison · analysis ·
+    dataset · data_models (Import) ·
+    **run/** (paquete: curves/perclass/confusions/
+    batch/details) ·
+    feasibility + feasibility_predict (Predict)
     (5 secciones, máx. 1 nivel de pestañas)
   end note
 
+}
+
+' ════════════════════════════════════════════════════════════════
+' PACKAGE: src.cli (CLI unificado tipo `tfg <comando>`)
+' ════════════════════════════════════════════════════════════════
+package "src.cli" #FDFEFE {
+  note as cli_note
+    **tfg.py** (lanzador) + **src/cli.py** (Typer)
+    Un único punto de entrada en terminal:
+    el terminal HACE, la web MIRA.
+
+    Comandos: train (single/ddp/model-parallel/
+    heterogeneous → script correcto) · predict
+    (predictor analítico, tabla rich) · feasibility
+    (benchmark real) · eval (test) · runs · dashboard ·
+    menu (interactivo)
+
+    Builders puros (testeados):
+    build_train_cmd / build_feasibility_cmd /
+    build_eval_cmd / resolve_dataset_n
+  end note
 }
 
 ' ════════════════════════════════════════════════════════════════

@@ -1073,6 +1073,15 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Honestidad documental:** `docs/performance_model.md` separa calibración (in-sample) de validación out-of-sample (los speedups cancelan la MFU → predicción genuina).
 - [x] **Proceso:** README real (antes 1 línea) + CI (`.github/workflows/ci.yml`, pytest en cada push/PR). **Suite en 333 tests.**
 
+#### CLI unificado + auditoría de limpieza/SOLID (19/06/26)
+- [x] **CLI `tfg`** (`tfg.py` + `src/cli.py`, Typer): un único punto de entrada en terminal — `train` (elige estrategia → script correcto, torchrun para ddp/heterogéneo) · `predict` (predictor analítico, tabla rich) · `feasibility` · `eval` · `runs` (lista runs con Best Val F1 / Test F1) · `dashboard` · `menu` (interactivo). Builders puros testeados + `--dry-run`. Separación **terminal hace / web mira** (W&B/MLflow/TensorBoard). PRs #49–#51.
+- [x] **`predict` elige dataset full/subset** en vez de teclear el nº (CLI `--dataset`, menú, y selectbox en la web). `resolve_dataset_n` testeado. PR #53.
+- [x] **Fix modelo de memoria** (`performance_model`): activaciones **por modelo** (`act_gb_per_img`, calibrado con vit_base 4.95 GB@b32 3060 Ti / vit_large 13.78 GB@b32 T4) + margen de VRAM usable (0.92). Antes decía que vit_base entraba a batch 64 en 8 GB (real: OOM, solo 32). PR #52.
+- [x] **Limpieza del repo:** fuera el tooling MLflow (`scripts/ingest_mlflow.py`, `run_mlflow.sh`) y artefactos locales (`mlflow.db`, `mlartifacts/`, `.venv-mlflow`) — Streamlit es EL dashboard; fuera `dashboard/` (pyc huérfanos del Dash) y `src/evaluation/` (placeholder vacío). PR #54.
+- [x] **No-ficheros-enormes (SRP):** `scripts/check_feasibility.py` (1600 ln) → paquete `src/feasibility/`; `src/web/tabs/run.py` (940 ln) → paquete `run/` (curves/perclass/confusions/batch/details); Predict extraído a `tabs/feasibility_predict.py`. PRs #55–#56.
+- [x] **Auditoría funcional completa (19/06):** todos los comandos del CLI (predict sweep, menu, runs, eval/feasibility/train reales — single + DDP torchrun), las 6 secciones de la web + sub-pestañas (Playwright) — **todo verde**.
+- [x] **Diagrama de clases (`docs/class_diagram.puml`) actualizado**: paquete `src.feasibility`, `src.cli`, nota de `src.web` (run/ paquete, sin i18n). ⚠ El `.png`/`.svg` se regeneran con `plantuml` local (java) — el diagrama es demasiado grande para el servidor web público.
+
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
 - [ ] (Opcional, **ya implementado, falta correr**) Run focal-vs-BCE en Verode (V100, dataset completo) para confirmar a escala si focal sube el F1 macro / rescata la clase 6. Capacidad y configs listas; solo falta GPU libre.
