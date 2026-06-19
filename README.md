@@ -59,25 +59,38 @@ Diagrama de clases completo: [`docs/class_diagram.svg`](docs/class_diagram.svg).
 
 Requiere [uv](https://docs.astral.sh/uv/). `uv sync` crea el entorno.
 
+Hay **un único punto de entrada en terminal**, `tfg`, para todo lo que usa la
+máquina (entrenar, predecir, evaluar, abrir el dashboard). La separación es la de
+W&B/MLflow/TensorBoard: **el terminal hace** (toca la GPU) y **la web mira**
+(visualización de solo lectura).
+
 ```bash
+uv run tfg.py --help            # lista de comandos
+
+# Predecir antes de entrenar (sin GPU, solo fórmulas): tiempo, memoria, coste y F1 esperada
+uv run tfg.py predict --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2 --precision amp
+
+# Entrenar — la estrategia decide el lanzamiento (single, ddp, model-parallel, heterogeneous)
+uv run tfg.py train --strategy single --config configs/train_v3.yaml --layers plot
+uv run tfg.py train --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.yaml
+uv run tfg.py train --strategy single --config configs/train_cluster_focal.yaml   # clases raras
+
+# Benchmark de viabilidad en esta máquina (mide throughput real para calibrar)
+uv run tfg.py feasibility --model vit_base_patch16_224 --batch-sizes 32,64 --epochs 30
+
+# Evaluación en el conjunto de test (número honesto final)
+uv run tfg.py eval --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
+
+# Dashboard interactivo (analiza y compara todos los runs + predictor analítico)
+uv run tfg.py dashboard
+
 # Tests (CPU, sin GPU ni dataset)
 uv run pytest -q
-
-# Entrenamiento single-GPU
-uv run python scripts/train_single_gpu.py --config configs/train_v3.yaml --trace simple --layers plot
-
-# Atacar el techo de F1 macro (clases raras)
-uv run python scripts/train_single_gpu.py --config configs/train_cluster_focal.yaml --trace simple
-
-# Análisis de viabilidad previo (predice tiempo/speedup/memoria/coste)
-uv run python scripts/check_feasibility.py --batch-sizes 32 64 --epochs 30
-
-# Entrenamiento distribuido (DDP)
-torchrun --nproc_per_node=2 scripts/train_ddp.py --config configs/train_ddp_verode.yaml --trace simple
-
-# Dashboard interactivo (analiza y compara todos los runs)
-uv run streamlit run src/web/app.py
 ```
+
+> Cada comando admite `--dry-run` para imprimir el comando exacto sin ejecutarlo
+> (útil para copiarlo en Verode/Kaggle). Los scripts originales en `scripts/`
+> siguen funcionando por separado; `tfg` solo los unifica.
 
 ---
 

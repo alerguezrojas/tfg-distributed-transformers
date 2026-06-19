@@ -1,0 +1,306 @@
+"""Unified command-line interface — ``tfg <command>``.
+
+One entry point for everything that runs in a terminal, where the compute lives:
+launch trainings (any strategy), predict before training, run the feasibility
+benchmark, evaluate on the test split, and open the dashboard. The web stays
+read-only (visualisation); anything that needs a GPU is driven from here — the
+same separation used by Weights & Biases / MLflow / TensorBoard.
+
+    uv run tfg.py --help
+    uv run tfg.py predict --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
+    uv run tfg.py train   --strategy single --config configs/train.yaml
+    uv run tfg.py train   --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.yaml
+    uv run tfg.py eval    --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
+    uv run tfg.py dashboard
+
+The argv builders (``build_*_cmd``) are pure and unit-tested; the Typer commands
+just assemble them and run them (or print them with ``--dry-run``).
+"""
+from __future__ import annotations
+
+import subprocess
+import sys
+from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+
+ROOT = Path(__file__).resolve().parents[1]
+console = Console()
+app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="TFG — distributed Transformers. Train, predict, evaluate and visualise.",
+)
+
+STRATEGIES = ("single", "ddp", "model-parallel", "heterogeneous")
+
+
+# ── Pure command builders (unit-tested) ───────────────────────────────────────
+
+def _torchrun(nproc: int, nnodes: int, node_rank: int,
+              master_addr: str, master_port: int) -> list[str]:
+    """torchrun prefix (via ``python -m torch.distributed.run`` for a stable path)."""
+    base = [sys.executable, "-m", "torch.distributed.run", f"--nproc_per_node={nproc}"]
+    if nnodes > 1:
+        base += [f"--nnodes={nnodes}", f"--node_rank={node_rank}",
+                 f"--master_addr={master_addr}", f"--master_port={master_port}"]
+    return base
+
+
+def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
+                    epochs: int | None = None, trace: str = "simple",
+                    precision: str | None = None, layers: list[str] | None = None,
+                    fn: list[str] | None = None, n_gpus: int = 2, nnodes: int = 1,
+                    node_rank: int = 0, master_addr: str = "localhost",
+                    master_port: int = 29500) -> list[str]:
+    """Build the exact command for a training strategy.
+
+    single / model-parallel run a plain script; ddp / heterogeneous run under
+    torchrun. Flags are only added where the target script accepts them.
+    """
+    if strategy not in STRATEGIES:
+        raise ValueError(f"unknown strategy: {strategy}")
+
+    common = []
+    if model:
+        common += ["--model", model]
+    if epochs:
+        common += ["--epochs", str(epochs)]
+    common += ["--trace", trace]                      # every script accepts --trace
+    layers_fn = []
+    if layers:
+        layers_fn += ["--layers", *layers]
+    if fn:
+        layers_fn += ["--fn", *fn]
+
+    if strategy == "single":
+        cmd = [sys.executable, "scripts/train_single_gpu.py", "--config", config] + common
+        if precision and precision != "fp32":         # only single exposes --precision
+            cmd += ["--precision", precision]
+        return cmd + layers_fn
+    if strategy == "model-parallel":
+        # model_parallel takes config/model/epochs/trace only (no layers/fn).
+        return [sys.executable, "scripts/train_model_parallel.py", "--config", config] + common
+    if strategy == "ddp":
+        return (_torchrun(n_gpus, nnodes, node_rank, master_addr, master_port)
+                + ["scripts/train_ddp.py", "--config", config] + common + layers_fn)
+    # heterogeneous: one process per node, multi-node by definition
+    return (_torchrun(1, nnodes, node_rank, master_addr, master_port)
+            + ["scripts/train_heterogeneous_ddp.py", "--config", config] + common + layers_fn)
+
+
+def build_feasibility_cmd(models: list[str] | None, batch_sizes: list[int] | None,
+                          epochs: int, trace_modes: list[str] | None,
+                          config: str | None = None, dataset_path: str | None = None,
+                          precision: str = "fp32", compare_precision: bool = False,
+                          convergence_study: bool = False, study_steps: int = 60,
+                          nfs_factor: float = 1.0, device: int = 0) -> list[str]:
+    """Build the check_feasibility.py command (the GPU benchmark / measurement)."""
+    cmd = [sys.executable, "scripts/check_feasibility.py", "--epochs", str(epochs)]
+    if config:
+        cmd += ["--config", config]
+    if models:
+        cmd += ["--model", *models]
+    if batch_sizes:
+        cmd += ["--batch-sizes", *[str(b) for b in batch_sizes]]
+    if trace_modes:
+        cmd += ["--trace-modes", *trace_modes]
+    if dataset_path:
+        cmd += ["--dataset-path", dataset_path]
+    if precision and precision != "fp32":
+        cmd += ["--precision", precision]
+    if compare_precision:
+        cmd += ["--compare-precision"]
+    if convergence_study:
+        cmd += ["--convergence-study", "--study-steps", str(study_steps)]
+    if nfs_factor != 1.0:
+        cmd += ["--nfs-factor", str(nfs_factor)]
+    if device:
+        cmd += ["--device", str(device)]
+    return cmd
+
+
+def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
+                   split: str = "test", output: str | None = None,
+                   metadata: str | None = None, batch_size: int | None = None,
+                   max_batches: int | None = None) -> list[str]:
+    """Build the eval.py command (held-out evaluation)."""
+    cmd = [sys.executable, "scripts/eval.py", "--checkpoint", checkpoint,
+           "--config", config, "--split", split]
+    if model:
+        cmd += ["--model", model]
+    if output:
+        cmd += ["--output", output]
+    if metadata:
+        cmd += ["--metadata", metadata]
+    if batch_size:
+        cmd += ["--batch-size", str(batch_size)]
+    if max_batches:
+        cmd += ["--max-batches", str(max_batches)]
+    return cmd
+
+
+# ── Runner ─────────────────────────────────────────────────────────────────────
+
+def _run(cmd: list[str], dry_run: bool) -> None:
+    pretty = " ".join(cmd)
+    console.print(Panel(pretty, title="command", border_style="cyan", expand=False))
+    if dry_run:
+        console.print("[yellow]--dry-run: not executed.[/]")
+        return
+    raise SystemExit(subprocess.run(cmd, cwd=str(ROOT)).returncode)
+
+
+def _csv(s: str | None) -> list[str] | None:
+    """Parse a comma-separated option (e.g. ``32,64`` or ``plot,confusion``)."""
+    if not s:
+        return None
+    return [x.strip() for x in s.split(",") if x.strip()]
+
+
+def _fmt_secs(s: float) -> str:
+    if s < 90:
+        return f"{s:.0f} s"
+    if s < 5400:
+        return f"{s / 60:.1f} min"
+    return f"{s / 3600:.1f} h"
+
+
+# ── Commands ─────────────────────────────────────────────────────────────────
+
+@app.command()
+def train(
+    strategy: str = typer.Option("single", help=f"One of {', '.join(STRATEGIES)}."),
+    config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model, batch…)."),
+    model: Optional[str] = typer.Option(None, help="Override the model (any timm ID)."),
+    epochs: Optional[int] = typer.Option(None, help="Override the number of epochs."),
+    trace: str = typer.Option("simple", help="off | simple | deep."),
+    precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (single-GPU)."),
+    layers: Optional[str] = typer.Option(None, help="Comma-separated: plot,confusion,batch-monitor,hooks."),
+    fn: Optional[str] = typer.Option(None, help="Comma-separated: timing,energy."),
+    n_gpus: int = typer.Option(2, help="GPUs per node (ddp)."),
+    nnodes: int = typer.Option(1, help="Number of nodes (multi-node ddp / heterogeneous)."),
+    node_rank: int = typer.Option(0, help="This node's rank (multi-node)."),
+    master_addr: str = typer.Option("localhost", help="Rendez-vous host (multi-node)."),
+    master_port: int = typer.Option(29500, help="Rendez-vous port (multi-node)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+) -> None:
+    """Launch a training run with the chosen distribution strategy."""
+    cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
+                          precision=precision, layers=_csv(layers), fn=_csv(fn), n_gpus=n_gpus,
+                          nnodes=nnodes, node_rank=node_rank, master_addr=master_addr,
+                          master_port=master_port)
+    _run(cmd, dry_run)
+
+
+@app.command()
+def predict(
+    model: str = typer.Option("vit_base_patch16_224", help="Model (timm ID)."),
+    gpu: str = typer.Option("Tesla T4", help="GPU name, e.g. 'Tesla V100', 'RTX 3060 Ti'."),
+    strategy: str = typer.Option("single", help="single | ddp | model_parallel | heterogeneous."),
+    n_gpus: int = typer.Option(1, help="Number of GPUs."),
+    batch: int = typer.Option(96, help="Global batch size."),
+    precision: str = typer.Option("fp32", help="fp32 | amp | tf32 | bf16."),
+    dataset_size: int = typer.Option(5000, help="Train images per epoch."),
+    epochs: int = typer.Option(15, help="Number of epochs."),
+    disk: str = typer.Option("ssd", help="ssd | nvme | hdd | nfs."),
+) -> None:
+    """Predict time, memory, cost and quality for a config — no GPU, just formulas."""
+    from src.performance_model import predict as _predict, predict_quality, gpu_spec
+    nfs = disk == "nfs"
+    strat = strategy.replace("-", "_")
+    p = _predict(strat, model, gpu, n_gpus=n_gpus, dataset_size=dataset_size,
+                 batch=batch, precision=precision, epochs=epochs, disk_type=disk, nfs=nfs)
+    if p is None:
+        console.print("[red]Unknown model or GPU spec.[/]")
+        raise typer.Exit(1)
+    q = predict_quality(model, dataset_size=dataset_size, epochs=epochs)
+
+    t = Table(title=f"Prediction · {model} · {gpu} · {strategy} ×{n_gpus} · {precision}",
+              show_header=False, border_style="cyan")
+    t.add_column("metric", style="bold")
+    t.add_column("value")
+    t.add_row("Train / epoch", _fmt_secs(p.time_per_epoch_train_s))
+    t.add_row("Total train", _fmt_secs(p.time_total_train_s))
+    if strat != "single":
+        t.add_row("Speedup", f"{p.speedup:.2f}×  (efficiency {p.efficiency*100:.0f}%)")
+    t.add_row("Bottleneck", p.bottleneck)
+    t.add_row("VRAM / GPU", f"{p.vram_per_gpu_gb:.1f} GB  "
+              + ("[green]fits[/]" if p.fits_in_memory else "[red]OOM[/]"))
+    t.add_row("Max batch that fits", str(p.recommended_batch))
+    if q is not None:
+        t.add_row("Expected Val F1", f"{q.expected_best_f1:.3f} ± {q.band:.3f}  "
+                  f"(best ep ≈ {q.best_epoch}, confidence {q.confidence})")
+    console.print(t)
+    try:
+        from src.cloud_cost import estimate_costs
+        total_h = p.time_total_train_s / 3600 * (n_gpus if strat in ("ddp", "heterogeneous") else 1)
+        rows = [r for r in estimate_costs(total_h, gpu) if r["usd_per_hour"] > 0][:3]
+        if rows:
+            console.print("[dim]Cheapest paid cloud:[/] " + "  ·  ".join(
+                f"{r['provider']} {r['gpu']} ${r['cost_usd']:.2f}" for r in rows))
+    except Exception:
+        pass
+    for note in p.notes:
+        console.print(f"[yellow]•[/] {note}")
+
+
+@app.command()
+def feasibility(
+    model: Optional[str] = typer.Option(None, help="Comma-separated model(s), e.g. vit_base_patch16_224,resnet50."),
+    batch_sizes: Optional[str] = typer.Option(None, help="Comma-separated batch sizes, e.g. 32,64."),
+    epochs: int = typer.Option(30, help="Epochs for the time estimate."),
+    trace_modes: Optional[str] = typer.Option(None, help="Comma-separated: off,simple,deep."),
+    config: Optional[str] = typer.Option(None, help="YAML config (for dataset sizes/paths)."),
+    dataset_path: Optional[str] = typer.Option(None, help="Dataset path to measure real I/O."),
+    precision: str = typer.Option("fp32", help="Benchmark precision (Tensor-core switch)."),
+    compare_precision: bool = typer.Option(False, "--compare-precision", help="FP32 vs Tensor."),
+    convergence_study: bool = typer.Option(False, "--convergence-study", help="Real mini-training."),
+    study_steps: int = typer.Option(60, help="Mini-training steps."),
+    nfs_factor: float = typer.Option(1.0, help="NFS latency factor (Verode ≈ 1.3)."),
+    device: int = typer.Option(0, help="CUDA device index."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+) -> None:
+    """Run the feasibility benchmark on this machine (measures real throughput)."""
+    _bs = [int(x) for x in (_csv(batch_sizes) or [])] or None
+    cmd = build_feasibility_cmd(_csv(model), _bs, epochs, _csv(trace_modes), config=config,
+                                dataset_path=dataset_path, precision=precision,
+                                compare_precision=compare_precision,
+                                convergence_study=convergence_study, study_steps=study_steps,
+                                nfs_factor=nfs_factor, device=device)
+    _run(cmd, dry_run)
+
+
+@app.command()
+def eval(
+    checkpoint: str = typer.Option(..., help="Path to the .pt checkpoint."),
+    config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model)."),
+    model: Optional[str] = typer.Option(None, help="Override the model."),
+    split: str = typer.Option("test", help="test | val."),
+    output: Optional[str] = typer.Option(None, help="CSV path for per-class results."),
+    metadata: Optional[str] = typer.Option(None, help="Override metadata.parquet."),
+    batch_size: Optional[int] = typer.Option(None, help="Batch size."),
+    max_batches: Optional[int] = typer.Option(None, help="Stop after N batches (sanity)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+) -> None:
+    """Evaluate a checkpoint on the held-out test (or val) split."""
+    cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
+                         metadata=metadata, batch_size=batch_size, max_batches=max_batches)
+    _run(cmd, dry_run)
+
+
+@app.command()
+def dashboard(
+    port: int = typer.Option(8501, help="Port for the Streamlit server."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+) -> None:
+    """Open the web dashboard (read-only visualisation of runs and predictions)."""
+    cmd = [sys.executable, "-m", "streamlit", "run", "src/web/app.py", "--server.port", str(port)]
+    _run(cmd, dry_run)
+
+
+if __name__ == "__main__":
+    app()

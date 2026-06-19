@@ -241,6 +241,23 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
 
 ---
 
+## CLI unificado (`tfg`)
+
+`src/cli.py` (Typer) + lanzador `tfg.py` en la raíz → **un único punto de entrada en terminal** para todo lo que usa la máquina. Separación tipo W&B/MLflow/TensorBoard: **el terminal hace** (toca la GPU), **la web mira** (visualización de solo lectura).
+
+```bash
+uv run tfg.py --help
+uv run tfg.py predict --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2 --precision amp
+uv run tfg.py train --strategy {single|ddp|model-parallel|heterogeneous} --config ... [--dry-run]
+uv run tfg.py feasibility --model vit_base_patch16_224 --batch-sizes 32,64 --epochs 30
+uv run tfg.py eval --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
+uv run tfg.py dashboard
+```
+
+- Subcomandos: `train` (elige estrategia → lanza el script correcto, con `torchrun` para ddp/heterogéneo), `predict` (predictor analítico en terminal, sin GPU — tabla rich), `feasibility` (benchmark real), `eval` (test split), `dashboard` (streamlit).
+- Builders puros `build_train_cmd` / `build_feasibility_cmd` / `build_eval_cmd` (testeados: `tests/unit/test_cli.py`, 13 tests). `--dry-run` imprime el comando sin ejecutarlo (para copiarlo en Verode/Kaggle).
+- Los scripts de `scripts/` siguen funcionando por separado; `tfg` solo los unifica. Dependencia nueva: `typer`. Rama: `feature/unified-cli`.
+
 ## Script de entrenamiento
 
 `scripts/train_single_gpu.py`
