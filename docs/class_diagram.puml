@@ -1,5 +1,6 @@
 @startuml class_diagram
 scale 2000 width
+skinparam backgroundColor #FFFFFF
 skinparam monochrome false
 skinparam classAttributeIconSize 0
 skinparam defaultFontName "DejaVu Sans"
