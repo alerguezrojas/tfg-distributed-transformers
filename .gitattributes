@@ -1,0 +1,9 @@
+# GitHub Linguist — estadísticas de lenguaje del repositorio.
+# Los .ipynb son JSON con las salidas incrustadas (gráficas/imágenes en base64),
+# así que por bytes pesan más que todo el código y falsean la barra de lenguajes.
+# Se marcan como documentación para que los % reflejen el código real (Python).
+*.ipynb linguist-documentation
+
+# Artefactos de datos versionados (logs/CSV de los experimentos): no son código.
+logs/**          linguist-generated
+*.csv            linguist-generated
