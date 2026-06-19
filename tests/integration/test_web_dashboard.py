@@ -96,7 +96,8 @@ _MODULES = [
     "app.py",
     "ui/__init__.py", "ui/context.py", "ui/charts.py", "ui/helpers.py",
     "tabs/__init__.py", "tabs/home.py", "tabs/comparison.py",
-    "tabs/analysis.py", "tabs/feasibility.py", "tabs/dataset.py", "tabs/data_models.py",
+    "tabs/analysis.py", "tabs/feasibility.py", "tabs/feasibility_predict.py",
+    "tabs/dataset.py", "tabs/data_models.py",
     *_RUN_PKG,
 ]
 
