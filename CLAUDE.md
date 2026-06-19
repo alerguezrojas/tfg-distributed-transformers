@@ -1080,7 +1080,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Limpieza del repo:** fuera el tooling MLflow (`scripts/ingest_mlflow.py`, `run_mlflow.sh`) y artefactos locales (`mlflow.db`, `mlartifacts/`, `.venv-mlflow`) — Streamlit es EL dashboard; fuera `dashboard/` (pyc huérfanos del Dash) y `src/evaluation/` (placeholder vacío). PR #54.
 - [x] **No-ficheros-enormes (SRP):** `scripts/check_feasibility.py` (1600 ln) → paquete `src/feasibility/`; `src/web/tabs/run.py` (940 ln) → paquete `run/` (curves/perclass/confusions/batch/details); Predict extraído a `tabs/feasibility_predict.py`. PRs #55–#56.
 - [x] **Auditoría funcional completa (19/06):** todos los comandos del CLI (predict sweep, menu, runs, eval/feasibility/train reales — single + DDP torchrun), las 6 secciones de la web + sub-pestañas (Playwright) — **todo verde**.
-- [x] **Diagrama de clases (`docs/class_diagram.puml`) actualizado**: paquete `src.feasibility`, `src.cli`, nota de `src.web` (run/ paquete, sin i18n). ⚠ El `.png`/`.svg` se regeneran con `plantuml` local (java) — el diagrama es demasiado grande para el servidor web público.
+- [x] **Diagrama de clases (`docs/class_diagram.puml/.svg/.png`) actualizado y regenerado**: paquete `src.feasibility`, `src.cli`, nota de `src.web` (run/ paquete, sin i18n). El `.puml` es muy grande para el endpoint GET de plantuml.com, así que el `.svg`/`.png` se regeneran por **POST a Kroki** (`requests.post("https://kroki.io/plantuml/svg", data=puml)`) — o con `plantuml` local (java).
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
