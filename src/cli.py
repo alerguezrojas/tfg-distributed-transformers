@@ -154,6 +154,15 @@ def _run(cmd: list[str], dry_run: bool) -> None:
     raise SystemExit(subprocess.run(cmd, cwd=str(ROOT)).returncode)
 
 
+def resolve_dataset_n(dataset: str, dataset_size: int | None = None) -> int:
+    """Map a dataset choice to a train-image count. ``full``/``subset`` are the
+    project's two canonical sizes; an explicit ``dataset_size`` overrides them."""
+    from src.performance_model import N_FULL_TRAIN, N_SUBSET_TRAIN
+    if dataset_size:
+        return int(dataset_size)
+    return N_FULL_TRAIN if str(dataset).lower().startswith("full") else N_SUBSET_TRAIN
+
+
 def _csv(s: str | None) -> list[str] | None:
     """Parse a comma-separated option (e.g. ``32,64`` or ``plot,confusion``)."""
     if not s:
@@ -204,12 +213,14 @@ def predict(
     n_gpus: int = typer.Option(1, help="Number of GPUs."),
     batch: int = typer.Option(96, help="Global batch size."),
     precision: str = typer.Option("fp32", help="fp32 | amp | tf32 | bf16."),
-    dataset_size: int = typer.Option(5000, help="Train images per epoch."),
+    dataset: str = typer.Option("subset", help="Dataset size: full (237,871) | subset (5,000)."),
+    dataset_size: Optional[int] = typer.Option(None, help="Custom train-image count (overrides --dataset)."),
     epochs: int = typer.Option(15, help="Number of epochs."),
     disk: str = typer.Option("ssd", help="ssd | nvme | hdd | nfs."),
 ) -> None:
     """Predict time, memory, cost and quality for a config — no GPU, just formulas."""
-    _show_prediction(model, gpu, strategy, n_gpus, batch, precision, dataset_size, epochs, disk)
+    n = resolve_dataset_n(dataset, dataset_size)
+    _show_prediction(model, gpu, strategy, n_gpus, batch, precision, n, epochs, disk)
 
 
 def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: int,
@@ -397,7 +408,8 @@ def menu() -> None:
                 n_gpus=IntPrompt.ask("GPUs", default=1 if strat == "single" else 2),
                 batch=IntPrompt.ask("Global batch", default=96),
                 precision=Prompt.ask("Precision", choices=["fp32", "amp", "tf32", "bf16"], default="fp32"),
-                dataset_size=IntPrompt.ask("Train images / epoch", default=5000),
+                dataset_size=resolve_dataset_n(
+                    Prompt.ask("Dataset", choices=["subset", "full"], default="subset")),
                 epochs=IntPrompt.ask("Epochs", default=15),
                 disk=Prompt.ask("Disk", choices=["ssd", "nvme", "hdd", "nfs"], default="ssd"))
         elif choice == "2":

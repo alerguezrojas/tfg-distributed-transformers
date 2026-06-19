@@ -354,6 +354,7 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
 # prior is for planning a run before spending the GPU hours.
 
 N_FULL_TRAIN: int = 237_871   # BigEarthNet-S2 train split (the anchor for N_full)
+N_SUBSET_TRAIN: int = 5_000   # the demo subset used across the comparative study
 
 # family → (F1_full, best_epoch, early_stop_epoch, data_sensitivity_k, confidence)
 _QUALITY_ANCHORS: dict[str, tuple[float, int, int, float, str]] = {
