@@ -88,11 +88,16 @@ def test_dur_str_exact():
 
 # ── module layout ─────────────────────────────────────────────────────────────
 
+_RUN_PKG = [
+    "tabs/run/__init__.py", "tabs/run/curves.py", "tabs/run/perclass.py",
+    "tabs/run/confusions.py", "tabs/run/batch.py", "tabs/run/details.py",
+]
 _MODULES = [
     "app.py",
     "ui/__init__.py", "ui/context.py", "ui/charts.py", "ui/helpers.py",
-    "tabs/__init__.py", "tabs/home.py", "tabs/run.py", "tabs/comparison.py",
+    "tabs/__init__.py", "tabs/home.py", "tabs/comparison.py",
     "tabs/analysis.py", "tabs/feasibility.py", "tabs/dataset.py", "tabs/data_models.py",
+    *_RUN_PKG,
 ]
 
 
@@ -112,10 +117,11 @@ def charts_source() -> str:
 
 @pytest.fixture(scope="module")
 def tabs_source() -> str:
-    return "\n".join(_src(f"tabs/{m}") for m in (
-        "home.py", "run.py", "comparison.py", "analysis.py", "feasibility.py",
-        "dataset.py", "data_models.py",
-    ))
+    mods = ["home.py", "comparison.py", "analysis.py", "feasibility.py",
+            "dataset.py", "data_models.py",
+            "run/curves.py", "run/perclass.py", "run/confusions.py",
+            "run/batch.py", "run/details.py", "run/__init__.py"]
+    return "\n".join(_src(f"tabs/{m}") for m in mods)
 
 
 @pytest.fixture(scope="module")
