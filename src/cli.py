@@ -308,6 +308,59 @@ def dashboard(
     _run(cmd, dry_run)
 
 
+def _run_row(r) -> dict:
+    """Summarise a RunInfo for the `runs` table: best Val F1 (from the epoch CSV)
+    and the held-out Test F1 (from a test_*.csv, if present)."""
+    best_val_f1 = None
+    epochs = None
+    if r.epoch_csv_path and Path(r.epoch_csv_path).exists():
+        try:
+            import pandas as pd
+            df = pd.read_csv(r.epoch_csv_path)
+            epochs = len(df)
+            if "val_f1" in df.columns and df["val_f1"].notna().any():
+                best_val_f1 = float(df["val_f1"].max())
+        except Exception:
+            pass
+    test_f1 = None
+    if getattr(r, "test_csv_paths", None):
+        try:
+            from src.web.eval_parser import parse_eval_csv
+            _, agg = parse_eval_csv(r.test_csv_paths[0])
+            test_f1 = agg.get("f1_opt", agg.get("f1_t05"))
+        except Exception:
+            pass
+    return {"label": r.label, "env": r.env, "mode": r.mode,
+            "precision": r.precision or "fp32", "epochs": epochs,
+            "best_val_f1": best_val_f1, "test_f1": test_f1}
+
+
+@app.command()
+def runs(
+    env: Optional[str] = typer.Option(None, help="Filter by environment (local/verode/kaggle)."),
+    limit: int = typer.Option(20, help="Maximum number of rows."),
+) -> None:
+    """List the training runs in logs/ (best Val F1, and held-out Test F1 if available)."""
+    from src.web.run_registry import discover_runs
+    found = discover_runs(ROOT)
+    if env:
+        found = [r for r in found if r.env == env]
+    found = found[:limit]
+    if not found:
+        console.print("[yellow]No runs found in logs/.[/]")
+        return
+    t = Table(title=f"Runs ({len(found)})", border_style="cyan")
+    for col in ("Run", "Env", "Mode", "Prec", "Epochs", "Best Val F1", "Test F1"):
+        t.add_column(col)
+    for r in found:
+        d = _run_row(r)
+        t.add_row(d["label"], d["env"], d["mode"], d["precision"],
+                  str(d["epochs"] or "—"),
+                  f"{d['best_val_f1']:.4f}" if d["best_val_f1"] is not None else "—",
+                  f"[bold green]{d['test_f1']:.4f}[/]" if d["test_f1"] is not None else "—")
+    console.print(t)
+
+
 def _confirm_run(cmd: list[str]) -> None:
     """Show a command and run it after confirmation, returning to the menu after."""
     from rich.prompt import Confirm

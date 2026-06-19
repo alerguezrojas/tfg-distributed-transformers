@@ -81,8 +81,14 @@ uv run tfg.py feasibility --model vit_base_patch16_224 --batch-sizes 32,64 --epo
 # Evaluación en el conjunto de test (número honesto final)
 uv run tfg.py eval --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
 
+# Listar los entrenamientos hechos en terminal (Best Val F1 / Test F1)
+uv run tfg.py runs
+
 # Dashboard interactivo (analiza y compara todos los runs + predictor analítico)
 uv run tfg.py dashboard
+
+# Menú interactivo guiado (te pregunta los parámetros; ideal para la defensa)
+uv run tfg.py menu
 
 # Tests (CPU, sin GPU ni dataset)
 uv run pytest -q

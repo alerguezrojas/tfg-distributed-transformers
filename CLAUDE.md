@@ -254,8 +254,8 @@ uv run tfg.py eval --checkpoint checkpoints/local/checkpoint_epoch_009.pt --spli
 uv run tfg.py dashboard
 ```
 
-- Subcomandos: `train` (elige estrategia → lanza el script correcto, con `torchrun` para ddp/heterogéneo), `predict` (predictor analítico en terminal, sin GPU — tabla rich), `feasibility` (benchmark real), `eval` (test split), `dashboard` (streamlit).
-- Builders puros `build_train_cmd` / `build_feasibility_cmd` / `build_eval_cmd` (testeados: `tests/unit/test_cli.py`, 13 tests). `--dry-run` imprime el comando sin ejecutarlo (para copiarlo en Verode/Kaggle).
+- Subcomandos: `train` (elige estrategia → lanza el script correcto, con `torchrun` para ddp/heterogéneo), `predict` (predictor analítico en terminal, sin GPU — tabla rich), `feasibility` (benchmark real), `eval` (test split), `runs` (lista los entrenamientos de `logs/` con Best Val F1 / Test F1), `dashboard` (streamlit), `menu` (interactivo guiado — pregunta los parámetros, ideal para la defensa).
+- Builders puros `build_train_cmd` / `build_feasibility_cmd` / `build_eval_cmd` + helper `_run_row` (testeados: `tests/unit/test_cli.py`, 15 tests). `--dry-run` imprime el comando sin ejecutarlo (para copiarlo en Verode/Kaggle). Opciones de lista por coma (`--batch-sizes 32,64`, `--layers plot,confusion`).
 - Los scripts de `scripts/` siguen funcionando por separado; `tfg` solo los unifica. Dependencia nueva: `typer`. Rama: `feature/unified-cli`.
 
 ## Script de entrenamiento
