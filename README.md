@@ -104,12 +104,14 @@ uv run pytest -q
 
 | Ruta | Contenido |
 |---|---|
+| `tfg.py` + `src/cli.py` | **CLI unificado** (`tfg <comando>`, Typer): train/predict/feasibility/eval/runs/dashboard/menu |
 | `src/training/` | `Trainer`, decoradores, builder, métricas, **losses** (BCE/pos_weight/focal), DDP |
 | `src/models/` | `BigEarthViT` (ViT + cabeza multi-etiqueta), paralelismo de modelo |
 | `src/data/` | `BigEarthNetDataset` (Sentinel-2 RGB proxy + multi-hot) |
-| `src/performance_model.py` | predictor analítico de tiempo/speedup/memoria sin benchmark |
-| `src/web/` | dashboard Streamlit modular (orquestador + `tabs/` + `ui/`) |
-| `scripts/` | entrenamiento (single / DDP / heterogéneo / model-parallel), feasibility, eval |
+| `src/performance_model.py` | predictor analítico de tiempo/speedup/memoria/coste/**calidad** sin benchmark |
+| `src/feasibility/` | paquete SRP del benchmark (probes, analyzer, predictor, optimizer, formatter, **checker** Facade) |
+| `src/web/` | dashboard Streamlit modular (orquestador + `tabs/` con `run/` paquete + `ui/`) |
+| `scripts/` | entrenamiento (single / DDP / heterogéneo / model-parallel), `check_feasibility` (CLI fino), `eval` |
 | `configs/` | configs de entrenamiento (local / Verode / Kaggle / distribuido) |
 | `tests/` | suite (unit + integración), CPU-only |
 | `docs/` | diagrama de clases, runbooks, derivación del modelo de rendimiento |
