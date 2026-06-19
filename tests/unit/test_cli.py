@@ -11,7 +11,8 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.cli import build_train_cmd, build_feasibility_cmd, build_eval_cmd, STRATEGIES
+from src.cli import build_train_cmd, build_feasibility_cmd, build_eval_cmd, STRATEGIES, _run_row
+from src.web.run_registry import discover_runs
 
 
 def _join(cmd):
@@ -130,3 +131,30 @@ def test_eval_optional_flags():
     assert "--model vit_tiny_patch16_224" in s
     assert "--metadata meta.parquet" in s
     assert "--max-batches 10" in s
+
+
+# ── runs summary ─────────────────────────────────────────────────────────────────
+
+def test_run_row_reads_best_val_and_test_f1(tmp_path):
+    d = tmp_path / "logs" / "local" / "single" / "vit_tiny_patch16_224"
+    d.mkdir(parents=True)
+    (d / "train_01062026_120000.log").write_text("x\n")
+    (d / "epoch_metrics_01062026_120000.csv").write_text(
+        "epoch,val_f1\n1,0.40\n2,0.55\n3,0.50\n")
+    (d / "test_demo.csv").write_text(
+        "class_idx,class_name,f1,precision,recall\n0,A,0.6,0.6,0.6\n\n"
+        "# aggregate,loss=0.1,f1_t05=0.50,f1_opt=0.58,threshold=0.35,"
+        "accuracy=0.9,precision=0.6,recall=0.6\n")
+    found = discover_runs(tmp_path)
+    row = _run_row(found[0])
+    assert row["best_val_f1"] == 0.55      # max over epochs
+    assert row["test_f1"] == 0.58          # optimal-threshold F1 from the aggregate line
+    assert row["epochs"] == 3
+
+
+def test_run_row_no_csv_is_dashes(tmp_path):
+    d = tmp_path / "logs" / "kaggle" / "single" / "vit_base_patch16_224"
+    d.mkdir(parents=True)
+    (d / "train_02062026_120000.log").write_text("x\n")
+    row = _run_row(discover_runs(tmp_path)[0])
+    assert row["best_val_f1"] is None and row["test_f1"] is None
