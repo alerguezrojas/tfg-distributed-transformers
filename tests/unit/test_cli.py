@@ -11,7 +11,9 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.cli import build_train_cmd, build_feasibility_cmd, build_eval_cmd, STRATEGIES, _run_row
+from src.cli import (build_train_cmd, build_feasibility_cmd, build_eval_cmd, STRATEGIES,
+                     _run_row, resolve_dataset_n)
+from src.performance_model import N_FULL_TRAIN, N_SUBSET_TRAIN
 from src.web.run_registry import discover_runs
 
 
@@ -150,6 +152,13 @@ def test_run_row_reads_best_val_and_test_f1(tmp_path):
     assert row["best_val_f1"] == 0.55      # max over epochs
     assert row["test_f1"] == 0.58          # optimal-threshold F1 from the aggregate line
     assert row["epochs"] == 3
+
+
+def test_resolve_dataset_n_full_subset_custom():
+    assert resolve_dataset_n("full") == N_FULL_TRAIN
+    assert resolve_dataset_n("subset") == N_SUBSET_TRAIN
+    assert resolve_dataset_n("Full (237,871)") == N_FULL_TRAIN     # web label form
+    assert resolve_dataset_n("subset", 1234) == 1234                # explicit override wins
 
 
 def test_run_row_no_csv_is_dashes(tmp_path):

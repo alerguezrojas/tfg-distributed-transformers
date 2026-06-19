@@ -20,7 +20,7 @@ from src.web.dataset_stats import (
 )
 from src.performance_model import (
     GPU_TABLE, MODEL_TABLE, predict, predict_quality, estimate_rc,
-    gpu_spec, model_spec,
+    gpu_spec, model_spec, N_FULL_TRAIN, N_SUBSET_TRAIN,
 )
 from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
@@ -1070,7 +1070,16 @@ def _analytic_predictor() -> None:
 
     c4, c5, c6 = st.columns(3)
     with c4:
-        dataset_size = st.number_input("Train images / epoch", 100, 300000, 5000, step=500)
+        _ds_choice = st.selectbox(
+            "Dataset",
+            [f"Subset ({N_SUBSET_TRAIN:,})", f"Full ({N_FULL_TRAIN:,})", "Custom"],
+            help="Full BigEarthNet-S2 train split, the demo subset, or a custom count.")
+        if _ds_choice.startswith("Full"):
+            dataset_size = N_FULL_TRAIN
+        elif _ds_choice.startswith("Subset"):
+            dataset_size = N_SUBSET_TRAIN
+        else:
+            dataset_size = st.number_input("Custom train images / epoch", 100, 300000, 5000, step=500)
     with c5:
         batch = st.number_input("Global batch size", 1, 1024, 96, step=8)
     with c6:
