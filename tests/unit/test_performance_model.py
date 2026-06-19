@@ -107,10 +107,17 @@ def test_vit_large_b32_vram_close_to_measured():
     assert v == pytest.approx(13.78, rel=0.10)
 
 
-def test_vit_base_fits_b32_on_3060ti():
+def test_vit_base_fits_b32_oom_b64_on_3060ti():
+    """The real RTX 3060 Ti behaviour: batch 32 fits (~4.95 GB), batch 64 OOMs."""
     m, g = model_spec("vit_base_patch16_224"), gpu_spec("RTX 3060 Ti")
     assert fits_in_memory(m, g, 32, "fp32")              # real 4.95 GB ≤ 8
-    assert max_batch(m, g, "fp32") >= 32
+    assert not fits_in_memory(m, g, 64, "fp32")          # real OOM
+    assert max_batch(m, g, "fp32") == 32                 # not 64 (the old optimism)
+
+
+def test_vit_base_vram_b32_close_to_measured():
+    v = estimate_vram_gb(model_spec("vit_base_patch16_224"), 32, "fp32")
+    assert v == pytest.approx(4.95, rel=0.10)            # measured on the 3060 Ti
 
 
 def test_amp_uses_less_vram_than_fp32():

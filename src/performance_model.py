@@ -32,9 +32,15 @@ MFU: float = 0.17                 # model-FLOPs utilization (fraction of peak)
 TRAIN_FLOPS_FACTOR: float = 3.0   # forward+backward ≈ 3× forward
 BYTES_PER_PARAM_GRAD_OPT: int = 16  # fp32 Adam: 4 (w) + 4 (grad) + 8 (m,v)
 CUDA_OVERHEAD_GB: float = 0.6     # context + cudnn workspaces
-# Activation memory ≈ ACT_BYTES_PER_PARAM_IMG bytes per parameter per image,
-# fitted to vit_large = 13.78 GB at batch 32 on a T4 (the precisely measured OOM).
-ACT_BYTES_PER_PARAM_IMG: float = 0.86e-9  # GB per (param · image)
+# Fraction of VRAM actually usable for training: PyTorch's caching allocator
+# reserves context + workspaces + fragmentation, so you OOM before 100%.
+USABLE_VRAM_FRACTION: float = 0.92
+# Activation memory is per-model (GB per image), NOT a single per-parameter
+# constant: it scales with tokens × hidden_dim × layers, which is not the
+# parameter count (a vit_base "weighs" proportionally more in activations than a
+# vit_large). Calibrated from two real points — vit_base = 4.95 GB @ batch 32 on
+# an RTX 3060 Ti, and vit_large = 13.78 GB @ batch 32 on a T4 — and extended to
+# the rest by hidden_dim×layers. See ModelSpec.act_gb_per_img.
 
 
 # ── Hardware spec tables ─────────────────────────────────────────────────────────
@@ -79,16 +85,20 @@ class ModelSpec:
     name: str
     params_m: float          # millions of parameters
     gflops_fwd: float        # forward GFLOPs per 224×224 image
+    act_gb_per_img: float    # training activation memory (GB) per image
 
 
 # Curated from timm / the literature (forward GFLOPs at 224²).
+# act_gb_per_img: ViT family calibrated/scaled from the two measured points
+# (base 0.093 from 4.95 GB @ b32 on 3060 Ti; large 0.260 from 13.78 GB @ b32 on
+# T4), the others scaled by hidden_dim×layers; resnet/effnet are estimates.
 MODEL_TABLE: dict[str, ModelSpec] = {
-    "vit_tiny_patch16_224":  ModelSpec("vit_tiny_patch16_224", 5.7, 1.3),
-    "vit_small_patch16_224": ModelSpec("vit_small_patch16_224", 22.0, 4.6),
-    "vit_base_patch16_224":  ModelSpec("vit_base_patch16_224", 85.8, 17.6),
-    "vit_large_patch16_224": ModelSpec("vit_large_patch16_224", 303.0, 61.6),
-    "resnet50":              ModelSpec("resnet50", 25.6, 4.1),
-    "efficientnet_b0":       ModelSpec("efficientnet_b0", 5.3, 0.4),
+    "vit_tiny_patch16_224":  ModelSpec("vit_tiny_patch16_224", 5.7, 1.3, 0.024),
+    "vit_small_patch16_224": ModelSpec("vit_small_patch16_224", 22.0, 4.6, 0.047),
+    "vit_base_patch16_224":  ModelSpec("vit_base_patch16_224", 85.8, 17.6, 0.093),
+    "vit_large_patch16_224": ModelSpec("vit_large_patch16_224", 303.0, 61.6, 0.260),
+    "resnet50":              ModelSpec("resnet50", 25.6, 4.1, 0.100),
+    "efficientnet_b0":       ModelSpec("efficientnet_b0", 5.3, 0.4, 0.060),
 }
 
 # Bytes per parameter when only storing the model (no optimizer), by precision.
@@ -148,12 +158,16 @@ def estimate_rio(disk_type: str = "ssd", nfs: bool = False,
 # ── Memory model ─────────────────────────────────────────────────────────────────
 
 def estimate_vram_gb(model: ModelSpec, batch: int, precision: str = "fp32") -> float:
-    """Peak VRAM (GB) for training: weights+grad+optimizer + activations + overhead."""
+    """Peak VRAM (GB) for training: weights+grad+optimizer + activations + overhead.
+
+    Activations use the model's per-image figure (``act_gb_per_img``), not a
+    single per-parameter constant — that is what makes the per-model max batch
+    realistic (e.g. vit_base on an 8 GB card tops out at batch 32, not 64)."""
     p = model.params_m * 1e6
     weights_opt_gb = BYTES_PER_PARAM_GRAD_OPT * p / 1e9
     if precision in ("amp", "bf16"):
         weights_opt_gb += 2 * p / 1e9          # extra fp16 copy of weights+grad
-    act_gb = ACT_BYTES_PER_PARAM_IMG * p * batch
+    act_gb = model.act_gb_per_img * batch
     if precision in ("amp", "bf16"):
         act_gb *= 0.6                          # half-precision activations
     return weights_opt_gb + act_gb + CUDA_OVERHEAD_GB
@@ -161,7 +175,8 @@ def estimate_vram_gb(model: ModelSpec, batch: int, precision: str = "fp32") -> f
 
 def fits_in_memory(model: ModelSpec, gpu: GpuSpec, batch: int,
                    precision: str = "fp32") -> bool:
-    return estimate_vram_gb(model, batch, precision) <= gpu.vram_gb
+    """Fits if the estimate is within the *usable* VRAM (not 100% of it)."""
+    return estimate_vram_gb(model, batch, precision) <= gpu.vram_gb * USABLE_VRAM_FRACTION
 
 
 def max_batch(model: ModelSpec, gpu: GpuSpec, precision: str = "fp32",
