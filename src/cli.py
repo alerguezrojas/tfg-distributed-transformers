@@ -209,14 +209,20 @@ def predict(
     disk: str = typer.Option("ssd", help="ssd | nvme | hdd | nfs."),
 ) -> None:
     """Predict time, memory, cost and quality for a config — no GPU, just formulas."""
-    from src.performance_model import predict as _predict, predict_quality, gpu_spec
+    _show_prediction(model, gpu, strategy, n_gpus, batch, precision, dataset_size, epochs, disk)
+
+
+def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: int,
+                     precision: str, dataset_size: int, epochs: int, disk: str) -> None:
+    """Render the analytic prediction as a rich table (shared by `predict` and `menu`)."""
+    from src.performance_model import predict as _predict, predict_quality
     nfs = disk == "nfs"
     strat = strategy.replace("-", "_")
     p = _predict(strat, model, gpu, n_gpus=n_gpus, dataset_size=dataset_size,
                  batch=batch, precision=precision, epochs=epochs, disk_type=disk, nfs=nfs)
     if p is None:
         console.print("[red]Unknown model or GPU spec.[/]")
-        raise typer.Exit(1)
+        return
     q = predict_quality(model, dataset_size=dataset_size, epochs=epochs)
 
     t = Table(title=f"Prediction · {model} · {gpu} · {strategy} ×{n_gpus} · {precision}",
@@ -300,6 +306,73 @@ def dashboard(
     """Open the web dashboard (read-only visualisation of runs and predictions)."""
     cmd = [sys.executable, "-m", "streamlit", "run", "src/web/app.py", "--server.port", str(port)]
     _run(cmd, dry_run)
+
+
+def _confirm_run(cmd: list[str]) -> None:
+    """Show a command and run it after confirmation, returning to the menu after."""
+    from rich.prompt import Confirm
+    console.print(Panel(" ".join(cmd), title="command", border_style="cyan", expand=False))
+    if Confirm.ask("Run it now?", default=False):
+        subprocess.run(cmd, cwd=str(ROOT))
+    else:
+        console.print("[yellow]Not executed.[/] Copy the command above to run it elsewhere "
+                      "(e.g. Verode/Kaggle).")
+
+
+@app.command()
+def menu() -> None:
+    """Interactive guided menu — pick an action and fill in the parameters."""
+    from rich.prompt import Prompt, IntPrompt
+
+    while True:
+        console.print(Panel(
+            "[bold]1[/] · Predict (no GPU)\n[bold]2[/] · Train\n"
+            "[bold]3[/] · Feasibility benchmark\n[bold]4[/] · Evaluate on test\n"
+            "[bold]5[/] · Open dashboard\n[bold]0[/] · Exit",
+            title="TFG — what do you want to do?", border_style="cyan", expand=False))
+        choice = Prompt.ask("Choose", choices=["0", "1", "2", "3", "4", "5"], default="1")
+
+        if choice == "0":
+            return
+        if choice == "1":
+            strat = Prompt.ask("Strategy", choices=["single", "ddp", "model_parallel",
+                               "heterogeneous"], default="single")
+            _show_prediction(
+                model=Prompt.ask("Model", default="vit_base_patch16_224"),
+                gpu=Prompt.ask("GPU", default="Tesla T4"),
+                strategy=strat,
+                n_gpus=IntPrompt.ask("GPUs", default=1 if strat == "single" else 2),
+                batch=IntPrompt.ask("Global batch", default=96),
+                precision=Prompt.ask("Precision", choices=["fp32", "amp", "tf32", "bf16"], default="fp32"),
+                dataset_size=IntPrompt.ask("Train images / epoch", default=5000),
+                epochs=IntPrompt.ask("Epochs", default=15),
+                disk=Prompt.ask("Disk", choices=["ssd", "nvme", "hdd", "nfs"], default="ssd"))
+        elif choice == "2":
+            strat = Prompt.ask("Strategy", choices=list(STRATEGIES), default="single")
+            config = Prompt.ask("Config", default="configs/train.yaml")
+            model = Prompt.ask("Model (blank = from config)", default="") or None
+            ep = Prompt.ask("Epochs (blank = from config)", default="") or None
+            trace = Prompt.ask("Trace", choices=["off", "simple", "deep"], default="simple")
+            n = IntPrompt.ask("GPUs per node", default=2) if strat in ("ddp", "heterogeneous") else 2
+            _confirm_run(build_train_cmd(strat, config, model=model,
+                         epochs=int(ep) if ep else None, trace=trace, n_gpus=n))
+        elif choice == "3":
+            model = Prompt.ask("Model", default="vit_base_patch16_224")
+            bs = Prompt.ask("Batch sizes (comma)", default="32,64")
+            ep = IntPrompt.ask("Epochs", default=30)
+            _confirm_run(build_feasibility_cmd([model], [int(x) for x in bs.split(",")],
+                         ep, ["off", "simple"]))
+        elif choice == "4":
+            ckpt = Prompt.ask("Checkpoint path")
+            config = Prompt.ask("Config", default="configs/train.yaml")
+            split = Prompt.ask("Split", choices=["test", "val"], default="test")
+            out = Prompt.ask("Output CSV (blank = none)", default="") or None
+            _confirm_run(build_eval_cmd(ckpt, config, split=split, output=out))
+        elif choice == "5":
+            port = IntPrompt.ask("Port", default=8501)
+            _confirm_run([sys.executable, "-m", "streamlit", "run", "src/web/app.py",
+                          "--server.port", str(port)])
+        console.print()   # blank line before the menu shows again
 
 
 if __name__ == "__main__":
