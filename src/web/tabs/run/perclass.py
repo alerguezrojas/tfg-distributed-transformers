@@ -8,7 +8,8 @@ import streamlit as st
 from src.web.ui import theme
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
 from src.web.ui.context import DashboardContext
-from src.web.ui.helpers import (_color_f1_cell, _load_perclass)
+from src.web.ui.helpers import (_color_f1_cell, _load_perclass, _load_val_support,
+                                _dataset_meta_path)
 
 
 def _per_class(ctx: DashboardContext) -> None:
@@ -32,17 +33,32 @@ def _per_class(ctx: DashboardContext) -> None:
     # at a glance which classes are weak AND whether it's precision or recall — the
     # whole point of the per-class view — far clearer than 3 overlaid dot series.
     ep_df = pcdf[pcdf["epoch"] == selected_ep].copy().sort_values("f1", ascending=True)
+    # Support (val-set frequency of each class) — a dataset property, so it shows
+    # for runs already trained without retraining. Used as hover context + a table
+    # column: it tells whether a low F1 is on a rare class or a real failure.
+    meta = _dataset_meta_path()
+    support = _load_val_support(meta) if meta else None
+    if support:
+        ep_df["support"] = ep_df["class_name"].map(support).fillna(0).astype(int)
+
     classes = ep_df["class_name"].tolist()
     z = [[p, r, f] for p, r, f in zip(ep_df["precision"], ep_df["recall"], ep_df["f1"])]
     # Red (low) → amber (~0.3) → green (≥0.6), matching theme.GOOD/WARN/BAD.
     scale = [[0.0, theme.BAD], [0.3, theme.WARN], [0.6, theme.GOOD], [1.0, theme.GOOD]]
 
+    if support:
+        cdata = [[int(s)] * 3 for s in ep_df["support"]]
+        hover = ("<b>%{y}</b><br>%{x}: %{z:.3f}"
+                 "<br>val support: %{customdata} patches<extra></extra>")
+    else:
+        cdata, hover = None, "<b>%{y}</b><br>%{x}: %{z:.3f}<extra></extra>"
+
     fig_pc = go.Figure(go.Heatmap(
-        z=z, x=["Precision", "Recall", "F1"], y=classes,
+        z=z, x=["Precision", "Recall", "F1"], y=classes, customdata=cdata,
         colorscale=scale, zmin=0.0, zmax=1.0, xgap=2, ygap=2,
         texttemplate="%{z:.2f}", textfont=dict(size=10, color="white"),
         colorbar=dict(title="Score", thickness=12, len=0.8),
-        hovertemplate="<b>%{y}</b><br>%{x}: %{z:.3f}<extra></extra>",
+        hovertemplate=hover,
     ))
     fig_pc.update_layout(
         title=dict(text=f"Per-class metrics — Epoch {selected_ep}"),
@@ -53,17 +69,22 @@ def _per_class(ctx: DashboardContext) -> None:
     _show(fig_pc, f"per_class_hm_ep{selected_ep}")
     st.caption("Colour = score (green good · amber middling · red poor). Compare the "
                "Precision and Recall cells of a weak class to see *why* its F1 is low: "
-               "low recall → it misses that class; low precision → it over-predicts it.")
+               "low recall → it misses that class; low precision → it over-predicts it. "
+               "Hover a cell (or see the table) for **support** — the class's frequency "
+               "in the validation set: a low F1 on a tiny-support class is a rare class, "
+               "not a broken model.")
 
     with st.expander("Per-class table"):
+        cols = ["class_name", "f1", "precision", "recall"]
+        if "support" in ep_df.columns:
+            cols.append("support")          # val-set frequency of each class
         styled = (
-            ep_df[["class_name", "f1", "precision", "recall"]]
+            ep_df[cols].sort_values("f1", ascending=False)
             .style.map(_color_f1_cell, subset=["f1"])
             .format({"f1": "{:.3f}", "precision": "{:.3f}", "recall": "{:.3f}"})
         )
         st.dataframe(styled, use_container_width=True, height=280)
-        _dl_csv(ep_df[["class_name", "f1", "precision", "recall"]],
-                f"perclass_ep{selected_ep}.csv", "Download per-class table")
+        _dl_csv(ep_df[cols], f"perclass_ep{selected_ep}.csv", "Download per-class table")
 
     st.markdown("#### Trend across epochs")
     classes = sorted(pcdf["class_name"].unique().tolist())
