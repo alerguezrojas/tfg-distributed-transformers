@@ -27,41 +27,33 @@ def _per_class(ctx: DashboardContext) -> None:
     epochs_available = sorted(pcdf["epoch"].unique().tolist())
     selected_ep = st.selectbox("Epoch", epochs_available, index=len(epochs_available) - 1,
                                format_func=lambda e: f"Epoch {e}")
-    # Dot/lollipop plot (sorted by F1): one row per class, a connector showing the
-    # precision↔recall↔F1 spread, and three dots. Far more legible than 57 grouped
-    # bars, and the F1 dot is colour-coded by performance for an at-a-glance read.
+    # Annotated heatmap (classes × precision/recall/F1): colour = score (red→amber→
+    # green, same thresholds as the F1 verdict), value printed in each cell. Reads
+    # at a glance which classes are weak AND whether it's precision or recall — the
+    # whole point of the per-class view — far clearer than 3 overlaid dot series.
     ep_df = pcdf[pcdf["epoch"] == selected_ep].copy().sort_values("f1", ascending=True)
     classes = ep_df["class_name"].tolist()
+    z = [[p, r, f] for p, r, f in zip(ep_df["precision"], ep_df["recall"], ep_df["f1"])]
+    # Red (low) → amber (~0.3) → green (≥0.6), matching theme.GOOD/WARN/BAD.
+    scale = [[0.0, theme.BAD], [0.3, theme.WARN], [0.6, theme.GOOD], [1.0, theme.GOOD]]
 
-    conn_x: list = []
-    conn_y: list = []
-    for _, r in ep_df.iterrows():
-        lo, hi = min(r.precision, r.recall, r.f1), max(r.precision, r.recall, r.f1)
-        conn_x += [lo, hi, None]
-        conn_y += [r.class_name, r.class_name, None]
-
-    f1_colors = [theme.GOOD if v >= 0.6 else theme.WARN if v >= 0.3 else theme.BAD
-                 for v in ep_df["f1"]]
-
-    fig_pc = go.Figure()
-    fig_pc.add_trace(go.Scatter(x=conn_x, y=conn_y, mode="lines",
-                                line=dict(color="#CBD5E1", width=2),
-                                hoverinfo="skip", showlegend=False))
-    fig_pc.add_trace(go.Scatter(x=ep_df["precision"], y=classes, mode="markers",
-                                name="Precision",
-                                marker=dict(color=theme.CATEGORICAL[0], size=9)))
-    fig_pc.add_trace(go.Scatter(x=ep_df["recall"], y=classes, mode="markers",
-                                name="Recall",
-                                marker=dict(color=theme.CATEGORICAL[1], size=9)))
-    fig_pc.add_trace(go.Scatter(x=ep_df["f1"], y=classes, mode="markers", name="F1",
-                                marker=dict(color=f1_colors, size=13, symbol="diamond",
-                                            line=dict(color="white", width=1.2))))
+    fig_pc = go.Figure(go.Heatmap(
+        z=z, x=["Precision", "Recall", "F1"], y=classes,
+        colorscale=scale, zmin=0.0, zmax=1.0, xgap=2, ygap=2,
+        texttemplate="%{z:.2f}", textfont=dict(size=10, color="white"),
+        colorbar=dict(title="Score", thickness=12, len=0.8),
+        hovertemplate="<b>%{y}</b><br>%{x}: %{z:.3f}<extra></extra>",
+    ))
     fig_pc.update_layout(
         title=dict(text=f"Per-class metrics — Epoch {selected_ep}"),
-        xaxis_title="Score", xaxis=dict(range=[0, 1.02]),
-        height=max(360, 26 * len(classes) + 90), margin=dict(l=210),
+        height=max(360, 24 * len(classes) + 110),
+        margin=dict(l=210, t=48, r=10, b=10),
+        xaxis=dict(side="top"),
     )
-    _show(fig_pc, f"per_class_ep{selected_ep}")
+    _show(fig_pc, f"per_class_hm_ep{selected_ep}")
+    st.caption("Colour = score (green good · amber middling · red poor). Compare the "
+               "Precision and Recall cells of a weak class to see *why* its F1 is low: "
+               "low recall → it misses that class; low precision → it over-predicts it.")
 
     with st.expander("Per-class table"):
         styled = (
