@@ -63,6 +63,19 @@ _APPROX_TRAIN_COUNTS = {
 SPLIT_SIZES = {"train": 237_871, "val": 122_342, "test": 119_825}
 
 
+# The metadata stores one class under its full CORINE name; CLASS_NAMES abbreviates
+# it. Without this alias that class counts as 0 (name mismatch) in every parquet
+# count — the per-class support and the Overview treemap.
+_LABEL_ALIASES = {
+    "Land principally occupied by agriculture, with significant areas of natural vegetation":
+        "Land principally occupied by agriculture",
+}
+
+
+def _canon_label(lbl: str) -> str:
+    return _LABEL_ALIASES.get(lbl, lbl)
+
+
 def class_distribution_from_parquet(parquet_path: Path) -> pd.DataFrame | None:
     """Load class distribution from metadata.parquet if available.
 
@@ -85,7 +98,7 @@ def class_distribution_from_parquet(parquet_path: Path) -> pd.DataFrame | None:
         all_labels: list[str] = []
         for arr in train_df["labels"]:
             if arr is not None:
-                all_labels.extend(list(arr))
+                all_labels.extend(_canon_label(x) for x in arr)
 
         counts = pd.Series(all_labels).value_counts()
         rows = [{"class": cls, "train_count": int(counts.get(cls, 0))}
@@ -116,7 +129,7 @@ def val_support_from_parquet(parquet_path: Path) -> dict[str, int] | None:
         all_labels: list[str] = []
         for arr in val_df["labels"]:
             if arr is not None:
-                all_labels.extend(list(arr))
+                all_labels.extend(_canon_label(x) for x in arr)
         counts = pd.Series(all_labels).value_counts()
         return {cls: int(counts.get(cls, 0)) for cls in CLASS_NAMES}
     except Exception:
