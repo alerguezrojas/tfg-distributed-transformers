@@ -104,7 +104,11 @@ def _curves(ctx: DashboardContext) -> None:
                     vl = df.sort_values("epoch")["val_loss"].dropna()
                     if len(vl) > 2 and vl.iloc[-1] > vl.min() * 1.15:
                         bits.append("val loss diverges after the best epoch")
-                (st.warning if "overfitting" in " ".join(bits) else st.info)(" · ".join(bits))
+                # Yellow when the message flags a problem (overfitting gap OR a
+                # diverging val loss); blue otherwise. Keeps colour and text in sync.
+                _text = " ".join(bits)
+                _warn = "overfitting" in _text or "diverges" in _text
+                (st.warning if _warn else st.info)(_text)
 
             extra_thresh: list = []
             if "f1_at_threshold" in df.columns and df["f1_at_threshold"].notna().any():
