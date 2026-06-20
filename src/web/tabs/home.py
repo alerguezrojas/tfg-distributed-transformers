@@ -54,10 +54,8 @@ def render(ctx: DashboardContext) -> None:
     feasibility_csvs_home = _get_feasibility_csvs()
     curve_by_label: dict[str, list[float]] = {}
     time_by_label: dict[str, float] = {}   # avg epoch time (s)
-    mode_counts: dict[str, int] = {}
 
     for r in runs:
-        mode_counts[r.mode] = mode_counts.get(r.mode, 0) + 1
         try:
             df_r = _load_df(str(r.log_path),
                             str(r.epoch_csv_path) if r.epoch_csv_path else None)
@@ -97,7 +95,7 @@ def render(ctx: DashboardContext) -> None:
     with left:
         with st.container(border=True):
             st.caption("Best Val F1 by run (top 8)")
-            _best_f1_bars(runs, curve_by_label)
+            _best_f1_lollipop(runs, curve_by_label)
 
     with right:
         with st.container(border=True):
@@ -117,16 +115,17 @@ def render(ctx: DashboardContext) -> None:
             else:
                 st.info("No metrics for this run.")
 
-    # ── Row 2: relevant charts (where the nav cards used to be) ─────────────────
+    # ── Row 2: the two most relevant views — the quality/cost landscape and the
+    #          quality ceiling reached per model architecture ───────────────────
     g_left, g_right = st.columns([1.4, 1])
     with g_left:
         with st.container(border=True):
-            st.caption("Training speed — average time per epoch (fastest 8, min)")
-            _epoch_time_bars(time_by_label)
+            st.caption("Quality vs training cost — every run (top-left = fast & accurate)")
+            _quality_vs_cost(runs, curve_by_label, time_by_label)
     with g_right:
         with st.container(border=True):
-            st.caption("Runs by strategy")
-            _strategy_donut(mode_counts)
+            st.caption("Best Val F1 reached per model")
+            _best_by_model(runs, curve_by_label)
 
     # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
@@ -135,44 +134,84 @@ def render(ctx: DashboardContext) -> None:
     st.caption("Dataset, the 19 classes and run import now live in the **Dataset** section.")
 
 
-def _epoch_time_bars(time_by_label: dict[str, float]) -> None:
-    """Fastest 8 runs by average epoch time (min) — the speed at a glance."""
-    rows = sorted(time_by_label.items(), key=lambda x: x[1])[:8]
+def _short_label(lbl: str) -> str:
+    """Compact run label for chart axes (drop the date, keep env/model/tags)."""
+    import re
+    return re.sub(r"^\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}\s+", "", lbl)
+
+
+def _quality_vs_cost(runs, curve_by_label: dict[str, list[float]],
+                     time_by_label: dict[str, float]) -> None:
+    """The cost/quality landscape: best Val F1 vs average epoch time, one point per
+    run, coloured by environment. The most useful single view — it shows, at a
+    glance, which runs are both fast and accurate (top-left)."""
+    rows = []
+    by_label = {r.label: r for r in runs}
+    for lbl, curve in curve_by_label.items():
+        t = time_by_label.get(lbl)
+        r = by_label.get(lbl)
+        if curve and t and r is not None:
+            rows.append({"run": _short_label(lbl), "env": r.env, "mode": r.mode,
+                         "Best Val F1": round(max(curve), 4),
+                         "min/epoch": round(t / 60, 2)})
     if not rows:
-        st.info("No runs with timing data.")
+        st.info("No runs with both timing and F1.")
         return
-    labels = [l for l, _ in rows][::-1]
-    mins = [v / 60 for _, v in rows][::-1]
-    fig = go.Figure(go.Bar(
-        y=labels, x=mins, orientation="h", marker_color=COLORS[2],
-        text=[f"{m:.1f}" for m in mins], textposition="outside",
-    ))
-    fig.update_layout(
-        height=40 + 30 * len(rows), margin=dict(l=10, r=30, t=6, b=6),
-        paper_bgcolor="white", showlegend=False,
+    df = pd.DataFrame(rows)
+    fig = px.scatter(
+        df, x="min/epoch", y="Best Val F1", color="env", hover_name="run",
+        custom_data=["mode"], color_discrete_sequence=COLORS,
     )
-    fig.update_xaxes(visible=False)
-    fig.update_yaxes(automargin=True, tickfont=dict(size=9))
-    _show(fig, "hub_epoch_time")
+    fig.update_traces(marker=dict(size=12, line=dict(width=1, color="rgba(0,0,0,0.25)")),
+                      hovertemplate="<b>%{hovertext}</b><br>%{x} min/epoch · "
+                                    "F1 %{y:.3f} · %{customdata[0]}<extra></extra>")
+    fig.update_layout(**_base_layout(300), xaxis_title="Avg time per epoch (min)",
+                      yaxis_title="Best Val F1", legend_title_text="")
+    fig.update_yaxes(range=[0, 1])
+    _show(fig, "hub_quality_cost")
 
 
-def _strategy_donut(mode_counts: dict[str, int]) -> None:
-    """How many runs of each strategy (single / ddp / model_parallel / hetero)."""
-    if not mode_counts:
-        st.info("No runs.")
+def _best_by_model(runs, curve_by_label: dict[str, list[float]]) -> None:
+    """Best Val F1 reached by each model architecture — the quality ceiling per
+    model (vit_base ~0.68, vit_tiny lower, …), as a clean lollipop."""
+    best: dict[str, float] = {}
+    by_label = {r.label: r for r in runs}
+    for lbl, curve in curve_by_label.items():
+        r = by_label.get(lbl)
+        if curve and r is not None and r.model:
+            m = r.model.replace("_patch16_224", "")
+            best[m] = max(best.get(m, 0.0), max(curve))
+    if not best:
+        st.info("No runs with metrics.")
         return
-    _names = {"single": "Single-GPU", "ddp": "DDP", "model_parallel": "Model-parallel",
-              "ddp_hetero": "Heterogeneous"}
-    labels = [_names.get(k, k) for k in mode_counts]
-    fig = go.Figure(go.Pie(
-        labels=labels, values=list(mode_counts.values()), hole=0.55,
-        marker=dict(colors=COLORS), textinfo="value",
+    items = sorted(best.items(), key=lambda x: x[1])   # ascending → best on top
+    labels = [m for m, _ in items]
+    vals = [v for _, v in items]
+    _lollipop(labels, vals, "hub_best_by_model", fmt="{:.3f}", xmax=1.0,
+              accent=COLORS[2])
+
+
+def _lollipop(labels: list[str], vals: list[float], key: str,
+              fmt: str = "{:.3f}", xmax: float | None = None,
+              accent: str = COLORS[0]) -> None:
+    """Horizontal lollipop (thin stem + dot + value) — cleaner than a full bar."""
+    fig = go.Figure()
+    for y, v in zip(labels, vals):
+        fig.add_trace(go.Scatter(x=[0, v], y=[y, y], mode="lines",
+                                 line=dict(color="rgba(128,128,128,0.35)", width=2),
+                                 hoverinfo="skip", showlegend=False))
+    fig.add_trace(go.Scatter(
+        x=vals, y=labels, mode="markers+text", showlegend=False,
+        marker=dict(size=11, color=accent, line=dict(width=1, color="rgba(0,0,0,0.25)")),
+        text=[fmt.format(v) for v in vals], textposition="middle right",
+        textfont=dict(size=10), cliponaxis=False,
+        hovertemplate="%{y}: %{x:.3f}<extra></extra>",
     ))
-    fig.update_layout(
-        height=240, margin=dict(l=10, r=10, t=10, b=10), paper_bgcolor="white",
-        legend=dict(orientation="h", yanchor="top", y=-0.05, font=dict(size=10)),
-    )
-    _show(fig, "hub_strategy_donut")
+    fig.update_layout(**_base_layout(40 + 32 * len(labels)),
+                      margin=dict(l=10, r=44, t=6, b=6))
+    fig.update_xaxes(range=[0, (xmax or max(vals) * 1.15)], visible=False)
+    fig.update_yaxes(automargin=True, tickfont=dict(size=10))
+    _show(fig, key)
 
 
 def _kpi_strip(items: list[tuple[str, str]]) -> None:
@@ -184,31 +223,20 @@ def _kpi_strip(items: list[tuple[str, str]]) -> None:
     st.markdown(f"<div class='kpi-strip'>{cells}</div>", unsafe_allow_html=True)
 
 
-def _best_f1_bars(runs, curve_by_label: dict[str, list[float]]) -> None:
-    """Compact horizontal bar of the best Val F1 of the top-8 runs."""
+def _best_f1_lollipop(runs, curve_by_label: dict[str, list[float]]) -> None:
+    """Top-8 runs by best Val F1, as a clean lollipop (stem + dot + value)."""
     rows = []
     for r in runs:
         curve = curve_by_label.get(r.label)
         if curve:
-            rows.append((r.label, max(curve)))
+            rows.append((_short_label(r.label), max(curve)))
     rows.sort(key=lambda x: x[1], reverse=True)
-    rows = rows[:8]
+    rows = rows[:8][::-1]   # best on top
     if not rows:
         st.info("No runs with metrics.")
         return
-    labels = [l for l, _ in rows][::-1]
-    vals = [v for _, v in rows][::-1]
-    fig = go.Figure(go.Bar(
-        y=labels, x=vals, orientation="h", marker_color=COLORS[0],
-        text=[f"{v:.3f}" for v in vals], textposition="outside",
-    ))
-    fig.update_layout(
-        height=40 + 30 * len(rows), margin=dict(l=10, r=30, t=6, b=6),
-        paper_bgcolor="white", showlegend=False,
-    )
-    fig.update_xaxes(range=[0, 1], visible=False)
-    fig.update_yaxes(automargin=True, tickfont=dict(size=9))
-    _show(fig, "hub_bestf1_bars")
+    _lollipop([l for l, _ in rows], [v for _, v in rows], "hub_bestf1",
+              fmt="{:.3f}", xmax=1.0, accent=COLORS[0])
 
 
 def _run_highlight(df: pd.DataFrame, anomalies_path=None) -> None:
