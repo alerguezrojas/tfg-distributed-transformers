@@ -65,7 +65,6 @@ def render(ctx: DashboardContext) -> None:
     feasibility_csvs_home = _get_feasibility_csvs()
     curve_by_label: dict[str, list[float]] = {}
     gpu_secs_by_env: dict[str, float] = {}     # total GPU seconds per environment
-    energy_by_env: dict[str, float] = {}       # total measured Wh per environment
 
     for r in runs:
         try:
@@ -81,13 +80,9 @@ def render(ctx: DashboardContext) -> None:
                 total_gpu_h += secs / 3600
                 gpu_secs_by_env[r.env] = gpu_secs_by_env.get(r.env, 0.0) + secs
                 fastest_min = min(fastest_min, float(df_r["epoch_time"].dropna().mean()) / 60)
-            wh = 0.0
             for _c in ("energy_train_wh", "energy_eval_wh"):
                 if _c in df_r.columns and df_r[_c].notna().any():
-                    wh += float(df_r[_c].dropna().sum())
-            if wh:
-                total_energy_wh += wh
-                energy_by_env[r.env] = energy_by_env.get(r.env, 0.0) + wh
+                    total_energy_wh += float(df_r[_c].dropna().sum())
         except Exception:
             pass
 
@@ -106,8 +101,8 @@ def render(ctx: DashboardContext) -> None:
         ("Feasibility", str(len(feasibility_csvs_home))),
     ])
 
-    # ── Row 1: varied charts — a time bar, an energy pie and the dataset treemap.
-    #          Each a different chart type, for an at-a-glance, colourful summary ─
+    # ── Row 1: varied charts — a time bar, the dataset split (pie) and the class
+    #          imbalance treemap. Three different chart types, colourful summary ──
     meta = next((p for p in _META_CANDIDATES if Path(p).exists()), None)
     root = next((p for p in _ROOT_CANDIDATES if Path(p).exists()), None)
     dist = _dataset_dist(meta)
@@ -119,20 +114,16 @@ def render(ctx: DashboardContext) -> None:
             _time_by_env_bars(gpu_secs_by_env)
     with c2:
         with st.container(border=True):
-            st.caption("Energy by environment — Wh")
-            _energy_by_env_pie(energy_by_env)
+            st.caption("Dataset split — train / val / test")
+            _split_pie()
     with c3:
         with st.container(border=True):
             st.caption("Class imbalance — tile area = patches")
             _class_treemap(dist)
 
-    # ── Row 2: sample patches (the "photos") + the active-run card ───────────────
-    p_left, p_right = st.columns([1.45, 1])
-    with p_left:
-        with st.container(border=True):
-            st.caption("Sample Sentinel-2 patches — RGB proxy (B04/B03/B02)")
-            _photo_strip(meta, root)
-    with p_right:
+    # ── Row 2: active-run card (with mini F1/loss curves) + sample patches ───────
+    a_left, a_right = st.columns([1.4, 1])
+    with a_left:
         with st.container(border=True):
             _df_active = best_run_df
             _title = best_run_label
@@ -146,9 +137,13 @@ def render(ctx: DashboardContext) -> None:
                     pass
             st.caption(f"Active run — {_title}")
             if not _df_active.empty and "val_f1" in _df_active.columns:
-                _run_highlight(_df_active, compact=True)
+                _run_highlight(_df_active)
             else:
                 st.info("No metrics for this run.")
+    with a_right:
+        with st.container(border=True):
+            st.caption("Sample Sentinel-2 patches — RGB proxy")
+            _photo_strip(meta, root)
 
     # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
@@ -177,7 +172,7 @@ def _short_cls(name: str, n: int = 13) -> str:
     return name if len(name) <= n else name[:n - 1] + "…"
 
 
-# Stable colour per environment so the time bar and the energy pie agree visually.
+# Stable colour per environment for the GPU-time bar.
 _ENV_COLOR = {"local": COLORS[0], "verode": COLORS[1], "kaggle": COLORS[2]}
 
 
@@ -200,29 +195,25 @@ def _time_by_env_bars(gpu_secs_by_env: dict[str, float]) -> None:
         text=[f"{h:.0f} h" for h in hrs], textposition="outside",
         hovertemplate="<b>%{x}</b><br>%{y:.1f} GPU hours<extra></extra>",
     ))
-    fig.update_layout(**_base_layout(155), showlegend=False, yaxis_title="GPU hours",
+    fig.update_layout(**_base_layout(145), showlegend=False, yaxis_title="GPU hours",
                       margin=dict(l=10, r=10, t=20, b=10))
     _show(fig, "ov_time_env_bars")
 
 
-def _energy_by_env_pie(energy_by_env: dict[str, float]) -> None:
-    """Pie of measured energy (Wh) per environment — almost all of it the Verode
-    V100 runs, the only ones trained at scale with energy logging (--fn energy)."""
-    if not energy_by_env:
-        st.info("No energy measured (runs trained without --fn energy).")
-        return
-    items = sorted(energy_by_env.items(), key=lambda x: -x[1])
-    envs = [e for e, _ in items]
+def _split_pie() -> None:
+    """Pie of the dataset partition — train / val / test patch counts."""
+    labels = ["Train", "Val", "Test"]
+    vals = [SPLIT_SIZES["train"], SPLIT_SIZES["val"], SPLIT_SIZES["test"]]
     fig = go.Figure(go.Pie(
-        labels=[e.capitalize() for e in envs], values=[energy_by_env[e] for e in envs],
-        sort=False,
-        marker=dict(colors=[_env_color(e) for e in envs], line=dict(width=1.5, color="white")),
-        textinfo="label+percent", textfont=dict(size=10),
-        hovertemplate="<b>%{label}</b><br>%{value:,.0f} Wh · %{percent}<extra></extra>",
+        labels=labels, values=vals, sort=False,
+        marker=dict(colors=[COLORS[0], COLORS[1], COLORS[2]],
+                    line=dict(width=1.5, color="white")),
+        textinfo="label+percent", textfont=dict(size=11),
+        hovertemplate="<b>%{label}</b><br>%{value:,} patches · %{percent}<extra></extra>",
     ))
-    fig.update_layout(**_base_layout(155), showlegend=False,
+    fig.update_layout(**_base_layout(145), showlegend=False,
                       margin=dict(l=6, r=6, t=10, b=6))
-    _show(fig, "ov_energy_env_pie")
+    _show(fig, "ov_split_pie")
 
 
 def _class_treemap(dist) -> None:
@@ -238,7 +229,7 @@ def _class_treemap(dist) -> None:
         hovertemplate="<b>%{customdata}</b><br>%{value:,} patches · %{percentRoot}<extra></extra>",
         tiling=dict(pad=2),
     ))
-    fig.update_layout(**_base_layout(155), margin=dict(t=6, l=0, r=0, b=0))
+    fig.update_layout(**_base_layout(145), margin=dict(t=6, l=0, r=0, b=0))
     _show(fig, "ov_class_treemap")
 
 
@@ -256,7 +247,7 @@ def _photo_strip(meta, root) -> None:
     if not gallery:
         st.info("No sample patches available.")
         return
-    gallery = gallery[:10]
+    gallery = gallery[:5]
     cols = st.columns(len(gallery), gap="small")
     for col, (cls, cnt, pct, img, labels) in zip(cols, gallery):
         col.image(img, use_container_width=True)
@@ -304,7 +295,7 @@ def _run_highlight(df: pd.DataFrame, anomalies_path=None, compact: bool = False)
                                          line=dict(color=COLORS[0], width=2)))
             fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_f1"], name="Val",
                                      line=dict(color=COLORS[1], width=2)))
-            fig.update_layout(**_base_layout(170, "F1 (macro)"), xaxis_title="Epoch", yaxis_title="F1")
+            fig.update_layout(**_base_layout(108, "F1 (macro)"), xaxis_title="Epoch", yaxis_title="F1")
             _show(fig, "hub_f1")
         with cc2:
             if "val_loss" in df.columns:
@@ -314,7 +305,7 @@ def _run_highlight(df: pd.DataFrame, anomalies_path=None, compact: bool = False)
                                              line=dict(color=COLORS[0], width=2)))
                 fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_loss"], name="Val",
                                          line=dict(color=COLORS[3], width=2)))
-                fig.update_layout(**_base_layout(170, "Loss (BCE)"), xaxis_title="Epoch", yaxis_title="Loss")
+                fig.update_layout(**_base_layout(108, "Loss (BCE)"), xaxis_title="Epoch", yaxis_title="Loss")
                 _show(fig, "hub_loss")
 
     # One-line verdict: overfitting gap at the best epoch.
@@ -367,7 +358,7 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
     _f1 = ov_df["Best Val F1"]
     # Bounded height: ~8 rows are visible, the rest scroll *inside* the table so
     # the page itself stays within one screen (no page scroll on the Overview).
-    _table_h = min(34 + 30 * len(ov_df), 215)
+    _table_h = min(34 + 30 * len(ov_df), 160)
     event = st.dataframe(
         ov_df,
         use_container_width=True, hide_index=True, height=_table_h,
