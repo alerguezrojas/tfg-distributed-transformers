@@ -38,8 +38,12 @@ st.set_page_config(
 )
 
 # Design system: one global Plotly template + the typography/layout CSS.
-theme.register_plotly_template()
-theme.inject_css()
+# The theme mode (light/dark) is chosen with the sidebar toggle and applied here
+# on the next run (Streamlit reruns when the toggle changes).
+_mode = st.session_state.get("theme_mode", "light")
+_dark = _mode == "dark"
+theme.register_plotly_template(_mode)
+theme.inject_css(_mode)
 
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
@@ -76,13 +80,17 @@ with st.sidebar:
     _chosen = option_menu(
         menu_title=None, options=_NAV_LABELS, icons=_NAV_ICONS,
         default_index=_NAV_KEYS.index(st.session_state["nav"]),
-        manual_select=_manual, key="navmenu",
+        manual_select=_manual, key=f"navmenu_{_mode}",  # key depends on mode so the
+        # option_menu re-renders with the dark/light styles (it's cached per key)
         styles={
-            "container": {"padding": "0", "background-color": "transparent"},
+            "container": {"padding": "0",
+                          "background-color": "#14181F" if _dark else "transparent"},
             "icon": {"display": "none"},
-            "nav-link": {"font-size": "0.88rem", "font-weight": "500", "color": "#2B2F35",
+            "nav-link": {"font-size": "0.88rem", "font-weight": "500",
+                         "color": "#C9CDD2" if _dark else "#2B2F35",
                          "padding": "0.4rem 0.7rem", "margin": "0.05rem 0", "border-radius": "6px"},
-            "nav-link-selected": {"background-color": "#E8F1F8", "color": "#2272B4",
+            "nav-link-selected": {"background-color": "#1E3A52" if _dark else "#E8F1F8",
+                                  "color": "#7FB2E0" if _dark else "#2272B4",
                                   "font-weight": "600"},
         },
     )
@@ -128,6 +136,14 @@ with st.sidebar:
                     st.session_state["run_label"] = _lbl
                     st.rerun()
         st.caption("Click a run, or a row in Overview.")
+
+    # ── Appearance (least-used control — keep it at the bottom) ───────────────
+    st.markdown("---")
+    _dark_on = st.toggle("Dark mode", value=_dark,
+                         help="Switch the whole dashboard between light and dark.")
+    if ("dark" if _dark_on else "light") != _mode:
+        st.session_state["theme_mode"] = "dark" if _dark_on else "light"
+        st.rerun()
 
 # ── Build shared context and render the selected page ───────────────────────────
 # (The refresh slider lives in System — Monitor/Live are the only consumers.)
