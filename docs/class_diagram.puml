@@ -666,20 +666,22 @@ package "src.web" #FDFEFE {
 
   note as web_arch_note
     **app.py** — orquestador (~220 ln, SRP)
-    page config + tema (.streamlit/config.toml) +
-    menú de iconos (streamlit-option-menu) +
-    selector de run activo → despacha render(ctx)
+    page config + tema + menú de iconos
+    (streamlit-option-menu) + selector de run
+    activo + toggle claro/oscuro → render(ctx)
 
     **ui/** (SRP): context (DashboardContext),
     charts (_show/_dl_csv/_metric_fig/_overlay_fig),
     helpers (loaders cacheados + utilidades),
-    theme (.streamlit/config.toml + CSS)
+    theme — register_plotly_template(mode) +
+    inject_css(mode): claro/oscuro
 
     **tabs/** — cada uno expone render(ctx):
-    home (Overview) · comparison · analysis ·
-    dataset · data_models (Import) ·
-    **run/** (paquete: curves/perclass/confusions/
-    batch/details) ·
+    home (Overview: KPIs + barras/tarta/treemap +
+    run activo + carrusel de fotos + tabla) ·
+    comparison · analysis · dataset · data_models ·
+    **run/** (paquete: curves · perclass=heatmap+support
+    · confusions=top+matriz · batch · details) ·
     feasibility + feasibility_predict (Predict)
     (5 secciones, máx. 1 nivel de pestañas)
   end note
