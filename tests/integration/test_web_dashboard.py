@@ -196,9 +196,10 @@ def test_home_sections(tabs_source):
     assert '"## Overview"' in tabs_source
     assert "All runs" in tabs_source
     assert "Active run" in tabs_source
-    # Varied charts: a time bar + an energy pie + the dataset treemap, plus photos.
+    # Varied charts: a time bar + the dataset-split pie + the imbalance treemap,
+    # plus the active-run mini curves and the sample-patch strip.
     assert "GPU time by environment" in tabs_source
-    assert "Energy by environment" in tabs_source
+    assert "Dataset split" in tabs_source
     assert "Class imbalance" in tabs_source
     assert "Sample Sentinel-2 patches" in tabs_source
     assert "LineChartColumn" in tabs_source
