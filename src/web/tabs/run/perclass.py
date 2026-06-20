@@ -5,11 +5,12 @@ from __future__ import annotations
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.web.dataset_stats import SPLIT_SIZES
 from src.web.ui import theme
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (_color_f1_cell, _load_perclass, _load_val_support,
-                                _dataset_meta_path)
+                                _dataset_meta_path, _run_config)
 
 
 def _per_class(ctx: DashboardContext) -> None:
@@ -34,10 +35,21 @@ def _per_class(ctx: DashboardContext) -> None:
     # whole point of the per-class view — far clearer than 3 overlaid dot series.
     ep_df = pcdf[pcdf["epoch"] == selected_ep].copy().sort_values("f1", ascending=True)
     # Support (val-set frequency of each class) — a dataset property, so it shows
-    # for runs already trained without retraining. Used as hover context + a table
-    # column: it tells whether a low F1 is on a rare class or a real failure.
+    # for runs already trained without retraining. It tells whether a low F1 is on
+    # a rare class or a real failure. The counts come from the full validation
+    # split, scaled down to this run's actual val size when it used a subset.
     meta = _dataset_meta_path()
-    support = _load_val_support(meta) if meta else None
+    support_full = _load_val_support(meta) if meta else None
+    cfg = _run_config(str(run.log_path))
+    try:
+        run_val = int(cfg["val"]) if cfg.get("val") else None
+    except (ValueError, TypeError):
+        run_val = None
+    support, scaled = support_full, False
+    if support_full and run_val and run_val < SPLIT_SIZES["val"] * 0.9:
+        factor = run_val / SPLIT_SIZES["val"]
+        support = {k: max(0, round(v * factor)) for k, v in support_full.items()}
+        scaled = True
     if support:
         ep_df["support"] = ep_df["class_name"].map(support).fillna(0).astype(int)
 
@@ -73,6 +85,9 @@ def _per_class(ctx: DashboardContext) -> None:
                "Hover a cell (or see the table) for **support** — the class's frequency "
                "in the validation set: a low F1 on a tiny-support class is a rare class, "
                "not a broken model.")
+    if scaled:
+        st.caption(f"This run used a **subset** ({run_val:,} val patches), so support is "
+                   f"the full-dataset frequency scaled to it (approximate).")
 
     with st.expander("Per-class table"):
         cols = ["class_name", "f1", "precision", "recall"]
