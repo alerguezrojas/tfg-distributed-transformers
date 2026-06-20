@@ -99,6 +99,30 @@ def class_distribution_from_parquet(parquet_path: Path) -> pd.DataFrame | None:
         return None
 
 
+def val_support_from_parquet(parquet_path: Path) -> dict[str, int] | None:
+    """Per-class support in the VALIDATION split (how many val patches carry each
+    class). Support is a property of the dataset, not of the model, so this lets
+    the per-class view show it for runs already trained — no retraining needed.
+    Returns {class_name: count} or None if the parquet/split is unavailable."""
+    if not parquet_path.exists():
+        return None
+    try:
+        df = pd.read_parquet(parquet_path, columns=["labels", "split"])
+        if "labels" not in df.columns or "split" not in df.columns:
+            return None
+        val_df = df[df["split"] == "validation"]
+        if val_df.empty:
+            return None
+        all_labels: list[str] = []
+        for arr in val_df["labels"]:
+            if arr is not None:
+                all_labels.extend(list(arr))
+        counts = pd.Series(all_labels).value_counts()
+        return {cls: int(counts.get(cls, 0)) for cls in CLASS_NAMES}
+    except Exception:
+        return None
+
+
 def class_distribution_approximate() -> pd.DataFrame:
     """Return approximate class distribution (hardcoded from official stats)."""
     return pd.DataFrame([

@@ -10,6 +10,7 @@ import streamlit as st
 from src.web.batch_parser import parse_batch_csv
 from src.web.dataset_stats import (
     CLASS_NAMES, class_distribution_from_parquet, find_example_patches, load_rgb_image,
+    val_support_from_parquet,
 )
 from src.web.feasibility_parser import parse_feasibility_csv
 from src.web.log_parser import parse_log
@@ -111,6 +112,24 @@ def _run_config(log_path_str: str) -> dict:
 def _load_class_distribution(parquet_str: str) -> pd.DataFrame | None:
     """Cached class distribution (iterates ~237K rows, slow)."""
     return class_distribution_from_parquet(Path(parquet_str))
+
+
+@st.cache_data(ttl=600)
+def _load_val_support(parquet_str: str) -> dict | None:
+    """Cached per-class support of the validation split (a dataset property)."""
+    return val_support_from_parquet(Path(parquet_str))
+
+
+# Where the BigEarthNet metadata lives (local SSD or Verode NFS).
+_META_CANDIDATES = [
+    "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet",
+    "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet",
+]
+
+
+def _dataset_meta_path() -> str | None:
+    """First mounted metadata.parquet, or None if the dataset isn't available."""
+    return next((p for p in _META_CANDIDATES if Path(p).exists()), None)
 
 
 @st.cache_data(ttl=600)
