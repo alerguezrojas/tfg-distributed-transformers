@@ -385,8 +385,20 @@ def _confirm_run(cmd: list[str]) -> None:
 
 @app.command()
 def menu() -> None:
-    """Interactive guided menu — pick an action and fill in the parameters."""
-    from rich.prompt import Prompt, IntPrompt
+    """Interactive guided menu — pick an action and fill in the parameters.
+
+    Each action asks the common parameters and then offers an "Advanced options"
+    gate that exposes every flag the equivalent command accepts, so nothing is
+    reachable only by typing the raw command."""
+    from rich.prompt import Prompt, IntPrompt, Confirm
+
+    def _opt(q, default=""):
+        """Optional free-text prompt → value or None."""
+        return Prompt.ask(q, default=default) or None
+
+    def _opt_int(q):
+        v = Prompt.ask(q, default="")
+        return int(v) if v.strip() else None
 
     while True:
         console.print(Panel(
@@ -415,24 +427,58 @@ def menu() -> None:
         elif choice == "2":
             strat = Prompt.ask("Strategy", choices=list(STRATEGIES), default="single")
             config = Prompt.ask("Config", default="configs/train.yaml")
-            model = Prompt.ask("Model (blank = from config)", default="") or None
-            ep = Prompt.ask("Epochs (blank = from config)", default="") or None
-            trace = Prompt.ask("Trace", choices=["off", "simple", "deep"], default="simple")
-            n = IntPrompt.ask("GPUs per node", default=2) if strat in ("ddp", "heterogeneous") else 2
-            _confirm_run(build_train_cmd(strat, config, model=model,
-                         epochs=int(ep) if ep else None, trace=trace, n_gpus=n))
+            kw = dict(model=_opt("Model (blank = from config)"),
+                      epochs=_opt_int("Epochs (blank = from config)"),
+                      trace=Prompt.ask("Trace", choices=["off", "simple", "deep"], default="simple"))
+            if strat in ("ddp", "heterogeneous"):
+                kw["n_gpus"] = IntPrompt.ask("GPUs per node", default=2)
+            if Confirm.ask("Advanced options (precision, layers, fn, multi-node)?", default=False):
+                if strat == "single":
+                    kw["precision"] = Prompt.ask("Precision",
+                                                 choices=["fp32", "amp", "tf32", "bf16"], default="fp32")
+                kw["layers"] = _csv(_opt("Layers (comma: plot,confusion,batch-monitor,hooks)"))
+                kw["fn"] = _csv(_opt("Fn decorators (comma: timing,energy)"))
+                if strat in ("ddp", "heterogeneous"):
+                    nnodes = IntPrompt.ask("Number of nodes", default=1)
+                    kw["nnodes"] = nnodes
+                    if nnodes > 1:
+                        kw["node_rank"] = IntPrompt.ask("This node's rank", default=0)
+                        kw["master_addr"] = Prompt.ask("Master address", default="localhost")
+                        kw["master_port"] = IntPrompt.ask("Master port", default=29500)
+            _confirm_run(build_train_cmd(strat, config, **kw))
         elif choice == "3":
-            model = Prompt.ask("Model", default="vit_base_patch16_224")
-            bs = Prompt.ask("Batch sizes (comma)", default="32,64")
-            ep = IntPrompt.ask("Epochs", default=30)
-            _confirm_run(build_feasibility_cmd([model], [int(x) for x in bs.split(",")],
-                         ep, ["off", "simple"]))
+            models = _csv(Prompt.ask("Model(s) (comma)", default="vit_base_patch16_224"))
+            bsizes = [int(x) for x in (_csv(Prompt.ask("Batch sizes (comma)", default="32,64")) or [])]
+            ep = IntPrompt.ask("Epochs (for the time estimate)", default=30)
+            traces = _csv(Prompt.ask("Trace modes (comma: off,simple,deep)", default="off,simple"))
+            kw = {}
+            if Confirm.ask("Advanced options (config, dataset path, precision, study, NFS, device)?",
+                           default=False):
+                kw["config"] = _opt("YAML config (blank = none)")
+                kw["dataset_path"] = _opt("Dataset path to measure real I/O (blank = none)")
+                kw["precision"] = Prompt.ask("Precision", choices=["fp32", "amp", "tf32", "bf16"],
+                                             default="fp32")
+                kw["compare_precision"] = Confirm.ask("Compare FP32 vs Tensor cores?", default=False)
+                kw["convergence_study"] = Confirm.ask("Real convergence study (mini-training)?",
+                                                      default=False)
+                if kw["convergence_study"]:
+                    kw["study_steps"] = IntPrompt.ask("Mini-training steps", default=60)
+                kw["nfs_factor"] = float(Prompt.ask("NFS factor (Verode ≈ 1.3)", default="1.0"))
+                kw["device"] = IntPrompt.ask("CUDA device index", default=0)
+            _confirm_run(build_feasibility_cmd(models, bsizes or None, ep, traces, **kw))
         elif choice == "4":
             ckpt = Prompt.ask("Checkpoint path")
             config = Prompt.ask("Config", default="configs/train.yaml")
             split = Prompt.ask("Split", choices=["test", "val"], default="test")
-            out = Prompt.ask("Output CSV (blank = none)", default="") or None
-            _confirm_run(build_eval_cmd(ckpt, config, split=split, output=out))
+            kw = {}
+            if Confirm.ask("Advanced options (model, output CSV, metadata, batch size, max batches)?",
+                           default=False):
+                kw["model"] = _opt("Model (blank = from config)")
+                kw["output"] = _opt("Output CSV (blank = none)")
+                kw["metadata"] = _opt("Metadata parquet (blank = from config)")
+                kw["batch_size"] = _opt_int("Batch size (blank = from config)")
+                kw["max_batches"] = _opt_int("Max batches (blank = all)")
+            _confirm_run(build_eval_cmd(ckpt, config, split=split, **kw))
         elif choice == "5":
             port = IntPrompt.ask("Port", default=8501)
             _confirm_run([sys.executable, "-m", "streamlit", "run", "src/web/app.py",
