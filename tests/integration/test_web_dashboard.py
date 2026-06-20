@@ -196,9 +196,11 @@ def test_home_sections(tabs_source):
     assert '"## Overview"' in tabs_source
     assert "All runs" in tabs_source
     assert "Active run" in tabs_source
-    # Relevant charts: the quality/cost landscape + the per-model ceiling.
-    assert "Quality vs training cost" in tabs_source
-    assert "Best Val F1 reached per model" in tabs_source
+    # Dataset showcase: varied charts (bars + pie + treemap) + the photo strip.
+    assert "Most frequent classes" in tabs_source
+    assert "Land-cover groups" in tabs_source
+    assert "Class imbalance" in tabs_source
+    assert "Sample Sentinel-2 patches" in tabs_source
     assert "LineChartColumn" in tabs_source
     assert 'selection_mode="single-row"' in tabs_source
 

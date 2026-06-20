@@ -37,6 +37,18 @@ from src.web.ui.helpers import (
     _gpu_usage, _color_f1_cell,
 )
 
+# Where the BigEarthNet-S2 metadata / patches live (local SSD or Verode NFS). If
+# neither is mounted, the charts fall back to an approximate class distribution
+# and the photo strip is skipped.
+_META_CANDIDATES = [
+    "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet",
+    "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet",
+]
+_ROOT_CANDIDATES = [
+    "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2",
+    "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2",
+]
+
 
 def render(ctx: DashboardContext) -> None:
     runs = ctx.runs
@@ -53,7 +65,6 @@ def render(ctx: DashboardContext) -> None:
     total_energy_wh = 0.0
     feasibility_csvs_home = _get_feasibility_csvs()
     curve_by_label: dict[str, list[float]] = {}
-    time_by_label: dict[str, float] = {}   # avg epoch time (s)
 
     for r in runs:
         try:
@@ -67,7 +78,6 @@ def render(ctx: DashboardContext) -> None:
             if not df_r.empty and "epoch_time" in df_r.columns and df_r["epoch_time"].notna().any():
                 total_gpu_h += float(df_r["epoch_time"].dropna().sum()) / 3600
                 avg_s = float(df_r["epoch_time"].dropna().mean())
-                time_by_label[r.label] = avg_s
                 fastest_min = min(fastest_min, avg_s / 60)
             for _c in ("energy_train_wh", "energy_eval_wh"):
                 if _c in df_r.columns and df_r[_c].notna().any():
@@ -90,14 +100,33 @@ def render(ctx: DashboardContext) -> None:
         ("Feasibility", str(len(feasibility_csvs_home))),
     ])
 
-    # ── Row 1: best-F1 ranking (left) + active-run curves (right) ───────────────
-    left, right = st.columns([1, 1.4])
-    with left:
-        with st.container(border=True):
-            st.caption("Best Val F1 by run (top 8)")
-            _best_f1_lollipop(runs, curve_by_label)
+    # ── Row 1: the dataset showcase — varied, colourful charts of the data behind
+    #          every run (not run metrics, which already live in the table below) ─
+    meta = next((p for p in _META_CANDIDATES if Path(p).exists()), None)
+    root = next((p for p in _ROOT_CANDIDATES if Path(p).exists()), None)
+    dist = _dataset_dist(meta)
 
-    with right:
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        with st.container(border=True):
+            st.caption("Most frequent classes — train patches")
+            _class_bars(dist)
+    with c2:
+        with st.container(border=True):
+            st.caption("Land-cover groups — share of labels")
+            _groups_pie(dist)
+    with c3:
+        with st.container(border=True):
+            st.caption("Class imbalance — tile area = patches")
+            _class_treemap(dist)
+
+    # ── Row 2: sample patches (the "photos") + the active-run card ───────────────
+    p_left, p_right = st.columns([1.45, 1])
+    with p_left:
+        with st.container(border=True):
+            st.caption("Sample Sentinel-2 patches — RGB proxy (B04/B03/B02)")
+            _photo_strip(meta, root)
+    with p_right:
         with st.container(border=True):
             _df_active = best_run_df
             _title = best_run_label
@@ -115,18 +144,6 @@ def render(ctx: DashboardContext) -> None:
             else:
                 st.info("No metrics for this run.")
 
-    # ── Row 2: the two most relevant views — the quality/cost landscape and the
-    #          quality ceiling reached per model architecture ───────────────────
-    g_left, g_right = st.columns([1.4, 1])
-    with g_left:
-        with st.container(border=True):
-            st.caption("Quality vs training cost — every run (top-left = fast & accurate)")
-            _quality_vs_cost(runs, curve_by_label, time_by_label)
-    with g_right:
-        with st.container(border=True):
-            st.caption("Best Val F1 reached per model")
-            _best_by_model(runs, curve_by_label)
-
     # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
     st.caption("Click a row to make that run active across the dashboard.")
@@ -134,84 +151,106 @@ def render(ctx: DashboardContext) -> None:
     st.caption("Dataset, the 19 classes and run import now live in the **Dataset** section.")
 
 
-def _short_label(lbl: str) -> str:
-    """Compact run label for chart axes (drop the date, keep env/model/tags)."""
-    import re
-    return re.sub(r"^\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2}\s+", "", lbl)
+def _dataset_dist(meta):
+    """Per-class train counts — from the parquet if mounted, else an approximation."""
+    dist = _load_class_distribution(str(meta)) if meta else None
+    if dist is None:
+        dist = class_distribution_approximate()
+    return dist
 
 
-def _quality_vs_cost(runs, curve_by_label: dict[str, list[float]],
-                     time_by_label: dict[str, float]) -> None:
-    """The cost/quality landscape: best Val F1 vs average epoch time, one point per
-    run, coloured by environment. The most useful single view — it shows, at a
-    glance, which runs are both fast and accurate (top-left)."""
-    rows = []
-    by_label = {r.label: r for r in runs}
-    for lbl, curve in curve_by_label.items():
-        t = time_by_label.get(lbl)
-        r = by_label.get(lbl)
-        if curve and t and r is not None:
-            rows.append({"run": _short_label(lbl), "env": r.env, "mode": r.mode,
-                         "Best Val F1": round(max(curve), 4),
-                         "min/epoch": round(t / 60, 2)})
-    if not rows:
-        st.info("No runs with both timing and F1.")
-        return
-    df = pd.DataFrame(rows)
-    fig = px.scatter(
-        df, x="min/epoch", y="Best Val F1", color="env", hover_name="run",
-        custom_data=["mode"], color_discrete_sequence=COLORS,
-    )
-    fig.update_traces(marker=dict(size=12, line=dict(width=1, color="rgba(0,0,0,0.25)")),
-                      hovertemplate="<b>%{hovertext}</b><br>%{x} min/epoch · "
-                                    "F1 %{y:.3f} · %{customdata[0]}<extra></extra>")
-    fig.update_layout(**_base_layout(300), xaxis_title="Avg time per epoch (min)",
-                      yaxis_title="Best Val F1", legend_title_text="")
-    fig.update_yaxes(range=[0, 1])
-    _show(fig, "hub_quality_cost")
+def _group_of(class_name: str):
+    """(group name, colour) for a class name, via its index in CLASS_NAMES."""
+    idx = CLASS_NAMES.index(class_name) if class_name in CLASS_NAMES else -1
+    for gname, (idxs, color) in _CLASS_GROUPS.items():
+        if idx in idxs:
+            return gname, color
+    return "Other", COLORS[0]
 
 
-def _best_by_model(runs, curve_by_label: dict[str, list[float]]) -> None:
-    """Best Val F1 reached by each model architecture — the quality ceiling per
-    model (vit_base ~0.68, vit_tiny lower, …), as a clean lollipop."""
-    best: dict[str, float] = {}
-    by_label = {r.label: r for r in runs}
-    for lbl, curve in curve_by_label.items():
-        r = by_label.get(lbl)
-        if curve and r is not None and r.model:
-            m = r.model.replace("_patch16_224", "")
-            best[m] = max(best.get(m, 0.0), max(curve))
-    if not best:
-        st.info("No runs with metrics.")
-        return
-    items = sorted(best.items(), key=lambda x: x[1])   # ascending → best on top
-    labels = [m for m, _ in items]
-    vals = [v for _, v in items]
-    _lollipop(labels, vals, "hub_best_by_model", fmt="{:.3f}", xmax=1.0,
-              accent=COLORS[2])
+def _short_cls(name: str, n: int = 13) -> str:
+    return name if len(name) <= n else name[:n - 1] + "…"
 
 
-def _lollipop(labels: list[str], vals: list[float], key: str,
-              fmt: str = "{:.3f}", xmax: float | None = None,
-              accent: str = COLORS[0]) -> None:
-    """Horizontal lollipop (thin stem + dot + value) — cleaner than a full bar."""
-    fig = go.Figure()
-    for y, v in zip(labels, vals):
-        fig.add_trace(go.Scatter(x=[0, v], y=[y, y], mode="lines",
-                                 line=dict(color="rgba(128,128,128,0.35)", width=2),
-                                 hoverinfo="skip", showlegend=False))
-    fig.add_trace(go.Scatter(
-        x=vals, y=labels, mode="markers+text", showlegend=False,
-        marker=dict(size=11, color=accent, line=dict(width=1, color="rgba(0,0,0,0.25)")),
-        text=[fmt.format(v) for v in vals], textposition="middle right",
-        textfont=dict(size=10), cliponaxis=False,
-        hovertemplate="%{y}: %{x:.3f}<extra></extra>",
+def _class_bars(dist) -> None:
+    """Vertical bars of the most frequent classes, each coloured by its land-cover
+    group — the 'bars growing up' that show class frequency at a glance."""
+    d = dist.sort_values("train_count", ascending=False).head(8)
+    colors = [_group_of(c)[1] for c in d["class"]]
+    fig = go.Figure(go.Bar(
+        x=[_short_cls(c) for c in d["class"]], y=d["train_count"],
+        marker=dict(color=colors, line=dict(width=0)),
+        text=[(f"{v/1000:.0f}k" if v >= 1000 else f"{int(v)}") for v in d["train_count"]],
+        textposition="outside", customdata=list(d["class"]),
+        hovertemplate="<b>%{customdata}</b><br>%{y:,} train patches<extra></extra>",
     ))
-    fig.update_layout(**_base_layout(40 + 32 * len(labels)),
-                      margin=dict(l=10, r=44, t=6, b=6))
-    fig.update_xaxes(range=[0, (xmax or max(vals) * 1.15)], visible=False)
-    fig.update_yaxes(automargin=True, tickfont=dict(size=10))
-    _show(fig, key)
+    fig.update_layout(**_base_layout(230), showlegend=False, yaxis_title="Patches",
+                      margin=dict(l=10, r=10, t=20, b=10))
+    fig.update_xaxes(tickangle=-30, tickfont=dict(size=9))
+    _show(fig, "ov_class_bars")
+
+
+def _groups_pie(dist) -> None:
+    """Classic pie ('pizza') of the land-cover groups — the share of labels in each
+    CORINE group, each wedge in its group's colour."""
+    agg: dict[str, float] = {}
+    color: dict[str, str] = {}
+    for _, row in dist.iterrows():
+        g, c = _group_of(row["class"])
+        agg[g] = agg.get(g, 0.0) + float(row["train_count"])
+        color[g] = c
+    labels = list(agg.keys())
+    fig = go.Figure(go.Pie(
+        labels=labels, values=[agg[l] for l in labels], sort=True,
+        marker=dict(colors=[color[l] for l in labels], line=dict(width=1.5, color="white")),
+        textinfo="label+percent", textfont=dict(size=10), insidetextorientation="radial",
+        hovertemplate="<b>%{label}</b><br>%{value:,} · %{percent}<extra></extra>",
+    ))
+    fig.update_layout(**_base_layout(230), showlegend=False,
+                      margin=dict(l=6, r=6, t=10, b=6))
+    _show(fig, "ov_groups_pie")
+
+
+def _class_treemap(dist) -> None:
+    """Treemap of the 19 classes (tile area = #train patches) — the imbalance that
+    caps macro-F1, in a third, distinct chart type."""
+    d = dist.sort_values("train_count", ascending=False)
+    colors = [_group_of(c)[1] for c in d["class"]]
+    fig = go.Figure(go.Treemap(
+        labels=[_short_cls(c, 16) for c in d["class"]], parents=[""] * len(d),
+        values=d["train_count"],
+        marker=dict(colors=colors, line=dict(width=1, color="white")),
+        texttemplate="%{label}", textfont=dict(size=9), customdata=list(d["class"]),
+        hovertemplate="<b>%{customdata}</b><br>%{value:,} patches · %{percentRoot}<extra></extra>",
+        tiling=dict(pad=2),
+    ))
+    fig.update_layout(**_base_layout(230), margin=dict(t=6, l=0, r=0, b=0))
+    _show(fig, "ov_class_treemap")
+
+
+def _photo_strip(meta, root) -> None:
+    """A strip of real Sentinel-2 patches (RGB proxy), one per class — the visual
+    'photos' section. Skipped gracefully when the dataset isn't mounted."""
+    if not (meta and root):
+        st.info("Dataset not mounted here — sample patches show on a machine with "
+                "BigEarthNet-S2 available.")
+        return
+    try:
+        _avg, gallery = _class_gallery(str(meta), str(root))
+    except Exception:
+        gallery = []
+    if not gallery:
+        st.info("No sample patches available.")
+        return
+    gallery = gallery[:10]
+    cols = st.columns(len(gallery), gap="small")
+    for col, (cls, cnt, pct, img, labels) in zip(cols, gallery):
+        col.image(img, use_container_width=True)
+        title = " · ".join(labels).replace("'", "")
+        col.markdown(
+            f"<div title='{title}' style='font-size:0.6rem;line-height:1.05;"
+            f"height:2.2rem;overflow:hidden'>{_short_cls(cls, 14)}</div>",
+            unsafe_allow_html=True)
 
 
 def _kpi_strip(items: list[tuple[str, str]]) -> None:
@@ -221,22 +260,6 @@ def _kpi_strip(items: list[tuple[str, str]]) -> None:
         for l, v in items
     )
     st.markdown(f"<div class='kpi-strip'>{cells}</div>", unsafe_allow_html=True)
-
-
-def _best_f1_lollipop(runs, curve_by_label: dict[str, list[float]]) -> None:
-    """Top-8 runs by best Val F1, as a clean lollipop (stem + dot + value)."""
-    rows = []
-    for r in runs:
-        curve = curve_by_label.get(r.label)
-        if curve:
-            rows.append((_short_label(r.label), max(curve)))
-    rows.sort(key=lambda x: x[1], reverse=True)
-    rows = rows[:8][::-1]   # best on top
-    if not rows:
-        st.info("No runs with metrics.")
-        return
-    _lollipop([l for l, _ in rows], [v for _, v in rows], "hub_bestf1",
-              fmt="{:.3f}", xmax=1.0, accent=COLORS[0])
 
 
 def _run_highlight(df: pd.DataFrame, anomalies_path=None) -> None:
