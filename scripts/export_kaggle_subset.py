@@ -1,7 +1,7 @@
 """Exporta un subset autocontenido de BigEarthNet-S2 listo para subir a Kaggle.
 
-Selecciona N train + M val (aleatorio con seed fijo — mismo seed=42 que
-make_smoke_subset.py, así el subset coincide con el demo de Verode) y copia
+Selecciona N train + M val (aleatorio con seed fijo, seed=42, así el subset
+coincide con el demo de Verode) y copia
 SOLO las 3 bandas RGB (B04/B03/B02) de cada patch, preservando la estructura
     <out>/BigEarthNet-S2/<scene_id>/<patch_id>/<patch_id>_<band>.tif
 y escribe <out>/metadata_demo.parquet.
