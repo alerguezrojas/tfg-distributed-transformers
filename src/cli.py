@@ -397,6 +397,42 @@ def _pick(label: str, options: list[str], default: str | None = None,
     return val
 
 
+def _pick_model(label: str, default: str = "vit_base_patch16_224",
+                allow_from_config: bool = False) -> str | None:
+    """Model picker for the commands that accept any timm model. Shows the curated
+    models grouped by family (manageable, ~26), plus a 'search all timm' option
+    (timm has ~1300 models — too many for a flat list) and a free-text 'other'."""
+    from rich.prompt import IntPrompt, Prompt
+    from src.web.model_explorer import CURATED_MODELS
+    rows, mapping, idx = [], {}, 1
+    if allow_from_config:
+        rows.append(f"  [cyan]{idx}[/] (from config)"); mapping[idx] = ("none", None); idx += 1
+    for fam, ms in CURATED_MODELS.items():
+        rows.append(f"  [dim]{fam}[/]")
+        for m in ms:
+            rows.append(f"    [cyan]{idx}[/] {m}"); mapping[idx] = ("val", m); idx += 1
+    rows.append(f"  [cyan]{idx}[/] search all timm models…"); mapping[idx] = ("search", None); idx += 1
+    rows.append(f"  [cyan]{idx}[/] other (type any id)…"); mapping[idx] = ("other", None); idx += 1
+    console.print(f"[bold]{label}[/]\n" + "\n".join(rows))
+    di = next((k for k, v in mapping.items() if v == ("val", default)), 1)
+    n = IntPrompt.ask("  #", default=di)
+    kind, val = mapping.get(n, mapping[di])
+    if kind == "none":
+        return None
+    if kind == "other":
+        return Prompt.ask("  timm model id")
+    if kind == "search":
+        import timm
+        q = Prompt.ask("  Search substring (e.g. vit, convnext, resnet)")
+        matches = timm.list_models(f"*{q}*")
+        if not matches:
+            console.print(f"  [yellow]no matches for '{q}'[/] — type it directly")
+            return Prompt.ask("  timm model id")
+        console.print(f"  {len(matches)} match(es)" + (" — showing 30" if len(matches) > 30 else ""))
+        return _pick("Matches", matches[:30], default=matches[0], allow_other=True)
+    return val
+
+
 def _list_configs() -> list[str]:
     d = ROOT / "configs"
     return sorted(f"configs/{p.name}" for p in d.glob("*.yaml")) if d.exists() else []
@@ -466,7 +502,7 @@ def menu() -> None:
         elif choice == "2":
             strat = Prompt.ask("Strategy", choices=list(STRATEGIES), default="single")
             config = _pick("Config", _list_configs(), default="configs/train.yaml")
-            kw = dict(model=_pick("Model", models_l, none_label="(from config)", allow_other=True),
+            kw = dict(model=_pick_model("Model", allow_from_config=True),
                       epochs=_opt_int("Epochs (blank = from config)"),
                       trace=Prompt.ask("Trace", choices=["off", "simple", "deep"], default="simple"))
             if strat in ("ddp", "heterogeneous"):
@@ -486,7 +522,7 @@ def menu() -> None:
                         kw["master_port"] = IntPrompt.ask("Master port", default=29500)
             _confirm_run(build_train_cmd(strat, config, **kw))
         elif choice == "3":
-            models = [_pick("Model", models_l, default="vit_base_patch16_224", allow_other=True)]
+            models = [_pick_model("Model")]
             bsizes = [int(x) for x in (_csv(Prompt.ask("Batch sizes (comma)", default="32,64")) or [])]
             ep = IntPrompt.ask("Epochs (for the time estimate)", default=30)
             traces = _csv(Prompt.ask("Trace modes (comma: off,simple,deep)", default="off,simple"))
@@ -514,7 +550,7 @@ def menu() -> None:
             kw = {}
             if Confirm.ask("Advanced options (model, output CSV, metadata, batch size, max batches)?",
                            default=False):
-                kw["model"] = _pick("Model", models_l, none_label="(from config)", allow_other=True)
+                kw["model"] = _pick_model("Model", allow_from_config=True)
                 kw["output"] = _opt("Output CSV (blank = none)")
                 kw["metadata"] = _opt("Metadata parquet (blank = from config)")
                 kw["batch_size"] = _opt_int("Batch size (blank = from config)")
