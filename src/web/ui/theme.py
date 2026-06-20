@@ -40,26 +40,38 @@ GOOD, WARN, BAD = "#2E8B57", "#C57B27", "#B0413E"   # green / amber / red
 _FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
 
+# ── Dark-mode palette (the chart/plot surfaces; CSS handles the Streamlit chrome) ──
+_DARK = dict(ink="#E6E8EB", muted="#9AA0A6", grid="#2A2F3A", line="#5B626B",
+             paper="#161A23", border="#2A2F3A")
+
+
 # ── Plotly template ─────────────────────────────────────────────────────────────────
-def register_plotly_template() -> None:
-    """Minimal scientific template: near-black thin axes, faint gridlines, no chartjunk."""
+def register_plotly_template(mode: str = "light") -> None:
+    """Minimal scientific template — light or dark, selected by ``mode``."""
+    dark = mode == "dark"
+    ink = _DARK["ink"] if dark else INK
+    muted = _DARK["muted"] if dark else MUTED
+    grid = _DARK["grid"] if dark else GRID
+    line = _DARK["line"] if dark else "#9aa0a6"
+    paper = _DARK["paper"] if dark else "white"
+    border = _DARK["border"] if dark else BORDER
     axis = dict(
-        gridcolor=GRID, linecolor="#9aa0a6", zeroline=False, ticks="outside",
-        tickcolor="#9aa0a6", ticklen=4,
-        title=dict(font=dict(size=12, color=MUTED)),
-        tickfont=dict(size=11, color=MUTED),
+        gridcolor=grid, linecolor=line, zeroline=False, ticks="outside",
+        tickcolor=line, ticklen=4,
+        title=dict(font=dict(size=12, color=muted)),
+        tickfont=dict(size=11, color=muted),
     )
     tmpl = go.layout.Template()
     tmpl.layout = go.Layout(
-        font=dict(family=_FONT, size=12.5, color=INK),
-        title=dict(font=dict(size=13, color=INK), x=0, xanchor="left", pad=dict(b=6)),
-        paper_bgcolor="white", plot_bgcolor="white",
+        font=dict(family=_FONT, size=12.5, color=ink),
+        title=dict(font=dict(size=13, color=ink), x=0, xanchor="left", pad=dict(b=6)),
+        paper_bgcolor=paper, plot_bgcolor=paper,
         colorway=CATEGORICAL,
         margin=dict(l=56, r=20, t=40, b=42),
         xaxis=axis, yaxis=axis,
         legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1,
                     font=dict(size=11.5), bgcolor="rgba(0,0,0,0)"),
-        hoverlabel=dict(font=dict(family=_FONT, size=12), bgcolor="white", bordercolor=BORDER),
+        hoverlabel=dict(font=dict(family=_FONT, size=12), bgcolor=paper, bordercolor=border),
         colorscale=dict(sequential=SEQUENTIAL, diverging=DIVERGING),
     )
     tmpl.data.scatter = [go.Scatter(line=dict(width=1.8), marker=dict(size=4))]
@@ -72,8 +84,9 @@ register_plotly_template()
 
 
 # ── CSS ───────────────────────────────────────────────────────────────────────────
-def inject_css() -> None:
-    """Inject the flat, formal layout/typography system. Call once after set_page_config."""
+def inject_css(mode: str = "light") -> None:
+    """Inject the flat, formal layout/typography system. Call once after
+    set_page_config. ``mode='dark'`` appends an override layer for dark mode."""
     st.markdown(
         """
 <style>
@@ -162,6 +175,71 @@ def inject_css() -> None:
   .kpi:last-child { border-right: none; }
   .kpi .v { font-size: 1.18rem; font-weight: 600; color: #1A1A1A; line-height: 1.2; }
   .kpi .l { font-size: 0.7rem; color: #5B626B; text-transform: uppercase; letter-spacing: 0.04em; }
+</style>
+""",
+        unsafe_allow_html=True,
+    )
+    if mode == "dark":
+        _inject_dark_css()
+
+
+def _inject_dark_css() -> None:
+    """Dark-mode override layer over the light base (Streamlit's chrome + our
+    components). Charts switch via the Plotly template; the st.dataframe grid
+    stays light (its theming is config-time, not CSS-controllable)."""
+    st.markdown(
+        """
+<style>
+  /* App surfaces + base text */
+  [data-testid="stAppViewContainer"], [data-testid="stMain"], .main, .stApp {
+    background-color: #0E1117 !important; color: #E6E8EB !important; }
+  [data-testid="stHeader"] { background: transparent !important; }
+
+  /* Typography */
+  [data-testid="stMarkdownContainer"] h1,
+  [data-testid="stMarkdownContainer"] h2,
+  [data-testid="stMarkdownContainer"] h3 { color: #E6E8EB !important; }
+  [data-testid="stMarkdownContainer"] h4 { color: #C9CDD2 !important; }
+  [data-testid="stMarkdownContainer"] p, [data-testid="stMarkdownContainer"] li { color: #C9CDD2 !important; }
+  [data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * { color: #9AA0A6 !important; }
+
+  /* Metrics */
+  [data-testid="stMetricValue"] { color: #E6E8EB !important; }
+  [data-testid="stMetricLabel"], [data-testid="stMetricLabel"] * { color: #9AA0A6 !important; }
+
+  /* Cards / bordered containers */
+  [data-testid="stVerticalBlockBorderWrapper"] {
+    background: #161A23 !important; border-color: #2A2F3A !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,.35) !important; }
+
+  /* Tabs */
+  [data-baseweb="tab-list"] { border-bottom-color: #2A2F3A !important; }
+  [data-baseweb="tab"] { color: #C9CDD2 !important; }
+
+  /* Inputs / selects */
+  [data-baseweb="select"] > div, [data-baseweb="input"] input,
+  [data-testid="stTextInput"] input, [data-testid="stNumberInput"] input,
+  textarea { background: #161A23 !important; color: #E6E8EB !important;
+    border-color: #2A2F3A !important; }
+  [data-testid="stDataFrame"] { border-color: #2A2F3A !important; }
+  [data-testid="stExpander"] { border-color: #2A2F3A !important; }
+  [data-testid="stExpander"] details { background: #161A23 !important; }
+
+  /* Sidebar */
+  [data-testid="stSidebar"] { background: #14181F !important; border-right-color: #2A2F3A !important; }
+  [data-testid="stSidebar"] hr { border-color: #2A2F3A !important; }
+  [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] *,
+  [data-testid="stSidebar"] [data-testid="stCaptionContainer"] * { color: #C9CDD2 !important; }
+  [data-testid="stSidebar"] .stButton button { color: #C9CDD2 !important; }
+  [data-testid="stSidebar"] .stButton button[kind="secondary"]:hover { background: #20262F !important; }
+  [data-testid="stSidebar"] .active-run {
+    background: #18293B !important; border-color: #2A4866 !important; color: #BBD6F0 !important; }
+
+  /* KPI strip */
+  .kpi-strip { border-color: #2A2F3A !important; }
+  .kpi { background: #161A23 !important; border-right-color: #2A2F3A !important; }
+  .kpi .v { color: #E6E8EB !important; }
+  .kpi .l { color: #9AA0A6 !important; }
 </style>
 """,
         unsafe_allow_html=True,
