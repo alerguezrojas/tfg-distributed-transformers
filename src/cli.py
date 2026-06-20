@@ -399,18 +399,16 @@ def _pick(label: str, options: list[str], default: str | None = None,
 
 def _pick_model(label: str, default: str = "vit_base_patch16_224",
                 allow_from_config: bool = False) -> str | None:
-    """Model picker for the commands that accept any timm model. Shows the curated
-    models grouped by family (manageable, ~26), plus a 'search all timm' option
-    (timm has ~1300 models — too many for a flat list) and a free-text 'other'."""
+    """Model picker for the commands that accept any timm model. Shows the short
+    list of models relevant to this project, plus a 'search all timm' option
+    (timm has ~1300 models — too many to list) and a free-text 'other'."""
     from rich.prompt import IntPrompt, Prompt
-    from src.web.model_explorer import CURATED_MODELS
+    from src.performance_model import MODEL_TABLE
     rows, mapping, idx = [], {}, 1
     if allow_from_config:
         rows.append(f"  [cyan]{idx}[/] (from config)"); mapping[idx] = ("none", None); idx += 1
-    for fam, ms in CURATED_MODELS.items():
-        rows.append(f"  [dim]{fam}[/]")
-        for m in ms:
-            rows.append(f"    [cyan]{idx}[/] {m}"); mapping[idx] = ("val", m); idx += 1
+    for m in MODEL_TABLE:
+        rows.append(f"  [cyan]{idx}[/] {m}"); mapping[idx] = ("val", m); idx += 1
     rows.append(f"  [cyan]{idx}[/] search all timm models…"); mapping[idx] = ("search", None); idx += 1
     rows.append(f"  [cyan]{idx}[/] other (type any id)…"); mapping[idx] = ("other", None); idx += 1
     console.print(f"[bold]{label}[/]\n" + "\n".join(rows))
