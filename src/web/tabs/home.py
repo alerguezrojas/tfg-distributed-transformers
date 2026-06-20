@@ -234,8 +234,8 @@ def _class_treemap(dist) -> None:
 
 
 def _photo_strip(meta, root) -> None:
-    """A strip of real Sentinel-2 patches (RGB proxy), one per class — the visual
-    'photos' section. Skipped gracefully when the dataset isn't mounted."""
+    """Real Sentinel-2 patches (RGB proxy), one per class — a small carousel paged
+    5 at a time with ◀/▶ arrows (5·5·5·4 = all 19). Skipped when not mounted."""
     if not (meta and root):
         st.info("Dataset not mounted here — sample patches show on a machine with "
                 "BigEarthNet-S2 available.")
@@ -247,9 +247,27 @@ def _photo_strip(meta, root) -> None:
     if not gallery:
         st.info("No sample patches available.")
         return
-    gallery = gallery[:5]
-    cols = st.columns(len(gallery), gap="small")
-    for col, (cls, cnt, pct, img, labels) in zip(cols, gallery):
+
+    per_page = 5
+    n = len(gallery)
+    pages = (n + per_page - 1) // per_page
+    page = st.session_state.get("ov_photo_page", 0) % pages
+
+    nav1, nav2, nav3 = st.columns([1, 5, 1])
+    if nav1.button("◀", key="ov_photo_prev", help="Previous classes", width="stretch"):
+        st.session_state["ov_photo_page"] = (page - 1) % pages
+        st.rerun()
+    lo, hi = page * per_page, min(page * per_page + per_page, n)
+    nav2.markdown(
+        f"<div style='text-align:center;font-size:0.72rem;color:#6B7280;"
+        f"padding-top:0.4rem'>Classes {lo + 1}–{hi} of {n}</div>",
+        unsafe_allow_html=True)
+    if nav3.button("▶", key="ov_photo_next", help="Next classes", width="stretch"):
+        st.session_state["ov_photo_page"] = (page + 1) % pages
+        st.rerun()
+
+    cols = st.columns(per_page, gap="small")   # fixed 5 columns → stable layout
+    for col, (cls, cnt, pct, img, labels) in zip(cols, gallery[lo:hi]):
         col.image(img, use_container_width=True)
         title = " · ".join(labels).replace("'", "")
         col.markdown(
