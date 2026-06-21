@@ -1,7 +1,8 @@
-"""Feasibility — validate."""
+"""Feasibility — validate (predicted vs actual, Compare-style)."""
 from __future__ import annotations
 
-import time
+import re
+from collections import defaultdict
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -10,178 +11,290 @@ import streamlit as st
 from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import (parse_ddp_scenarios, parse_feasibility_csv)
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
-from src.web.ui.helpers import (_feas_label, _get_feasibility_csvs, _get_runs, _load_df)
+from src.web.ui.helpers import (_get_feasibility_csvs, _get_runs, _load_df, _run_config,
+                                _safe_max)
+
+
+def _short(lbl: str) -> str:
+    return re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
+
+
+def _run_batch(r) -> int | None:
+    """Per-GPU batch the run used (from its config line) — to match the feasibility
+    row of the SAME batch (the benchmark is single-GPU, at that per-GPU batch)."""
+    m = re.search(r"\d+", str(_run_config(str(r.log_path)).get("batch", "")))
+    return int(m.group()) if m else None
+
+
+def _run_ngpus(r) -> int:
+    """Number of GPUs a distributed run used: global ÷ per-GPU batch if recorded,
+    else 2 (the default for the project's DDP runs)."""
+    txt = str(_run_config(str(r.log_path)).get("batch", ""))
+    per = re.search(r"\d+", txt)
+    glob = re.search(r"global\s*=?\s*(\d+)", txt)
+    if per and glob and int(per.group()) > 0:
+        return max(1, round(int(glob.group(1)) / int(per.group())))
+    return 2
+
+
+def _predicted_speedup(meta, n_gpus) -> float | None:
+    """Predicted speedup at n_gpus from the feasibility report's DDP scenarios."""
+    scen = parse_ddp_scenarios(meta)
+    if not scen.empty and {"n_gpus", "speedup"}.issubset(scen.columns):
+        row = scen[scen["n_gpus"] == n_gpus]
+        if not row.empty:
+            return float(row.iloc[0]["speedup"])
+    return None
+
+
+def _real_min_per_epoch(r) -> float | None:
+    df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
+    if "epoch_time" in df.columns and df["epoch_time"].notna().any():
+        return float(df["epoch_time"].mean()) / 60.0
+    return None
 
 
 def render_validate(ctx) -> object:
-    selected_run = ctx.selected_run
+    """Predicted vs actual, Compare-style. Each single-GPU run is matched to the
+    feasibility report of its model AND the batch size it actually used, so the
+    estimate is for the same configuration the run ran (this is the fix for the
+    'estimate very different from real' issue — the old code used the max-throughput
+    batch, not the run's). Shows a table, a scorecard, a calibration scatter, the
+    formula behind each estimate, and predicted-vs-real speedup."""
     st.markdown("### Predicted vs actual")
-    st.caption(
-        "The feasibility runs **on 1 GPU**: from there it (A) estimates the "
-        "single-GPU time and (B) **predicts** the speedup when distributing. There "
-        "is no '2-GPU' feasibility — multi-GPU is a prediction. Below, both are "
-        "contrasted with the real trainings of the same model."
-    )
-    _feas_csvs_pr = _get_feasibility_csvs()
-    if not _feas_csvs_pr:
-        st.info("No feasibility reports. Generate one in 'Run analysis'.")
-    else:
-        # Combos (environment · model) that have feasibility
-        _combo_csv = {}
-        for _p in _feas_csvs_pr:
-            _m, _ = parse_feasibility_csv(_p)
-            _env = _p.parent.parent.name if _p.parent.parent else "?"
-            _combo_csv.setdefault((_env, _m.get("model_name", "?")), _p)
-        _combos = list(_combo_csv.keys())
-        _def_i = 0
-        if selected_run is not None:
-            for _i, (_e, _mo) in enumerate(_combos):
-                if _e == selected_run.env and _mo == selected_run.model:
-                    _def_i = _i
-                    break
-        _combo = st.selectbox("What to compare?", _combos, index=_def_i,
-                              format_func=lambda c: f"{c[0]}  ·  {c[1]}", key="pr_combo")
-        _env_pr, _mod_pr = _combo
-        _feas_p = _combo_csv[_combo]
-        _meta_pr, _feas_df_pr = parse_feasibility_csv(_feas_p)
-        _nfs_pr = float(_meta_pr.get("nfs_factor", 1.0) or 1.0)
-        st.caption(f"Report used: **{_feas_label(str(_feas_p))}**")
+    st.caption("Pick runs and compare what the feasibility **estimated** with what they "
+               "actually did. Each single-GPU run is matched to the feasibility report "
+               "of its model **and its batch size**, so the estimate is for the same "
+               "configuration the run used.")
 
-        _all_pr = _get_runs()
-
-        def _find_run(modes):
-            return next((r for r in _all_pr if r.env == _env_pr
-                         and r.model == _mod_pr and r.mode in modes), None)
-
-        def _ep_mean(r):
-            if r is None:
-                return None
-            _df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
-            if "epoch_time" in _df.columns and _df["epoch_time"].notna().any():
-                return float(_df["epoch_time"].mean())
-            return None
-
-        _single_run = _find_run({"single"})
-        _ddp_run = _find_run({"ddp"})
-        _hetero_run = _find_run({"ddp_hetero"})
-
-        # ── A) On 1 GPU: estimated vs real time ─────────────────────────────
-        st.markdown("#### A · On 1 GPU — estimated vs real time")
-        if _single_run is None:
-            st.info(f"No **single-GPU** run of {_mod_pr} in {_env_pr}.")
-        else:
-            _act = _load_df(str(_single_run.log_path),
-                            str(_single_run.epoch_csv_path) if _single_run.epoch_csv_path else None)
-            _bs_av = (sorted(_feas_df_pr["batch_size"].dropna().astype(int).unique().tolist())
-                      if (not _feas_df_pr.empty and "batch_size" in _feas_df_pr.columns) else [])
-            _tr_av = (sorted(_feas_df_pr["trace_mode"].unique().tolist())
-                      if "trace_mode" in _feas_df_pr.columns else ["simple"])
-            if not _bs_av or _act.empty:
-                st.info("Missing data (feasibility benchmark or run times).")
-            else:
-                _ca = st.columns([1, 1, 2])
-                _bs = _ca[0].selectbox("Batch", _bs_av, index=len(_bs_av) - 1, key="pr_bs")
-                _tr = _ca[1].selectbox("Trace", _tr_av, key="pr_tr")
-                _cmp = build_comparison(meta=_meta_pr, feas_df=_feas_df_pr, actual_df=_act,
-                                        batch_size=int(_bs), trace_mode=_tr, nfs_factor=_nfs_pr)
-                if not _cmp:
-                    st.warning(f"No feasibility row for batch={_bs}, trace={_tr}.")
-                else:
-                    _rows = {r.metric: r for r in _cmp.rows}
-                    _tt = _rows.get("Total time / epoch")
-                    _thr = _rows.get("Train throughput")
-                    m1, m2, m3 = st.columns(3)
-                    if _tt and _tt.estimated is not None and _tt.actual is not None:
-                        m1.metric("Estimated time/epoch", f"{_tt.estimated:.2f} min")
-                        m2.metric("Real time/epoch", f"{_tt.actual:.2f} min",
-                                  delta=f"{_tt.error_pct or 0:+.0f}%", delta_color="off")
-                    if _thr and _thr.estimated is not None and _thr.actual is not None:
-                        m3.metric("Real throughput", f"{_thr.actual:.0f} img/s",
-                                  delta=f"estimated {_thr.estimated:.0f}", delta_color="off")
-                    if _tt and _tt.error_pct is not None:
-                        _e = _tt.error_pct
-                        _io = None
-                        try:
-                            _io = float(_meta_pr.get("dataset", {}).get("io_bottleneck_ratio"))
-                        except (TypeError, ValueError, AttributeError):
-                            pass
-                        if abs(_e) <= 15:
-                            st.success(f"**Accurate prediction** — {_e:+.0f}% error in time/epoch.")
-                        elif _e < 0:
-                            _x = (f" Likely cause: **I/O-bound** (ratio≈{_io:.1f}) — the synthetic "
-                                  "benchmark does not include disk reads (NFS)."
-                                  if _io and _io > 1 else "")
-                            st.warning(f"**Optimistic estimate** — the run was {abs(_e):.0f}% slower than predicted.{_x}")
-                        else:
-                            st.info(f"**Conservative estimate** — the run was {_e:.0f}% faster than predicted.")
-                    # Simple chart: estimated vs real time, same unit (min)
-                    _tm = [(n, _rows.get(k)) for n, k in
-                           (("Train", "Train time / epoch"),
-                            ("Eval", "Eval time / epoch"),
-                            ("Total", "Total time / epoch"))]
-                    _tm = [(n, r) for n, r in _tm
-                           if r and r.estimated is not None and r.actual is not None]
-                    if _tm:
-                        _names = [n for n, _ in _tm]
-                        _fig = go.Figure()
-                        _fig.add_trace(go.Bar(name="Estimated", x=_names, y=[r.estimated for _, r in _tm],
-                                              marker_color="#94a3b8",
-                                              text=[f"{r.estimated:.2f}" for _, r in _tm], textposition="outside"))
-                        _fig.add_trace(go.Bar(name="Real", x=_names, y=[r.actual for _, r in _tm],
-                                              marker_color="#3A536B",
-                                              text=[f"{r.actual:.2f}" for _, r in _tm], textposition="outside"))
-                        _fig.update_layout(**_base_layout(300, "Time per epoch: estimated vs real"),
-                                           barmode="group", yaxis_title="Minutes", xaxis_title="")
-                        _show(_fig, "pred_time_bars")
-                        st.caption("Both bars in each pair at the same height = accurate prediction "
-                                   "(grey = estimated, blue = real). Throughput/VRAM/energy in the detail.")
-                    with st.expander("See detail and formulas"):
-                        _t = _cmp.to_dataframe()
-                        st.dataframe(_t, use_container_width=True, hide_index=True)
-                        _dl_csv(_t, "prediction_1gpu.csv", "Download")
-
-        # ── B) When distributing: predicted vs real speedup ─────────────────
+    feas_csvs = _get_feasibility_csvs()
+    if not feas_csvs:
+        st.info("No feasibility reports yet. Generate one from the terminal "
+                "(`tfg feasibility`).")
         st.divider()
-        st.markdown("#### B · When distributing — predicted vs real speedup (2 GPUs)")
-        _ddp_scen = parse_ddp_scenarios(_meta_pr)
-        _pred_sp = None
-        if not _ddp_scen.empty and {"n_gpus", "speedup"}.issubset(_ddp_scen.columns):
-            _r2 = _ddp_scen[_ddp_scen["n_gpus"] == 2]
-            if not _r2.empty:
-                _pred_sp = float(_r2.iloc[0]["speedup"])
-        _s_ep = _ep_mean(_single_run)
-        _d_ep = _ep_mean(_ddp_run)
-        if _single_run is None or _ddp_run is None:
-            _msg = ("To measure the **real** speedup you need a single-GPU run **and** a "
-                    "multi-GPU DDP run of the same model/environment.")
-            if _pred_sp is not None:
-                _msg += f" The feasibility **predicts {_pred_sp:.2f}×** with 2 GPUs."
-            if _hetero_run is not None:
-                _msg += (" There is a **heterogeneous** run (V100+CPU), which is not comparable to the "
-                         "homogeneous 2-GPU prediction — its speedup is in "
-                         "**Comparison → Single vs Distributed**.")
-            st.info(_msg)
-        elif _s_ep and _d_ep:
-            _real_sp = _s_ep / _d_ep
-            sc1, sc2, sc3 = st.columns(3)
-            sc1.metric("Predicted speedup", f"{_pred_sp:.2f}×" if _pred_sp else "—")
-            sc2.metric("Real speedup", f"{_real_sp:.2f}×")
-            if _pred_sp:
-                _serr = (_pred_sp - _real_sp) / _real_sp * 100
-                sc3.metric("Prediction error", f"{_serr:+.0f}%")
-                if abs(_serr) <= 15:
-                    st.success(f"**The feasibility predicted the scaling well** — predicted "
-                               f"{_pred_sp:.2f}× vs **{_real_sp:.2f}× real**.")
-                else:
-                    st.warning(f"Predicted {_pred_sp:.2f}× vs **{_real_sp:.2f}× real** "
-                               f"(error {_serr:+.0f}%).")
-            st.caption(f"Real = single time/epoch ({_s_ep:.0f}s) ÷ DDP ({_d_ep:.0f}s).")
+        return st.container()
+
+    parsed = []
+    for p in feas_csvs:
+        m, df = parse_feasibility_csv(p)
+        env = p.parent.parent.name if p.parent.parent else "?"
+        parsed.append((env, m.get("model_name", "?"), m, df))
+
+    def _feas_for(env, model):
+        same = [(m, df) for e, mo, m, df in parsed if mo == model and e == env]
+        if same:
+            return same[0]
+        any_m = [(m, df) for e, mo, m, df in parsed if mo == model]
+        return any_m[0] if any_m else (None, None)
+
+    runs = _get_runs()
+    labelled = {r.label: r for r in runs}
+    feas_models = {mo for _, mo, _, _ in parsed}
+    # Default prefers single-GPU runs (they get a full per-metric comparison) plus a
+    # couple of distributed ones, so the table and the formula picker are populated.
+    _sing = [r.label for r in runs if r.mode == "single" and r.model in feas_models]
+    _oth = [r.label for r in runs if r.mode != "single" and r.model in feas_models]
+    default = (_sing[:5] + _oth[:2])[:8] or list(labelled)[:3]
+    sel = st.multiselect("Runs to compare against their estimate (max 8)",
+                         list(labelled.keys()), default=default, max_selections=8)
+    if not sel:
+        st.info("Select at least one run.")
+        st.divider()
+        return st.container()
+
+    # ── Per-run comparison (single-GPU runs matched by batch via build_comparison) ─
+    # Apples-to-apples requires the SAME precision: the feasibility report is fp32,
+    # so an AMP run (Tensor cores) is ~3× faster than its fp32 estimate — that gap is
+    # the precision, not a prediction error. We flag those so the table is honest.
+    rows = []
+    cmp_by_run: dict = {}
+    for lbl in sel:
+        r = labelled[lbl]
+        run_df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
+        real_min = _real_min_per_epoch(r)
+        real_f1 = _safe_max(run_df["val_f1"]) if "val_f1" in run_df.columns else float("nan")
+        m, fdf = _feas_for(r.env, r.model)
+        bs = _run_batch(r)
+        run_prec = (r.precision or "fp32")
+        # Measured fp32→Tensor-core speedup from the report's --compare-precision block.
+        _pc = (m.get("precision_cmp") or {}) if m else {}
+        try:
+            prec_sp = float(_pc.get("speedup")) if _pc.get("speedup") else None
+        except (TypeError, ValueError):
+            prec_sp = None
+        tensor_core = run_prec in ("amp", "fp16", "tf32", "bf16")
+        # We can account for precision iff fp32 (nothing to do) or the report measured
+        # the Tensor-core speedup. Otherwise the AMP run is not comparable to fp32.
+        precision_ok = (not tensor_core) or (prec_sp is not None)
+        est_min = None
+        note_bits = []
+        if m and fdf is not None and not fdf.empty and bs and r.mode in ("single", "ddp"):
+            nfs = float(m.get("nfs_factor", 1.0) or 1.0)
+            cmp = build_comparison(meta=m, feas_df=fdf, actual_df=run_df,
+                                   batch_size=bs, trace_mode="simple", nfs_factor=nfs)
+            if cmp:
+                tt = next((x for x in cmp.rows if x.metric == "Total time / epoch"), None)
+                single_est = tt.estimated if (tt and tt.estimated is not None) else None
+                if r.mode == "single":
+                    cmp_by_run[lbl] = cmp        # formula table is the single-GPU one
+                # Apply the measured Tensor-core speedup so an AMP run is compared to an
+                # AMP estimate (fp32 estimate ÷ measured speedup), not the fp32 one.
+                if single_est is not None and tensor_core and prec_sp:
+                    single_est = single_est / prec_sp
+                    note_bits.append(f"fp32 ÷ {prec_sp:.1f}× ({run_prec})")
+                if single_est is not None:
+                    if r.mode == "single":
+                        est_min = single_est
+                    else:                        # ddp: ÷ predicted N-GPU speedup
+                        ng = _run_ngpus(r)
+                        sp = _predicted_speedup(m, ng)
+                        if sp:
+                            est_min = single_est / sp
+                            note_bits.append(f"÷ {sp:.2f}× ({ng} GPU)")
+        pred_f1 = None
+        if m:
+            try:
+                pred_f1 = float(m.get("prediction", {}).get("predicted_best_f1") or 0) or None
+            except (TypeError, ValueError):
+                pred_f1 = None
+        fair = precision_ok and est_min is not None
+        if est_min is None:
+            note = ""
+        elif tensor_core and not prec_sp:
+            note = f"≠ precision ({run_prec}, not benchmarked)"
         else:
-            st.info("Missing per-epoch times in the runs to measure the speedup.")
+            note = " · ".join(note_bits)
+        err = ((real_min - est_min) / est_min * 100) if (real_min and est_min) else None
+        rows.append({
+            "Run": _short(lbl),          # the run label already shows the model
+            "Strategy": r.mode,
+            "Batch": bs,
+            "Precision": run_prec,
+            "Est min/ep": round(est_min, 2) if est_min else None,
+            "Real min/ep": round(real_min, 2) if real_min else None,
+            "Time err %": round(err) if err is not None else None,
+            "Pred F1": round(pred_f1, 3) if pred_f1 else None,
+            "Real F1": round(float(real_f1), 3) if not pd.isna(real_f1) else None,
+            "Note": note,
+            "_fair": fair,
+        })
+    tdf = pd.DataFrame(rows).set_index("Run")
+    _shown = tdf.drop(columns=["_fair"])
+    st.dataframe(_shown, use_container_width=True,
+                 column_config={"Note": st.column_config.TextColumn("Note", width="large")})
+    _dl_csv(_shown.reset_index(), "predicted_vs_real.csv", "Download comparison")
+    st.caption("Single-GPU runs are matched by batch size; **DDP** runs use single-GPU "
+               "estimate ÷ predicted speedup; **AMP/TF32** runs are corrected by the "
+               "report's *measured* Tensor-core speedup (see the *Note* column), so they "
+               "are comparable. A precision the report never benchmarked is flagged "
+               "*≠ precision*. The remaining gap is the genuine error — the synthetic "
+               "benchmark omits disk I/O, so small models on NFS run a bit slower. For "
+               "comparable compute-bound runs the estimate lands within a few %.")
+
+    # ── Accuracy scorecard — over the apples-to-apples (same-precision) runs ─────
+    fair_df = tdf[tdf["_fair"]]
+    _terr = fair_df["Time err %"].dropna().abs()
+    _f1p = tdf.dropna(subset=["Pred F1", "Real F1"])
+    _f1err = (_f1p["Pred F1"] - _f1p["Real F1"]).abs() if not _f1p.empty else pd.Series(dtype=float)
+    sc1, sc2 = st.columns(2)
+    sc1.metric("Mean time error (comparable runs)",
+               f"±{_terr.mean():.0f}%" if not _terr.empty else "—",
+               help="Mean |error| of the batch-matched time/epoch over runs the report "
+                    "can account for (fp32, or AMP/TF32 with a measured Tensor-core speedup).")
+    sc2.metric("Mean F1 error", f"±{_f1err.mean():.3f}" if not _f1err.empty else "—",
+               help="Mean |predicted − real| best Val F1 over the selected runs.")
+
+    # ── Chart 1: estimated vs real time/epoch per run (grouped bars) ────────────
+    bars = tdf.dropna(subset=["Est min/ep", "Real min/ep"])
+    if not bars.empty:
+        figb = go.Figure()
+        figb.add_trace(go.Bar(name="Estimated", x=list(bars.index), y=list(bars["Est min/ep"]),
+                              marker_color="#94a3b8",
+                              text=[f"{v:.2f}" for v in bars["Est min/ep"]], textposition="outside"))
+        figb.add_trace(go.Bar(name="Real", x=list(bars.index), y=list(bars["Real min/ep"]),
+                              marker_color=COLORS[0],
+                              text=[f"{v:.2f}" for v in bars["Real min/ep"]], textposition="outside"))
+        figb.update_layout(**_base_layout(340, "Time per epoch — estimated vs real (single-GPU)"),
+                           barmode="group", yaxis_title="Minutes", xaxis_title="")
+        _show(figb, "validate_time_bars")
+
+    # ── Chart 2: calibration scatter (predicted vs real, with the diagonal) ─────
+    metric = st.radio("Calibration plot", ["Time/epoch (min)", "Val F1"],
+                      horizontal=True, key="cal_metric")
+    _xc, _yc, _unit = (("Est min/ep", "Real min/ep", "min/epoch")
+                       if metric.startswith("Time") else ("Pred F1", "Real F1", "Val F1"))
+    cal = tdf.dropna(subset=[_xc, _yc])
+    if not cal.empty:
+        _hi = (float(max(cal[_xc].max(), cal[_yc].max())) * 1.1) or 1.0
+        _fair_pts = cal[cal["_fair"]]
+        _unfair_pts = cal[~cal["_fair"]]
+        figc = go.Figure()
+        figc.add_trace(go.Scatter(x=[0, _hi], y=[0, _hi], mode="lines",
+                                  line=dict(color="#94a3b8", dash="dash"),
+                                  name="perfect estimate", hoverinfo="skip"))
+        for _pts, _name, _col in ((_fair_pts, "comparable", COLORS[0]),
+                                  (_unfair_pts, "≠ precision (not benchmarked)", "#C57B27")):
+            if not _pts.empty:
+                figc.add_trace(go.Scatter(
+                    x=_pts[_xc], y=_pts[_yc], mode="markers+text",
+                    text=list(_pts.index), textposition="top center", textfont=dict(size=9),
+                    marker=dict(size=12, color=_col, line=dict(width=1, color="white")),
+                    name=_name,
+                    hovertemplate="%{text}<br>estimated %{x:.2f}<br>real %{y:.2f}<extra></extra>"))
+        figc.update_layout(**_base_layout(360, f"Estimated vs real — {_unit}"),
+                           xaxis_title=f"Estimated ({_unit})", yaxis_title=f"Real ({_unit})")
+        _show(figc, "validate_calibration")
+        st.caption("On the dashed diagonal = perfect estimate. **Blue** = comparable "
+                   "(fp32, or AMP corrected by the measured Tensor-core speedup); "
+                   "**amber** = a precision the report did not benchmark.")
+    else:
+        st.caption(f"Not enough runs with an estimated and real {_unit} for the plot.")
+
+    # ── Formula behind each estimate (the recovered detail table) ───────────────
+    if cmp_by_run:
+        st.markdown("#### Formula behind each estimate")
+        st.caption(f"Per-metric formula + estimated-vs-real, for one **single-GPU** run. "
+                   f"It lists the {len(cmp_by_run)} selected single-GPU run(s) whose **batch "
+                   f"size was benchmarked** in their model's feasibility report (e.g. the "
+                   f"vit_base reports cover batch 48/64/96; a run at a batch the report "
+                   f"never measured can't be broken down here). Select more such runs above "
+                   f"to see them.")
+        pick = st.selectbox("Run (single-GPU)", list(cmp_by_run.keys()),
+                            format_func=_short, key="formula_run")
+        ftab = cmp_by_run[pick].to_dataframe()
+        st.dataframe(ftab, hide_index=True, use_container_width=True)
+        _dl_csv(ftab, "feasibility_formulas.csv", "Download formulas")
+
+    # ── Speedup validation when a single + DDP pair of the same model is picked ──
+    groups: dict = defaultdict(dict)
+    for lbl in sel:
+        r = labelled[lbl]
+        if r.mode in ("single", "ddp"):
+            groups[(r.env, r.model)][r.mode] = r
+    sp_lines = []
+    for (env, model), d in groups.items():
+        if "single" in d and "ddp" in d:
+            s, dd = _real_min_per_epoch(d["single"]), _real_min_per_epoch(d["ddp"])
+            if s and dd:
+                real_sp = s / dd
+                m = next((mm for e, mo, mm, _ in parsed if e == env and mo == model),
+                         next((mm for e, mo, mm, _ in parsed if mo == model), None))
+                pred = None
+                if m is not None:
+                    scen = parse_ddp_scenarios(m)
+                    if not scen.empty and {"n_gpus", "speedup"}.issubset(scen.columns):
+                        r2 = scen[scen["n_gpus"] == 2]
+                        if not r2.empty:
+                            pred = float(r2.iloc[0]["speedup"])
+                pre = f"predicted **{pred:.2f}×** · " if pred else ""
+                sp_lines.append(f"- **{model.replace('_patch16_224','')}** ({env}): "
+                                f"{pre}real **{real_sp:.2f}×** (2 GPUs)")
+    if sp_lines:
+        st.markdown("**Speedup at 2 GPUs — predicted vs real**")
+        st.markdown("\n".join(sp_lines))
 
     st.divider()
-    subtab_prediction = st.container()
-    return subtab_prediction
+    return st.container()
 
 
 def render_f1_prediction(meta, selected_run, feasibility_csvs) -> None:
@@ -317,5 +430,3 @@ def render_f1_prediction(meta, selected_run, feasibility_csvs) -> None:
                     "val_f1_lower": [v - uncertainty for v in curve_val],
                 })
                 _dl_csv(pred_curve_df, "predicted_f1_curve.csv", "Download predicted curve")
-
-

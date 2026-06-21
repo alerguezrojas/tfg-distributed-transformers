@@ -7,8 +7,8 @@ import streamlit as st
 
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import _load_df, _get_runs
-from src.web.tabs.comparison.summary import _summary_table, _config_diff_section
-from src.web.tabs.comparison.perclass import _perclass_heatmap_section, _perclass_compare_section
+from src.web.tabs.comparison.summary import _summary_table
+from src.web.tabs.comparison.perclass import _perclass_heatmap_section
 from src.web.tabs.comparison.speedup import _speedup_section
 from src.web.tabs.comparison.charts import _radar_section, _energy_section, _overlay_charts
 
@@ -53,18 +53,20 @@ def render(ctx: DashboardContext) -> None:
         compare_dfs.append((lbl, cdf))
     df_by_label = dict(compare_dfs)
 
+    # Primary, always visible: the summary + the views the user relies on (radar,
+    # speedup, energy, overlays). Secondary/niche views go in expanders below.
     _summary_table(compare_runs_list, df_by_label)
     st.markdown("---")
-    _config_diff_section(compare_runs_list)
+    _radar_section(compare_dfs)
     st.markdown("---")
     _speedup_section(compare_runs_list, df_by_label)
     st.markdown("---")
-    _perclass_heatmap_section(compare_runs_list)
-    _perclass_compare_section(compare_runs_list)
-    _radar_section(compare_dfs)
-    st.markdown("---")
     _energy_section(compare_dfs)
     _overlay_charts(compare_dfs)
+
+    st.markdown("---")
+    with st.expander("Per-class F1 by run"):
+        _perclass_heatmap_section(compare_runs_list)
 
 
 # ── Summary ─────────────────────────────────────────────────────────────────────

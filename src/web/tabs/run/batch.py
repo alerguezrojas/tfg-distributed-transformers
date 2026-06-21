@@ -59,6 +59,13 @@ def _batch(ctx: DashboardContext) -> None:
             epochs_available_b = sorted(bdf["epoch"].unique())
             n_batches_total = int(bdf["n_batches"].iloc[0]) if not bdf.empty else "—"
 
+            st.caption(
+                "Training feeds the images in small **batches** (an *epoch* = all "
+                "batches once). The **Curves** tab plots one point per epoch; this tab "
+                "plots one point per **batch** — much finer — to spot loss spikes / "
+                "instability and to check the learning-rate schedule."
+            )
+
             # Quick summary
             bc1, bc2, bc3, bc4 = st.columns(4)
             bc1.metric("Epochs recorded", len(epochs_available_b))
@@ -67,12 +74,17 @@ def _batch(ctx: DashboardContext) -> None:
             if has_lr:
                 bc4.metric("Initial LR", f"{bdf['lr'].iloc[0]:.2e}")
 
-            # Single-level view switcher (replaces the old nested tab row).
-            view = st.radio("View", ["Per epoch", "Global history", "Learning rate"],
+            # Single-level view switcher (replaces the old nested tab row). Default is
+            # the whole-training curve — the most intuitive of the three.
+            view = st.radio("View", ["Whole training", "Compare epochs", "Learning rate"],
                             horizontal=True, key="batch_view")
 
-            # ── View: per epoch ────────────────────────────────────────────────
-            if view == "Per epoch":
+            # ── View: compare epochs ───────────────────────────────────────────
+            if view == "Compare epochs":
+                st.caption("Each selected epoch as its own line, x = batch number "
+                           "*within* the epoch — to compare the shape of one epoch vs "
+                           "another (e.g. does the loss settle as training advances?). "
+                           "Red ✕ = loss spikes.")
                 col_ep, col_met, col_ma = st.columns([2, 2, 2])
                 with col_ep:
                     selected_epochs_b = st.multiselect(
@@ -83,6 +95,9 @@ def _batch(ctx: DashboardContext) -> None:
                     batch_metric = st.selectbox(
                         "Metric", _available_batch_metrics(),
                         format_func=lambda m: _BATCH_METRIC_LABELS.get(m, m),
+                        help="Running mean loss = smoothed average so far · "
+                             "Instantaneous batch loss = the loss of that single batch "
+                             "(noisier).",
                     )
                 with col_ma:
                     ma_window = st.slider("Moving average (batches)", 0, 200, 10,
@@ -140,18 +155,21 @@ def _batch(ctx: DashboardContext) -> None:
                     with st.expander("Raw data"):
                         st.dataframe(sel_bdf, use_container_width=True)
 
-            # ── View: global history (x axis = global batch) ───────────────────
-            elif view == "Global history":
-                st.markdown(
-                    "Full view of the entire training history on a single axis. "
-                    "The vertical lines mark the epoch boundaries."
-                )
+            # ── View: whole training (x axis = global batch) ───────────────────
+            elif view == "Whole training":
+                st.caption("The entire training as one line, x = batch number from "
+                           "start to finish (all epochs in a row). Dotted vertical "
+                           "lines mark where each epoch ends. The natural training "
+                           "curve, at batch resolution.")
                 col_gm, col_gma = st.columns([2, 2])
                 with col_gm:
                     global_metric = st.selectbox(
                         "Global metric", _available_batch_metrics(),
                         format_func=lambda m: _BATCH_METRIC_LABELS.get(m, m),
                         key="global_metric_sel",
+                        help="Running mean loss = smoothed average so far · "
+                             "Instantaneous batch loss = the loss of that single batch "
+                             "(noisier).",
                     )
                 with col_gma:
                     gma_window = st.slider("Moving average (global batches)", 0, 500, 50,
@@ -204,6 +222,9 @@ def _batch(ctx: DashboardContext) -> None:
                         "Requires `--layers batch-monitor` with the current version of BatchMonitorDecorator."
                     )
                 else:
+                    st.caption("The learning rate over training: the linear **warmup** "
+                               "(ramp up) followed by the **cosine** decay (ramp down). "
+                               "Confirms the schedule ran as configured.")
                     lr_sorted = bdf.sort_values("global_batch").dropna(subset=["lr"])
                     fig_lr = go.Figure()
                     fig_lr.add_trace(go.Scatter(

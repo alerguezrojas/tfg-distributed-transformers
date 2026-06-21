@@ -188,7 +188,10 @@ def find_example_patches(
         df = df[df["split"] == split]
         matches = []
         for patch_id, arr in zip(df["patch_id"], df["labels"]):
-            if arr is not None and class_name in list(arr):
+            # Canonicalise labels so the abbreviated CLASS_NAMES match the full
+            # CORINE names in the metadata (otherwise that class finds 0 patches
+            # and the gallery shows 18 of 19).
+            if arr is not None and class_name in {_canon_label(x) for x in arr}:
                 matches.append(patch_id)
                 if len(matches) >= n * 3:  # gather extra to allow random choice
                     break

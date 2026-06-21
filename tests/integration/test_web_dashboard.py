@@ -91,7 +91,7 @@ def test_dur_str_exact():
 _FEAS_PKG = [
     "tabs/feasibility/__init__.py", "tabs/feasibility/predict.py",
     "tabs/feasibility/validate.py", "tabs/feasibility/report.py",
-    "tabs/feasibility/study.py", "tabs/feasibility/ddp.py", "tabs/feasibility/run_form.py",
+    "tabs/feasibility/study.py", "tabs/feasibility/ddp.py",
 ]
 _CMP_PKG = [
     "tabs/comparison/__init__.py", "tabs/comparison/_common.py",
@@ -106,7 +106,7 @@ _MODULES = [
     "app.py",
     "ui/__init__.py", "ui/context.py", "ui/charts.py", "ui/helpers.py",
     "tabs/__init__.py", "tabs/home.py",
-    "tabs/analysis.py", "tabs/dataset.py", "tabs/data_models.py",
+    "tabs/dataset.py", "tabs/data_models.py",
     *_RUN_PKG,
     *_CMP_PKG,
     *_FEAS_PKG,
@@ -129,16 +129,16 @@ def charts_source() -> str:
 
 @pytest.fixture(scope="module")
 def tabs_source() -> str:
-    mods = ["home.py", "analysis.py",
+    mods = ["home.py",
             "dataset.py", "data_models.py",
             "run/curves.py", "run/perclass.py", "run/confusions.py",
             "run/batch.py", "run/details.py", "run/__init__.py",
             "comparison/summary.py", "comparison/perclass.py",
             "comparison/speedup.py", "comparison/charts.py",
             "comparison/__init__.py",
+            "feasibility/predict.py",
             "feasibility/validate.py", "feasibility/report.py",
             "feasibility/study.py", "feasibility/ddp.py",
-            "feasibility/run_form.py", "feasibility/predict.py",
             "feasibility/__init__.py"]
     return "\n".join(_src(f"tabs/{m}") for m in mods)
 
@@ -159,14 +159,14 @@ def test_app_is_thin_orchestrator(app_source):
     n_lines = len(app_source.splitlines())
     # Thin = page config + CSS + sidebar + dispatch (not the old 3000-line monolith).
     assert n_lines < 280, f"app.py has {n_lines} lines — expected a thin orchestrator"
-    for mod in ("home", "comparison", "analysis", "feasibility", "dataset"):
+    for mod in ("home", "comparison", "feasibility", "dataset"):
         assert f"{mod}.render" in app_source, mod
     assert "run_tab.render" in app_source
 
 
 def test_sidebar_nav_sections(app_source):
     """The single-level icon-menu navigation labels (English) live in app.py."""
-    for t in ('"Overview"', '"Run results"', '"Compare"', '"Analysis"', '"Feasibility"',
+    for t in ('"Overview"', '"Run results"', '"Compare"', '"Feasibility"',
               '"Dataset"'):
         assert t in app_source, f"missing nav item {t}"
     # Icon menu (streamlit-option-menu), single level, session-state driven.
@@ -181,7 +181,7 @@ def test_sub_tab_names(tabs_source):
     summary + speedup vs baseline + radar + energy + overlays).
     """
     for t in ('"Curves"', '"Per-class"', '"Confusions"', '"Batch"', '"Details"',
-              '"Predict"', '"Validate"'):
+              '"Predict"', '"Compare vs runs"', '"Report"'):
         assert t in tabs_source, f"missing sub-tab {t}"
     # The unified Compare keeps its key sections.
     for s in ("Speedup analysis", "Baseline run (= 1.00×)", "Energy consumption",

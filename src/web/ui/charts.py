@@ -36,7 +36,11 @@ def _show(fig: go.Figure, key: str | None = None) -> None:
     cfg = dict(_PLOTLY_CFG)
     if key:
         cfg["toImageButtonOptions"] = {"format": "png", "scale": 2, "filename": key}
-    st.plotly_chart(fig, use_container_width=True, config=cfg)
+    # Bake our mode-aware "tfg" template into the figure and pass theme=None, so the
+    # chart uses our dark/light paper instead of Streamlit's config theme (which
+    # otherwise forces a light background even in dark mode).
+    fig.update_layout(template="tfg")
+    st.plotly_chart(fig, use_container_width=True, config=cfg, theme=None)
 
 
 def _dl_csv(df: pd.DataFrame, filename: str = "data.csv", label: str = "Download CSV") -> None:

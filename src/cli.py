@@ -225,8 +225,13 @@ def predict(
 
 def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: int,
                      precision: str, dataset_size: int, epochs: int, disk: str) -> None:
-    """Render the analytic prediction as a rich table (shared by `predict` and `menu`)."""
-    from src.performance_model import predict as _predict, predict_quality
+    """Render the analytic prediction in full: a headline, the time and memory
+    formulas with the values plugged in, expected quality, scaling and cloud cost.
+    Shared by `predict` and `menu`."""
+    from src.performance_model import (
+        predict as _predict, predict_quality, model_spec, gpu_spec,
+        estimate_rc, estimate_rio, precision_factor,
+        BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB)
     nfs = disk == "nfs"
     strat = strategy.replace("-", "_")
     p = _predict(strat, model, gpu, n_gpus=n_gpus, dataset_size=dataset_size,
@@ -234,33 +239,102 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     if p is None:
         console.print("[red]Unknown model or GPU spec.[/]")
         return
+    ms, gs = model_spec(model), gpu_spec(gpu)
     q = predict_quality(model, dataset_size=dataset_size, epochs=epochs)
 
-    t = Table(title=f"Prediction · {model} · {gpu} · {strategy} ×{n_gpus} · {precision}",
-              show_header=False, border_style="cyan")
-    t.add_column("metric", style="bold")
-    t.add_column("value")
-    t.add_row("Train / epoch", _fmt_secs(p.time_per_epoch_train_s))
-    t.add_row("Total train", _fmt_secs(p.time_total_train_s))
-    if strat != "single":
-        t.add_row("Speedup", f"{p.speedup:.2f}×  (efficiency {p.efficiency*100:.0f}%)")
-    t.add_row("Bottleneck", p.bottleneck)
-    t.add_row("VRAM / GPU", f"{p.vram_per_gpu_gb:.1f} GB  "
-              + ("[green]fits[/]" if p.fits_in_memory else "[red]OOM[/]"))
-    t.add_row("Max batch that fits", str(p.recommended_batch))
+    # ── Headline ────────────────────────────────────────────────────────────────
+    fit = "[green]fits[/]" if p.fits_in_memory else "[red]OOM[/]"
+    sp = f" · {p.speedup:.2f}× ({p.efficiency*100:.0f}% eff)" if strat != "single" else ""
+    console.print(Panel(
+        f"[bold]{model}[/] · {gpu} · {strategy} ×{n_gpus} · {precision} · "
+        f"{dataset_size:,} imgs/epoch\n"
+        f"[bold]{_fmt_secs(p.time_per_epoch_train_s)}[/]/epoch{sp}  ·  "
+        f"{p.vram_per_gpu_gb:.1f} GB/GPU {fit}  ·  "
+        f"total [bold]{_fmt_secs(p.time_total_train_s)}[/] for {epochs} ep  ·  "
+        f"bottleneck [bold]{p.bottleneck}[/]",
+        title="Prediction", border_style="cyan", expand=False))
+
+    # ── Time / epoch: the master formula with the values plugged in ──────────────
+    tt = Table(title="Time / epoch = max(compute, I/O) + sync", border_style="cyan")
+    tt.add_column("Term", style="bold"); tt.add_column("Value", justify="right")
+    tt.add_column("Formula", style="dim")
+    tt.add_row("Compute", f"{p.t_compute_s:.0f} s", "N / (π · r_c · n_gpus)")
+    tt.add_row("Data I/O", f"{p.t_io_s:.0f} s", "N / r_io  (fixed, shared disk)")
+    tt.add_row("Grad sync", f"{p.t_sync_s:.1f} s", "(8·P / β) · n_batches")
+    tt.add_row("Time/epoch", _fmt_secs(p.time_per_epoch_train_s),
+               f"max({p.t_compute_s:.0f}, {p.t_io_s:.0f}) + {p.t_sync_s:.1f} → "
+               f"[bold]{p.bottleneck}[/]-bound")
+    console.print(tt)
+
+    # ── VRAM: the memory formula with the values plugged in ──────────────────────
+    if ms and gs:
+        amp = precision in ("amp", "bf16")
+        wo = BYTES_PER_PARAM_GRAD_OPT * ms.params_m * 1e6 / 1e9 + (2 * ms.params_m * 1e6 / 1e9 if amp else 0)
+        act = ms.act_gb_per_img * p.batch_per_gpu * (0.6 if amp else 1.0)
+        mt = Table(title="VRAM / GPU = weights+grad+optimizer + activations + overhead",
+                   border_style="cyan")
+        mt.add_column("Term", style="bold"); mt.add_column("Value", justify="right")
+        mt.add_column("Formula", style="dim")
+        mt.add_row("Weights+grad+Adam", f"{wo:.2f} GB",
+                   f"16 B × {ms.params_m:.0f}M" + (" + fp16 copy" if amp else ""))
+        mt.add_row("Activations", f"{act:.2f} GB",
+                   f"{p.batch_per_gpu} × {ms.act_gb_per_img:.3f} GB/img" + (" × 0.6" if amp else ""))
+        mt.add_row("CUDA overhead", f"{CUDA_OVERHEAD_GB:.2f} GB", "context + cudnn")
+        mt.add_row("Total", f"{p.vram_per_gpu_gb:.1f} GB",
+                   f"vs {gs.vram_gb:.0f} GB → {'fits' if p.fits_in_memory else 'OOM'} · "
+                   f"max batch {p.recommended_batch}")
+        console.print(mt)
+
+    # ── Expected quality ─────────────────────────────────────────────────────────
     if q is not None:
-        t.add_row("Expected Val F1", f"{q.expected_best_f1:.3f} ± {q.band:.3f}  "
-                  f"(best ep ≈ {q.best_epoch}, confidence {q.confidence})")
-    console.print(t)
+        qt = Table(title="Expected quality (empirical prior — not a measurement)",
+                   border_style="cyan", show_header=False)
+        qt.add_column("k", style="bold"); qt.add_column("v")
+        qt.add_row("Expected Val F1", f"{q.expected_best_f1:.3f} ± {q.band:.3f}")
+        qt.add_row("Best epoch ≈", str(q.best_epoch))
+        qt.add_row("Early stop ≈", str(q.early_stop_epoch))
+        qt.add_row("Confidence", str(q.confidence))
+        console.print(qt)
+
+    # ── Scaling 1→8 GPUs (data-parallel) ─────────────────────────────────────────
+    if strat in ("ddp", "heterogeneous"):
+        sct = Table(title="Scaling (predicted)", border_style="cyan")
+        sct.add_column("GPUs", justify="right"); sct.add_column("Speedup", justify="right")
+        sct.add_column("Efficiency", justify="right"); sct.add_column("Time/epoch", justify="right")
+        for ng in (1, 2, 4, 8):
+            pn = _predict(strat, model, gpu, n_gpus=ng, dataset_size=dataset_size, batch=batch,
+                          precision=precision, epochs=1, disk_type=disk, nfs=nfs)
+            if pn:
+                sct.add_row(str(ng), f"{pn.speedup:.2f}×", f"{pn.efficiency*100:.0f}%",
+                            _fmt_secs(pn.time_per_epoch_train_s))
+        console.print(sct)
+
+    # ── Cloud cost ───────────────────────────────────────────────────────────────
     try:
         from src.cloud_cost import estimate_costs
         total_h = p.time_total_train_s / 3600 * (n_gpus if strat in ("ddp", "heterogeneous") else 1)
-        rows = [r for r in estimate_costs(total_h, gpu) if r["usd_per_hour"] > 0][:3]
+        rows = [r for r in estimate_costs(total_h, gpu) if r["usd_per_hour"] > 0][:5]
         if rows:
-            console.print("[dim]Cheapest paid cloud:[/] " + "  ·  ".join(
-                f"{r['provider']} {r['gpu']} ${r['cost_usd']:.2f}" for r in rows))
+            ct = Table(title=f"Cloud cost · {total_h:.1f} GPU-hours", border_style="cyan")
+            ct.add_column("Provider"); ct.add_column("GPU")
+            ct.add_column("$/h", justify="right"); ct.add_column("Cost", justify="right")
+            for r in rows:
+                ct.add_row(r["provider"], r["gpu"], f"${r['usd_per_hour']:.2f}", f"${r['cost_usd']:.2f}")
+            console.print(ct)
     except Exception:
         pass
+
+    # ── Assumptions behind the formulas ──────────────────────────────────────────
+    if ms and gs:
+        rc = estimate_rc(ms, gs, precision)
+        rio = estimate_rio(disk, nfs)
+        console.print(
+            f"[dim]Assumptions: r_c ≈ {rc:.0f} img/s/GPU (incl. precision ×"
+            f"{precision_factor(gs, precision):.2f}) · r_io ≈ {rio:.0f} img/s "
+            f"({disk}{'+NFS' if nfs else ''}) · {ms.params_m:.0f}M params · MFU 0.17. "
+            f"Calibrate with a measured throughput in the Feasibility CLI.[/]")
+    if p.calibrated:
+        console.print("[green]Calibrated with a measured throughput.[/]")
     for note in p.notes:
         console.print(f"[yellow]•[/] {note}")
 
@@ -314,7 +388,8 @@ def dashboard(
     port: int = typer.Option(8501, help="Port for the Streamlit server."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
 ) -> None:
-    """Open the web dashboard (read-only visualisation of runs and predictions)."""
+    """Open the read-only web dashboard (Overview · Run results · Compare ·
+    Feasibility · Dataset). Plan a config without running with `tfg predict`."""
     cmd = [sys.executable, "-m", "streamlit", "run", "src/web/app.py", "--server.port", str(port)]
     _run(cmd, dry_run)
 
