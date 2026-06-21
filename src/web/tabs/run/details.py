@@ -66,18 +66,26 @@ def _time(ctx: DashboardContext) -> None:
                                               name="Trend", mode="lines",
                                               line=dict(color="#94a3b8", width=1, dash="dash")))
 
+            # Warmup region — only from a config that matches THIS run's env AND model.
+            # (Picking any config would shade the wrong epochs, e.g. a 5-epoch warmup
+            # over a 3-epoch demo run.) If nothing matches, don't shade.
+            import yaml
             warmup_ep = None
             for cfg_name in _get_configs():
                 try:
-                    import yaml
                     cfg = yaml.safe_load((ROOT / "configs" / cfg_name).read_text())
-                    warmup_ep = cfg.get("training", {}).get("warmup_epochs")
-                    if warmup_ep:
+                    env_cfg = cfg.get("output", {}).get("env", "")
+                    model_cfg = cfg.get("model", {}).get("name", "")
+                    env_ok = env_cfg == run.env or (run.env == "local" and "cluster" not in cfg_name)
+                    if env_ok and run.model and model_cfg == run.model:
+                        warmup_ep = cfg.get("training", {}).get("warmup_epochs")
                         break
                 except Exception:
                     pass
             if warmup_ep:
-                fig_time.add_vrect(x0=0.5, x1=warmup_ep + 0.5, fillcolor="#A8823E", opacity=0.08,
+                # cap at the run's epoch count (a run can stop before warmup ends)
+                x1 = min(warmup_ep + 0.5, len(et) + 0.5)
+                fig_time.add_vrect(x0=0.5, x1=x1, fillcolor="#A8823E", opacity=0.08,
                                    annotation_text=f"Warmup ({warmup_ep} ep)",
                                    annotation_position="top left")
 
@@ -93,8 +101,8 @@ def _time(ctx: DashboardContext) -> None:
                         break
                 except Exception:
                     pass
-            if feas_match_t is None and feasibility_csvs_t:
-                feas_match_t = feasibility_csvs_t[0]
+            # No fallback to a different model's report: only draw the estimate when
+            # a feasibility report matches this run's model (else it's a false compare).
             if feas_match_t:
                 try:
                     _, bdf_t = parse_feasibility_csv(feas_match_t)
@@ -118,9 +126,11 @@ def _time(ctx: DashboardContext) -> None:
             _dl_csv(et.assign(epoch_time_min=et["epoch_time"] / 60),
                     "time_per_epoch.csv", "Download time data")
 
-            if feasibility_csvs_t:
+            # Estimated vs Real — use the SAME-model feasibility report as the chart
+            # line (feas_match_t), never an arbitrary one, so the numbers are honest.
+            if feas_match_t:
                 try:
-                    _, bdf_c = parse_feasibility_csv(feasibility_csvs_t[0])
+                    _, bdf_c = parse_feasibility_csv(feas_match_t)
                     viable_c = bdf_c[bdf_c["oom"] == "no"].copy()
                     tp_col_c = _throughput_col(viable_c)
                     per_ep_c = next((c for c in ["est_total_min_per_epoch", "est_min_per_epoch_30ep"]
@@ -138,6 +148,10 @@ def _time(ctx: DashboardContext) -> None:
                         ce3.metric("Relative error", f"{err_pct:+.1f}%")
                 except Exception:
                     pass
+            elif feasibility_csvs_t:
+                st.caption("No feasibility report for this run's model, so the "
+                           "predicted-vs-real timing comparison is hidden (comparing "
+                           "against a different model would be misleading).")
 
 
 
