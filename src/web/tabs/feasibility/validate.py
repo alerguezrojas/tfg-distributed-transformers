@@ -90,7 +90,11 @@ def render_validate(ctx) -> object:
     runs = _get_runs()
     labelled = {r.label: r for r in runs}
     feas_models = {mo for _, mo, _, _ in parsed}
-    default = [r.label for r in runs if r.model in feas_models][:6] or list(labelled)[:3]
+    # Default prefers single-GPU runs (they get a full per-metric comparison) plus a
+    # couple of distributed ones, so the table and the formula picker are populated.
+    _sing = [r.label for r in runs if r.mode == "single" and r.model in feas_models]
+    _oth = [r.label for r in runs if r.mode != "single" and r.model in feas_models]
+    default = (_sing[:5] + _oth[:2])[:8] or list(labelled)[:3]
     sel = st.multiselect("Runs to compare against their estimate (max 8)",
                          list(labelled.keys()), default=default, max_selections=8)
     if not sel:
@@ -162,8 +166,7 @@ def render_validate(ctx) -> object:
             note = " · ".join(note_bits)
         err = ((real_min - est_min) / est_min * 100) if (real_min and est_min) else None
         rows.append({
-            "Run": _short(lbl),
-            "Model": (r.model or "—").replace("_patch16_224", ""),
+            "Run": _short(lbl),          # the run label already shows the model
             "Strategy": r.mode,
             "Batch": bs,
             "Precision": run_prec,
@@ -176,8 +179,10 @@ def render_validate(ctx) -> object:
             "_fair": fair,
         })
     tdf = pd.DataFrame(rows).set_index("Run")
-    st.dataframe(tdf.drop(columns=["_fair"]), use_container_width=True)
-    _dl_csv(tdf.drop(columns=["_fair"]).reset_index(), "predicted_vs_real.csv", "Download comparison")
+    _shown = tdf.drop(columns=["_fair"])
+    st.dataframe(_shown, use_container_width=True,
+                 column_config={"Note": st.column_config.TextColumn("Note", width="large")})
+    _dl_csv(_shown.reset_index(), "predicted_vs_real.csv", "Download comparison")
     st.caption("Single-GPU runs are matched by batch size; **DDP** runs use single-GPU "
                "estimate ÷ predicted speedup; **AMP/TF32** runs are corrected by the "
                "report's *measured* Tensor-core speedup (see the *Note* column), so they "
@@ -248,11 +253,12 @@ def render_validate(ctx) -> object:
     # ── Formula behind each estimate (the recovered detail table) ───────────────
     if cmp_by_run:
         st.markdown("#### Formula behind each estimate")
-        st.caption(f"The exact formula and the estimated-vs-real value per metric, for one "
-                   f"**single-GPU** run (this metric-by-metric breakdown only applies to "
-                   f"single-GPU; DDP/MP time is single ÷ speedup). "
-                   f"{len(cmp_by_run)} of the selected runs are single-GPU — select more "
-                   f"single-GPU runs to see them here.")
+        st.caption(f"Per-metric formula + estimated-vs-real, for one **single-GPU** run. "
+                   f"It lists the {len(cmp_by_run)} selected single-GPU run(s) whose **batch "
+                   f"size was benchmarked** in their model's feasibility report (e.g. the "
+                   f"vit_base reports cover batch 48/64/96; a run at a batch the report "
+                   f"never measured can't be broken down here). Select more such runs above "
+                   f"to see them.")
         pick = st.selectbox("Run (single-GPU)", list(cmp_by_run.keys()),
                             format_func=_short, key="formula_run")
         ftab = cmp_by_run[pick].to_dataframe()
