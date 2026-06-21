@@ -78,6 +78,9 @@ def render_validate(ctx) -> object:
         return st.container()
 
     # ── Per-run comparison (single-GPU runs matched by batch via build_comparison) ─
+    # Apples-to-apples requires the SAME precision: the feasibility report is fp32,
+    # so an AMP run (Tensor cores) is ~3× faster than its fp32 estimate — that gap is
+    # the precision, not a prediction error. We flag those so the table is honest.
     rows = []
     cmp_by_run: dict = {}
     for lbl in sel:
@@ -87,6 +90,8 @@ def render_validate(ctx) -> object:
         real_f1 = _safe_max(run_df["val_f1"]) if "val_f1" in run_df.columns else float("nan")
         m, fdf = _feas_for(r.env, r.model)
         bs = _run_batch(r)
+        run_prec = (r.precision or "fp32")
+        rep_prec = (m.get("precision") or "fp32") if m else "fp32"
         est_min = None
         if m and fdf is not None and not fdf.empty and bs and r.mode == "single":
             nfs = float(m.get("nfs_factor", 1.0) or 1.0)
@@ -102,37 +107,61 @@ def render_validate(ctx) -> object:
                 pred_f1 = float(m.get("prediction", {}).get("predicted_best_f1") or 0) or None
             except (TypeError, ValueError):
                 pred_f1 = None
+        fair = (run_prec == rep_prec)          # comparable only at the same precision
+        note = "" if (est_min is None or fair) else f"≠ precision ({run_prec} vs {rep_prec})"
         err = ((real_min - est_min) / est_min * 100) if (real_min and est_min) else None
         rows.append({
             "Run": _short(lbl),
             "Model": (r.model or "—").replace("_patch16_224", ""),
             "Strategy": r.mode,
             "Batch": bs,
+            "Precision": run_prec,
             "Est min/ep": round(est_min, 2) if est_min else None,
             "Real min/ep": round(real_min, 2) if real_min else None,
             "Time err %": round(err) if err is not None else None,
             "Pred F1": round(pred_f1, 3) if pred_f1 else None,
             "Real F1": round(float(real_f1), 3) if not pd.isna(real_f1) else None,
+            "Note": note,
+            "_fair": fair,
         })
     tdf = pd.DataFrame(rows).set_index("Run")
-    st.dataframe(tdf, use_container_width=True)
-    _dl_csv(tdf.reset_index(), "predicted_vs_real.csv", "Download comparison")
-    st.caption("Time estimate only for **single-GPU** runs (matched by batch); DDP / "
-               "model-parallel runs are validated by the speedup below. A gap is the "
-               "genuine predictor error — the synthetic benchmark omits disk I/O, so on "
-               "NFS the real run is slower than estimated.")
+    st.dataframe(tdf.drop(columns=["_fair"]), use_container_width=True)
+    _dl_csv(tdf.drop(columns=["_fair"]).reset_index(), "predicted_vs_real.csv", "Download comparison")
+    st.caption("Time estimate only for **single-GPU** runs, matched by batch size. "
+               "The feasibility benchmark is **fp32 and synthetic (no disk I/O)**, so two "
+               "gaps are expected and flagged: **AMP** runs use Tensor cores (~3× faster "
+               "than the fp32 estimate — *≠ precision*), and **small models on NFS** read "
+               "more from disk than the benchmark models (real a bit slower). For "
+               "same-precision compute-bound runs the estimate is within a few %.")
 
-    # ── Accuracy scorecard ──────────────────────────────────────────────────────
-    _terr = tdf["Time err %"].dropna().abs()
+    # ── Accuracy scorecard — over the apples-to-apples (same-precision) runs ─────
+    fair_df = tdf[tdf["_fair"]]
+    _terr = fair_df["Time err %"].dropna().abs()
     _f1p = tdf.dropna(subset=["Pred F1", "Real F1"])
     _f1err = (_f1p["Pred F1"] - _f1p["Real F1"]).abs() if not _f1p.empty else pd.Series(dtype=float)
     sc1, sc2 = st.columns(2)
-    sc1.metric("Mean time error", f"±{_terr.mean():.0f}%" if not _terr.empty else "—",
-               help="Mean |error| of the batch-matched estimated vs real time/epoch.")
+    sc1.metric("Mean time error (same precision)",
+               f"±{_terr.mean():.0f}%" if not _terr.empty else "—",
+               help="Mean |error| of the batch-matched time/epoch over runs whose "
+                    "precision matches the fp32 benchmark (apples-to-apples).")
     sc2.metric("Mean F1 error", f"±{_f1err.mean():.3f}" if not _f1err.empty else "—",
                help="Mean |predicted − real| best Val F1 over the selected runs.")
 
-    # ── Calibration scatter (predicted vs real, with the diagonal) ──────────────
+    # ── Chart 1: estimated vs real time/epoch per run (grouped bars) ────────────
+    bars = tdf.dropna(subset=["Est min/ep", "Real min/ep"])
+    if not bars.empty:
+        figb = go.Figure()
+        figb.add_trace(go.Bar(name="Estimated", x=list(bars.index), y=list(bars["Est min/ep"]),
+                              marker_color="#94a3b8",
+                              text=[f"{v:.2f}" for v in bars["Est min/ep"]], textposition="outside"))
+        figb.add_trace(go.Bar(name="Real", x=list(bars.index), y=list(bars["Real min/ep"]),
+                              marker_color=COLORS[0],
+                              text=[f"{v:.2f}" for v in bars["Real min/ep"]], textposition="outside"))
+        figb.update_layout(**_base_layout(340, "Time per epoch — estimated vs real (single-GPU)"),
+                           barmode="group", yaxis_title="Minutes", xaxis_title="")
+        _show(figb, "validate_time_bars")
+
+    # ── Chart 2: calibration scatter (predicted vs real, with the diagonal) ─────
     metric = st.radio("Calibration plot", ["Time/epoch (min)", "Val F1"],
                       horizontal=True, key="cal_metric")
     _xc, _yc, _unit = (("Est min/ep", "Real min/ep", "min/epoch")
@@ -140,22 +169,27 @@ def render_validate(ctx) -> object:
     cal = tdf.dropna(subset=[_xc, _yc])
     if not cal.empty:
         _hi = (float(max(cal[_xc].max(), cal[_yc].max())) * 1.1) or 1.0
+        _fair_pts = cal[cal["_fair"]]
+        _unfair_pts = cal[~cal["_fair"]]
         figc = go.Figure()
         figc.add_trace(go.Scatter(x=[0, _hi], y=[0, _hi], mode="lines",
                                   line=dict(color="#94a3b8", dash="dash"),
-                                  name="perfect", hoverinfo="skip"))
-        figc.add_trace(go.Scatter(
-            x=cal[_xc], y=cal[_yc], mode="markers+text",
-            text=list(cal.index), textposition="top center", textfont=dict(size=9),
-            marker=dict(size=12, color=COLORS[0], line=dict(width=1, color="white")),
-            name="runs",
-            hovertemplate="%{text}<br>estimated %{x:.2f}<br>real %{y:.2f}<extra></extra>"))
+                                  name="perfect estimate", hoverinfo="skip"))
+        for _pts, _name, _col in ((_fair_pts, "same precision", COLORS[0]),
+                                  (_unfair_pts, "≠ precision", "#C57B27")):
+            if not _pts.empty:
+                figc.add_trace(go.Scatter(
+                    x=_pts[_xc], y=_pts[_yc], mode="markers+text",
+                    text=list(_pts.index), textposition="top center", textfont=dict(size=9),
+                    marker=dict(size=12, color=_col, line=dict(width=1, color="white")),
+                    name=_name,
+                    hovertemplate="%{text}<br>estimated %{x:.2f}<br>real %{y:.2f}<extra></extra>"))
         figc.update_layout(**_base_layout(360, f"Estimated vs real — {_unit}"),
-                           xaxis_title=f"Estimated ({_unit})",
-                           yaxis_title=f"Real ({_unit})", showlegend=False)
+                           xaxis_title=f"Estimated ({_unit})", yaxis_title=f"Real ({_unit})")
         _show(figc, "validate_calibration")
-        st.caption("Each point is a run. On the dashed diagonal = perfect estimate; "
-                   "above it the run was slower/higher than estimated, below it faster/lower.")
+        st.caption("On the dashed diagonal = perfect estimate. **Blue** = same precision "
+                   "(apples-to-apples); **amber** = AMP run vs fp32 estimate (the offset "
+                   "is the Tensor-core speedup, not an error).")
     else:
         st.caption(f"Not enough runs with an estimated and real {_unit} for the plot.")
 
