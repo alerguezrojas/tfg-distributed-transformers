@@ -89,7 +89,7 @@ def test_dur_str_exact():
 # ── module layout ─────────────────────────────────────────────────────────────
 
 _FEAS_PKG = [
-    "tabs/feasibility/__init__.py", "tabs/feasibility/predict.py",
+    "tabs/feasibility/__init__.py",
     "tabs/feasibility/validate.py", "tabs/feasibility/report.py",
     "tabs/feasibility/study.py", "tabs/feasibility/ddp.py",
 ]
@@ -138,7 +138,7 @@ def tabs_source() -> str:
             "comparison/__init__.py",
             "feasibility/validate.py", "feasibility/report.py",
             "feasibility/study.py", "feasibility/ddp.py",
-            "feasibility/predict.py", "feasibility/__init__.py"]
+            "feasibility/__init__.py"]
     return "\n".join(_src(f"tabs/{m}") for m in mods)
 
 
@@ -180,7 +180,7 @@ def test_sub_tab_names(tabs_source):
     summary + speedup vs baseline + radar + energy + overlays).
     """
     for t in ('"Curves"', '"Per-class"', '"Confusions"', '"Batch"', '"Details"',
-              '"Predict"', '"Compare vs runs"'):
+              '"Compare vs runs"'):
         assert t in tabs_source, f"missing sub-tab {t}"
     # The unified Compare keeps its key sections.
     for s in ("Speedup analysis", "Baseline run (= 1.00×)", "Energy consumption",

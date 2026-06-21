@@ -1,8 +1,6 @@
-"""Feasibility page — orchestrator. Compare vs runs / Predict / Report, one
-module per responsibility (validate, predict, report, study, ddp).
-
-The web only *reads*: reports are generated from the terminal (`tfg feasibility`),
-consistent with removing the Launcher — no benchmark is run from the browser."""
+"""Feasibility page — orchestrator. Two read-only tabs: Compare vs runs / Report
+(validate, report, study, ddp). The analytic predictor lives in the terminal
+(`tfg predict`); the web only *reads* — reports are generated with `tfg feasibility`."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,7 +11,6 @@ import streamlit as st
 from src.web.feasibility_parser import parse_feasibility_csv
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import _get_feasibility_csvs, _feas_label
-from src.web.tabs.feasibility.predict import _analytic_predictor
 from src.web.tabs.feasibility.validate import render_validate, render_f1_prediction
 from src.web.tabs.feasibility.report import render_report
 from src.web.tabs.feasibility.study import render_study
@@ -24,11 +21,10 @@ def render(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     st.markdown("## Feasibility")
     st.caption("**Compare vs runs** puts the predictions next to what actually "
-               "happened · **Predict** estimates any config with the analytic model "
-               "(no run needed) · **Report** shows a benchmark generated in the terminal.")
+               "happened · **Report** shows a benchmark generated in the terminal. "
+               "Plan a config without running with `tfg predict` in the terminal.")
 
-    # One visible report selector (it used to be hidden in the sidebar). It feeds
-    # the F1 prediction in Compare and the whole Report tab.
+    # One visible report selector. It feeds the F1 prediction in Compare and Report.
     feasibility_csvs = _get_feasibility_csvs()
     if feasibility_csvs:
         selected_feas_path = st.selectbox(
@@ -39,8 +35,7 @@ def render(ctx: DashboardContext) -> None:
     else:
         meta, bdf_feas = {}, pd.DataFrame()
 
-    tab_compare, tab_predict, tab_report = st.tabs(
-        ["Compare vs runs", "Predict", "Report"])
+    tab_compare, tab_report = st.tabs(["Compare vs runs", "Report"])
 
     # ── Compare vs runs: predictions/estimates next to the real results ─────────
     with tab_compare:
@@ -48,10 +43,6 @@ def render(ctx: DashboardContext) -> None:
         with subtab_prediction:
             with st.expander("Expected F1 curve (empirical prior vs the active run)"):
                 render_f1_prediction(meta, selected_run, feasibility_csvs)
-
-    # ── Predict: analytic estimate for any config, no run needed ────────────────
-    with tab_predict:
-        _analytic_predictor()
 
     # ── Report: read a benchmark generated from the terminal (web only watches) ──
     with tab_report:

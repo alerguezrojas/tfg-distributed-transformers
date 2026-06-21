@@ -1,4 +1,4 @@
-"""Feasibility — validate."""
+"""Feasibility — validate (predicted vs actual, Compare-style)."""
 from __future__ import annotations
 
 import re
@@ -8,29 +8,22 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.web.feasibility_comparison import build_comparison
 from src.web.feasibility_parser import (parse_ddp_scenarios, parse_feasibility_csv)
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
-from src.web.ui.helpers import (_get_feasibility_csvs, _get_runs, _load_df, _safe_max,
-                                _throughput_col)
+from src.web.ui.helpers import (_get_feasibility_csvs, _get_runs, _load_df, _run_config,
+                                _safe_max)
 
 
 def _short(lbl: str) -> str:
     return re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
 
 
-def _est_min_per_epoch(feas_df) -> float | None:
-    """Estimated minutes/epoch from a feasibility report (best viable throughput)."""
-    if feas_df is None or feas_df.empty:
-        return None
-    viable = feas_df[feas_df["oom"] == "no"].copy() if "oom" in feas_df.columns else feas_df
-    tp = _throughput_col(viable)
-    col = next((c for c in ["est_total_min_per_epoch", "est_min_per_epoch_30ep"]
-                if c in viable.columns), None)
-    if tp and col and not viable.empty:
-        idx = viable[tp].idxmax()
-        if not pd.isna(idx):
-            return float(viable.loc[idx, col])
-    return None
+def _run_batch(r) -> int | None:
+    """Batch size the run actually used (from its config line) — to match the
+    feasibility row of the SAME batch (apples-to-apples)."""
+    m = re.search(r"\d+", str(_run_config(str(r.log_path)).get("batch", "")))
+    return int(m.group()) if m else None
 
 
 def _real_min_per_epoch(r) -> float | None:
@@ -41,21 +34,25 @@ def _real_min_per_epoch(r) -> float | None:
 
 
 def render_validate(ctx) -> object:
-    """Compare-style validation: pick runs, see the feasibility prediction next to
-    the real result for each (estimated vs real time, predicted vs real F1), as a
-    table + grouped bars — the same look as the Compare section."""
+    """Predicted vs actual, Compare-style. Each single-GPU run is matched to the
+    feasibility report of its model AND the batch size it actually used, so the
+    estimate is for the same configuration the run ran (this is the fix for the
+    'estimate very different from real' issue — the old code used the max-throughput
+    batch, not the run's). Shows a table, a scorecard, a calibration scatter, the
+    formula behind each estimate, and predicted-vs-real speedup."""
     st.markdown("### Predicted vs actual")
-    st.caption("Pick runs and compare what the feasibility **predicted** with what "
-               "they actually did. Each run is matched to the feasibility report of "
-               "its model: estimated vs real time/epoch and predicted vs real Val F1.")
+    st.caption("Pick runs and compare what the feasibility **estimated** with what they "
+               "actually did. Each single-GPU run is matched to the feasibility report "
+               "of its model **and its batch size**, so the estimate is for the same "
+               "configuration the run used.")
 
     feas_csvs = _get_feasibility_csvs()
     if not feas_csvs:
-        st.info("No feasibility reports yet — generate one in the **Measure** tab.")
+        st.info("No feasibility reports yet. Generate one from the terminal "
+                "(`tfg feasibility`).")
         st.divider()
         return st.container()
 
-    # Parse every report once: (env, model, meta, feas_df).
     parsed = []
     for p in feas_csvs:
         m, df = parse_feasibility_csv(p)
@@ -73,22 +70,32 @@ def render_validate(ctx) -> object:
     labelled = {r.label: r for r in runs}
     feas_models = {mo for _, mo, _, _ in parsed}
     default = [r.label for r in runs if r.model in feas_models][:6] or list(labelled)[:3]
-    sel = st.multiselect("Runs to compare against their prediction (max 8)",
+    sel = st.multiselect("Runs to compare against their estimate (max 8)",
                          list(labelled.keys()), default=default, max_selections=8)
     if not sel:
         st.info("Select at least one run.")
         st.divider()
         return st.container()
 
-    # ── Table: predicted/estimated vs real per run ──────────────────────────────
+    # ── Per-run comparison (single-GPU runs matched by batch via build_comparison) ─
     rows = []
+    cmp_by_run: dict = {}
     for lbl in sel:
         r = labelled[lbl]
+        run_df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
         real_min = _real_min_per_epoch(r)
-        df_r = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
-        real_f1 = _safe_max(df_r["val_f1"]) if "val_f1" in df_r.columns else float("nan")
+        real_f1 = _safe_max(run_df["val_f1"]) if "val_f1" in run_df.columns else float("nan")
         m, fdf = _feas_for(r.env, r.model)
-        est_min = _est_min_per_epoch(fdf)
+        bs = _run_batch(r)
+        est_min = None
+        if m and fdf is not None and not fdf.empty and bs and r.mode == "single":
+            nfs = float(m.get("nfs_factor", 1.0) or 1.0)
+            cmp = build_comparison(meta=m, feas_df=fdf, actual_df=run_df,
+                                   batch_size=bs, trace_mode="simple", nfs_factor=nfs)
+            if cmp:
+                cmp_by_run[lbl] = cmp
+                tt = next((x for x in cmp.rows if x.metric == "Total time / epoch"), None)
+                est_min = tt.estimated if (tt and tt.estimated is not None) else None
         pred_f1 = None
         if m:
             try:
@@ -100,6 +107,7 @@ def render_validate(ctx) -> object:
             "Run": _short(lbl),
             "Model": (r.model or "—").replace("_patch16_224", ""),
             "Strategy": r.mode,
+            "Batch": bs,
             "Est min/ep": round(est_min, 2) if est_min else None,
             "Real min/ep": round(real_min, 2) if real_min else None,
             "Time err %": round(err) if err is not None else None,
@@ -109,51 +117,29 @@ def render_validate(ctx) -> object:
     tdf = pd.DataFrame(rows).set_index("Run")
     st.dataframe(tdf, use_container_width=True)
     _dl_csv(tdf.reset_index(), "predicted_vs_real.csv", "Download comparison")
+    st.caption("Time estimate only for **single-GPU** runs (matched by batch); DDP / "
+               "model-parallel runs are validated by the speedup below. A gap is the "
+               "genuine predictor error — the synthetic benchmark omits disk I/O, so on "
+               "NFS the real run is slower than estimated.")
 
-    # ── Accuracy scorecard — the headline "how good is the predictor" numbers ────
+    # ── Accuracy scorecard ──────────────────────────────────────────────────────
     _terr = tdf["Time err %"].dropna().abs()
     _f1p = tdf.dropna(subset=["Pred F1", "Real F1"])
     _f1err = (_f1p["Pred F1"] - _f1p["Real F1"]).abs() if not _f1p.empty else pd.Series(dtype=float)
     sc1, sc2 = st.columns(2)
     sc1.metric("Mean time error", f"±{_terr.mean():.0f}%" if not _terr.empty else "—",
-               help="Mean |error| of the estimated vs real time/epoch over the selected runs.")
+               help="Mean |error| of the batch-matched estimated vs real time/epoch.")
     sc2.metric("Mean F1 error", f"±{_f1err.mean():.3f}" if not _f1err.empty else "—",
                help="Mean |predicted − real| best Val F1 over the selected runs.")
 
-    # ── Grouped bars: estimated vs real min/epoch (Compare look) ────────────────
-    plot = tdf.dropna(subset=["Est min/ep", "Real min/ep"])
-    if not plot.empty:
-        fig = go.Figure()
-        fig.add_trace(go.Bar(name="Estimated", x=list(plot.index), y=list(plot["Est min/ep"]),
-                             marker_color="#94a3b8",
-                             text=[f"{v:.2f}" for v in plot["Est min/ep"]], textposition="outside"))
-        fig.add_trace(go.Bar(name="Real", x=list(plot.index), y=list(plot["Real min/ep"]),
-                             marker_color="#3A536B",
-                             text=[f"{v:.2f}" for v in plot["Real min/ep"]], textposition="outside"))
-        fig.update_layout(**_base_layout(340, "Time per epoch — estimated vs real"),
-                          barmode="group", yaxis_title="Minutes", xaxis_title="")
-        _show(fig, "validate_time_bars")
-        mean_err = float(plot.apply(
-            lambda x: abs((x["Real min/ep"] - x["Est min/ep"]) / x["Est min/ep"] * 100),
-            axis=1).mean())
-        if mean_err <= 15:
-            st.success(f"Predictions are accurate — mean |error| {mean_err:.0f}% in "
-                       f"time/epoch across {len(plot)} run(s).")
-        else:
-            st.warning(f"Mean |error| {mean_err:.0f}% in time/epoch — the estimate is off "
-                       "for some runs (often I/O on NFS, which the synthetic benchmark omits).")
-    else:
-        st.caption("No run has both an estimate (matching feasibility report) and real "
-                   "timing — pick runs whose model has a feasibility report.")
-
-    # ── Calibration scatter: predicted vs real, with the perfect-prediction diagonal ─
+    # ── Calibration scatter (predicted vs real, with the diagonal) ──────────────
     metric = st.radio("Calibration plot", ["Time/epoch (min)", "Val F1"],
                       horizontal=True, key="cal_metric")
     _xc, _yc, _unit = (("Est min/ep", "Real min/ep", "min/epoch")
                        if metric.startswith("Time") else ("Pred F1", "Real F1", "Val F1"))
     cal = tdf.dropna(subset=[_xc, _yc])
     if not cal.empty:
-        _hi = float(max(cal[_xc].max(), cal[_yc].max())) * 1.1 or 1.0
+        _hi = (float(max(cal[_xc].max(), cal[_yc].max())) * 1.1) or 1.0
         figc = go.Figure()
         figc.add_trace(go.Scatter(x=[0, _hi], y=[0, _hi], mode="lines",
                                   line=dict(color="#94a3b8", dash="dash"),
@@ -163,15 +149,26 @@ def render_validate(ctx) -> object:
             text=list(cal.index), textposition="top center", textfont=dict(size=9),
             marker=dict(size=12, color=COLORS[0], line=dict(width=1, color="white")),
             name="runs",
-            hovertemplate="%{text}<br>predicted %{x:.2f}<br>real %{y:.2f}<extra></extra>"))
-        figc.update_layout(**_base_layout(360, f"Predicted vs real — {_unit}"),
-                           xaxis_title=f"Predicted ({_unit})",
+            hovertemplate="%{text}<br>estimated %{x:.2f}<br>real %{y:.2f}<extra></extra>"))
+        figc.update_layout(**_base_layout(360, f"Estimated vs real — {_unit}"),
+                           xaxis_title=f"Estimated ({_unit})",
                            yaxis_title=f"Real ({_unit})", showlegend=False)
         _show(figc, "validate_calibration")
-        st.caption("Each point is a run. On the dashed diagonal = perfect prediction; "
-                   "above it the run was higher than predicted, below it lower.")
+        st.caption("Each point is a run. On the dashed diagonal = perfect estimate; "
+                   "above it the run was slower/higher than estimated, below it faster/lower.")
     else:
-        st.caption(f"Not enough runs with predicted and real {_unit} for the calibration plot.")
+        st.caption(f"Not enough runs with an estimated and real {_unit} for the plot.")
+
+    # ── Formula behind each estimate (the recovered detail table) ───────────────
+    if cmp_by_run:
+        st.markdown("#### Formula behind each estimate")
+        st.caption("The exact formula and the estimated-vs-real value per metric, for "
+                   "one single-GPU run (matched by its batch size).")
+        pick = st.selectbox("Run", list(cmp_by_run.keys()),
+                            format_func=_short, key="formula_run")
+        ftab = cmp_by_run[pick].to_dataframe()
+        st.dataframe(ftab, hide_index=True, use_container_width=True)
+        _dl_csv(ftab, "feasibility_formulas.csv", "Download formulas")
 
     # ── Speedup validation when a single + DDP pair of the same model is picked ──
     groups: dict = defaultdict(dict)
@@ -338,5 +335,3 @@ def render_f1_prediction(meta, selected_run, feasibility_csvs) -> None:
                     "val_f1_lower": [v - uncertainty for v in curve_val],
                 })
                 _dl_csv(pred_curve_df, "predicted_f1_curve.csv", "Download predicted curve")
-
-
