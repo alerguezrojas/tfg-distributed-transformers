@@ -110,6 +110,16 @@ def render_validate(ctx) -> object:
     st.dataframe(tdf, use_container_width=True)
     _dl_csv(tdf.reset_index(), "predicted_vs_real.csv", "Download comparison")
 
+    # ── Accuracy scorecard — the headline "how good is the predictor" numbers ────
+    _terr = tdf["Time err %"].dropna().abs()
+    _f1p = tdf.dropna(subset=["Pred F1", "Real F1"])
+    _f1err = (_f1p["Pred F1"] - _f1p["Real F1"]).abs() if not _f1p.empty else pd.Series(dtype=float)
+    sc1, sc2 = st.columns(2)
+    sc1.metric("Mean time error", f"±{_terr.mean():.0f}%" if not _terr.empty else "—",
+               help="Mean |error| of the estimated vs real time/epoch over the selected runs.")
+    sc2.metric("Mean F1 error", f"±{_f1err.mean():.3f}" if not _f1err.empty else "—",
+               help="Mean |predicted − real| best Val F1 over the selected runs.")
+
     # ── Grouped bars: estimated vs real min/epoch (Compare look) ────────────────
     plot = tdf.dropna(subset=["Est min/ep", "Real min/ep"])
     if not plot.empty:
@@ -135,6 +145,33 @@ def render_validate(ctx) -> object:
     else:
         st.caption("No run has both an estimate (matching feasibility report) and real "
                    "timing — pick runs whose model has a feasibility report.")
+
+    # ── Calibration scatter: predicted vs real, with the perfect-prediction diagonal ─
+    metric = st.radio("Calibration plot", ["Time/epoch (min)", "Val F1"],
+                      horizontal=True, key="cal_metric")
+    _xc, _yc, _unit = (("Est min/ep", "Real min/ep", "min/epoch")
+                       if metric.startswith("Time") else ("Pred F1", "Real F1", "Val F1"))
+    cal = tdf.dropna(subset=[_xc, _yc])
+    if not cal.empty:
+        _hi = float(max(cal[_xc].max(), cal[_yc].max())) * 1.1 or 1.0
+        figc = go.Figure()
+        figc.add_trace(go.Scatter(x=[0, _hi], y=[0, _hi], mode="lines",
+                                  line=dict(color="#94a3b8", dash="dash"),
+                                  name="perfect", hoverinfo="skip"))
+        figc.add_trace(go.Scatter(
+            x=cal[_xc], y=cal[_yc], mode="markers+text",
+            text=list(cal.index), textposition="top center", textfont=dict(size=9),
+            marker=dict(size=12, color=COLORS[0], line=dict(width=1, color="white")),
+            name="runs",
+            hovertemplate="%{text}<br>predicted %{x:.2f}<br>real %{y:.2f}<extra></extra>"))
+        figc.update_layout(**_base_layout(360, f"Predicted vs real — {_unit}"),
+                           xaxis_title=f"Predicted ({_unit})",
+                           yaxis_title=f"Real ({_unit})", showlegend=False)
+        _show(figc, "validate_calibration")
+        st.caption("Each point is a run. On the dashed diagonal = perfect prediction; "
+                   "above it the run was higher than predicted, below it lower.")
+    else:
+        st.caption(f"Not enough runs with predicted and real {_unit} for the calibration plot.")
 
     # ── Speedup validation when a single + DDP pair of the same model is picked ──
     groups: dict = defaultdict(dict)
