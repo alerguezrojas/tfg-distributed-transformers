@@ -248,9 +248,12 @@ def render_validate(ctx) -> object:
     # ── Formula behind each estimate (the recovered detail table) ───────────────
     if cmp_by_run:
         st.markdown("#### Formula behind each estimate")
-        st.caption("The exact formula and the estimated-vs-real value per metric, for "
-                   "one single-GPU run (matched by its batch size).")
-        pick = st.selectbox("Run", list(cmp_by_run.keys()),
+        st.caption(f"The exact formula and the estimated-vs-real value per metric, for one "
+                   f"**single-GPU** run (this metric-by-metric breakdown only applies to "
+                   f"single-GPU; DDP/MP time is single ÷ speedup). "
+                   f"{len(cmp_by_run)} of the selected runs are single-GPU — select more "
+                   f"single-GPU runs to see them here.")
+        pick = st.selectbox("Run (single-GPU)", list(cmp_by_run.keys()),
                             format_func=_short, key="formula_run")
         ftab = cmp_by_run[pick].to_dataframe()
         st.dataframe(ftab, hide_index=True, use_container_width=True)
