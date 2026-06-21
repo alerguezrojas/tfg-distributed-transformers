@@ -21,43 +21,44 @@ from src.web.tabs.feasibility.run_form import render_run_form
 def render(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     st.markdown("## Feasibility")
-    st.caption("Plan before training. **Predict** with the analytic model (no run "
-               "needed), **Validate** predictions against real trainings, or "
-               "**Measure** on this machine to calibrate.")
-    tab_predict, tab_validate, tab_measure = st.tabs(
-        ["Predict", "Validate", "Measure (advanced)"])
+    st.caption("**Compare vs runs** puts the predictions next to what actually "
+               "happened · **Predict** estimates any config with the analytic model "
+               "(no run needed) · **Measure (advanced)** benchmarks this machine.")
 
-    with tab_predict:
-        _analytic_predictor()
-
-    with tab_measure:
-        st.caption("Run the real benchmark on the machine you are on. Use it to "
-                   "calibrate the predictor or to profile this hardware.")
-        st.markdown("#### Generate a report")
-        subtab_run_feas = st.container()
-        st.markdown("#### Report")
-        subtab_report = st.container()
-        st.markdown("#### Convergence study")
-        subtab_study = st.container()
-
+    # One visible report selector (it used to be hidden in the sidebar). It feeds
+    # the F1 prediction in Compare and the whole Measure tab.
     feasibility_csvs = _get_feasibility_csvs()
     if feasibility_csvs:
-        selected_feas_path = st.sidebar.selectbox(
+        selected_feas_path = st.selectbox(
             "Feasibility report", [str(p) for p in feasibility_csvs],
-            format_func=_feas_label, key="feas_sidebar_sel")
+            format_func=_feas_label, key="feas_sel",
+            help="Used by Compare's F1 prediction and the Measure tab.")
         meta, bdf_feas = parse_feasibility_csv(Path(selected_feas_path))
     else:
         meta, bdf_feas = {}, pd.DataFrame()
 
-    with tab_validate:
+    tab_compare, tab_predict, tab_measure = st.tabs(
+        ["Compare vs runs", "Predict", "Measure (advanced)"])
+
+    # ── Compare vs runs: predictions/estimates next to the real results ─────────
+    with tab_compare:
         subtab_prediction = render_validate(ctx)
-    with subtab_report:
-        subtab_ddp_opt = render_report(meta, bdf_feas, feasibility_csvs)
-    with subtab_study:
-        render_study(meta, feasibility_csvs)
-    with subtab_ddp_opt:
-        render_ddp_analysis(meta, feasibility_csvs)
-    with subtab_prediction:
-        render_f1_prediction(meta, selected_run, feasibility_csvs)
-    with subtab_run_feas:
+        with subtab_prediction:
+            render_f1_prediction(meta, selected_run, feasibility_csvs)
+
+    # ── Predict: analytic estimate for any config, no run needed ────────────────
+    with tab_predict:
+        _analytic_predictor()
+
+    # ── Measure (advanced): real benchmark on this machine + study ──────────────
+    with tab_measure:
+        st.caption("Run the real benchmark on this machine to calibrate the "
+                   "predictor or profile the hardware. The report shown is the one "
+                   "selected above.")
         render_run_form()
+        st.markdown("---")
+        subtab_ddp_opt = render_report(meta, bdf_feas, feasibility_csvs)
+        with subtab_ddp_opt:
+            render_ddp_analysis(meta, feasibility_csvs)
+        st.markdown("---")
+        render_study(meta, feasibility_csvs)
