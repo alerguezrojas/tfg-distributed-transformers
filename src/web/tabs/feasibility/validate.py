@@ -20,10 +20,31 @@ def _short(lbl: str) -> str:
 
 
 def _run_batch(r) -> int | None:
-    """Batch size the run actually used (from its config line) — to match the
-    feasibility row of the SAME batch (apples-to-apples)."""
+    """Per-GPU batch the run used (from its config line) — to match the feasibility
+    row of the SAME batch (the benchmark is single-GPU, at that per-GPU batch)."""
     m = re.search(r"\d+", str(_run_config(str(r.log_path)).get("batch", "")))
     return int(m.group()) if m else None
+
+
+def _run_ngpus(r) -> int:
+    """Number of GPUs a distributed run used: global ÷ per-GPU batch if recorded,
+    else 2 (the default for the project's DDP runs)."""
+    txt = str(_run_config(str(r.log_path)).get("batch", ""))
+    per = re.search(r"\d+", txt)
+    glob = re.search(r"global\s*=?\s*(\d+)", txt)
+    if per and glob and int(per.group()) > 0:
+        return max(1, round(int(glob.group(1)) / int(per.group())))
+    return 2
+
+
+def _predicted_speedup(meta, n_gpus) -> float | None:
+    """Predicted speedup at n_gpus from the feasibility report's DDP scenarios."""
+    scen = parse_ddp_scenarios(meta)
+    if not scen.empty and {"n_gpus", "speedup"}.issubset(scen.columns):
+        row = scen[scen["n_gpus"] == n_gpus]
+        if not row.empty:
+            return float(row.iloc[0]["speedup"])
+    return None
 
 
 def _real_min_per_epoch(r) -> float | None:
@@ -93,14 +114,23 @@ def render_validate(ctx) -> object:
         run_prec = (r.precision or "fp32")
         rep_prec = (m.get("precision") or "fp32") if m else "fp32"
         est_min = None
-        if m and fdf is not None and not fdf.empty and bs and r.mode == "single":
+        ddp_note = ""
+        if m and fdf is not None and not fdf.empty and bs and r.mode in ("single", "ddp"):
             nfs = float(m.get("nfs_factor", 1.0) or 1.0)
             cmp = build_comparison(meta=m, feas_df=fdf, actual_df=run_df,
                                    batch_size=bs, trace_mode="simple", nfs_factor=nfs)
             if cmp:
-                cmp_by_run[lbl] = cmp
                 tt = next((x for x in cmp.rows if x.metric == "Total time / epoch"), None)
-                est_min = tt.estimated if (tt and tt.estimated is not None) else None
+                single_est = tt.estimated if (tt and tt.estimated is not None) else None
+                if r.mode == "single":
+                    cmp_by_run[lbl] = cmp        # formula table is the single-GPU one
+                    est_min = single_est
+                else:                            # ddp: predicted time = single ÷ speedup
+                    ng = _run_ngpus(r)
+                    sp = _predicted_speedup(m, ng)
+                    if single_est and sp:
+                        est_min = single_est / sp
+                        ddp_note = f"single ÷ {sp:.2f}× ({ng} GPU)"
         pred_f1 = None
         if m:
             try:
@@ -108,7 +138,12 @@ def render_validate(ctx) -> object:
             except (TypeError, ValueError):
                 pred_f1 = None
         fair = (run_prec == rep_prec)          # comparable only at the same precision
-        note = "" if (est_min is None or fair) else f"≠ precision ({run_prec} vs {rep_prec})"
+        if est_min is None:
+            note = ""
+        elif not fair:
+            note = f"≠ precision ({run_prec} vs {rep_prec})"
+        else:
+            note = ddp_note
         err = ((real_min - est_min) / est_min * 100) if (real_min and est_min) else None
         rows.append({
             "Run": _short(lbl),
@@ -127,12 +162,13 @@ def render_validate(ctx) -> object:
     tdf = pd.DataFrame(rows).set_index("Run")
     st.dataframe(tdf.drop(columns=["_fair"]), use_container_width=True)
     _dl_csv(tdf.drop(columns=["_fair"]).reset_index(), "predicted_vs_real.csv", "Download comparison")
-    st.caption("Time estimate only for **single-GPU** runs, matched by batch size. "
-               "The feasibility benchmark is **fp32 and synthetic (no disk I/O)**, so two "
-               "gaps are expected and flagged: **AMP** runs use Tensor cores (~3× faster "
-               "than the fp32 estimate — *≠ precision*), and **small models on NFS** read "
-               "more from disk than the benchmark models (real a bit slower). For "
-               "same-precision compute-bound runs the estimate is within a few %.")
+    st.caption("Single-GPU runs are matched by batch size; **DDP** runs get a predicted "
+               "time = single-GPU estimate ÷ predicted speedup (see the *Note* column). "
+               "The benchmark is **fp32 and synthetic (no disk I/O)**, so two gaps are "
+               "expected and flagged: **AMP** runs use Tensor cores (~3× faster than the "
+               "fp32 estimate — *≠ precision*), and **small models on NFS** read more from "
+               "disk than the benchmark (real a bit slower). For same-precision "
+               "compute-bound runs the estimate lands within a few %.")
 
     # ── Accuracy scorecard — over the apples-to-apples (same-precision) runs ─────
     fair_df = tdf[tdf["_fair"]]
