@@ -1,6 +1,6 @@
 <div align="center">
 
-# Entrenamiento distribuido de Transformers sobre imágenes de satélite
+# Entrenamiento distribuido de modelos abiertos de aprendizaje automático basados en Transformers
 
 **Trabajo de Fin de Grado · Grado en Ingeniería Informática · Universidad de La Laguna**
 
