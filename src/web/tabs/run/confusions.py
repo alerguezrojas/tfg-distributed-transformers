@@ -6,7 +6,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.web.confusion_matrix_parser import (get_matrix_for_epoch,
-                                             parse_confusion_matrix_csv, top_confusions)
+                                             parse_confusion_matrix_csv, top_confusions,
+                                             top_confusions_by_lift)
 from src.web.dataset_stats import CLASS_NAMES
 from src.web.ui import theme
 from src.web.ui.charts import (COLORS, _CLASS_GROUPS, _base_layout, _dl_csv, _show)
@@ -64,9 +65,17 @@ def _confusions_view(run) -> None:
 
     # ── Top label confusions (the off-diagonal of the co-activation matrix) ───────
     st.markdown("#### Top label confusions")
-    n_pairs = st.columns([2, 3])[0].slider("How many pairs to show", 5, 30, 12,
-                                           key="cm_topn")
-    top = top_confusions(cm_df, ep, k=n_pairs)
+    cc1, cc2 = st.columns([2, 2])
+    n_pairs = cc1.slider("How many pairs to show", 5, 30, 12, key="cm_topn")
+    rank_by = cc2.radio("Rank by", ["Real confusion (lift)", "Co-prediction (raw)"],
+                        horizontal=True, key="cm_rank")
+    use_lift = rank_by.startswith("Real")
+    st.caption("**Lift** divides each frequency by how often that label is predicted "
+               "overall, so it surfaces real confusions and drops the noise of a "
+               "common class (e.g. *Arable land*) being predicted everywhere. "
+               "*Raw* shows the plain frequency.")
+    top = (top_confusions_by_lift(cm_df, ep, k=n_pairs) if use_lift
+           else top_confusions(cm_df, ep, k=n_pairs))
     if top.empty:
         st.info("No strong off-diagonal confusions at this epoch.")
     else:
@@ -76,10 +85,17 @@ def _confusions_view(run) -> None:
         bar_colors = [same_col if _same_ecosystem(r.true_class, r.pred_class) else cross_col
                       for r in top.itertuples()]
         pair_labels = [f"{r.true_class}  →  {r.pred_class}" for r in top.itertuples()]
+        if use_lift:
+            xvals, texts = list(top["lift"]), [f"{v:.1f}×" for v in top["lift"]]
+            cdata = list(top["value"])
+            hover = "%{y}<br>lift %{x:.2f}× · P=%{customdata:.2f}<extra></extra>"
+        else:
+            xvals, texts = list(top["value"]), [f"{v:.2f}" for v in top["value"]]
+            cdata = None
+            hover = "%{y}<br>P=%{x:.2f}<extra></extra>"
         fig_top = go.Figure(go.Bar(
-            y=pair_labels, x=list(top["value"]), orientation="h",
-            marker_color=bar_colors, text=[f"{v:.2f}" for v in top["value"]],
-            textposition="outside",
+            y=pair_labels, x=xvals, orientation="h", marker_color=bar_colors,
+            text=texts, textposition="outside", customdata=cdata, hovertemplate=hover,
         ))
         fig_top.update_layout(
             **_base_layout(120 + 28 * len(top),
@@ -87,7 +103,13 @@ def _confusions_view(run) -> None:
                            margin=dict(l=300, r=40, t=48, b=40)),
             showlegend=False,
         )
-        fig_top.update_xaxes(range=[0, 1], title="P(also predicts right label | left is present)")
+        if use_lift:
+            fig_top.update_xaxes(
+                title="Lift (× vs base rate — &gt;1 = real confusion, not just a common class)")
+            fig_top.add_vline(x=1.0, line=dict(color="gray", width=1, dash="dot"))
+        else:
+            fig_top.update_xaxes(range=[0, 1],
+                                 title="P(also predicts right label | left is present)")
         fig_top.update_yaxes(automargin=True, autorange="reversed")
         _show(fig_top, f"top_confusions_ep{ep}")
         st.markdown(
