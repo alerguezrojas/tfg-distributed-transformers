@@ -86,46 +86,21 @@ def render_report(meta, bdf_feas, feasibility_csvs) -> object:
                              yaxis_title="img/s")
         _show(fig_pc, "precision_cmp")
 
-    # ── Time estimate: minutes/epoch by batch + total for N epochs ──────────────
+    # ── Time estimate: total for N epochs at the fastest batch (no redundant chart) ─
+    n_ep = 30
     if per_ep and not viable.empty:
-        c_ep, c_tot = st.columns([1, 2])
-        with c_ep:
-            n_ep = st.number_input("Epochs", min_value=1, value=30, key="report_epochs")
-            best = float(viable[per_ep].min())
-            st.metric(f"Fastest total ({n_ep} ep)", f"{best * n_ep / 60:.1f} h")
-        with c_tot:
-            fig_t = go.Figure(go.Bar(
-                x=viable["batch_size"].astype(str), y=viable[per_ep],
-                marker_color=COLORS[0],
-                text=[f"{v:.2f}" for v in viable[per_ep]], textposition="outside"))
-            fig_t.update_layout(**_base_layout(240, "Estimated minutes / epoch by batch"),
-                                xaxis_title="Batch size", yaxis_title="min/epoch")
-            _show(fig_t, "time_by_batch")
+        best = float(viable[per_ep].min())
+        n_ep = st.number_input("Epochs for the total estimate", min_value=1, value=30,
+                               key="report_epochs")
+        st.metric(f"Estimated total ({n_ep} epochs, fastest batch)",
+                  f"{best * n_ep / 60:.1f} h", help=f"{best:.2f} min/epoch × {n_ep} epochs")
 
     # ── Distributed scaling — filled by render_ddp_analysis (visible) ───────────
     st.markdown("#### Distributed scaling (predicted)")
     subtab_ddp_opt = st.container()
 
-    # ── Cloud cost: cheapest paid providers (chart) ─────────────────────────────
-    if per_ep and not viable.empty:
-        from src.cloud_cost import estimate_costs
-        total_h = float(viable[per_ep].min()) * 30 / 60.0
-        ref_gpu = meta.get("hardware_name", "")
-        rows = estimate_costs(total_h, ref_gpu)
-        paid = [r for r in rows if r["cost_usd"] > 0][:6]
-        if paid:
-            st.markdown("#### Cloud training cost (≈30 epochs)")
-            fig_c = go.Figure(go.Bar(
-                x=[f"{r['provider']} · {r['gpu']}" for r in paid],
-                y=[r["cost_usd"] for r in paid], marker_color=COLORS[0],
-                text=[f"${r['cost_usd']:.0f}" for r in paid], textposition="outside"))
-            fig_c.update_layout(**_base_layout(280, "Estimated cost by provider (paid)"),
-                                xaxis_tickangle=30, yaxis_title="USD")
-            _show(fig_c, "cloud_cost")
-            st.caption("Free tiers (Kaggle / Colab) and the full table are in the details below.")
-
-    # ── Everything verbose in ONE expander (system, memory, raw tables) ─────────
-    with st.expander("System, memory & raw tables"):
+    # ── Verbose detail in ONE expander (system, memory, raw tables, cloud cost) ─
+    with st.expander("System, memory, raw tables & cloud cost"):
         gpu = meta.get("gpu", {})
         st.markdown(f"**{meta.get('model_name','—')}** · {meta.get('total_params_M','—')} M "
                     f"params · {meta.get('hardware_name','—')} · "
@@ -151,5 +126,21 @@ def render_report(meta, bdf_feas, feasibility_csvs) -> object:
         if not bdf_feas.empty:
             st.dataframe(bdf_feas, use_container_width=True, height=240)
             _dl_csv(bdf_feas, "feasibility_benchmark.csv", "Download full benchmark")
+
+        # Cloud cost — uses the same epoch count as the estimate above
+        if per_ep and not viable.empty:
+            from src.cloud_cost import estimate_costs
+            total_h = float(viable[per_ep].min()) * n_ep / 60.0
+            rows = estimate_costs(total_h, meta.get("hardware_name", ""))
+            paid = [r for r in rows if r["cost_usd"] > 0][:6]
+            if paid:
+                st.markdown(f"**Cloud training cost ({n_ep} epochs)**")
+                fig_c = go.Figure(go.Bar(
+                    x=[f"{r['provider']} · {r['gpu']}" for r in paid],
+                    y=[r["cost_usd"] for r in paid], marker_color=COLORS[0],
+                    text=[f"${r['cost_usd']:.0f}" for r in paid], textposition="outside"))
+                fig_c.update_layout(**_base_layout(260, "Estimated cost by provider (paid)"),
+                                    xaxis_tickangle=30, yaxis_title="USD")
+                _show(fig_c, "cloud_cost")
 
     return subtab_ddp_opt
