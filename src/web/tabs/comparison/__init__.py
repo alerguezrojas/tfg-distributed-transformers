@@ -7,7 +7,7 @@ import streamlit as st
 
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import _load_df, _get_runs
-from src.web.tabs.comparison.summary import _summary_table, _config_diff_section
+from src.web.tabs.comparison.summary import _summary_table
 from src.web.tabs.comparison.perclass import _perclass_heatmap_section
 from src.web.tabs.comparison.speedup import _speedup_section
 from src.web.tabs.comparison.charts import _radar_section, _energy_section, _overlay_charts
@@ -65,8 +65,6 @@ def render(ctx: DashboardContext) -> None:
     _overlay_charts(compare_dfs)
 
     st.markdown("---")
-    with st.expander("Configuration — hyperparameters side by side"):
-        _config_diff_section(compare_runs_list)
     with st.expander("Per-class F1 by run"):
         _perclass_heatmap_section(compare_runs_list)
 
