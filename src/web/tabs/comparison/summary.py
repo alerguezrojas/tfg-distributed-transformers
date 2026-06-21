@@ -41,7 +41,6 @@ def _summary_table(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.Dat
 def _config_diff_section(sel: list[tuple[str, RunInfo]]) -> None:
     """Side-by-side hyperparameters with the differing rows highlighted — makes the
     apples-to-apples explicit (which params change between runs, which stay fixed)."""
-    st.markdown("### Configuration")
     st.caption("Hyperparameters side by side; rows that differ between the selected "
                "runs are highlighted. Lets you confirm the comparison is apples-to-apples.")
 
@@ -81,7 +80,4 @@ def _config_diff_section(sel: list[tuple[str, RunInfo]]) -> None:
     st.dataframe(view.style.apply(_hl, axis=1), use_container_width=True)
     n = int(differs.sum())
     st.caption(f"{n} of {len(params)} parameters differ across the {len(sel)} selected runs.")
-
-
-# ── Per-class comparison (dumbbell) ───────────────────────────────────────────────
 
