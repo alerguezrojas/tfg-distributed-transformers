@@ -44,7 +44,7 @@ def _perclass_heatmap_section(sel: list[tuple[str, RunInfo]]) -> None:
     fig = go.Figure(go.Heatmap(
         z=mat.values, x=list(mat.columns), y=list(mat.index),
         colorscale=[[0.0, theme.BAD], [0.5, theme.WARN], [1.0, theme.GOOD]],
-        zmin=0.0, zmax=1.0,
+        zmin=0.0, zmax=1.0, xgap=2, ygap=2,   # cell gaps → rows easy to tell apart
         text=[[f"{v:.2f}" for v in row] for row in mat.values],
         texttemplate="%{text}", textfont=dict(size=10),
         colorbar=dict(title="F1", thickness=12),
