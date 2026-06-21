@@ -9,7 +9,7 @@ from src.web.tabs.run.curves import _curves, _test_callout
 from src.web.tabs.run.perclass import _per_class
 from src.web.tabs.run.confusions import _confusions_tab
 from src.web.tabs.run.batch import _batch
-from src.web.tabs.run.details import _time, _info
+from src.web.tabs.run.details import _info
 
 
 def render(ctx: DashboardContext) -> None:
@@ -26,6 +26,4 @@ def render(ctx: DashboardContext) -> None:
     with sub[3]:
         _batch(ctx)
     with sub[4]:
-        _time(ctx)
-        st.markdown("---")
         _info(ctx)

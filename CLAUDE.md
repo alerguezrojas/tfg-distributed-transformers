@@ -7,7 +7,8 @@ Contexto completo del proyecto para continuar el trabajo en cualquier máquina.
 ## Sobre el proyecto
 
 **TFG:** "Entrenamiento distribuido de modelos abiertos de aprendizaje automático basados en Transformers"
-**Tutor:** Paco Almeida (Universidad de La Laguna)
+**Tutor:** Francisco Carmelo Almeida Rodríguez (Universidad de La Laguna)
+**Cotutor:** Daniel Suárez Labena
 **Alumno:** Alejandro Rodríguez Rojas
 **Entrega:** junio/julio 2026
 **Repo:** https://github.com/alerguezrojas/tfg-distributed-transformers
@@ -880,18 +881,27 @@ Dependencias principales: `torch`, `timm`, `torchvision`, `torchinfo`, `tqdm`, `
 src/web/
   __init__.py
   app.py                    # orquestador: page config + CSS + menú de iconos (streamlit-option-menu)
-                            #   + selector de run activo + dispatch a tabs/
+                            #   + selector de run activo + toggle claro/oscuro + dispatch a tabs/
   ui/
     context.py              # DashboardContext (runs, selected_run, run, refresh_interval) → ctx
+    theme.py                # diseño: register_plotly_template(mode) + inject_css(mode) — modo
+                            #   claro/oscuro (toggle en la sidebar); paleta COLORS/GOOD/WARN/BAD
     charts.py               # helpers Plotly + estilo: _show, _dl_csv, _metric_fig, _overlay_fig,
                             #   _base_layout, COLORS, _CLASS_GROUPS (única llamada a st.plotly_chart)
-    helpers.py              # loaders cacheados (_load_df, _get_runs, _class_gallery…) + utilidades
+    helpers.py              # loaders cacheados (_load_df, _get_runs, _class_gallery,
+                            #   _load_val_support, _dataset_meta_path…) + utilidades
   tabs/
-    home.py                 # render(ctx) — Overview compacto: tira de KPIs + ranking F1 + run activo
-                            #   + velocidad/epoch + donut de estrategias + panel dataset (galería 19 clases) + tabla seleccionable
-    run.py                  # Curves / Per-class / Confusions / Batch / Details (una fila de pestañas)
+    home.py                 # render(ctx) — Overview compacto (1 pantalla): tira de 8 KPIs +
+                            #   3 gráficas variadas (barras GPU-h/entorno · tarta split train/val/test ·
+                            #   treemap desbalance de clases) + tarjeta del run activo (curvas F1/loss) +
+                            #   carrusel de fotos (5/pág, ◀▶, las 19 clases) + tabla "All runs" seleccionable
+    run/                    # paquete: Curves / Per-class / Confusions / Batch / Details (una fila de pestañas)
+                            #   perclass.py = heatmap clases×(P/R/F1) + support (val); confusions.py = top
+                            #   co-activación + matriz 19×19 (avanzado); curves.py = veredicto color-coded
     comparison.py           # Compare unificado: multiselect → resumen + speedup vs baseline + radar + energía + overlays
-    feasibility.py          # Predict (predictor analítico) / Validate (predicho vs real) / Measure (benchmark, avanzado)
+    feasibility/            # paquete: Predict (predictor analítico) / Compare vs runs (predicho vs real) / Report (benchmark)
+                            #   predict.py = formulario → headline + tabla fórmula tiempo + tabla fórmula memoria
+                            #   + calidad + escalado 1→8 GPU + coste; validate.py = Compare vs runs; report.py + ddp.py + study.py
     data_models.py          # Import runs (subir zip / apuntar a carpeta → copia a logs/)
   run_import.py             # import_run_archive (zip) / import_run_folder / _dest_relpath (puro, testeable)
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
@@ -931,7 +941,7 @@ uv run streamlit run src/web/app.py
 | **Overview** | Dashboard compacto: tira de 8 KPIs · ranking Best F1 · tarjeta del run activo (mini F1/loss + veredicto) · velocidad media/epoch · donut de estrategias · **panel del dataset** (splits, subset usado por los runs recientes, clases frecuentes, **galería de las 19 clases** con info multi-etiqueta) · tabla "All runs" seleccionable con sparklines |
 | **Run results** | **Una fila de pestañas**: Curves · Per-class (barras+tendencia) · Confusions (diagnósticos multi-etiqueta) · Batch (selector de vista) · Details (tiempo + config/anomalías/log) |
 | **Compare** | **Sección única**: multiselect (≤8 runs) → resumen · speedup vs baseline (tabla+barras+veredictos+validación feasibility+escalado) · radar · energía · overlays |
-| **Feasibility** | **Predict** (predictor analítico: tiempo/speedup/memoria/coste para cualquier config sin benchmark + curva 1→8 GPUs) · **Validate** (predicho vs real) · **Measure (advanced)** (benchmark real en esta máquina: generar informe + verlo en expanders + estudio de convergencia) |
+| **Feasibility** | **Predict** (predictor analítico: formulario → headline + **tablas con las fórmulas** de tiempo `max(compute,I/O)+sync` y memoria `weights+grad+Adam+activations+overhead` con los valores puestos + calidad + escalado 1→8 GPU + coste nube; mismo motor que `tfg predict`) · **Compare vs runs** (predicho vs real con tabla de fórmula por métrica) · **Report** (benchmark generado en terminal con `tfg feasibility`: hardware, throughput, tiempo, escalado distribuido, coste, estudio de convergencia) |
 | **Import** | Importar runs entrenados en otra máquina (zip o carpeta → copia a `logs/`) |
 
 **Predicción vs realidad** (rediseño de la antigua "Comparar vs training"): elige el run en la barra lateral → auto-empareja su feasibility (mismo modelo/entorno); muestra estimado vs real con semáforo y un veredicto en lenguaje natural (precisa / optimista por I/O / pesimista). Avisa si el run es distribuido (la estimación es single-GPU → la diferencia incluye el speedup).
@@ -1081,6 +1091,25 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **No-ficheros-enormes (SRP):** `scripts/check_feasibility.py` (1600 ln) → paquete `src/feasibility/`; `src/web/tabs/run.py` (940 ln) → paquete `run/` (curves/perclass/confusions/batch/details); Predict extraído a `tabs/feasibility_predict.py`. PRs #55–#56.
 - [x] **Auditoría funcional completa (19/06):** todos los comandos del CLI (predict sweep, menu, runs, eval/feasibility/train reales — single + DDP torchrun), las 6 secciones de la web + sub-pestañas (Playwright) — **todo verde**.
 - [x] **Diagrama de clases (`docs/class_diagram.puml/.svg/.png`) actualizado y regenerado**: paquete `src.feasibility`, `src.cli`, nota de `src.web` (run/ paquete, sin i18n). El `.puml` es muy grande para el endpoint GET de plantuml.com, así que el `.svg`/`.png` se regeneran por **POST a Kroki** (`requests.post("https://kroki.io/plantuml/svg", data=puml)`) — o con `plantuml` local (java). ⚠ El SVG de PlantUML solo lleva fondo blanco como pista CSS (`style="background:#FFFFFF"`), que muchos visores ignoran → zonas vacías transparentes. Se post-procesa inyectando un `<rect fill="#FFFFFF">` que cubre el `viewBox` justo tras el primer `<g>`.
+
+#### Pulido de la web — iteración con el usuario (20-21/06/26)
+Sesión de mejoras incrementales sobre el dashboard, decididas una a una con el usuario. Las primeras ya en `main`; el resto en la rama de trabajo `feature/web-polish` (pendiente de PR a develop cuando el usuario cierre la web).
+- [x] **Modo oscuro (PR #69):** toggle "Dark mode" en la sidebar. `theme.py` ahora es mode-aware: `register_plotly_template(mode)` (fondo/ejes/texto oscuros) + `inject_css(mode)` (capa de override oscura sobre la base clara). `app.py` lee el modo y colorea el menú de iconos; su `key` incluye el modo para que el componente cacheado se re-renderice. Limitación: el grid de `st.dataframe` se tematiza a nivel de config, no por CSS → se queda claro.
+- [x] **Overview rediseñado (PRs #70-73):** la primera impresión pasa a 3 gráficas variadas y dark-aware — **barras GPU-h por entorno** + **tarta del split train/val/test** + **treemap de desbalance de clases** — más la tarjeta del run activo (con mini-curvas F1/loss) y la tabla "All runs". Compactado para entrar en una pantalla (~1180 px): tarjeta activa más ancha, curvas a 108 px, alturas y tabla recortadas. (Iteró por varias versiones: lollipop/scatter → dataset showcase → tiempo/energía → split; el usuario eligió el split del dataset para la tarta.)
+- [x] **Per-class → heatmap + support (PRs #75-77):** la vista por epoch pasa de dumbbell (3 puntos solapados) a **heatmap anotado clases×(Precision/Recall/F1)** (color rojo→ámbar→verde, valor en cada celda) → se lee al instante qué clase falla y por qué (precisión vs recall). Añadido **support** (frecuencia de cada clase en validación, columna + hover) derivado del **dataset** (`val_support_from_parquet`) → sale en runs ya entrenados **sin reentrenar**; escalado al tamaño de val del run (full = exacto, subset = aprox + nota).
+- [x] **Confusions simplificado (rama):** de 4 secciones a **1 + avanzada** — protagonista "Top label confusions" (off-diagonal de la co-activación) + matriz 19×19 en expander. Quitados recall-by-class (ya en Per-class) y el per-class profile (redundante). Matriz sin `paper_bgcolor="white"` → respeta el modo oscuro.
+- [x] **Fix nombres de clase / 18→19 (PR #77 + rama):** una clase usa nombre CORINE completo en el metadata y abreviado en `CLASS_NAMES` → contaba 0 y la galería mostraba 18/19. Alias `_canon_label` aplicado en los conteos del parquet (support, treemap) **y** en `find_example_patches` + `_class_gallery` → galería 19/19 y support correcto.
+- [x] **Carrusel de fotos (rama):** la tira de fotos del Overview pasa a carrusel paginado (5/pág, flechas ◀▶, contador "Classes X–Y of 19") que recorre las 19 clases (5·5·5·4), con cicl­ado y rejilla fija de 5 columnas.
+- [x] **Curves — veredicto coherente (PR #74):** el aviso de una línea ahora se pone amarillo también cuando la val loss diverge (antes solo por gap train-val > 0.1); texto y color sincronizados.
+- [x] **Flujo git restablecido:** `develop` puesto al día con `main` (estaba 124 commits por detrás — toda la sesión previa fui directo a main por error). De aquí en adelante: feature → PR a **develop**, develop → main solo cuando el usuario valida.
+- [x] **Dark mode (rama):** toggle "Dark mode" en la sidebar; `theme.py` mode-aware (`register_plotly_template(mode)` + `inject_css(mode)`); `_show()` fuerza `template="tfg"` + `theme=None` (el default `theme="streamlit"` forzaba fondo claro en modo oscuro). El menú de iconos recibe el modo en su `key` para re-renderizar. Limitación: el grid de `st.dataframe` se tematiza por config, no por CSS.
+- [x] **Overview rediseñado (rama):** primera impresión con 3 gráficas variadas dark-aware — **barras GPU-h por entorno** + **tarta del split train/val/test** + **treemap de desbalance de clases** — + tarjeta del run activo (mini F1/loss) + tabla "All runs". Compactado para entrar en una pantalla.
+- [x] **Compare unificado en una sección (rama):** multiselect (≤8) → resumen (Mode/Precision) + speedup vs baseline + radar + energía + overlays; tabla de configuración fusionada con la de resumen; nombres de run horizontales; per-class heatmap con marcos como Run results. Eliminada la sección **Analysis** (más estética que funcional).
+- [x] **Feasibility — análisis profundo + reestructura (rama):** auditoría de cálculo (las estimaciones "muy diferentes" eran: batch no casado → ahora `build_comparison` casa por batch del run; runs AMP comparados contra estimación fp32 → ahora `est = fp32_est / speedup_precisión` medido; DDP sin fila de tiempo → `est = single_est / speedup_predicho`; el resto eran gaps reales de I/O en vit_tiny/NFS, explicados). **Report** adelgazado: fuera "Load distribution per GPU" (heurística a ojo), fuera overlay de scaling-laws (multiselect+Amdahl), fuera gráfica min/época redundante; coste nube al expander usando los mismos epochs. Tabla "Compare vs runs": columna Note legible (quitada Model redundante + ancho large) + default que prioriza single-GPU + caption del requisito de batch benchmarkeado.
+- [x] **`tfg predict` enriquecido (rama):** el CLI ya no da solo números finales — muestra **el trabajo** como la tabla de fórmulas de la web: headline + **fórmula de tiempo** `max(compute, I/O) + sync` con cada término + **fórmula de memoria** (weights+grad+Adam + activations + overhead = total vs GPU, fits/OOM, max batch) + calidad + **tabla de escalado 1→8 GPUs** + **coste** (5 proveedores) + **supuestos** (r_c/r_io/params/MFU). Expuestos `t_compute_s/t_io_s/t_sync_s/batch_per_gpu` en `Prediction` (defaults, compatibles). Help de `dashboard` actualizado (Predict pasó al terminal y luego volvió también a la web).
+- [x] **Predict de vuelta en la web (rama):** Feasibility pasa a **3 tabs: Predict · Compare vs runs · Report**. `src/web/tabs/feasibility/predict.py` (`_analytic_predictor`) replica el `tfg predict` enriquecido — formulario (modelo/GPU/estrategia/n_gpus/precisión/disco/dataset/batch/epochs) → headline + tablas de fórmula (tiempo + memoria) + calidad con curva + escalado 1→8 GPU (gráfica, solo distribuido) + coste nube + supuestos + expander de calibración con throughput medido. Solo calcula fórmulas, no entrena → respeta "la web mira, el terminal ejecuta".
+- [x] **Revisión a fondo del CLI:** todos los comandos verificados (predict/feasibility/train dry-run/eval/runs/menu/dashboard), sin referencias obsoletas (solo importa `eval_parser` y `run_registry` de la web, intactos), 16 tests de CLI en verde.
+- [x] **Suite en 367 tests.** README reescrito (sin emojis, requisitos previos + instalación + qué funciona sin GPU/dataset + entrenar de verdad; tutor/cotutor correctos). Diagrama de clases regenerado (paquete `feasibility/` con `predict.py`).
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.

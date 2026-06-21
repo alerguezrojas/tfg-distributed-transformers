@@ -10,7 +10,7 @@ import streamlit as st
 from src.web.batch_parser import parse_batch_csv
 from src.web.dataset_stats import (
     CLASS_NAMES, class_distribution_from_parquet, find_example_patches, load_rgb_image,
-    val_support_from_parquet,
+    val_support_from_parquet, _canon_label,
 )
 from src.web.feasibility_parser import parse_feasibility_csv
 from src.web.log_parser import parse_log
@@ -166,7 +166,9 @@ def _class_gallery(parquet_str: str, root_str: str):
     for pid, arr in zip(df["patch_id"], df["labels"]):
         if arr is None:
             continue
-        labs = list(arr)
+        # Canonicalise so abbreviated CLASS_NAMES match the metadata's full CORINE
+        # names — otherwise that class never gets an example and the gallery is 18/19.
+        labs = [_canon_label(x) for x in arr]
         total_label_occurrences += len(labs)
         for c in labs:
             if c in counts:

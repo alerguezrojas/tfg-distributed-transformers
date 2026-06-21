@@ -9,10 +9,10 @@ y estudio sistemático de su **escalado distribuido** (datos, modelo y hardware 
 
 [![CI](https://github.com/alerguezrojas/tfg-distributed-transformers/actions/workflows/ci.yml/badge.svg)](https://github.com/alerguezrojas/tfg-distributed-transformers/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
-![Tests](https://img.shields.io/badge/tests-366%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-367%20passing-brightgreen)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-ee4c2c)
 
-**Autor:** Alejandro Rodríguez Rojas · **Tutor:** Paco Almeida
+**Autor:** Alejandro Rodríguez Rojas · **Tutor:** Francisco Carmelo Almeida Rodríguez · **Cotutor:** Daniel Suárez Labena
 
 </div>
 
@@ -38,7 +38,9 @@ distribuido depende del ratio cómputo/E-S y del balance del hardware**, y que e
 - [Aportaciones principales](#aportaciones-principales)
 - [Resultados](#resultados)
 - [Arquitectura del software](#arquitectura-del-software)
-- [Puesta en marcha y uso](#puesta-en-marcha-y-uso)
+- [Puesta en marcha](#puesta-en-marcha)
+- [Cómo probarlo](#cómo-probarlo)
+- [Entrenar y evaluar de verdad](#entrenar-y-evaluar-de-verdad)
 - [Estructura del repositorio](#estructura-del-repositorio)
 - [Pila tecnológica y pruebas](#pila-tecnológica-y-pruebas)
 - [Autoría](#autoría)
@@ -50,9 +52,9 @@ desacopladas (el terminal *ejecuta*, la web *visualiza* — el modelo de W&B/MLf
 
 | Herramienta | Qué hace |
 |---|---|
-| 🔮 **Predictor analítico** (`src/performance_model.py`) | Estima **tiempo, memoria/OOM, coste en la nube y calidad (F1)** de cualquier (modelo, GPU, estrategia, batch, precisión, dataset) **sin ejecutar nada**, a partir de fórmulas calibradas con datos reales. |
-| ⚙️ **Entrenador** (`scripts/` + `src/training/`) | Entrena en **single-GPU, DDP, paralelismo de modelo y GPU+CPU heterogéneo**, con LLRD, warmup, *early stopping*, *label smoothing*, *mixup*, *focal loss* y medición de energía. |
-| 📊 **Dashboard** (`src/web/`, Streamlit) | Visualiza y **compara** entrenamientos, contrasta **predicho vs. real** y explora el dataset. |
+| **Predictor analítico** (`src/performance_model.py`) | Estima **tiempo, memoria/OOM, coste en la nube y calidad (F1)** de cualquier (modelo, GPU, estrategia, batch, precisión, dataset) **sin ejecutar nada**, a partir de fórmulas calibradas con datos reales. |
+| **Entrenador** (`scripts/` + `src/training/`) | Entrena en **single-GPU, DDP, paralelismo de modelo y GPU+CPU heterogéneo**, con LLRD, warmup, *early stopping*, *label smoothing*, *mixup*, *focal loss* y medición de energía. |
+| **Dashboard** (`src/web/`, Streamlit) | Visualiza y **compara** entrenamientos, **predice** configuraciones, contrasta **predicho vs. real** y explora el dataset. |
 
 Todo se opera desde **un único punto de entrada en terminal**, `tfg`, y el código se estructura
 siguiendo SOLID (sin ficheros monolíticos: la lógica vive en paquetes con una responsabilidad por módulo).
@@ -94,32 +96,82 @@ TracingDecorator / DeepTracingDecorator   ← controlador (define fit() vía Tem
 
 Diagrama de clases completo: **[`docs/class_diagram.svg`](docs/class_diagram.svg)**.
 
-## Puesta en marcha y uso
+## Puesta en marcha
 
-Requiere [uv](https://docs.astral.sh/uv/). `uv sync` crea el entorno. Un único comando, `tfg`, opera
-todo lo que usa la máquina:
+### Requisitos previos
+
+| Requisito | Para qué | Obligatorio |
+|---|---|---|
+| **git** | Clonar el repositorio | Sí |
+| **[uv](https://docs.astral.sh/uv/)** | Gestor de paquetes y entornos de Python | Sí |
+| **Python 3.12** | Intérprete | `uv` lo instala automáticamente si falta |
+| **GPU NVIDIA + CUDA** | Entrenar y medir rendimiento | No (las pruebas, el predictor y el dashboard funcionan solo con CPU) |
+| **Dataset BigEarthNet-S2** | Entrenar/evaluar con datos reales | No (el repo ya incluye los *logs* de los entrenamientos para que el dashboard funcione) |
+
+### Instalación (3 pasos)
 
 ```bash
-uv run tfg.py --help                     # lista de comandos
+# 1. Instalar uv (si no lo tienes). Linux/macOS:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+#    (Windows PowerShell: irm https://astral.sh/uv/install.ps1 | iex)
 
-# Predecir antes de entrenar (sin GPU): tiempo, memoria, coste y F1 esperada
-uv run tfg.py predict --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2 --precision amp
+# 2. Clonar el repositorio
+git clone https://github.com/alerguezrojas/tfg-distributed-transformers.git
+cd tfg-distributed-transformers
 
-# Entrenar — la estrategia decide el lanzamiento
+# 3. Crear el entorno con todas las dependencias
+uv sync
+```
+
+`uv sync` crea un entorno aislado en `.venv/` y descarga PyTorch, timm, Streamlit, etc. No necesitas
+activar el entorno: cada comando se ejecuta con `uv run …`, que lo usa automáticamente.
+
+## Cómo probarlo
+
+Lo siguiente **funciona sin GPU y sin descargar el dataset** (el repositorio ya trae los resultados de
+los entrenamientos reales en `logs/`):
+
+```bash
+# Ejecutar toda la suite de pruebas (solo CPU, ~10 s, no necesita dataset)
+uv run pytest -q
+
+# Predecir una configuración SIN entrenar: tiempo, memoria, coste y F1 esperada,
+# con las fórmulas detrás de cada número
+uv run tfg.py predict --model vit_base_patch16_224 --gpu "Tesla T4" \
+    --strategy ddp --n-gpus 2 --precision amp
+
+# Abrir el dashboard web (ya poblado con los entrenamientos del repo)
+uv run tfg.py dashboard          # abre http://localhost:8501
+
+# Listar los entrenamientos incluidos · menú interactivo guiado
+uv run tfg.py runs
+uv run tfg.py menu
+
+# Ver la ayuda de cualquier comando
+uv run tfg.py --help
+uv run tfg.py predict --help
+```
+
+## Entrenar y evaluar de verdad
+
+Esto **requiere una GPU NVIDIA y el dataset**. BigEarthNet-S2 (~63 GB) se descarga del
+[registro de Zenodo 10891137](https://zenodo.org/records/10891137); ajusta las rutas `data.root` y
+`data.metadata` en el `config` que uses (ver `configs/`).
+
+```bash
+# Entrenar — la estrategia decide cómo se lanza (torchrun para DDP, etc.)
 uv run tfg.py train --strategy single --config configs/train_v3.yaml
 uv run tfg.py train --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.yaml
 
-# Evaluar en el conjunto de test (número honesto final)
+# Evaluar un checkpoint en el conjunto de test (número honesto final)
 uv run tfg.py eval --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
 
-# Listar entrenamientos · abrir el dashboard · menú interactivo guiado
-uv run tfg.py runs
-uv run tfg.py dashboard
-uv run tfg.py menu
+# Benchmark de viabilidad real en esta máquina (mide throughput de verdad)
+uv run tfg.py feasibility --model vit_base_patch16_224 --batch-sizes 32,64
 ```
 
-> Cada comando admite `--dry-run` (imprime el comando exacto sin ejecutarlo, útil para copiarlo en el
-> clúster). Los scripts de `scripts/` siguen funcionando por separado; `tfg` solo los unifica.
+> Cualquier comando admite `--dry-run`: imprime el comando exacto sin ejecutarlo, útil para copiarlo en
+> el clúster o en Kaggle. Los scripts de `scripts/` siguen funcionando por separado; `tfg` solo los unifica.
 
 ## Estructura del repositorio
 
@@ -134,6 +186,7 @@ uv run tfg.py menu
 | `src/web/` | dashboard Streamlit modular (orquestador + `tabs/` en paquetes + `ui/`) |
 | `scripts/` | entrenamiento (single / DDP / heterogéneo / model-parallel), `check_feasibility`, `eval` |
 | `configs/` | configuraciones (local / Verode / Kaggle / distribuido) |
+| `logs/` | resultados reales de los entrenamientos (alimentan el dashboard sin necesitar el dataset) |
 | `tests/` | suite (unitarios + integración), **solo CPU** |
 | `docs/` | diagrama de clases, *runbooks* y derivación del modelo de rendimiento |
 
@@ -143,7 +196,7 @@ uv run tfg.py menu
 externo; los entrenamientos se realizaron en local (RTX 3060 Ti), en el clúster **VERODE** de la ULL
 (Tesla V100) y en **Kaggle** (2× Tesla T4).
 
-La calidad se cuida con una suite de **366 pruebas** (unitarias + integración, ejecutables sin GPU ni
+La calidad se cuida con una suite de **367 pruebas** (unitarias + integración, ejecutables sin GPU ni
 dataset) y **integración continua** en cada *push* / *pull request*:
 
 ```bash
@@ -153,7 +206,7 @@ uv run pytest -q
 ## Autoría
 
 **Alejandro Rodríguez Rojas** — Grado en Ingeniería Informática, Universidad de La Laguna.
-Tutor: **Paco Almeida**. Curso 2025/2026.
+Tutor: **Francisco Carmelo Almeida Rodríguez**. Cotutor: **Daniel Suárez Labena**. Curso 2025/2026.
 
 > Documentación operativa detallada (clúster, dataset, historial de experimentos y decisiones de
 > diseño): [`CLAUDE.md`](CLAUDE.md).
