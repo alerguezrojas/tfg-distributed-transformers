@@ -89,6 +89,15 @@ def _analytic_predictor() -> None:
     if p.calibrated:
         st.success("Calibrated with the measured throughput you entered.")
 
+    # One-line headline so the verdict is scannable before the metric grids.
+    _fit = "fits" if p.fits_in_memory else "**OOM**"
+    _sp = f" · {p.speedup:.1f}× speedup" if strategy != "single" else ""
+    st.markdown(
+        f"**{model_name.replace('_patch16_224','')} · {gpu_name} · {strategy} · "
+        f"{precision}** → ~{_fmt_secs(p.time_per_epoch_train_s)}/epoch{_sp} · "
+        f"{p.vram_per_gpu_gb:.1f} GB/GPU ({_fit}) · "
+        f"{_fmt_secs(p.time_total_train_s)} total for {int(epochs)} epochs")
+
     st.markdown("#### Prediction")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Train / epoch", _fmt_secs(p.time_per_epoch_train_s))

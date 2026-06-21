@@ -1,8 +1,6 @@
 """Feasibility — report."""
 from __future__ import annotations
 
-import time
-
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -16,13 +14,39 @@ def render_report(meta, bdf_feas, feasibility_csvs) -> object:
         st.info("No feasibility CSVs found. Run the analysis from the 'Run analysis' sub-tab.")
         subtab_ddp_opt = st.container()
     else:
-        # One scrolling page with collapsible sections (no nested tab row).
-        # The first is open; the rest start collapsed → summary-first.
+        # ── Summary first: the headline numbers, always visible. The details go
+        #    into the collapsed expanders below (so it is not overwhelming). ──────
+        _viable = bdf_feas[bdf_feas["oom"] == "no"].copy() if not bdf_feas.empty else bdf_feas
+        _tp_col = _throughput_col(_viable) if not _viable.empty else None
+        _best_tp = float(_viable[_tp_col].max()) if _tp_col and not _viable.empty else None
+        _max_batch = (int(_viable["batch_size"].max())
+                      if "batch_size" in _viable.columns and not _viable.empty else None)
+        _per_ep = next((c for c in ["est_total_min_per_epoch", "est_min_per_epoch_30ep"]
+                        if not bdf_feas.empty and c in bdf_feas.columns), None)
+        _best_min = (float(_viable[_per_ep].min())
+                     if _per_ep and not _viable.empty else None)
+        _io = 0.0
+        try:
+            _io = float(meta.get("dataset", {}).get("io_bottleneck_ratio", 0) or 0)
+        except (TypeError, ValueError, AttributeError):
+            _io = 0.0
+
+        s1, s2, s3, s4, s5 = st.columns(5)
+        s1.metric("GPU", meta.get("hardware_name", "—"))
+        s2.metric("Best throughput", f"{_best_tp:.0f} img/s" if _best_tp else "—")
+        s3.metric("Fastest epoch", f"{_best_min:.1f} min" if _best_min else "—")
+        s4.metric("Max batch (fits)", _max_batch if _max_batch else "—")
+        s5.metric("Bottleneck",
+                  "I/O-bound" if _io > 1.2 else ("Compute-bound" if _io else "—"))
+        st.caption("Headline numbers of the selected report. Open a section below for "
+                   "the full detail.")
+
+        # Collapsible detail sections (all collapsed — the summary above is the gist).
         _rt_titles = [
             "Hardware & precision", "Dataset I/O & memory",
             "Throughput & time", "Distributed scaling", "Cloud cost",
         ]
-        _rt = [st.expander(t, expanded=(i == 0)) for i, t in enumerate(_rt_titles)]
+        _rt = [st.expander(t, expanded=False) for t in _rt_titles]
 
         with _rt[0]:
             # ── System profile ─────────────────────────────────────────────

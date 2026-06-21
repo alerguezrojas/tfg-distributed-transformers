@@ -46,7 +46,8 @@ def render(ctx: DashboardContext) -> None:
     with tab_compare:
         subtab_prediction = render_validate(ctx)
         with subtab_prediction:
-            render_f1_prediction(meta, selected_run, feasibility_csvs)
+            with st.expander("Expected F1 curve (empirical prior vs the active run)"):
+                render_f1_prediction(meta, selected_run, feasibility_csvs)
 
     # ── Predict: analytic estimate for any config, no run needed ────────────────
     with tab_predict:
