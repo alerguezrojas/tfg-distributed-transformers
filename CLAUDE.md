@@ -7,7 +7,8 @@ Contexto completo del proyecto para continuar el trabajo en cualquier máquina.
 ## Sobre el proyecto
 
 **TFG:** "Entrenamiento distribuido de modelos abiertos de aprendizaje automático basados en Transformers"
-**Tutor:** Paco Almeida (Universidad de La Laguna)
+**Tutor:** Francisco Carmelo Almeida Rodríguez (Universidad de La Laguna)
+**Cotutor:** Daniel Suárez Labena
 **Alumno:** Alejandro Rodríguez Rojas
 **Entrega:** junio/julio 2026
 **Repo:** https://github.com/alerguezrojas/tfg-distributed-transformers
@@ -898,7 +899,9 @@ src/web/
                             #   perclass.py = heatmap clases×(P/R/F1) + support (val); confusions.py = top
                             #   co-activación + matriz 19×19 (avanzado); curves.py = veredicto color-coded
     comparison.py           # Compare unificado: multiselect → resumen + speedup vs baseline + radar + energía + overlays
-    feasibility.py          # Predict (predictor analítico) / Validate (predicho vs real) / Measure (benchmark, avanzado)
+    feasibility/            # paquete: Predict (predictor analítico) / Compare vs runs (predicho vs real) / Report (benchmark)
+                            #   predict.py = formulario → headline + tabla fórmula tiempo + tabla fórmula memoria
+                            #   + calidad + escalado 1→8 GPU + coste; validate.py = Compare vs runs; report.py + ddp.py + study.py
     data_models.py          # Import runs (subir zip / apuntar a carpeta → copia a logs/)
   run_import.py             # import_run_archive (zip) / import_run_folder / _dest_relpath (puro, testeable)
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
@@ -938,7 +941,7 @@ uv run streamlit run src/web/app.py
 | **Overview** | Dashboard compacto: tira de 8 KPIs · ranking Best F1 · tarjeta del run activo (mini F1/loss + veredicto) · velocidad media/epoch · donut de estrategias · **panel del dataset** (splits, subset usado por los runs recientes, clases frecuentes, **galería de las 19 clases** con info multi-etiqueta) · tabla "All runs" seleccionable con sparklines |
 | **Run results** | **Una fila de pestañas**: Curves · Per-class (barras+tendencia) · Confusions (diagnósticos multi-etiqueta) · Batch (selector de vista) · Details (tiempo + config/anomalías/log) |
 | **Compare** | **Sección única**: multiselect (≤8 runs) → resumen · speedup vs baseline (tabla+barras+veredictos+validación feasibility+escalado) · radar · energía · overlays |
-| **Feasibility** | **Predict** (predictor analítico: tiempo/speedup/memoria/coste para cualquier config sin benchmark + curva 1→8 GPUs) · **Validate** (predicho vs real) · **Measure (advanced)** (benchmark real en esta máquina: generar informe + verlo en expanders + estudio de convergencia) |
+| **Feasibility** | **Predict** (predictor analítico: formulario → headline + **tablas con las fórmulas** de tiempo `max(compute,I/O)+sync` y memoria `weights+grad+Adam+activations+overhead` con los valores puestos + calidad + escalado 1→8 GPU + coste nube; mismo motor que `tfg predict`) · **Compare vs runs** (predicho vs real con tabla de fórmula por métrica) · **Report** (benchmark generado en terminal con `tfg feasibility`: hardware, throughput, tiempo, escalado distribuido, coste, estudio de convergencia) |
 | **Import** | Importar runs entrenados en otra máquina (zip o carpeta → copia a `logs/`) |
 
 **Predicción vs realidad** (rediseño de la antigua "Comparar vs training"): elige el run en la barra lateral → auto-empareja su feasibility (mismo modelo/entorno); muestra estimado vs real con semáforo y un veredicto en lenguaje natural (precisa / optimista por I/O / pesimista). Avisa si el run es distribuido (la estimación es single-GPU → la diferencia incluye el speedup).
@@ -1099,6 +1102,14 @@ Sesión de mejoras incrementales sobre el dashboard, decididas una a una con el 
 - [x] **Carrusel de fotos (rama):** la tira de fotos del Overview pasa a carrusel paginado (5/pág, flechas ◀▶, contador "Classes X–Y of 19") que recorre las 19 clases (5·5·5·4), con cicl­ado y rejilla fija de 5 columnas.
 - [x] **Curves — veredicto coherente (PR #74):** el aviso de una línea ahora se pone amarillo también cuando la val loss diverge (antes solo por gap train-val > 0.1); texto y color sincronizados.
 - [x] **Flujo git restablecido:** `develop` puesto al día con `main` (estaba 124 commits por detrás — toda la sesión previa fui directo a main por error). De aquí en adelante: feature → PR a **develop**, develop → main solo cuando el usuario valida.
+- [x] **Dark mode (rama):** toggle "Dark mode" en la sidebar; `theme.py` mode-aware (`register_plotly_template(mode)` + `inject_css(mode)`); `_show()` fuerza `template="tfg"` + `theme=None` (el default `theme="streamlit"` forzaba fondo claro en modo oscuro). El menú de iconos recibe el modo en su `key` para re-renderizar. Limitación: el grid de `st.dataframe` se tematiza por config, no por CSS.
+- [x] **Overview rediseñado (rama):** primera impresión con 3 gráficas variadas dark-aware — **barras GPU-h por entorno** + **tarta del split train/val/test** + **treemap de desbalance de clases** — + tarjeta del run activo (mini F1/loss) + tabla "All runs". Compactado para entrar en una pantalla.
+- [x] **Compare unificado en una sección (rama):** multiselect (≤8) → resumen (Mode/Precision) + speedup vs baseline + radar + energía + overlays; tabla de configuración fusionada con la de resumen; nombres de run horizontales; per-class heatmap con marcos como Run results. Eliminada la sección **Analysis** (más estética que funcional).
+- [x] **Feasibility — análisis profundo + reestructura (rama):** auditoría de cálculo (las estimaciones "muy diferentes" eran: batch no casado → ahora `build_comparison` casa por batch del run; runs AMP comparados contra estimación fp32 → ahora `est = fp32_est / speedup_precisión` medido; DDP sin fila de tiempo → `est = single_est / speedup_predicho`; el resto eran gaps reales de I/O en vit_tiny/NFS, explicados). **Report** adelgazado: fuera "Load distribution per GPU" (heurística a ojo), fuera overlay de scaling-laws (multiselect+Amdahl), fuera gráfica min/época redundante; coste nube al expander usando los mismos epochs. Tabla "Compare vs runs": columna Note legible (quitada Model redundante + ancho large) + default que prioriza single-GPU + caption del requisito de batch benchmarkeado.
+- [x] **`tfg predict` enriquecido (rama):** el CLI ya no da solo números finales — muestra **el trabajo** como la tabla de fórmulas de la web: headline + **fórmula de tiempo** `max(compute, I/O) + sync` con cada término + **fórmula de memoria** (weights+grad+Adam + activations + overhead = total vs GPU, fits/OOM, max batch) + calidad + **tabla de escalado 1→8 GPUs** + **coste** (5 proveedores) + **supuestos** (r_c/r_io/params/MFU). Expuestos `t_compute_s/t_io_s/t_sync_s/batch_per_gpu` en `Prediction` (defaults, compatibles). Help de `dashboard` actualizado (Predict pasó al terminal y luego volvió también a la web).
+- [x] **Predict de vuelta en la web (rama):** Feasibility pasa a **3 tabs: Predict · Compare vs runs · Report**. `src/web/tabs/feasibility/predict.py` (`_analytic_predictor`) replica el `tfg predict` enriquecido — formulario (modelo/GPU/estrategia/n_gpus/precisión/disco/dataset/batch/epochs) → headline + tablas de fórmula (tiempo + memoria) + calidad con curva + escalado 1→8 GPU (gráfica, solo distribuido) + coste nube + supuestos + expander de calibración con throughput medido. Solo calcula fórmulas, no entrena → respeta "la web mira, el terminal ejecuta".
+- [x] **Revisión a fondo del CLI:** todos los comandos verificados (predict/feasibility/train dry-run/eval/runs/menu/dashboard), sin referencias obsoletas (solo importa `eval_parser` y `run_registry` de la web, intactos), 16 tests de CLI en verde.
+- [x] **Suite en 367 tests.** README reescrito (sin emojis, requisitos previos + instalación + qué funciona sin GPU/dataset + entrenar de verdad; tutor/cotutor correctos). Diagrama de clases regenerado (paquete `feasibility/` con `predict.py`).
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.

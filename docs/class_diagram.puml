@@ -401,6 +401,8 @@ package "src.support" as support #FDFEFE {
     + fits_in_memory: bool
     + recommended_batch: int
     + calibrated: bool
+    + t_compute_s / t_io_s / t_sync_s: float
+    + batch_per_gpu: int
   }
 
   note as perfmodel_note
@@ -679,11 +681,13 @@ package "src.web" #FDFEFE {
     **tabs/** — cada uno expone render(ctx):
     home (Overview: KPIs + barras/tarta/treemap +
     run activo + carrusel de fotos + tabla) ·
-    comparison · analysis · dataset · data_models ·
+    comparison (unificado) · dataset · data_models ·
     **run/** (paquete: curves · perclass=heatmap+support
     · confusions=top+matriz · batch · details) ·
-    feasibility + feasibility_predict (Predict)
-    (5 secciones, máx. 1 nivel de pestañas)
+    **feasibility/** (paquete: predict=formulario+tablas
+    de fórmula tiempo/memoria+escalado+coste · validate
+    =Compare vs runs · report · ddp · study)
+    (5 secciones, máx. 1 nivel de pestañas; modo claro/oscuro)
   end note
 
 }
