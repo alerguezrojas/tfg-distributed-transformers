@@ -314,7 +314,8 @@ def dashboard(
     port: int = typer.Option(8501, help="Port for the Streamlit server."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
 ) -> None:
-    """Open the web dashboard (read-only visualisation of runs and predictions)."""
+    """Open the read-only web dashboard (Overview · Run results · Compare ·
+    Feasibility · Dataset). Plan a config without running with `tfg predict`."""
     cmd = [sys.executable, "-m", "streamlit", "run", "src/web/app.py", "--server.port", str(port)]
     _run(cmd, dry_run)
 
