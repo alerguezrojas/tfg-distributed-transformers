@@ -91,7 +91,7 @@ def test_dur_str_exact():
 _FEAS_PKG = [
     "tabs/feasibility/__init__.py", "tabs/feasibility/predict.py",
     "tabs/feasibility/validate.py", "tabs/feasibility/report.py",
-    "tabs/feasibility/study.py", "tabs/feasibility/ddp.py", "tabs/feasibility/run_form.py",
+    "tabs/feasibility/study.py", "tabs/feasibility/ddp.py",
 ]
 _CMP_PKG = [
     "tabs/comparison/__init__.py", "tabs/comparison/_common.py",
@@ -138,8 +138,7 @@ def tabs_source() -> str:
             "comparison/__init__.py",
             "feasibility/validate.py", "feasibility/report.py",
             "feasibility/study.py", "feasibility/ddp.py",
-            "feasibility/run_form.py", "feasibility/predict.py",
-            "feasibility/__init__.py"]
+            "feasibility/predict.py", "feasibility/__init__.py"]
     return "\n".join(_src(f"tabs/{m}") for m in mods)
 
 

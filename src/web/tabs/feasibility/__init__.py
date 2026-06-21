@@ -1,5 +1,8 @@
-"""Feasibility page — orchestrator. Predict / Validate / Measure, one module
-per responsibility (predict, validate, report, study, ddp, run_form)."""
+"""Feasibility page — orchestrator. Compare vs runs / Predict / Report, one
+module per responsibility (validate, predict, report, study, ddp).
+
+The web only *reads*: reports are generated from the terminal (`tfg feasibility`),
+consistent with removing the Launcher — no benchmark is run from the browser."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,7 +18,6 @@ from src.web.tabs.feasibility.validate import render_validate, render_f1_predict
 from src.web.tabs.feasibility.report import render_report
 from src.web.tabs.feasibility.study import render_study
 from src.web.tabs.feasibility.ddp import render_ddp_analysis
-from src.web.tabs.feasibility.run_form import render_run_form
 
 
 def render(ctx: DashboardContext) -> None:
@@ -23,22 +25,22 @@ def render(ctx: DashboardContext) -> None:
     st.markdown("## Feasibility")
     st.caption("**Compare vs runs** puts the predictions next to what actually "
                "happened · **Predict** estimates any config with the analytic model "
-               "(no run needed) · **Measure (advanced)** benchmarks this machine.")
+               "(no run needed) · **Report** shows a benchmark generated in the terminal.")
 
     # One visible report selector (it used to be hidden in the sidebar). It feeds
-    # the F1 prediction in Compare and the whole Measure tab.
+    # the F1 prediction in Compare and the whole Report tab.
     feasibility_csvs = _get_feasibility_csvs()
     if feasibility_csvs:
         selected_feas_path = st.selectbox(
             "Feasibility report", [str(p) for p in feasibility_csvs],
             format_func=_feas_label, key="feas_sel",
-            help="Used by Compare's F1 prediction and the Measure tab.")
+            help="Used by Compare's F1 prediction and the Report tab.")
         meta, bdf_feas = parse_feasibility_csv(Path(selected_feas_path))
     else:
         meta, bdf_feas = {}, pd.DataFrame()
 
-    tab_compare, tab_predict, tab_measure = st.tabs(
-        ["Compare vs runs", "Predict", "Measure (advanced)"])
+    tab_compare, tab_predict, tab_report = st.tabs(
+        ["Compare vs runs", "Predict", "Report"])
 
     # ── Compare vs runs: predictions/estimates next to the real results ─────────
     with tab_compare:
@@ -50,15 +52,18 @@ def render(ctx: DashboardContext) -> None:
     with tab_predict:
         _analytic_predictor()
 
-    # ── Measure (advanced): real benchmark on this machine + study ──────────────
-    with tab_measure:
-        st.caption("Run the real benchmark on this machine to calibrate the "
-                   "predictor or profile the hardware. The report shown is the one "
-                   "selected above.")
-        render_run_form()
-        st.markdown("---")
-        subtab_ddp_opt = render_report(meta, bdf_feas, feasibility_csvs)
-        with subtab_ddp_opt:
-            render_ddp_analysis(meta, feasibility_csvs)
-        st.markdown("---")
-        render_study(meta, feasibility_csvs)
+    # ── Report: read a benchmark generated from the terminal (web only watches) ──
+    with tab_report:
+        if not feasibility_csvs:
+            st.info("No feasibility reports yet. Generate one from the terminal — e.g. "
+                    "`uv run tfg.py feasibility --model vit_base_patch16_224 "
+                    "--batch-sizes 32,64` — and it will appear here.")
+        else:
+            st.caption("Benchmark of the report selected above (generated in the "
+                       "terminal with `tfg feasibility`): hardware, throughput, time "
+                       "and cost estimates, distributed scaling and the convergence study.")
+            subtab_ddp_opt = render_report(meta, bdf_feas, feasibility_csvs)
+            with subtab_ddp_opt:
+                render_ddp_analysis(meta, feasibility_csvs)
+            st.markdown("---")
+            render_study(meta, feasibility_csvs)
