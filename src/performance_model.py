@@ -290,6 +290,12 @@ class Prediction:
     recommended_batch: int
     calibrated: bool          # True if a measured r_c/r_io was used
     notes: list[str] = field(default_factory=list)
+    # Per-epoch time breakdown (seconds), so callers can show the formula behind it:
+    # time/epoch = max(compute, io) + sync. Bottleneck = the dominant term.
+    t_compute_s: float = 0.0
+    t_io_s: float = 0.0
+    t_sync_s: float = 0.0
+    batch_per_gpu: int = 0
 
 
 def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
@@ -334,6 +340,8 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         speedup=ep.speedup, efficiency=ep.efficiency, bottleneck=ep.bottleneck,
         vram_per_gpu_gb=vram, fits_in_memory=fits, recommended_batch=rec_b,
         calibrated=bool(rc_measured or rio_measured), notes=notes,
+        t_compute_s=ep.t_compute_s, t_io_s=ep.t_io_s, t_sync_s=ep.t_sync_s,
+        batch_per_gpu=batch_per_gpu,
     )
 
 
