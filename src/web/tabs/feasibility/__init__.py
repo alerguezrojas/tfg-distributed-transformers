@@ -1,6 +1,7 @@
-"""Feasibility page — orchestrator. Two read-only tabs: Compare vs runs / Report
-(validate, report, study, ddp). The analytic predictor lives in the terminal
-(`tfg predict`); the web only *reads* — reports are generated with `tfg feasibility`."""
+"""Feasibility page — orchestrator. Three tabs: Predict / Compare vs runs / Report.
+Predict is the analytic predictor (closed-form, no GPU); Compare puts predictions
+next to real runs; Report reads a benchmark generated in the terminal
+(`tfg feasibility`). The web never *trains* — Predict only computes formulas."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -11,6 +12,7 @@ import streamlit as st
 from src.web.feasibility_parser import parse_feasibility_csv
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import _get_feasibility_csvs, _feas_label
+from src.web.tabs.feasibility.predict import _analytic_predictor
 from src.web.tabs.feasibility.validate import render_validate, render_f1_prediction
 from src.web.tabs.feasibility.report import render_report
 from src.web.tabs.feasibility.study import render_study
@@ -20,22 +22,28 @@ from src.web.tabs.feasibility.ddp import render_ddp_analysis
 def render(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     st.markdown("## Feasibility")
-    st.caption("**Compare vs runs** puts the predictions next to what actually "
-               "happened · **Report** shows a benchmark generated in the terminal. "
-               "Plan a config without running with `tfg predict` in the terminal.")
+    st.caption("**Predict** estimates any config from formulas (no GPU) · "
+               "**Compare vs runs** puts those predictions next to what actually "
+               "happened · **Report** shows a benchmark generated in the terminal "
+               "with `tfg feasibility`.")
 
-    # One visible report selector. It feeds the F1 prediction in Compare and Report.
     feasibility_csvs = _get_feasibility_csvs()
+    tab_predict, tab_compare, tab_report = st.tabs(["Predict", "Compare vs runs", "Report"])
+
+    # ── Predict: closed-form estimate for any config (no GPU, just formulas) ─────
+    with tab_predict:
+        _analytic_predictor()
+
+    # The report selector (used by Compare's F1 prediction and the Report tab).
     if feasibility_csvs:
-        selected_feas_path = st.selectbox(
-            "Feasibility report", [str(p) for p in feasibility_csvs],
-            format_func=_feas_label, key="feas_sel",
-            help="Used by Compare's F1 prediction and the Report tab.")
+        with tab_report:
+            selected_feas_path = st.selectbox(
+                "Feasibility report", [str(p) for p in feasibility_csvs],
+                format_func=_feas_label, key="feas_sel",
+                help="Used by Compare's F1 prediction and the Report tab.")
         meta, bdf_feas = parse_feasibility_csv(Path(selected_feas_path))
     else:
         meta, bdf_feas = {}, pd.DataFrame()
-
-    tab_compare, tab_report = st.tabs(["Compare vs runs", "Report"])
 
     # ── Compare vs runs: predictions/estimates next to the real results ─────────
     with tab_compare:
