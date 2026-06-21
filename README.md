@@ -207,6 +207,3 @@ uv run pytest -q
 
 **Alejandro Rodríguez Rojas** — Grado en Ingeniería Informática, Universidad de La Laguna.
 Tutor: **Francisco Carmelo Almeida Rodríguez**. Cotutor: **Daniel Suárez Labena**. Curso 2025/2026.
-
-> Documentación operativa detallada (clúster, dataset, historial de experimentos y decisiones de
-> diseño): [`CLAUDE.md`](CLAUDE.md).
