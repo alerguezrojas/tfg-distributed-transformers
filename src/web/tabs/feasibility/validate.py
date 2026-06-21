@@ -112,9 +112,18 @@ def render_validate(ctx) -> object:
         m, fdf = _feas_for(r.env, r.model)
         bs = _run_batch(r)
         run_prec = (r.precision or "fp32")
-        rep_prec = (m.get("precision") or "fp32") if m else "fp32"
+        # Measured fp32→Tensor-core speedup from the report's --compare-precision block.
+        _pc = (m.get("precision_cmp") or {}) if m else {}
+        try:
+            prec_sp = float(_pc.get("speedup")) if _pc.get("speedup") else None
+        except (TypeError, ValueError):
+            prec_sp = None
+        tensor_core = run_prec in ("amp", "fp16", "tf32", "bf16")
+        # We can account for precision iff fp32 (nothing to do) or the report measured
+        # the Tensor-core speedup. Otherwise the AMP run is not comparable to fp32.
+        precision_ok = (not tensor_core) or (prec_sp is not None)
         est_min = None
-        ddp_note = ""
+        note_bits = []
         if m and fdf is not None and not fdf.empty and bs and r.mode in ("single", "ddp"):
             nfs = float(m.get("nfs_factor", 1.0) or 1.0)
             cmp = build_comparison(meta=m, feas_df=fdf, actual_df=run_df,
@@ -124,26 +133,33 @@ def render_validate(ctx) -> object:
                 single_est = tt.estimated if (tt and tt.estimated is not None) else None
                 if r.mode == "single":
                     cmp_by_run[lbl] = cmp        # formula table is the single-GPU one
-                    est_min = single_est
-                else:                            # ddp: predicted time = single ÷ speedup
-                    ng = _run_ngpus(r)
-                    sp = _predicted_speedup(m, ng)
-                    if single_est and sp:
-                        est_min = single_est / sp
-                        ddp_note = f"single ÷ {sp:.2f}× ({ng} GPU)"
+                # Apply the measured Tensor-core speedup so an AMP run is compared to an
+                # AMP estimate (fp32 estimate ÷ measured speedup), not the fp32 one.
+                if single_est is not None and tensor_core and prec_sp:
+                    single_est = single_est / prec_sp
+                    note_bits.append(f"fp32 ÷ {prec_sp:.1f}× ({run_prec})")
+                if single_est is not None:
+                    if r.mode == "single":
+                        est_min = single_est
+                    else:                        # ddp: ÷ predicted N-GPU speedup
+                        ng = _run_ngpus(r)
+                        sp = _predicted_speedup(m, ng)
+                        if sp:
+                            est_min = single_est / sp
+                            note_bits.append(f"÷ {sp:.2f}× ({ng} GPU)")
         pred_f1 = None
         if m:
             try:
                 pred_f1 = float(m.get("prediction", {}).get("predicted_best_f1") or 0) or None
             except (TypeError, ValueError):
                 pred_f1 = None
-        fair = (run_prec == rep_prec)          # comparable only at the same precision
+        fair = precision_ok and est_min is not None
         if est_min is None:
             note = ""
-        elif not fair:
-            note = f"≠ precision ({run_prec} vs {rep_prec})"
+        elif tensor_core and not prec_sp:
+            note = f"≠ precision ({run_prec}, not benchmarked)"
         else:
-            note = ddp_note
+            note = " · ".join(note_bits)
         err = ((real_min - est_min) / est_min * 100) if (real_min and est_min) else None
         rows.append({
             "Run": _short(lbl),
@@ -162,13 +178,13 @@ def render_validate(ctx) -> object:
     tdf = pd.DataFrame(rows).set_index("Run")
     st.dataframe(tdf.drop(columns=["_fair"]), use_container_width=True)
     _dl_csv(tdf.drop(columns=["_fair"]).reset_index(), "predicted_vs_real.csv", "Download comparison")
-    st.caption("Single-GPU runs are matched by batch size; **DDP** runs get a predicted "
-               "time = single-GPU estimate ÷ predicted speedup (see the *Note* column). "
-               "The benchmark is **fp32 and synthetic (no disk I/O)**, so two gaps are "
-               "expected and flagged: **AMP** runs use Tensor cores (~3× faster than the "
-               "fp32 estimate — *≠ precision*), and **small models on NFS** read more from "
-               "disk than the benchmark (real a bit slower). For same-precision "
-               "compute-bound runs the estimate lands within a few %.")
+    st.caption("Single-GPU runs are matched by batch size; **DDP** runs use single-GPU "
+               "estimate ÷ predicted speedup; **AMP/TF32** runs are corrected by the "
+               "report's *measured* Tensor-core speedup (see the *Note* column), so they "
+               "are comparable. A precision the report never benchmarked is flagged "
+               "*≠ precision*. The remaining gap is the genuine error — the synthetic "
+               "benchmark omits disk I/O, so small models on NFS run a bit slower. For "
+               "comparable compute-bound runs the estimate lands within a few %.")
 
     # ── Accuracy scorecard — over the apples-to-apples (same-precision) runs ─────
     fair_df = tdf[tdf["_fair"]]
@@ -176,10 +192,10 @@ def render_validate(ctx) -> object:
     _f1p = tdf.dropna(subset=["Pred F1", "Real F1"])
     _f1err = (_f1p["Pred F1"] - _f1p["Real F1"]).abs() if not _f1p.empty else pd.Series(dtype=float)
     sc1, sc2 = st.columns(2)
-    sc1.metric("Mean time error (same precision)",
+    sc1.metric("Mean time error (comparable runs)",
                f"±{_terr.mean():.0f}%" if not _terr.empty else "—",
-               help="Mean |error| of the batch-matched time/epoch over runs whose "
-                    "precision matches the fp32 benchmark (apples-to-apples).")
+               help="Mean |error| of the batch-matched time/epoch over runs the report "
+                    "can account for (fp32, or AMP/TF32 with a measured Tensor-core speedup).")
     sc2.metric("Mean F1 error", f"±{_f1err.mean():.3f}" if not _f1err.empty else "—",
                help="Mean |predicted − real| best Val F1 over the selected runs.")
 
@@ -211,8 +227,8 @@ def render_validate(ctx) -> object:
         figc.add_trace(go.Scatter(x=[0, _hi], y=[0, _hi], mode="lines",
                                   line=dict(color="#94a3b8", dash="dash"),
                                   name="perfect estimate", hoverinfo="skip"))
-        for _pts, _name, _col in ((_fair_pts, "same precision", COLORS[0]),
-                                  (_unfair_pts, "≠ precision", "#C57B27")):
+        for _pts, _name, _col in ((_fair_pts, "comparable", COLORS[0]),
+                                  (_unfair_pts, "≠ precision (not benchmarked)", "#C57B27")):
             if not _pts.empty:
                 figc.add_trace(go.Scatter(
                     x=_pts[_xc], y=_pts[_yc], mode="markers+text",
@@ -223,9 +239,9 @@ def render_validate(ctx) -> object:
         figc.update_layout(**_base_layout(360, f"Estimated vs real — {_unit}"),
                            xaxis_title=f"Estimated ({_unit})", yaxis_title=f"Real ({_unit})")
         _show(figc, "validate_calibration")
-        st.caption("On the dashed diagonal = perfect estimate. **Blue** = same precision "
-                   "(apples-to-apples); **amber** = AMP run vs fp32 estimate (the offset "
-                   "is the Tensor-core speedup, not an error).")
+        st.caption("On the dashed diagonal = perfect estimate. **Blue** = comparable "
+                   "(fp32, or AMP corrected by the measured Tensor-core speedup); "
+                   "**amber** = a precision the report did not benchmark.")
     else:
         st.caption(f"Not enough runs with an estimated and real {_unit} for the plot.")
 
