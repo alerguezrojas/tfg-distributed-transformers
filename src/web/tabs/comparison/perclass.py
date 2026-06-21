@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import textwrap
 from pathlib import Path
 
 import pandas as pd
@@ -32,7 +33,10 @@ def _perclass_heatmap_section(sel: list[tuple[str, RunInfo]]) -> None:
         return df.set_index("class_name")["f1"]
 
     def _short(lbl: str) -> str:
-        return re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
+        # Drop the date, then wrap onto several lines so the (horizontal) column
+        # labels stay readable in full even with many long run names.
+        s = re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
+        return "<br>".join(textwrap.wrap(s, 16)) or s
 
     series = {_short(lbl): _last_f1(r) for lbl, r in with_pc}
     mat = pd.DataFrame(series)
@@ -52,9 +56,9 @@ def _perclass_heatmap_section(sel: list[tuple[str, RunInfo]]) -> None:
     ))
     fig.update_layout(
         title=dict(text="Per-class F1 across runs"),
-        height=max(420, 24 * len(mat) + 140),
-        margin=dict(l=240, b=120, t=44),
-        xaxis=dict(tickangle=30, side="top"),
+        height=max(420, 24 * len(mat) + 170),
+        margin=dict(l=240, b=40, t=95),
+        xaxis=dict(tickangle=0, side="top", tickfont=dict(size=10)),
     )
     _show(fig, "compare_perclass_heatmap")
     zeros = (mat <= 0.01).all(axis=1)
