@@ -7,8 +7,26 @@ import streamlit as st
 
 from src.web.confusion_matrix_parser import (get_matrix_for_epoch,
                                              parse_confusion_matrix_csv, top_confusions)
+from src.web.dataset_stats import CLASS_NAMES
+from src.web.ui import theme
 from src.web.ui.charts import (COLORS, _CLASS_GROUPS, _base_layout, _dl_csv, _show)
 from src.web.ui.context import DashboardContext
+
+
+def _group_of_name(class_name: str):
+    """Ecosystem group of a class name (via its index in CLASS_NAMES), or None."""
+    idx = CLASS_NAMES.index(class_name) if class_name in CLASS_NAMES else -1
+    for gname, (idxs, _color) in _CLASS_GROUPS.items():
+        if idx in idxs:
+            return gname
+    return None
+
+
+def _same_ecosystem(a: str, b: str) -> bool:
+    """True if both classes belong to the same land-cover group → a confusion
+    between them is expected co-occurrence rather than a likely real error."""
+    ga = _group_of_name(a)
+    return ga is not None and ga == _group_of_name(b)
 
 
 def _confusions_tab(ctx: DashboardContext) -> None:
@@ -46,14 +64,21 @@ def _confusions_view(run) -> None:
 
     # ── Top label confusions (the off-diagonal of the co-activation matrix) ───────
     st.markdown("#### Top label confusions")
-    top = top_confusions(cm_df, ep, k=12)
+    n_pairs = st.columns([2, 3])[0].slider("How many pairs to show", 5, 30, 12,
+                                           key="cm_topn")
+    top = top_confusions(cm_df, ep, k=n_pairs)
     if top.empty:
         st.info("No strong off-diagonal confusions at this epoch.")
     else:
+        same_col, cross_col = COLORS[0], theme.WARN
+        # Colour each pair by whether the two classes share an ecosystem: same group
+        # = expected co-occurrence; different group = more likely a real confusion.
+        bar_colors = [same_col if _same_ecosystem(r.true_class, r.pred_class) else cross_col
+                      for r in top.itertuples()]
         pair_labels = [f"{r.true_class}  →  {r.pred_class}" for r in top.itertuples()]
         fig_top = go.Figure(go.Bar(
             y=pair_labels, x=list(top["value"]), orientation="h",
-            marker_color=COLORS[0], text=[f"{v:.2f}" for v in top["value"]],
+            marker_color=bar_colors, text=[f"{v:.2f}" for v in top["value"]],
             textposition="outside",
         ))
         fig_top.update_layout(
@@ -65,6 +90,12 @@ def _confusions_view(run) -> None:
         fig_top.update_xaxes(range=[0, 1], title="P(also predicts right label | left is present)")
         fig_top.update_yaxes(automargin=True, autorange="reversed")
         _show(fig_top, f"top_confusions_ep{ep}")
+        st.markdown(
+            f"<span style='font-size:0.8rem'>"
+            f"<span style='color:{same_col}'>■</span> same ecosystem (expected co-occurrence)"
+            f" &nbsp;·&nbsp; "
+            f"<span style='color:{cross_col}'>■</span> different ecosystem (more likely a real confusion)"
+            f"</span>", unsafe_allow_html=True)
         _dl_csv(top, f"top_confusions_ep{ep}.csv", "Download confusions table")
 
     # ── Full matrix (advanced) ────────────────────────────────────────────────────
