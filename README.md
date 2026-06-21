@@ -70,7 +70,7 @@ TracingDecorator / DeepTracingDecorator   ← controlador (define fit() vía Tem
 
 Diagrama de clases completo: **[`docs/class_diagram.svg`](docs/class_diagram.svg)**.
 
-## Instalación y uso
+## Instalación
 
 **Requisitos:** [uv](https://docs.astral.sh/uv/) (gestor de paquetes de Python) y git. Una GPU NVIDIA y
 el dataset solo hacen falta para entrenar de verdad: las pruebas, el predictor y el dashboard funcionan
@@ -83,6 +83,26 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 git clone https://github.com/alerguezrojas/tfg-distributed-transformers.git
 cd tfg-distributed-transformers && uv sync
 ```
+
+## La interfaz de línea de comandos (`tfg`)
+
+Todo se opera desde **un único punto de entrada**, `tfg` (Typer): el **terminal *ejecuta*** lo que toca
+la GPU y la **web *visualiza*** en solo lectura — la misma separación que W&B / MLflow / TensorBoard.
+`tfg` elige el lanzamiento correcto por debajo (p. ej. `torchrun` para DDP), así que no hace falta
+recordar la invocación de cada *script*.
+
+| Comando | Qué hace |
+|---|---|
+| `tfg train` | Entrena con la estrategia elegida: `single` / `ddp` / `model-parallel` / `heterogeneous`. |
+| `tfg predict` | Estima tiempo, memoria, coste y F1 de una configuración **sin GPU** (fórmulas, con su desglose). |
+| `tfg feasibility` | *Benchmark* real en esta máquina: throughput, E-S, memoria y escalado. |
+| `tfg eval` | Evalúa un *checkpoint* en el conjunto de test (el número final, honesto). |
+| `tfg runs` | Lista los entrenamientos del repo con su Best Val F1 / Test F1. |
+| `tfg dashboard` | Abre el dashboard web (solo lectura). |
+| `tfg menu` | **Menú interactivo guiado**: pregunta los parámetros uno a uno (ideal para empezar). |
+
+Cualquier comando admite `--help` y `--dry-run` (imprime el comando exacto sin ejecutarlo, útil para
+copiarlo en el clúster o en Kaggle). A continuación, los flujos más habituales.
 
 **Sin GPU ni dataset** (el repo ya trae los *logs* reales que alimentan el dashboard):
 
@@ -103,8 +123,6 @@ uv run tfg.py train --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.ya
 uv run tfg.py feasibility --model vit_base_patch16_224 --batch-sizes 32,64   # benchmark real
 uv run tfg.py eval --checkpoint <ruta.pt> --split test                       # número final en test
 ```
-
-> Cualquier comando admite `--dry-run`: imprime el comando exacto sin ejecutarlo (útil para el clúster).
 
 ## Estructura del repositorio
 
