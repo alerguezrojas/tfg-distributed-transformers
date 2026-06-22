@@ -67,3 +67,5 @@ uv run tfg.py dashboard          # → http://localhost:8501
 
 **Alejandro Rodríguez Rojas** — Grado en Ingeniería Informática, Universidad de La Laguna.
 Tutor: **Francisco Carmelo Almeida Rodríguez**. Cotutor: **Daniel Suárez Labena**. Curso 2025/2026.
+
+Código bajo licencia [MIT](LICENSE). El dataset BigEarthNet-S2 mantiene su propia licencia.
