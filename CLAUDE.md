@@ -848,6 +848,24 @@ Sesión única en Kaggle (2× Tesla T4) que extiende el estudio: **mismo modelo 
 
 Artefactos (integrados en el repo): `logs/kaggle/single/vit_base_patch16_224/` (single fp32 `173904`, single AMP `203609`, deep-trace `train_deep_205332`), `logs/kaggle/ddp/vit_base_patch16_224/` (DDP fp32 `190526`, DDP+AMP `211814`), `logs/kaggle/model_parallel/{vit_base,vit_large}_patch16_224/` (C + el OOM-vs-split), feasibility (vit_base `172939` + vit_large `213654`) en `logs/kaggle/feasibility/`.
 
+### Sesión Kaggle 2×T4 — re-ejecución con la versión actual + ResNet50 (2026-06-24)
+
+Re-corrida del estudio de 5 estrategias con la **versión actual del proyecto** (energía multi-GPU corregida, model-parallel integrado en el stack de decoradores, naming estimate/benchmark) y **ampliada con una CNN (ResNet50)**. Mismo subset (5000/1500), 15 epochs, batch global 96. Flags: `--trace simple --layers confusion batch-monitor hooks --fn energy timing`.
+
+| Estrategia | Hardware | Train/ép | Speedup | Best Val F1 | Energía train |
+|---|---|---|---|---|---|
+| Single fp32 | 1×T4 | 189s | 1.00× | 0.5619 | 3.23 Wh (65 W) |
+| Model-parallel | 2×T4 | 179s | 1.05× | 0.5412 | 4.9 Wh (106 W, 2 GPU) |
+| DDP fp32 | 2×T4 | 95s | 1.98× | 0.5703 | 3.04 Wh (129 W, 2 GPU) |
+| Single AMP | 1×T4 | 50s | 3.77× | 0.5486 | 0.84 Wh (64 W) |
+| DDP+AMP | 2×T4 | 30.5s | 6.11× | 0.5279 | 0.85 Wh (124 W, 2 GPU) |
+
+- **Energía ahora multi-GPU** (el fix del 24/06): DDP ~129 W y MP ~106 W = las 2 GPUs sumadas (antes solo medía 1). Verificado en los logs.
+- **vit_large model-parallel (OOM-vs-split):** el benchmark predice **OOM a batch 48/64** en 1 T4 (24.86/31.57 GB > 15.6); partido entre 2 T4 a batch 24 **entra** (~9 GB/GPU) y entrena 3 epochs (Val F1 0.4863, ~573s/ép). Confirma el motivo del paralelismo de modelo: no acelera, pero hace posible lo que no cabe en una GPU.
+- **ResNet50 (CNN, familia distinta):** single (Val F1 0.3634, ~58s/ép) + DDP (0.3606, **1.89×**). El camino genérico timm (AdamW sin LLRD) funciona; **compute-bound escala ~2× también en una CNN** (benchmark predijo 1.95×). Rinde menos que vit_base por hiperparámetros afinados a ViT + infraentrenamiento, no por fallo.
+- **Validación del estimador analítico (predicho vs real):** single fp32 +1% (192 vs 189s), single AMP +1% (3.80×), DDP +4% (1.91×); DDP+AMP y resnet DDP cuadran con el **I/O cacheado** (el subset cabe en RAM → el estimador es conservador en I/O si usa la tabla de disco). OOM de vit_large exacto. El analítico **sobreestima vit_large ~18%** (calibrado en vit_base; vit_large/resnet son puntos de validación).
+- Artefactos: `logs/kaggle/{single,ddp,model_parallel}/{vit_base,vit_large,resnet50}/` + benchmarks `logs/kaggle/benchmark/` (vit_base `175820`, vit_large `210016`, resnet50 `220430`). PR #108 (datos) → develop → main.
+
 ---
 
 ## Gestión de dependencias
@@ -1131,6 +1149,10 @@ Revisión de comentarios/orden/limpieza/SRP a petición del usuario (calidad de 
 - [x] **Emojis/símbolos fuera del informe del benchmark:** `report_formatter.py` usaba `⚠ ✓ ✗ 💡` en el informe de texto → reemplazados por texto plano digno (`Aviso:`, `Nota:`, `OOM`/`OK`/`Límite`).
 - [x] **SRP — menú interactivo extraído de `cli.py`:** era el fichero más grande (640 ln) mezclando comandos + builders + display + el sub-programa interactivo. El menú (+ sus pickers `_pick`/`_pick_model`/`_list_*`/`_confirm_run`) se movió a **`src/cli_menu.py`** (`run_menu`); `cli.menu()` queda como wrapper delgado (import perezoso → sin ciclo). `cli.py` 640→461 ln. Verificado: `tfg menu` arranca y sale bien, 376 tests.
 - **Estado tras la pasada:** los ficheros >350 ln restantes son **una sola responsabilidad cada uno** (motor analítico `performance_model`, `TrainingSessionBuilder`, un tab web, un decorador, `ConvergenceStudy`) — no violan SRP. (Los `print()` de algunos módulos de tooling —builder/checker— son feedback de progreso intencionado en CLI, se dejan.)
+
+#### Sesión Kaggle 2×T4 + fix MP en Benchmark vs Run (24/06/26)
+- [x] **Sesión Kaggle 2×T4 del 24/06 (datos, PR #108):** re-ejecución del estudio de 5 estrategias con la versión actual (energía multi-GPU + MP integrado en el stack) + **ResNet50** single/DDP + **vit_large OOM-vs-split** + 3 benchmarks. Ver "Sesión Kaggle 2×T4 — re-ejecución (2026-06-24)". Verificado con los módulos de la web: métricas = logs, energía = suma multi-GPU, estimador analítico <6% en régimen compute (OOM de vit_large exacto).
+- [x] **Benchmark vs Run estima model-parallel/heterogéneo vía el motor analítico (24/06/26, PR #109):** el benchmark empírico solo extrapola escalado de **datos** (DDP), así que un run model-parallel no tenía estimación en *Benchmark vs Run*. Ahora esas estrategias toman su speedup del `performance_model` (pipeline naive ≈1×): si el batch está benchmarkeado (vit_base MP @96) usa `single_est ÷ speedup` (igual que el DDP); si no (vit_large MP @24, su informe solo cubre 32/48/64) cae a un **fallback puramente analítico** (train-only, marcado en el *Note*). Helper `_analytic_speedup()` + el fallback + 2 tests → **380 tests**. Rama `feature/web-mp-analytic-fallback`. (Es un cambio de **web/display** → retroactivo, no requiere relanzar runs.)
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
