@@ -54,7 +54,7 @@ class Trainer(BaseTrainer):
         mixup_alpha: float = 0.0,
         precision: str = "fp32",
     ):
-        self.model = model.to(device)
+        self.model = self._place_model(model, device)
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.device = device
@@ -79,6 +79,12 @@ class Trainer(BaseTrainer):
             self._scaler = torch.amp.GradScaler("cuda", enabled=_scaler_on)
         except (AttributeError, TypeError):    # older torch
             self._scaler = torch.cuda.amp.GradScaler(enabled=_scaler_on)
+
+    def _place_model(self, model: nn.Module, device: torch.device) -> nn.Module:
+        """Move the model onto the training device. Overridable extension point:
+        a model already split across several devices (model parallelism) overrides
+        this to leave it in place instead of collapsing it onto one device."""
+        return model.to(device)
 
     def _autocast(self):
         """Autocast context for the forward pass (no-op for fp32/tf32)."""

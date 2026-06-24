@@ -84,6 +84,7 @@ class TrainingSessionBuilder:
         self._inspect: set[str] | None = None        # None → not active
         self._batch_log_every: int | None = None     # None → use cfg or default
         self._hetero_local_batch_size: int | None = None  # None → standard DDPTrainer
+        self._model_parallel: tuple | None = None     # None → not model-parallel; else (devices, split_block)
         self._output_mode: str | None = None         # None → "ddp"/"single" por defecto
 
     # ── Fluent configuration API ─────────────────────────────────────────────
@@ -137,6 +138,16 @@ class TrainingSessionBuilder:
         self._hetero_local_batch_size = max(1, local_batch_size)
         return self
 
+    def with_model_parallel(self, devices, split_block: int | None = None) -> "TrainingSessionBuilder":
+        """Split the model across ``devices`` (pipeline model parallelism).
+
+        Builds a ModelParallelViT and a ModelParallelTrainer (single process) so the
+        whole decorator stack applies — the model-parallel run gets the same metrics
+        as single/DDP. ``devices`` is a list like ``["cuda:0", "cuda:1"]``.
+        """
+        self._model_parallel = (list(devices), split_block)
+        return self
+
     def with_output_mode(self, mode: str) -> "TrainingSessionBuilder":
         """Override del nombre de modo en las rutas de salida (logs/, plots/, checkpoints/).
 
@@ -156,21 +167,35 @@ class TrainingSessionBuilder:
 
         # ── Model ────────────────────────────────────────────────────────────
         model_name = self._model_name or cfg["model"]["name"]
-        model = build_model(
-            model_name=model_name,
-            num_classes=cfg["model"].get("num_classes", 19),
-            pretrained=cfg["model"].get("pretrained", True),
-        )
+        if self._model_parallel is not None:
+            from src.models.model_parallel import build_model_parallel_vit
+            mp_devices, mp_split = self._model_parallel
+            model = build_model_parallel_vit(
+                model_name=model_name,
+                num_classes=cfg["model"].get("num_classes", 19),
+                pretrained=cfg["model"].get("pretrained", True),
+                devices=mp_devices,
+                split_block=mp_split,
+            )
+        else:
+            model = build_model(
+                model_name=model_name,
+                num_classes=cfg["model"].get("num_classes", 19),
+                pretrained=cfg["model"].get("pretrained", True),
+            )
 
         # ── Optimizer ────────────────────────────────────────────────────────
+        # For model parallelism the LLRD layer structure lives on the wrapped
+        # backbone (model.base); the parameters are the same objects either way.
+        opt_model = getattr(model, "base", model)
         lr_base = cfg["training"]["lr"]
         weight_decay = cfg["training"].get("weight_decay", 0.05)
         llrd_decay = cfg["training"].get("llrd_decay", 0.0)
 
-        if llrd_decay > 0.0 and model.is_vit:
-            optimizer = build_llrd_optimizer(model, lr_base, weight_decay, llrd_decay)
+        if llrd_decay > 0.0 and opt_model.is_vit:
+            optimizer = build_llrd_optimizer(opt_model, lr_base, weight_decay, llrd_decay)
         else:
-            if llrd_decay > 0.0 and not model.is_vit:
+            if llrd_decay > 0.0 and not opt_model.is_vit:
                 print(f"  [aviso] LLRD no disponible para '{model_name}' (CNN). Usando AdamW estándar.")
             optimizer = torch.optim.AdamW(
                 model.parameters(), lr=lr_base, weight_decay=weight_decay
@@ -200,7 +225,9 @@ class TrainingSessionBuilder:
 
         # ── Output paths (env/mode/model — needed for checkpoint_dir) ─────────
         env = cfg.get("output", {}).get("env", "local")
-        mode = self._output_mode or ("ddp" if self._distributed else "single")
+        mode = self._output_mode or (
+            "model_parallel" if self._model_parallel is not None
+            else "ddp" if self._distributed else "single")
         model_slug = model_name.replace("/", "_")
 
         # ── Base Trainer ──────────────────────────────────────────────────────
@@ -214,7 +241,21 @@ class TrainingSessionBuilder:
         # training.loss: 'bce' (default) | 'focal'; training.pos_weight: list | 'auto'
         criterion = self._build_criterion(cfg, model_name)
 
-        if self._distributed and self._hetero_local_batch_size is not None:
+        if self._model_parallel is not None:
+            from src.training.model_parallel_trainer import ModelParallelTrainer
+            base = ModelParallelTrainer(
+                model=model,
+                optimizer=optimizer,
+                scheduler=scheduler,
+                device=model.output_device,   # logits/labels/loss live on the last stage
+                checkpoint_dir=checkpoint_dir,
+                criterion=criterion,
+                grad_clip=grad_clip,
+                label_smoothing=label_smoothing,
+                mixup_alpha=mixup_alpha,
+                precision=precision,
+            )
+        elif self._distributed and self._hetero_local_batch_size is not None:
             from src.training.heterogeneous_ddp_trainer import HeterogeneousDDPTrainer
             base = HeterogeneousDDPTrainer(
                 model=model,
@@ -262,8 +303,15 @@ class TrainingSessionBuilder:
 
         # ── 1. @ function decorators on Trainer methods ───────────────────────
         if "energy" in self._fn:
-            base.train_epoch = measure_energy(base.train_epoch)
-            base.eval_epoch = measure_energy(base.eval_epoch)
+            # Model parallelism spans several GPUs in ONE process → pass the split
+            # devices explicitly so the energy is the total across them, not just GPU 0.
+            energy_devices = None
+            if self._model_parallel is not None:
+                _idx = {int(str(d).split(":")[1])
+                        for d in self._model_parallel[0] if str(d).startswith("cuda")}
+                energy_devices = sorted(_idx) or None   # dedupe: cuda:0,cuda:0 → [0], not [0,0]
+            base.train_epoch = measure_energy(base.train_epoch, devices=energy_devices)
+            base.eval_epoch = measure_energy(base.eval_epoch, devices=energy_devices)
         if "timing" in self._fn:
             base.train_epoch = timed(base.train_epoch)
             base.eval_epoch = timed(base.eval_epoch)
