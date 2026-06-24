@@ -171,10 +171,10 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
     return sorted(runs.values(), key=lambda r: r.sort_key, reverse=True)
 
 
-def discover_feasibility_csvs(root: Path = Path(".")) -> list[Path]:
-    """Returns all feasibility CSVs sorted by modification time."""
+def discover_benchmark_csvs(root: Path = Path(".")) -> list[Path]:
+    """Returns all benchmark CSVs sorted by modification time."""
     logs_root = root / "logs"
     if not logs_root.exists():
         return []
-    paths = list(logs_root.rglob("feasibility_*.csv"))
+    paths = list(logs_root.rglob("benchmark_*.csv"))
     return sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)

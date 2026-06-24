@@ -1,5 +1,5 @@
-"""FeasibilityChecker — Facade coordinating probes, benchmark, prediction and
-DDP analysis into one FeasibilityReport."""
+"""BenchmarkChecker — Facade coordinating probes, benchmark, prediction and
+DDP analysis into one BenchmarkReport."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,15 +7,15 @@ from pathlib import Path
 import torch
 
 from src.models.vit import build_model
-from src.feasibility.value_objects import DatasetProfile, FeasibilityReport
-from src.feasibility.model_analyzer import ModelAnalyzer
-from src.feasibility.probes import HardwareProbe, DiskProbe, DatasetProfiler
-from src.feasibility.predictor import PerformancePredictor
-from src.feasibility.ddp_optimizer import DDPOptimizer
-from src.feasibility.benchmarker import Benchmarker
+from src.benchmark.value_objects import DatasetProfile, BenchmarkReport
+from src.benchmark.model_analyzer import ModelAnalyzer
+from src.benchmark.probes import HardwareProbe, DiskProbe, DatasetProfiler
+from src.benchmark.predictor import PerformancePredictor
+from src.benchmark.ddp_optimizer import DDPOptimizer
+from src.benchmark.benchmarker import Benchmarker
 
 
-class FeasibilityChecker:
+class BenchmarkChecker:
     def __init__(
         self,
         model_name: str,
@@ -57,7 +57,7 @@ class FeasibilityChecker:
             f"cuda:{self._device_index}" if torch.cuda.is_available() else "cpu"
         )
 
-    def run(self) -> FeasibilityReport:
+    def run(self) -> BenchmarkReport:
         print(f"Cargando modelo {self._model_name}...")
         model = build_model(model_name=self._model_name, pretrained=False)
 
@@ -79,7 +79,7 @@ class FeasibilityChecker:
             ).profile(0.5, self._batch_sizes[0])  # placeholder, actualizado después
 
         benchmarker = Benchmarker(model, self._device, precision=self._precision)
-        report = FeasibilityReport(
+        report = BenchmarkReport(
             model_info=model_info,
             hardware_info=hardware_info,
             dataset_train=self._dataset_train,

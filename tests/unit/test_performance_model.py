@@ -1,7 +1,7 @@
 """Unit tests for src/performance_model.py — the analytic prediction engine.
 
 Validates the closed-form model against the REAL Kaggle 2×T4 measurements
-(documented in CLAUDE.md / the feasibility brief) and the limit regimes.
+(documented in CLAUDE.md / the benchmark brief) and the limit regimes.
 """
 import sys
 from pathlib import Path

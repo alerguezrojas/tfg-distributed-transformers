@@ -1,13 +1,13 @@
 """Unified command-line interface — ``tfg <command>``.
 
 One entry point for everything that runs in a terminal, where the compute lives:
-launch trainings (any strategy), predict before training, run the feasibility
+launch trainings (any strategy), estimate before training (analytic), run a real
 benchmark, evaluate on the test split, and open the dashboard. The web stays
 read-only (visualisation); anything that needs a GPU is driven from here — the
 same separation used by Weights & Biases / MLflow / TensorBoard.
 
     uv run tfg.py --help
-    uv run tfg.py predict --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
+    uv run tfg.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
     uv run tfg.py train   --strategy single --config configs/train.yaml
     uv run tfg.py train   --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.yaml
     uv run tfg.py eval    --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
@@ -92,14 +92,14 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
             + ["scripts/train_heterogeneous_ddp.py", "--config", config] + common + layers_fn)
 
 
-def build_feasibility_cmd(models: list[str] | None, batch_sizes: list[int] | None,
+def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
                           epochs: int, trace_modes: list[str] | None,
                           config: str | None = None, dataset_path: str | None = None,
                           precision: str = "fp32", compare_precision: bool = False,
                           convergence_study: bool = False, study_steps: int = 60,
                           nfs_factor: float = 1.0, device: int = 0) -> list[str]:
-    """Build the check_feasibility.py command (the GPU benchmark / measurement)."""
-    cmd = [sys.executable, "scripts/check_feasibility.py", "--epochs", str(epochs)]
+    """Build the benchmark.py command (the GPU benchmark / measurement)."""
+    cmd = [sys.executable, "scripts/benchmark.py", "--epochs", str(epochs)]
     if config:
         cmd += ["--config", config]
     if models:
@@ -332,7 +332,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
             f"[dim]Assumptions: r_c ≈ {rc:.0f} img/s/GPU (incl. precision ×"
             f"{precision_factor(gs, precision):.2f}) · r_io ≈ {rio:.0f} img/s "
             f"({disk}{'+NFS' if nfs else ''}) · {ms.params_m:.0f}M params · MFU 0.17. "
-            f"Calibrate with a measured throughput in the Feasibility CLI.[/]")
+            f"Calibrate with a measured throughput in the Benchmark CLI.[/]")
     if p.calibrated:
         console.print("[green]Calibrated with a measured throughput.[/]")
     for note in p.notes:
@@ -340,7 +340,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
 
 
 @app.command(name="benchmark")
-def feasibility(
+def benchmark(
     model: Optional[str] = typer.Option(None, help="Comma-separated model(s), e.g. vit_base_patch16_224,resnet50."),
     batch_sizes: Optional[str] = typer.Option(None, help="Comma-separated batch sizes, e.g. 32,64."),
     epochs: int = typer.Option(30, help="Epochs for the time estimate."),
@@ -357,7 +357,7 @@ def feasibility(
 ) -> None:
     """Empirical benchmark on this machine — measures real throughput, memory and scaling."""
     _bs = [int(x) for x in (_csv(batch_sizes) or [])] or None
-    cmd = build_feasibility_cmd(_csv(model), _bs, epochs, _csv(trace_modes), config=config,
+    cmd = build_benchmark_cmd(_csv(model), _bs, epochs, _csv(trace_modes), config=config,
                                 dataset_path=dataset_path, precision=precision,
                                 compare_precision=compare_precision,
                                 convergence_study=convergence_study, study_steps=study_steps,
@@ -613,7 +613,7 @@ def menu() -> None:
                     kw["study_steps"] = IntPrompt.ask("Mini-training steps", default=60)
                 kw["nfs_factor"] = float(Prompt.ask("NFS factor (Verode ≈ 1.3)", default="1.0"))
                 kw["device"] = IntPrompt.ask("CUDA device index", default=0)
-            _confirm_run(build_feasibility_cmd(models, bsizes or None, ep, traces, **kw))
+            _confirm_run(build_benchmark_cmd(models, bsizes or None, ep, traces, **kw))
         elif choice == "4":
             _ckpts = _list_checkpoints()
             ckpt = (_pick("Checkpoint", _ckpts, allow_other=True) if _ckpts

@@ -1,6 +1,6 @@
-"""Compare feasibility estimates against actual training results.
+"""Compare benchmark estimates against actual training results.
 
-Given a feasibility CSV and an epoch_metrics CSV (or parsed log DataFrame),
+Given a benchmark CSV and an epoch_metrics CSV (or parsed log DataFrame),
 produces a structured comparison table with: estimated value, actual value,
 error %, and the formula/model used for each estimate.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pandas as pd
 
-# Fallback to the full BigEarthNet-S2 if the feasibility CSV does not carry the
+# Fallback to the full BigEarthNet-S2 if the benchmark CSV does not carry the
 # real size (old CSVs without a #sizes block). New CSVs include n_train/n_val
 # from the metadata actually used (subset or full) → valid comparison.
 _N_TRAIN_DEFAULT = 237_871
@@ -38,8 +38,8 @@ class ComparisonRow:
 
 
 @dataclass
-class FeasibilityComparison:
-    """Comparison between feasibility estimates and actual training results."""
+class BenchmarkComparison:
+    """Comparison between benchmark estimates and actual training results."""
 
     model_name: str
     batch_size: int
@@ -72,17 +72,17 @@ def build_comparison(
     batch_size: int,
     trace_mode: str = "simple",
     nfs_factor: float = 1.0,
-) -> FeasibilityComparison | None:
-    """Build a FeasibilityComparison from parsed feasibility data and actual metrics.
+) -> BenchmarkComparison | None:
+    """Build a BenchmarkComparison from parsed benchmark data and actual metrics.
 
     Parameters
     ----------
-    meta:        metadata dict from parse_feasibility_csv()
-    feas_df:     benchmark DataFrame from parse_feasibility_csv()
+    meta:        metadata dict from parse_benchmark_csv()
+    feas_df:     benchmark DataFrame from parse_benchmark_csv()
     actual_df:   epoch_metrics DataFrame (from CSV or log_parser)
     batch_size:  batch size to use for matching
     trace_mode:  trace mode to match in feas_df
-    nfs_factor:  NFS correction factor used in feasibility run
+    nfs_factor:  NFS correction factor used in benchmark run
     """
     if feas_df.empty or actual_df.empty:
         return None
@@ -98,7 +98,7 @@ def build_comparison(
     n_train = _int(meta.get("n_train"), _N_TRAIN_DEFAULT)
     n_val = _int(meta.get("n_val"), _N_VAL_DEFAULT)
 
-    # Find matching feasibility row
+    # Find matching benchmark row
     mask = (feas_df["batch_size"] == batch_size)
     if "trace_mode" in feas_df.columns:
         mask &= (feas_df["trace_mode"] == trace_mode)
@@ -110,7 +110,7 @@ def build_comparison(
         return None
     frow = row_feas.iloc[0]
 
-    # Feasibility estimates (convert min → min for display)
+    # Benchmark estimates (convert min → min for display)
     est_train_min = _safe_float(frow.get("est_train_min_per_epoch"))
     est_eval_min = _safe_float(frow.get("est_eval_min_per_epoch"))
     est_total_min = _safe_float(frow.get("est_total_min_per_epoch"))
@@ -210,7 +210,7 @@ def build_comparison(
         metric="Peak VRAM",
         formula=vram_formula,
         estimated=vram_est,
-        actual=est_vram,  # feasibility peak_vram is measured, not estimated
+        actual=est_vram,  # benchmark peak_vram is measured, not estimated
         unit="GB",
     ))
 
@@ -292,7 +292,7 @@ def build_comparison(
             unit="M",
         ))
 
-    return FeasibilityComparison(
+    return BenchmarkComparison(
         model_name=model_name,
         batch_size=batch_size,
         trace_mode=trace_mode,

@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from src.web.feasibility_parser import parse_feasibility_csv
+from src.web.benchmark_parser import parse_benchmark_csv
 
 
 def _write_csv_with_study(tmp: Path) -> Path:
-    path = tmp / "feasibility_study.csv"
+    path = tmp / "benchmark_study.csv"
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["#meta", "model_name", "total_params_M", "flops_mflops",
@@ -41,7 +41,7 @@ def _write_csv_with_study(tmp: Path) -> Path:
 def test_parser_reads_study_block():
     with tempfile.TemporaryDirectory() as tmp:
         path = _write_csv_with_study(Path(tmp))
-        meta, df = parse_feasibility_csv(path)
+        meta, df = parse_benchmark_csv(path)
         assert "study" in meta
         study = meta["study"]
         assert "lr" in study
@@ -52,7 +52,7 @@ def test_parser_reads_study_block():
 def test_parser_study_lr_values():
     with tempfile.TemporaryDirectory() as tmp:
         path = _write_csv_with_study(Path(tmp))
-        meta, _ = parse_feasibility_csv(path)
+        meta, _ = parse_benchmark_csv(path)
         lr = meta["study"]["lr"]
         assert lr["suggested_lr"] == "1.000e-04"
         assert meta["study"]["lr_curve_lrs"] == [1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
@@ -62,7 +62,7 @@ def test_parser_study_lr_values():
 def test_parser_study_convergence_curve():
     with tempfile.TemporaryDirectory() as tmp:
         path = _write_csv_with_study(Path(tmp))
-        meta, _ = parse_feasibility_csv(path)
+        meta, _ = parse_benchmark_csv(path)
         study = meta["study"]
         assert study["conv"]["best_f1"] == "0.64"
         assert study["conv"]["r_squared"] == "0.97"
@@ -74,7 +74,7 @@ def test_parser_study_convergence_curve():
 def test_parser_study_gradient_noise():
     with tempfile.TemporaryDirectory() as tmp:
         path = _write_csv_with_study(Path(tmp))
-        meta, _ = parse_feasibility_csv(path)
+        meta, _ = parse_benchmark_csv(path)
         grad = meta["study"]["grad"]
         assert grad["suggested_batch_size"] == "64"
         assert grad["grad_norm_mean"] == "1.5"
@@ -90,7 +90,7 @@ def test_parser_no_study_block_when_absent():
             w.writerow(["#meta", "vit_base"])
             w.writerow(["batch_size", "trace_mode", "oom"])
             w.writerow(["64", "off", "no"])
-        meta, _ = parse_feasibility_csv(path)
+        meta, _ = parse_benchmark_csv(path)
         assert "study" not in meta
 
 
@@ -98,6 +98,6 @@ def test_parser_benchmark_still_parsed_with_study():
     """El benchmark debe parsearse aunque haya bloques de estudio."""
     with tempfile.TemporaryDirectory() as tmp:
         path = _write_csv_with_study(Path(tmp))
-        _, df = parse_feasibility_csv(path)
+        _, df = parse_benchmark_csv(path)
         assert not df.empty
         assert "batch_size" in df.columns

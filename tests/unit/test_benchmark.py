@@ -1,4 +1,4 @@
-"""Unit tests for feasibility checker components."""
+"""Unit tests for benchmark checker components."""
 import math
 import pytest
 import sys
@@ -6,8 +6,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.feasibility import (
-    BenchmarkResult, ModelInfo, HardwareInfo, FeasibilityReport,
+from src.benchmark import (
+    BenchmarkResult, ModelInfo, HardwareInfo, BenchmarkReport,
     TimeEstimator,
 )
 

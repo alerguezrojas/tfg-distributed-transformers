@@ -360,7 +360,7 @@ package "src.models" #FDFEFE {
 }
 
 ' ════════════════════════════════════════════════════════════════
-' PACKAGE: src (módulos de soporte — feasibility/web)
+' PACKAGE: src (módulos de soporte — benchmark/web)
 ' ════════════════════════════════════════════════════════════════
 package "src.support" as support #FDFEFE {
 
@@ -442,9 +442,9 @@ package "src.data" #FDFEFE {
 }
 
 ' ════════════════════════════════════════════════════════════════
-' PACKAGE: src.feasibility (SRP package; scripts/check_feasibility.py is now a thin CLI)
+' PACKAGE: src.benchmark (SRP package; scripts/benchmark.py is now a thin CLI)
 ' ════════════════════════════════════════════════════════════════
-package "src.feasibility" #FDFEFE {
+package "src.benchmark" #FDFEFE {
 
   class ModelInfo <<dataclass>> {
     + name: str
@@ -518,7 +518,7 @@ package "src.feasibility" #FDFEFE {
     + oom: bool
   }
 
-  class FeasibilityReport <<dataclass>> {
+  class BenchmarkReport <<dataclass>> {
     + model_info: ModelInfo
     + hardware_info: HardwareInfo
     + cpu_info: CPUInfo | None
@@ -562,20 +562,20 @@ package "src.feasibility" #FDFEFE {
     + predict(model_name, n_epochs): PerformancePrediction
   }
   class ReportFormatter {
-    + print(report: FeasibilityReport)
+    + print(report: BenchmarkReport)
     + write_csv(report, env: str)
     - _study_section(report)
     - _ddp_section(report)
     - _prediction_section(pred)
   }
-  class FeasibilityChecker <<Facade>> {
+  class BenchmarkChecker <<Facade>> {
     - model_name: str
     - batch_sizes / epochs_list: list
     - convergence_study: bool
     - device_index: int
     - precision: str
     - compare_precision: bool
-    + run(): FeasibilityReport
+    + run(): BenchmarkReport
     - _run_convergence_study(model): StudyReport
     - _compare_precisions(): dict
     - _build_real_loader(batch_size)
@@ -602,7 +602,7 @@ package "src.web" #FDFEFE {
     + label: str  ' compacto, tags [ddp]/[amp]/[deep]
   }
 
-  class FeasibilityComparison <<dataclass>> {
+  class BenchmarkComparison <<dataclass>> {
     + model_name: str
     + batch_size: int
     + trace_mode: str
@@ -621,10 +621,10 @@ package "src.web" #FDFEFE {
   }
 
   note as cmp_note
-    **feasibility_comparison.py**
+    **benchmark_comparison.py**
     build_comparison(meta, feas_df,
       actual_df, batch_size, ...)
-    → FeasibilityComparison
+    → BenchmarkComparison
     Usa n_train/n_val del bloque #sizes
     (no asume el full set). Compara
     estimación vs real por métrica.
@@ -650,11 +650,11 @@ package "src.web" #FDFEFE {
     **parsers**: log_parser (deep: campos
     por nombre; energía \w*Trainer),
     batch_parser (v3: f1/acc/prec),
-    perclass_parser, feasibility_parser
+    perclass_parser, benchmark_parser
     (bloques #sizes, #gpu, #precision,
     #precision_cmp, #study_*, #ddp),
     confusion_matrix_parser,
-    feasibility_comparison (estim. vs real)
+    benchmark_comparison (estim. vs real)
 
     **dataset_stats.py**
     class_distribution_from_parquet (ndarray)
@@ -684,7 +684,7 @@ package "src.web" #FDFEFE {
     comparison (unificado) · dataset · data_models ·
     **run/** (paquete: curves · perclass=heatmap+support
     · confusions=top+matriz · batch · details) ·
-    **feasibility/** (paquete: predict=formulario+tablas
+    **benchmark/** (paquete: predict=formulario+tablas
     de fórmula tiempo/memoria+escalado+coste · validate
     =Compare vs runs · report · ddp · study)
     (5 secciones, máx. 1 nivel de pestañas; modo claro/oscuro)
@@ -703,12 +703,12 @@ package "src.cli" #FDFEFE {
 
     Comandos: train (single/ddp/model-parallel/
     heterogeneous → script correcto) · predict
-    (predictor analítico, tabla rich) · feasibility
+    (predictor analítico, tabla rich) · benchmark
     (benchmark real) · eval (test) · runs · dashboard ·
     menu (interactivo)
 
     Builders puros (testeados):
-    build_train_cmd / build_feasibility_cmd /
+    build_train_cmd / build_benchmark_cmd /
     build_eval_cmd / resolve_dataset_n
   end note
 }
@@ -765,16 +765,16 @@ StudyReport *-- LRRangeResult
 StudyReport *-- ConvergenceResult
 StudyReport *-- GradientNoiseResult
 
-FeasibilityChecker ..> ModelAnalyzer : uses >
-FeasibilityChecker ..> HardwareProbe : uses >
-FeasibilityChecker ..> DiskProbe : uses >
-FeasibilityChecker ..> DatasetProfiler : uses >
-FeasibilityChecker ..> Benchmarker : uses >
-FeasibilityChecker ..> TimeEstimator : uses >
-FeasibilityChecker ..> DDPOptimizer : uses >
-FeasibilityChecker ..> PerformancePredictor : uses >
-FeasibilityChecker ..> ReportFormatter : uses >
-FeasibilityChecker ..> ConvergenceStudy : uses (--convergence-study) >
+BenchmarkChecker ..> ModelAnalyzer : uses >
+BenchmarkChecker ..> HardwareProbe : uses >
+BenchmarkChecker ..> DiskProbe : uses >
+BenchmarkChecker ..> DatasetProfiler : uses >
+BenchmarkChecker ..> Benchmarker : uses >
+BenchmarkChecker ..> TimeEstimator : uses >
+BenchmarkChecker ..> DDPOptimizer : uses >
+BenchmarkChecker ..> PerformancePredictor : uses >
+BenchmarkChecker ..> ReportFormatter : uses >
+BenchmarkChecker ..> ConvergenceStudy : uses (--convergence-study) >
 
 ModelAnalyzer ..> ModelInfo : returns >
 HardwareProbe ..> HardwareInfo : returns >
@@ -785,17 +785,17 @@ DatasetProfiler ..> DatasetProfile : returns >
 Benchmarker ..> BenchmarkResult : returns >
 DDPOptimizer ..> DDPScenario : returns >
 PerformancePredictor ..> PerformancePrediction : returns >
-FeasibilityChecker ..> FeasibilityReport : returns >
+BenchmarkChecker ..> BenchmarkReport : returns >
 
-FeasibilityReport *-- ModelInfo
-FeasibilityReport *-- HardwareInfo
-FeasibilityReport *-- CPUInfo
-FeasibilityReport *-- DiskInfo
-FeasibilityReport *-- DatasetProfile
-FeasibilityReport *-- DDPScenario
-FeasibilityReport *-- PerformancePrediction
-FeasibilityReport *-- BenchmarkResult
-FeasibilityReport o-- StudyReport
+BenchmarkReport *-- ModelInfo
+BenchmarkReport *-- HardwareInfo
+BenchmarkReport *-- CPUInfo
+BenchmarkReport *-- DiskInfo
+BenchmarkReport *-- DatasetProfile
+BenchmarkReport *-- DDPScenario
+BenchmarkReport *-- PerformancePrediction
+BenchmarkReport *-- BenchmarkResult
+BenchmarkReport o-- StudyReport
 
 BigEarthViT ..> BigEarthNetDataset : trained on >
 ModelParallelViT ..> BigEarthNetDataset : trained on >
@@ -811,14 +811,14 @@ DashboardContext o-- RunInfo
 web_arch_note ..> SpeedupModel : overlays (Report) >
 web_arch_note ..> CloudOption : cloud cost (Report) >
 web_arch_note ..> GpuSpecs : shows cores (Monitor) >
-web_arch_note ..> Prediction : Feasibility → Predict >
+web_arch_note ..> Prediction : Benchmark → Predict >
 perfmodel_note ..> Prediction : returns >
 perfmodel_note ..> GpuSpecs : specs por GPU >
 perfmodel_note ..> CloudOption : coste (estimate_costs) >
 
-FeasibilityComparison *-- ComparisonRow
-cmp_note ..> FeasibilityComparison : builds >
-cmp_note ..> FeasibilityReport : reads CSV (#sizes) >
+BenchmarkComparison *-- ComparisonRow
+cmp_note ..> BenchmarkComparison : builds >
+cmp_note ..> BenchmarkReport : reads CSV (#sizes) >
 
 ' ════════════════════════════════════════════════════════════════
 ' ESTILOS POR TIPO
