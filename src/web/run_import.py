@@ -20,7 +20,7 @@ _ARTIFACT_RE = re.compile(
     r"|batch_metrics_.*\.csv"
     r"|perclass_metrics_.*\.csv"
     r"|confusion_matrix_.*\.csv"
-    r"|feasibility_.*\.(csv|log))$"
+    r"|benchmark_.*\.(csv|log))$"
 )
 
 
@@ -48,7 +48,7 @@ def import_run_archive(file_bytes: bytes, logs_root: Path) -> list[str]:
     """Extracts the known artifacts from a zip into ``logs_root``.
 
     Returns the list of imported paths relative to ``logs/`` (so the caller can
-    report what landed and which runs/feasibility reports it produced).
+    report what landed and which runs/benchmark reports it produced).
     """
     imported: list[str] = []
     with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
@@ -98,13 +98,13 @@ def import_run_folder(folder: Path, logs_root: Path) -> list[str]:
 
 def summarize_import(rel_paths: list[str]) -> dict[str, int]:
     """Counts imported artifacts by kind, for a friendly post-import message."""
-    summary = {"runs": 0, "feasibility": 0, "metric_csvs": 0, "total": len(rel_paths)}
+    summary = {"runs": 0, "benchmark": 0, "metric_csvs": 0, "total": len(rel_paths)}
     for p in rel_paths:
         base = Path(p).name
         if base.startswith("train_") and base.endswith(".log"):
             summary["runs"] += 1
-        elif base.startswith("feasibility_"):
-            summary["feasibility"] += 1
+        elif base.startswith("benchmark_"):
+            summary["benchmark"] += 1
         elif base.endswith(".csv"):
             summary["metric_csvs"] += 1
     return summary

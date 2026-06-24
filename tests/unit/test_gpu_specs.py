@@ -83,11 +83,11 @@ def test_detect_all_runs_without_crashing():
         assert s.sm_count > 0
 
 
-def test_feasibility_parser_reads_gpu_block(tmp_path):
-    """The feasibility parser must round-trip the #gpu block into meta['gpu']."""
-    from src.web.feasibility_parser import parse_feasibility_csv
+def test_benchmark_parser_reads_gpu_block(tmp_path):
+    """The benchmark parser must round-trip the #gpu block into meta['gpu']."""
+    from src.web.benchmark_parser import parse_benchmark_csv
 
-    csv = tmp_path / "feasibility_test.csv"
+    csv = tmp_path / "benchmark_test.csv"
     csv.write_text(
         "#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb\n"
         "#meta,vit_tiny_patch16_224,5.53,34.3,Tesla V100,32.0,30.0\n"
@@ -96,7 +96,7 @@ def test_feasibility_parser_reads_gpu_block(tmp_path):
         "batch_size,trace_mode,oom\n"
         "64,off,no\n"
     )
-    meta, df = parse_feasibility_csv(csv)
+    meta, df = parse_benchmark_csv(csv)
     gpu = meta.get("gpu")
     assert gpu is not None
     assert gpu["architecture"] == "Volta"

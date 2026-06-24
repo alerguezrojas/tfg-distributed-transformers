@@ -1,4 +1,4 @@
-"""Parse feasibility CSV generado por check_feasibility.py v3.
+"""Parse benchmark CSV generado por benchmark.py v3.
 
 Maneja el formato legacy (v1/v2) y el nuevo (v3) con bloques #cpu, #disk,
 #dataset, #prediction, #curve_val_f1, #curve_train_f1, #ddp.
@@ -12,8 +12,8 @@ from pathlib import Path
 import pandas as pd
 
 
-def parse_feasibility_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
-    """Reads the feasibility CSV and returns (metadata_dict, benchmark_df).
+def parse_benchmark_csv(csv_path: Path) -> tuple[dict, pd.DataFrame]:
+    """Reads the benchmark CSV and returns (metadata_dict, benchmark_df).
 
     The metadata_dict includes every block: #meta, #model_mem, #cpu, #disk,
     #dataset, #prediction, #curve_val_f1, #curve_train_f1, #ddp.

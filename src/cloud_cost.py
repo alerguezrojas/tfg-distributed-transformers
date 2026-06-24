@@ -1,6 +1,6 @@
 """Predict the monetary cost of training the model on cloud providers.
 
-The feasibility checker already estimates the **total training time** on the
+The benchmark checker already estimates the **total training time** on the
 benchmarked GPU. From there the cost on a cloud provider is simply:
 
     cost = estimated_hours_on_that_gpu × provider_price_per_hour

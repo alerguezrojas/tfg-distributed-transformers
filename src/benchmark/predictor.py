@@ -3,7 +3,7 @@ the single quality engine in src/performance_model.py."""
 from __future__ import annotations
 
 from src.performance_model import N_FULL_TRAIN, predict_quality
-from src.feasibility.value_objects import PerformancePrediction
+from src.benchmark.value_objects import PerformancePrediction
 
 
 class PerformancePredictor:

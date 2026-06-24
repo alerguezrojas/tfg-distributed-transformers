@@ -5,11 +5,11 @@ import csv
 from datetime import datetime
 from pathlib import Path
 
-from src.feasibility.value_objects import (
-    ModelInfo, CPUInfo, DiskInfo, DatasetProfile, PerformancePrediction, FeasibilityReport,
+from src.benchmark.value_objects import (
+    ModelInfo, CPUInfo, DiskInfo, DatasetProfile, PerformancePrediction, BenchmarkReport,
 )
-from src.feasibility.time_estimator import TimeEstimator
-from src.feasibility.benchmarker import Benchmarker
+from src.benchmark.time_estimator import TimeEstimator
+from src.benchmark.benchmarker import Benchmarker
 
 
 class ReportFormatter:
@@ -29,7 +29,7 @@ class ReportFormatter:
             self._output_path.write_text("\n".join(self._lines) + "\n")
             print(f"\n  Informe guardado en: {self._output_path}")
 
-    def print(self, report: FeasibilityReport):
+    def print(self, report: BenchmarkReport):
         self._header(report)
         self._model_section(report.model_info)
         self._hardware_section(report)
@@ -44,7 +44,7 @@ class ReportFormatter:
         self._recommendations_section(report)
         self.flush()
 
-    def _header(self, report: FeasibilityReport):
+    def _header(self, report: BenchmarkReport):
         self._emit("═" * self.W)
         self._emit("  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)")
         self._emit(f"  {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
@@ -60,7 +60,7 @@ class ReportFormatter:
             self._emit(f"  FLOPs/imagen:         {m.flops_per_image_mflops:.1f} MFLOPs")
         self._emit(f"  Memoria estática:     {m.total_static_mb/1024:.2f} GB")
 
-    def _hardware_section(self, report: FeasibilityReport):
+    def _hardware_section(self, report: BenchmarkReport):
         h = report.hardware_info
         self._emit(f"\n{'─'*self.W}  GPU")
         if h.is_cuda:
@@ -106,7 +106,7 @@ class ReportFormatter:
                 else:
                     self._emit(f"  ✓ Compute-bound (ratio={profile.io_bottleneck_ratio:.2f}) — GPU es el cuello de botella")
 
-    def _memory_section(self, report: FeasibilityReport):
+    def _memory_section(self, report: BenchmarkReport):
         m, h = report.model_info, report.hardware_info
         if not m.activation_mb_per_image:
             return
@@ -122,7 +122,7 @@ class ReportFormatter:
                 estado = "✓ OK"
             self._emit(f"  {bs:>5}  {total_gb:>9.2f} GB  {estado:>10}")
 
-    def _benchmark_section(self, report: FeasibilityReport):
+    def _benchmark_section(self, report: BenchmarkReport):
         self._emit(f"\n{'─'*self.W}  BENCHMARK  ({Benchmarker.N_MEASURE} batches sintéticos)")
         self._emit(f"  {'Batch':>5}  {'Modo':<8}  {'imgs/s(train)':>13}  {'imgs/s(eval)':>12}  {'VRAM':>7}")
         for r in report.results:
@@ -136,7 +136,7 @@ class ReportFormatter:
                     f"{r.peak_vram_gb:>5.2f} GB"
                 )
 
-    def _estimates_section(self, report: FeasibilityReport):
+    def _estimates_section(self, report: BenchmarkReport):
         estimator = TimeEstimator()
         nfs, mi = report.nfs_factor, report.model_info
         self._emit(f"\n{'─'*self.W}  ESTIMACIONES DE TIEMPO")
@@ -156,7 +156,7 @@ class ReportFormatter:
                         f"{TimeEstimator.format_time(est['total']):>8}"
                     )
 
-    def _ddp_section(self, report: FeasibilityReport):
+    def _ddp_section(self, report: BenchmarkReport):
         if not report.ddp_scenarios:
             return
         self._emit(f"\n{'─'*self.W}  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS")
@@ -184,7 +184,7 @@ class ReportFormatter:
         self._emit(f"  Confianza:          {pred.confidence}")
         self._emit(f"  Nota: {pred.notes[:100]}")
 
-    def _study_section(self, report: FeasibilityReport):
+    def _study_section(self, report: BenchmarkReport):
         study = report.study_report
         if study is None:
             return
@@ -214,7 +214,7 @@ class ReportFormatter:
             self._emit(f"    Norma gradiente: {gn.grad_norm_mean:.3f} ± {gn.grad_norm_std:.3f}  (CV={gn.cv:.3f})")
             self._emit(f"    Batch size sugerido: {gn.suggested_batch_size}  (noise scale ≈ {gn.noise_scale:.1f})")
 
-    def _recommendations_section(self, report: FeasibilityReport):
+    def _recommendations_section(self, report: BenchmarkReport):
         self._emit(f"\n{'─'*self.W}  RECOMENDACIONES")
         estimator = TimeEstimator()
         nfs = report.nfs_factor
@@ -239,11 +239,11 @@ class ReportFormatter:
             self._emit("\n  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas")
         self._emit()
 
-    def write_csv(self, report: FeasibilityReport, env: str = "local"):
+    def write_csv(self, report: BenchmarkReport, env: str = "local"):
         timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
-        out_dir = Path(f"logs/{env}/feasibility")
+        out_dir = Path(f"logs/{env}/benchmark")
         out_dir.mkdir(parents=True, exist_ok=True)
-        csv_path = out_dir / f"feasibility_{timestamp}.csv"
+        csv_path = out_dir / f"benchmark_{timestamp}.csv"
 
         estimator = TimeEstimator()
         target_epochs = max(report.epochs_list) if report.epochs_list else 0

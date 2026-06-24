@@ -187,28 +187,28 @@ class TestBatchParser:
                 assert (df["running_loss"].dropna() >= 0).all()
 
 
-class TestFeasibilityParser:
-    def test_all_feasibility_csvs_parseable(self):
-        from src.web.feasibility_parser import parse_feasibility_csv
-        csvs = _find_files("feasibility_*.csv")
-        assert len(csvs) > 0, "No feasibility CSVs found"
+class TestBenchmarkParser:
+    def test_all_benchmark_csvs_parseable(self):
+        from src.web.benchmark_parser import parse_benchmark_csv
+        csvs = _find_files("benchmark_*.csv")
+        assert len(csvs) > 0, "No benchmark CSVs found"
         for p in csvs:
-            meta, df = parse_feasibility_csv(p)
+            meta, df = parse_benchmark_csv(p)
             assert isinstance(meta, dict)
             assert isinstance(df, pd.DataFrame)
 
     def test_meta_has_model_name(self):
-        from src.web.feasibility_parser import parse_feasibility_csv
-        csvs = _find_files("feasibility_*.csv")
+        from src.web.benchmark_parser import parse_benchmark_csv
+        csvs = _find_files("benchmark_*.csv")
         for p in csvs[:3]:
-            meta, _ = parse_feasibility_csv(p)
+            meta, _ = parse_benchmark_csv(p)
             assert "model_name" in meta
 
     def test_benchmark_df_has_batch_size(self):
-        from src.web.feasibility_parser import parse_feasibility_csv
-        csvs = _find_files("feasibility_*.csv")
+        from src.web.benchmark_parser import parse_benchmark_csv
+        csvs = _find_files("benchmark_*.csv")
         for p in csvs[:3]:
-            _, df = parse_feasibility_csv(p)
+            _, df = parse_benchmark_csv(p)
             if not df.empty:
                 assert "batch_size" in df.columns
 
@@ -264,13 +264,13 @@ class TestRunRegistry:
         for run in runs[:5]:
             assert run.label.strip() != ""
 
-    def test_feasibility_csvs_discovered(self):
-        from src.web.run_registry import discover_feasibility_csvs
-        csvs = discover_feasibility_csvs(ROOT)
+    def test_benchmark_csvs_discovered(self):
+        from src.web.run_registry import discover_benchmark_csvs
+        csvs = discover_benchmark_csvs(ROOT)
         assert len(csvs) > 0
 
 
-class TestFeasibilityComparisonSizes:
+class TestBenchmarkComparisonSizes:
     """La comparación estimación-vs-real debe usar el tamaño REAL del dataset
     (subset o completo), no asumir el full BigEarthNet de 237871 imágenes."""
 
@@ -292,7 +292,7 @@ class TestFeasibilityComparisonSizes:
         })
 
     def test_uses_subset_size_from_meta(self):
-        from src.web.feasibility_comparison import build_comparison
+        from src.web.benchmark_comparison import build_comparison
         meta = {"model_name": "vit_tiny", "n_train": 5000, "n_val": 1500}
         cmp = build_comparison(meta, self._feas_df(), self._actual_df(),
                                batch_size=96, trace_mode="simple")
@@ -305,7 +305,7 @@ class TestFeasibilityComparisonSizes:
         assert thr.actual is not None and thr.actual < 1000
 
     def test_falls_back_to_full_set_when_sizes_absent(self):
-        from src.web.feasibility_comparison import build_comparison
+        from src.web.benchmark_comparison import build_comparison
         meta = {"model_name": "vit_tiny"}  # sin n_train (CSV antiguo)
         cmp = build_comparison(meta, self._feas_df(), self._actual_df(),
                                batch_size=96, trace_mode="simple")
@@ -313,8 +313,8 @@ class TestFeasibilityComparisonSizes:
         assert "237871" in steps.formula  # fallback al full set
 
     def test_sizes_roundtrip_through_parser(self, tmp_path):
-        """check_feasibility escribe #sizes y el parser lo lee como n_train/n_val."""
-        from src.web.feasibility_parser import parse_feasibility_csv
+        """benchmark escribe #sizes y el parser lo lee como n_train/n_val."""
+        from src.web.benchmark_parser import parse_benchmark_csv
         csv = tmp_path / "feas.csv"
         csv.write_text(
             "#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb\n"
@@ -324,7 +324,7 @@ class TestFeasibilityComparisonSizes:
             "batch_size,trace_mode,imgs_per_s_train\n"
             "96,simple,600\n"
         )
-        meta, df = parse_feasibility_csv(csv)
+        meta, df = parse_benchmark_csv(csv)
         assert meta.get("n_train") == 5000
         assert meta.get("n_val") == 1500
 

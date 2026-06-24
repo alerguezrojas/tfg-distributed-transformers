@@ -7,21 +7,21 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.web.feasibility_parser import (parse_ddp_scenarios, parse_feasibility_csv)
+from src.web.benchmark_parser import (parse_ddp_scenarios, parse_benchmark_csv)
 from src.web.run_registry import RunInfo
 from src.web.ui import theme
 from src.web.ui.charts import (COLORS, _base_layout, _show)
-from src.web.ui.helpers import (_get_feasibility_csvs)
+from src.web.ui.helpers import (_get_benchmark_csvs)
 from src.web.tabs.comparison._common import (_has, _prec)
 
 
 def _predicted_2gpu_speedup(env: str, model: str) -> float | None:
-    """The feasibility's predicted 2-GPU speedup for this env/model, if any."""
-    for p in _get_feasibility_csvs():
+    """The benchmark's predicted 2-GPU speedup for this env/model, if any."""
+    for p in _get_benchmark_csvs():
         try:
             if p.parent.parent.name != env:
                 continue
-            meta, _ = parse_feasibility_csv(p)
+            meta, _ = parse_benchmark_csv(p)
             if meta.get("model_name") != model:
                 continue
             scen = parse_ddp_scenarios(meta)
@@ -143,7 +143,7 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
             "slowest worker. An example of when distribution is not beneficial."
         )
 
-    # Feasibility validation: predicted vs measured for the first homogeneous
+    # Benchmark validation: predicted vs measured for the first homogeneous
     # DDP run comparable with a single-GPU baseline (data-parallel prediction).
     if base_r.mode == "single":
         for lbl, r, sp in others:
@@ -153,12 +153,12 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
                 if pred_sp:
                     err = (pred_sp - sp) / sp * 100
                     pp1, pp2, pp3 = st.columns(3)
-                    pp1.metric("Predicted speedup (feasibility)", f"{pred_sp:.2f}×")
+                    pp1.metric("Predicted speedup (benchmark)", f"{pred_sp:.2f}×")
                     pp2.metric(f"Measured ({lbl})", f"{sp:.2f}×")
                     pp3.metric("Prediction error", f"{err:+.0f}%")
                     ok = abs(err) <= 15
                     (st.success if ok else st.info)(
-                        f"The feasibility predicts the speedup from a **1-GPU** benchmark; "
+                        f"The benchmark predicts the speedup from a **1-GPU** benchmark; "
                         f"here it is validated against the real multi-GPU run "
                         f"({'accurate' if ok else 'off'}: predicted {pred_sp:.2f}× vs "
                         f"measured {sp:.2f}×)."

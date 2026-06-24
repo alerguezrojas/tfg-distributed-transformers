@@ -1,4 +1,4 @@
-"""Value objects (dataclasses) shared across the feasibility analysis."""
+"""Value objects (dataclasses) shared across the benchmark analysis."""
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -108,7 +108,7 @@ class BenchmarkResult:
 
 
 @dataclass
-class FeasibilityReport:
+class BenchmarkReport:
     model_info: ModelInfo
     hardware_info: HardwareInfo
     dataset_train: int

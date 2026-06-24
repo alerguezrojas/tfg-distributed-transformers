@@ -1,4 +1,4 @@
-"""Feasibility — report (elegant viewer of a benchmark generated in the terminal).
+"""Benchmark — report (elegant viewer of a benchmark generated in the terminal).
 
 Summary strip + the key visuals up front (throughput, VRAM, precision, time, cost,
 distributed scaling); the verbose system/memory tables live in one expander."""
@@ -12,10 +12,10 @@ from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
 from src.web.ui.helpers import (_throughput_col)
 
 
-def render_report(meta, bdf_feas, feasibility_csvs) -> object:
-    if not feasibility_csvs:
-        st.info("No feasibility CSVs found. Generate one from the terminal "
-                "(`tfg feasibility`).")
+def render_report(meta, bdf_feas, benchmark_csvs) -> object:
+    if not benchmark_csvs:
+        st.info("No benchmark CSVs found. Generate one from the terminal "
+                "(`tfg benchmark`).")
         return st.container()
 
     viable = bdf_feas[bdf_feas["oom"] == "no"].copy() if not bdf_feas.empty else bdf_feas
@@ -125,7 +125,7 @@ def render_report(meta, bdf_feas, feasibility_csvs) -> object:
                        f"activations {meta.get('activation_mb_per_image','—')} MB/img")
         if not bdf_feas.empty:
             st.dataframe(bdf_feas, use_container_width=True, height=240)
-            _dl_csv(bdf_feas, "feasibility_benchmark.csv", "Download full benchmark")
+            _dl_csv(bdf_feas, "benchmark_benchmark.csv", "Download full benchmark")
 
         # Cloud cost — uses the same epoch count as the estimate above
         if per_ep and not viable.empty:

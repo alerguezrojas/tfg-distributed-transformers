@@ -1,4 +1,4 @@
-"""Feasibility — validate (predicted vs actual, Compare-style)."""
+"""Benchmark — validate (predicted vs actual, Compare-style)."""
 from __future__ import annotations
 
 import re
@@ -8,10 +8,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.web.feasibility_comparison import build_comparison
-from src.web.feasibility_parser import (parse_ddp_scenarios, parse_feasibility_csv)
+from src.web.benchmark_comparison import build_comparison
+from src.web.benchmark_parser import (parse_ddp_scenarios, parse_benchmark_csv)
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
-from src.web.ui.helpers import (_get_feasibility_csvs, _get_runs, _load_df, _run_config,
+from src.web.ui.helpers import (_get_benchmark_csvs, _get_runs, _load_df, _run_config,
                                 _safe_max)
 
 
@@ -20,7 +20,7 @@ def _short(lbl: str) -> str:
 
 
 def _run_batch(r) -> int | None:
-    """Per-GPU batch the run used (from its config line) — to match the feasibility
+    """Per-GPU batch the run used (from its config line) — to match the benchmark
     row of the SAME batch (the benchmark is single-GPU, at that per-GPU batch)."""
     m = re.search(r"\d+", str(_run_config(str(r.log_path)).get("batch", "")))
     return int(m.group()) if m else None
@@ -38,7 +38,7 @@ def _run_ngpus(r) -> int:
 
 
 def _predicted_speedup(meta, n_gpus) -> float | None:
-    """Predicted speedup at n_gpus from the feasibility report's DDP scenarios."""
+    """Predicted speedup at n_gpus from the benchmark report's DDP scenarios."""
     scen = parse_ddp_scenarios(meta)
     if not scen.empty and {"n_gpus", "speedup"}.issubset(scen.columns):
         row = scen[scen["n_gpus"] == n_gpus]
@@ -56,27 +56,27 @@ def _real_min_per_epoch(r) -> float | None:
 
 def render_validate(ctx) -> object:
     """Predicted vs actual, Compare-style. Each single-GPU run is matched to the
-    feasibility report of its model AND the batch size it actually used, so the
+    benchmark report of its model AND the batch size it actually used, so the
     estimate is for the same configuration the run ran (this is the fix for the
     'estimate very different from real' issue — the old code used the max-throughput
     batch, not the run's). Shows a table, a scorecard, a calibration scatter, the
     formula behind each estimate, and predicted-vs-real speedup."""
     st.markdown("### Predicted vs actual")
-    st.caption("Pick runs and compare what the feasibility **estimated** with what they "
-               "actually did. Each single-GPU run is matched to the feasibility report "
+    st.caption("Pick runs and compare what the benchmark **estimated** with what they "
+               "actually did. Each single-GPU run is matched to the benchmark report "
                "of its model **and its batch size**, so the estimate is for the same "
                "configuration the run used.")
 
-    feas_csvs = _get_feasibility_csvs()
+    feas_csvs = _get_benchmark_csvs()
     if not feas_csvs:
-        st.info("No feasibility reports yet. Generate one from the terminal "
-                "(`tfg feasibility`).")
+        st.info("No benchmark reports yet. Generate one from the terminal "
+                "(`tfg benchmark`).")
         st.divider()
         return st.container()
 
     parsed = []
     for p in feas_csvs:
-        m, df = parse_feasibility_csv(p)
+        m, df = parse_benchmark_csv(p)
         env = p.parent.parent.name if p.parent.parent else "?"
         parsed.append((env, m.get("model_name", "?"), m, df))
 
@@ -103,7 +103,7 @@ def render_validate(ctx) -> object:
         return st.container()
 
     # ── Per-run comparison (single-GPU runs matched by batch via build_comparison) ─
-    # Apples-to-apples requires the SAME precision: the feasibility report is fp32,
+    # Apples-to-apples requires the SAME precision: the benchmark report is fp32,
     # so an AMP run (Tensor cores) is ~3× faster than its fp32 estimate — that gap is
     # the precision, not a prediction error. We flag those so the table is honest.
     rows = []
@@ -255,7 +255,7 @@ def render_validate(ctx) -> object:
         st.markdown("#### Formula behind each estimate")
         st.caption(f"Per-metric formula + estimated-vs-real, for one **single-GPU** run. "
                    f"It lists the {len(cmp_by_run)} selected single-GPU run(s) whose **batch "
-                   f"size was benchmarked** in their model's feasibility report (e.g. the "
+                   f"size was benchmarked** in their model's benchmark report (e.g. the "
                    f"vit_base reports cover batch 48/64/96; a run at a batch the report "
                    f"never measured can't be broken down here). Select more such runs above "
                    f"to see them.")
@@ -263,7 +263,7 @@ def render_validate(ctx) -> object:
                             format_func=_short, key="formula_run")
         ftab = cmp_by_run[pick].to_dataframe()
         st.dataframe(ftab, hide_index=True, use_container_width=True)
-        _dl_csv(ftab, "feasibility_formulas.csv", "Download formulas")
+        _dl_csv(ftab, "benchmark_formulas.csv", "Download formulas")
 
     # ── Speedup validation when a single + DDP pair of the same model is picked ──
     groups: dict = defaultdict(dict)
@@ -297,9 +297,9 @@ def render_validate(ctx) -> object:
     return st.container()
 
 
-def render_f1_prediction(meta, selected_run, feasibility_csvs) -> None:
-    if not feasibility_csvs:
-        st.info("Run the feasibility analysis first.")
+def render_f1_prediction(meta, selected_run, benchmark_csvs) -> None:
+    if not benchmark_csvs:
+        st.info("Run the benchmark analysis first.")
     else:
         st.markdown("## Empirical performance prediction")
         pred = meta.get("prediction", {})
@@ -310,7 +310,7 @@ def render_f1_prediction(meta, selected_run, feasibility_csvs) -> None:
         if not pred:
             st.info(
                 "No prediction data in this report. "
-                "Regenerate with the current version of check_feasibility.py."
+                "Regenerate with the current version of benchmark.py."
             )
         else:
             # ── Key prediction metrics ─────────────────────────────────────
