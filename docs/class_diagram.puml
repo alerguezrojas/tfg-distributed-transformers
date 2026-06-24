@@ -48,6 +48,7 @@ package "src.training" #FDFEFE {
     - _batch_hooks: list
     + register_batch_hook(fn)
     - _autocast(): context
+    - _place_model(model, device): nn.Module  ' hook: por defecto model.to(device)
     + train_epoch(loader): dict
     + eval_epoch(loader): dict
     + save_checkpoint(epoch, metrics)
@@ -70,6 +71,12 @@ package "src.training" #FDFEFE {
     - _criterion_sum: BCEWithLogitsLoss
     + train_epoch(loader): dict
     .. normaliza grad por batch global ..
+  }
+
+  class ModelParallelTrainer {
+    ' modelo ya repartido entre GPUs (ModelParallelViT)
+    - _place_model(model, device): nn.Module  ' no mueve el modelo (ya repartido)
+    .. usa model.output_device para etiquetas/pérdida ..
   }
 
   class TrainingSessionBuilder <<Builder>> {
@@ -95,6 +102,7 @@ package "src.training" #FDFEFE {
     + with_inspect(*features): Self
     + with_batch_log_every(n): Self
     + with_heterogeneous_ddp(local_bs): Self
+    + with_model_parallel(devices, split_block): Self
     + with_output_mode(mode): Self
     + build(): BaseTrainer
   }
@@ -720,6 +728,7 @@ package "src.cli" #FDFEFE {
 BaseTrainer <|-- Trainer
 Trainer <|-- DDPTrainer
 DDPTrainer <|-- HeterogeneousDDPTrainer
+Trainer <|-- ModelParallelTrainer
 BaseTrainer <|-- TrainerDecorator
 
 TrainerDecorator <|-- EpochController
@@ -748,6 +757,7 @@ TrainingSessionBuilder ..> BaseTrainer : builds >
 TrainingSessionBuilder ..> Trainer : creates >
 TrainingSessionBuilder ..> DDPTrainer : creates (distributed) >
 TrainingSessionBuilder ..> HeterogeneousDDPTrainer : creates (hetero) >
+TrainingSessionBuilder ..> ModelParallelTrainer : creates (model-parallel) >
 TrainingSessionBuilder ..> aug_note : uses >
 
 DDPTrainer ..> HeterogeneousDistributedSampler : usa en hetero >
@@ -799,6 +809,7 @@ BenchmarkReport o-- StudyReport
 
 BigEarthViT ..> BigEarthNetDataset : trained on >
 ModelParallelViT ..> BigEarthNetDataset : trained on >
+ModelParallelTrainer ..> ModelParallelViT : drives >
 
 Trainer ..> metrics_note : uses >
 Trainer ..> precision_note : autocast / scaler >
