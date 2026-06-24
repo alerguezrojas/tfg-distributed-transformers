@@ -49,9 +49,9 @@ uv run tfg.py menu
 Es la forma más sencilla de usar el proyecto: un **menú guiado** que pregunta los parámetros uno a uno,
 sin necesidad de recordar ningún comando. Desde él puedes:
 
-- **Predecir** una configuración (tiempo, memoria, coste y F1 esperada) **sin GPU**.
+- **Estimar** (analítico) una configuración con fórmulas, **sin GPU**: tiempo, memoria, coste y F1 esperada.
 - **Entrenar** con la estrategia que quieras (1 GPU, varias GPU con DDP, paralelismo de modelo, GPU+CPU).
-- Lanzar el **análisis de viabilidad** (*benchmark* real de la máquina).
+- **Medir** (empírico) el rendimiento real de la máquina con un *benchmark*.
 - **Evaluar** un modelo en el conjunto de test.
 
 Para ver y comparar los entrenamientos de forma visual, abre el **dashboard**:
