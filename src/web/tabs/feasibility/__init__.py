@@ -21,14 +21,14 @@ from src.web.tabs.feasibility.ddp import render_ddp_analysis
 
 def render(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
-    st.markdown("## Feasibility")
-    st.caption("**Predict** estimates any config from formulas (no GPU) · "
-               "**Compare vs runs** puts those predictions next to what actually "
-               "happened · **Report** shows a benchmark generated in the terminal "
-               "with `tfg feasibility`.")
+    st.markdown("## Performance")
+    st.caption("**Estimate** computes any config from formulas — analytic, no GPU · "
+               "**Compare vs runs** puts those estimates next to what actually "
+               "happened · **Benchmark** is a real (empirical) measurement generated "
+               "in the terminal with `tfg benchmark`.")
 
     feasibility_csvs = _get_feasibility_csvs()
-    tab_predict, tab_compare, tab_report = st.tabs(["Predict", "Compare vs runs", "Report"])
+    tab_predict, tab_compare, tab_report = st.tabs(["Estimate", "Compare vs runs", "Benchmark"])
 
     # ── Predict: closed-form estimate for any config (no GPU, just formulas) ─────
     with tab_predict:
@@ -55,13 +55,13 @@ def render(ctx: DashboardContext) -> None:
     # ── Report: read a benchmark generated from the terminal (web only watches) ──
     with tab_report:
         if not feasibility_csvs:
-            st.info("No feasibility reports yet. Generate one from the terminal — e.g. "
-                    "`uv run tfg.py feasibility --model vit_base_patch16_224 "
+            st.info("No benchmarks yet. Generate one from the terminal — e.g. "
+                    "`uv run tfg.py benchmark --model vit_base_patch16_224 "
                     "--batch-sizes 32,64` — and it will appear here.")
         else:
-            st.caption("Benchmark of the report selected above (generated in the "
-                       "terminal with `tfg feasibility`): hardware, throughput, time "
-                       "and cost estimates, distributed scaling and the convergence study.")
+            st.caption("Benchmark selected above (generated in the terminal with "
+                       "`tfg benchmark`): hardware, throughput, time and cost "
+                       "estimates, distributed scaling and the convergence study.")
             subtab_ddp_opt = render_report(meta, bdf_feas, feasibility_csvs)
             with subtab_ddp_opt:
                 render_ddp_analysis(meta, feasibility_csvs)
