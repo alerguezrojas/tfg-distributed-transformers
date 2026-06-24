@@ -10,16 +10,20 @@ con igual peso sobrepondera al rank 1 (1/2 en lugar del correcto 4/68).
 
 Solución: normalización de gradientes por batch global
 -------------------------------------------------------
-Cada rank escala su loss por:
+Cada rank computa la BCE como SUMA (sobre batch × clases) y la escala por:
 
-    scale = (local_batch_size × world_size) / global_batch_size
+    scale = world_size / (global_batch_size × n_clases)
 
-donde global_batch_size = Σ local_batch_size_i (suma sobre todos los ranks,
-obtenida via all_reduce al inicio de cada batch).
+donde global_batch_size = Σ local_batch_size_i (suma sobre todos los ranks, vía
+all_reduce al inicio de cada batch). El factor `world_size` deshace el promedio
+÷world_size que DDP aplica a los gradientes, y `n_clases` lleva la suma a la
+escala de `BCEWithLogitsLoss(reduction='mean')`. Resultado tras el all_reduce de
+DDP: exactamente el gradiente BCE-mean del mini-batch global concatenado, con
+cada rank ponderado por su batch real.
 
-Equivalentemente, cada rank computa la loss como suma (no media) y divide
-por el batch global total. Después del all_reduce de DDP, el resultado es
-el gradiente que se calcularía sobre el mini-batch global concatenado.
+(Histórico: hasta el 24/06 la escala era `loss_sum / global_bs`, que sobre-escalaba
+×n_clases/world_size ≈ 9.5×; AdamW lo absorbía casi del todo —es invariante a un
+factor constante del gradiente— por eso los resultados eran válidos, pero no exacto.)
 
 Backend: gloo — soporta CPU y GPU. NCCL requiere CUDA en todos los ranks.
 
@@ -114,9 +118,16 @@ class HeterogeneousDDPTrainer(DDPTrainer):
 
             logits = self.model(images)
 
-            # loss_sum / global_bs = gradiente correcto ponderado por batch global
+            # Gradiente ponderado por el batch GLOBAL. criterion_sum suma sobre
+            # batch×clases; DDP luego PROMEDIA los gradientes por rank (÷ world_size).
+            # Para recuperar exactamente el gradiente BCE-mean del batch global
+            # concatenado hay que dividir por (global_bs × n_clases) y deshacer el
+            # ÷world_size de DDP → factor world_size / (global_bs × n_clases).
+            # (Antes era loss_sum/global_bs, que sobre-escalaba ×n_clases/world_size;
+            #  AdamW lo absorbía casi del todo, pero no era exacto.)
+            n_classes = logits.shape[1]
             loss_sum = self._criterion_sum(logits, labels_for_loss)
-            loss = loss_sum / global_bs
+            loss = loss_sum * self.world_size / (global_bs * n_classes)
             loss.backward()
 
             if self.grad_clip is not None:

@@ -24,7 +24,7 @@ class TimeEstimator:
         eval_batches = math.ceil(dataset_val / result.batch_size)
 
         sec_train = train_batches * result.seconds_per_batch_train * nfs_factor
-        sec_eval = eval_batches * result.seconds_per_batch_eval
+        sec_eval = eval_batches * result.seconds_per_batch_eval * nfs_factor  # eval also reads from disk
         sec_epoch = sec_train + sec_eval
         sec_total = sec_epoch * epochs
 

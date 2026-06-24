@@ -219,6 +219,9 @@ class Trainer(BaseTrainer):
             # Raw tensors for ConfusionMatrixDecorator (consumed by decorator, stripped before checkpoint)
             "_preds": all_preds_t,
             "_labels": all_labels_t,
+            # Probabilities — DDPTrainer all_gathers these to redo the threshold
+            # search on the GLOBAL validation set (not just one rank's shard).
+            "_probs": all_probs_t,
         }
 
     def save_checkpoint(self, epoch: int, metrics: dict):
