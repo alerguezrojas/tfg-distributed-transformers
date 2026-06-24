@@ -47,6 +47,24 @@ def _predicted_speedup(meta, n_gpus) -> float | None:
     return None
 
 
+def _analytic_speedup(r, meta) -> float | None:
+    """Speedup vs single-GPU from the analytic engine, for the strategies the benchmark
+    does NOT model: model-parallel (naive pipeline ≈1×) and heterogeneous. The empirical
+    benchmark only extrapolates data-parallel (DDP) scaling, so without this an MP run
+    would have no estimate here. Uses the GPU recorded in the run's benchmark report."""
+    gpu = (meta or {}).get("hardware_name")
+    bs = _run_batch(r)
+    if not gpu or not bs:
+        return None
+    try:
+        from src.performance_model import predict
+        p = predict(r.mode, r.model, gpu, _run_ngpus(r), batch=bs,
+                    precision=(r.precision or "fp32"))
+        return float(p.speedup) if p and p.speedup else None
+    except Exception:
+        return None
+
+
 def _real_min_per_epoch(r) -> float | None:
     df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
     if "epoch_time" in df.columns and df["epoch_time"].notna().any():
@@ -128,7 +146,8 @@ def render_validate(ctx) -> object:
         precision_ok = (not tensor_core) or (prec_sp is not None)
         est_min = None
         note_bits = []
-        if m and fdf is not None and not fdf.empty and bs and r.mode in ("single", "ddp"):
+        if m and fdf is not None and not fdf.empty and bs and r.mode in (
+                "single", "ddp", "model_parallel", "heterogeneous"):
             nfs = float(m.get("nfs_factor", 1.0) or 1.0)
             cmp = build_comparison(meta=m, feas_df=fdf, actual_df=run_df,
                                    batch_size=bs, trace_mode="simple", nfs_factor=nfs)
@@ -145,12 +164,36 @@ def render_validate(ctx) -> object:
                 if single_est is not None:
                     if r.mode == "single":
                         est_min = single_est
-                    else:                        # ddp: ÷ predicted N-GPU speedup
+                    elif r.mode == "ddp":        # ÷ predicted N-GPU speedup (benchmark)
                         ng = _run_ngpus(r)
                         sp = _predicted_speedup(m, ng)
                         if sp:
                             est_min = single_est / sp
                             note_bits.append(f"÷ {sp:.2f}× ({ng} GPU)")
+                    else:                        # model-parallel / heterogeneous:
+                        # the benchmark has no scenario for these, so the speedup comes
+                        # from the analytic engine (model-parallel ≈1×).
+                        sp = _analytic_speedup(r, m)
+                        if sp:
+                            est_min = single_est / sp
+                            note_bits.append(f"÷ {sp:.2f}× (analytic {r.mode})")
+        # Pure-analytic fallback for model-parallel / heterogeneous runs whose batch was
+        # NOT benchmarked (e.g. vit_large MP at batch 24 — its report only covers 32/48/64),
+        # so there is no single-GPU estimate to anchor. The analytic engine predicts the
+        # run directly (train time/epoch); flagged as train-only since it omits eval.
+        if est_min is None and r.mode in ("model_parallel", "heterogeneous") and m and bs:
+            gpu = m.get("hardware_name")
+            if gpu:
+                try:
+                    from src.performance_model import predict
+                    p = predict(r.mode, r.model, gpu, _run_ngpus(r), batch=bs,
+                                precision=run_prec)
+                    if p and p.time_per_epoch_train_s:
+                        est_min = p.time_per_epoch_train_s / 60.0
+                        note_bits.append(f"analytic ({r.mode}, batch {bs} not "
+                                         f"benchmarked, train-only)")
+                except Exception:
+                    pass
         pred_f1 = None
         if m:
             try:
@@ -184,9 +227,11 @@ def render_validate(ctx) -> object:
                  column_config={"Note": st.column_config.TextColumn("Note", width="large")})
     _dl_csv(_shown.reset_index(), "predicted_vs_real.csv", "Download comparison")
     st.caption("Single-GPU runs are matched by batch size; **DDP** runs use single-GPU "
-               "estimate ÷ predicted speedup; **AMP/TF32** runs are corrected by the "
-               "report's *measured* Tensor-core speedup (see the *Note* column), so they "
-               "are comparable. A precision the report never benchmarked is flagged "
+               "estimate ÷ predicted speedup; **model-parallel / heterogeneous** runs use "
+               "the *analytic* engine's speedup (≈1× for naive pipeline) since the empirical "
+               "benchmark only models data-parallel scaling; **AMP/TF32** runs are corrected "
+               "by the report's *measured* Tensor-core speedup (see the *Note* column), so "
+               "they are comparable. A precision the report never benchmarked is flagged "
                "*≠ precision*. The remaining gap is the genuine error — the synthetic "
                "benchmark omits disk I/O, so small models on NFS run a bit slower. For "
                "comparable compute-bound runs the estimate lands within a few %.")
