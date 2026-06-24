@@ -102,9 +102,9 @@ class ReportFormatter:
             self._emit(f"  Patches encontrados: ~{profile.n_files_total_est:,}")
             if profile.io_bottleneck_ratio > 0:
                 if profile.io_bottleneck_ratio > 1.2:
-                    self._emit(f"  ⚠ I/O-BOUND (ratio={profile.io_bottleneck_ratio:.2f}) — data loading más lento que cómputo")
+                    self._emit(f"  Aviso: I/O-BOUND (ratio={profile.io_bottleneck_ratio:.2f}) — data loading más lento que cómputo")
                 else:
-                    self._emit(f"  ✓ Compute-bound (ratio={profile.io_bottleneck_ratio:.2f}) — GPU es el cuello de botella")
+                    self._emit(f"  Compute-bound (ratio={profile.io_bottleneck_ratio:.2f}) — GPU es el cuello de botella")
 
     def _memory_section(self, report: BenchmarkReport):
         m, h = report.model_info, report.hardware_info
@@ -115,11 +115,11 @@ class ReportFormatter:
         for bs in report.batch_sizes:
             total_gb = m.total_mb(bs) / 1024
             if h.is_cuda and total_gb > h.total_vram_gb:
-                estado = "OOM ✗"
+                estado = "OOM"
             elif h.is_cuda and total_gb > h.total_vram_gb * 0.85:
-                estado = "⚠ Límite"
+                estado = "Límite"
             else:
-                estado = "✓ OK"
+                estado = "OK"
             self._emit(f"  {bs:>5}  {total_gb:>9.2f} GB  {estado:>10}")
 
     def _benchmark_section(self, report: BenchmarkReport):
@@ -170,9 +170,9 @@ class ReportFormatter:
         best = max(report.ddp_scenarios, key=lambda s: s.estimated_speedup / max(s.n_gpus, 1))
         self._emit(f"\n  Configuración recomendada: {best.n_gpus} GPU(s) con batch={best.batch_per_gpu}/GPU")
         if best.bottleneck == "io":
-            self._emit("  ⚠ I/O es el cuello de botella — más GPUs no ayudarán sin disco más rápido")
+            self._emit("  Aviso: I/O es el cuello de botella — más GPUs no ayudarán sin disco más rápido")
         elif best.bottleneck == "sync":
-            self._emit("  ⚠ Sincronización de gradientes es el cuello de botella — red lenta")
+            self._emit("  Aviso: Sincronización de gradientes es el cuello de botella — red lenta")
 
     def _prediction_section(self, pred: PerformancePrediction | None):
         if pred is None:
@@ -221,10 +221,10 @@ class ReportFormatter:
         target_epochs = max(report.epochs_list)
         viable = [r for r in report.results if not r.oom and r.trace_mode == "off"]
         if not viable:
-            self._emit("  ✗ Ningún batch size viable")
+            self._emit("  Ningún batch size viable")
             return
         best = max(viable, key=lambda r: r.images_per_second_train)
-        self._emit(f"  ✓ Batch size óptimo: {best.batch_size} ({best.images_per_second_train:.1f} imgs/s)")
+        self._emit(f"  Batch size óptimo: {best.batch_size} ({best.images_per_second_train:.1f} imgs/s)")
         for mode in report.trace_modes:
             r = next((x for x in report.results if x.batch_size == best.batch_size and x.trace_mode == mode), None)
             if r and not r.oom:
@@ -238,7 +238,7 @@ class ReportFormatter:
                         f"~{TimeEstimator.format_time(est['total'])}"
                     )
         if nfs == 1.0:
-            self._emit("\n  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas")
+            self._emit("\n  Nota: En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas")
         self._emit()
 
     def write_csv(self, report: BenchmarkReport, env: str = "local"):

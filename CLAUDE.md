@@ -1125,6 +1125,13 @@ Auditoría a fondo de la matemática de las 3 áreas (run/estimate/benchmark) a 
 - [x] **(menor) Proyección DDP plana redundante:** el informe de texto mostraba `[DDP×2: ~Xh]` con eficiencia plana 0.85, contradiciendo la sección DDP precisa (compute/IO-aware del `DDPOptimizer`). Quitado el número inline engañoso (la sección DDP precisa se mantiene).
 - **Verificado correcto (sin tocar):** métricas macro, Trainer single (mixup/label-smoothing/train-F1 insesgado/threshold), DDP (métricas globales por all_gather, loss SUM/world_size), `performance_model` (fórmula maestra calibrada <10%), `Benchmarker` (sincroniza CUDA → timing fiable), `DDPOptimizer` (compute/n + I/O fijo + sync), energía (suma todas las GPUs), model-parallel. **376 tests.**
 
+#### Higiene de código (24/06/26, rama `chore/code-hygiene`)
+Revisión de comentarios/orden/limpieza/SRP a petición del usuario (calidad de TFG):
+- [x] **Sin comentarios informales/vulgares** (verificado: no hay; los `TODO/FIXME/HACK` eran falsos positivos como "casi del todo"). **Sin código muerto comentado.**
+- [x] **Emojis/símbolos fuera del informe del benchmark:** `report_formatter.py` usaba `⚠ ✓ ✗ 💡` en el informe de texto → reemplazados por texto plano digno (`Aviso:`, `Nota:`, `OOM`/`OK`/`Límite`).
+- [x] **SRP — menú interactivo extraído de `cli.py`:** era el fichero más grande (640 ln) mezclando comandos + builders + display + el sub-programa interactivo. El menú (+ sus pickers `_pick`/`_pick_model`/`_list_*`/`_confirm_run`) se movió a **`src/cli_menu.py`** (`run_menu`); `cli.menu()` queda como wrapper delgado (import perezoso → sin ciclo). `cli.py` 640→461 ln. Verificado: `tfg menu` arranca y sale bien, 376 tests.
+- **Estado tras la pasada:** los ficheros >350 ln restantes son **una sola responsabilidad cada uno** (motor analítico `performance_model`, `TrainingSessionBuilder`, un tab web, un decorador, `ConvergenceStudy`) — no violan SRP. (Los `print()` de algunos módulos de tooling —builder/checker— son feedback de progreso intencionado en CLI, se dejan.)
+
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
 - [ ] (Opcional, **ya implementado, falta correr**) Run focal-vs-BCE en Verode (V100, dataset completo) para confirmar a escala si focal sube el F1 macro / rescata la clase 6. Capacidad y configs listas; solo falta GPU libre.
