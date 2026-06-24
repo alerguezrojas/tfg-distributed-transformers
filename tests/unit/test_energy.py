@@ -53,9 +53,12 @@ def test_power_sampler_unavailable_without_pynvml(monkeypatch):
     assert s.stop() == (0.0, 0.0)
 
 
-def test_model_parallel_script_wires_energy():
+def test_model_parallel_goes_through_builder_with_multi_gpu_energy():
+    # The script now uses the builder (so it gets the full decorator stack + flags),
+    # and the builder wires energy over BOTH split GPUs for model parallelism.
     src = _MP_SCRIPT.read_text(encoding="utf-8")
-    assert '"--fn"' in src                                   # the flag exists
-    assert "measure_energy(" in src                          # and it is applied
-    assert "ModelParallelTrainer.train_epoch" in src         # label the web parser matches
-    assert 'logger_name="model_parallel"' in src             # logs into the run's file
+    assert '"--fn"' in src
+    assert "with_model_parallel(" in src
+    builder = (Path(__file__).resolve().parents[2] / "src" / "training" / "builder.py"
+               ).read_text(encoding="utf-8")
+    assert "measure_energy(base.train_epoch, devices=" in builder   # explicit devices for MP
