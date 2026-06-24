@@ -17,8 +17,8 @@ from src.web.dataset_stats import (
     class_distribution_approximate, class_distribution_from_parquet,
     get_country_distribution, find_example_patches, load_rgb_image,
 )
-from src.web.feasibility_comparison import build_comparison
-from src.web.feasibility_parser import parse_feasibility_csv, parse_ddp_scenarios
+from src.web.benchmark_comparison import build_comparison
+from src.web.benchmark_parser import parse_benchmark_csv, parse_ddp_scenarios
 from src.web.model_explorer import ALL_FAMILIES, CURATED_MODELS, compare_models
 from src.web.perclass_parser import parse_perclass_csv
 from src.web.run_registry import RunInfo
@@ -30,8 +30,8 @@ from src.web.ui.charts import (
 )
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (
-    ROOT, _load_df, _load_batch, _load_perclass, _get_runs, _get_feasibility_csvs,
-    _feas_label, _run_config, _load_class_distribution, _load_example_images, _class_gallery,
+    ROOT, _load_df, _load_batch, _load_perclass, _get_runs, _get_benchmark_csvs,
+    _bench_label, _run_config, _load_class_distribution, _load_example_images, _class_gallery,
     _safe_max, _safe_idxmax, _safe_val_at_best, _throughput_col, _dur_str,
     _get_configs, _detect_anomalies, _read_log_tail, _parse_log_progress,
     _gpu_usage, _color_f1_cell,
@@ -62,7 +62,7 @@ def render(ctx: DashboardContext) -> None:
     total_gpu_h = 0.0
     fastest_min = float("inf")
     total_energy_wh = 0.0
-    feasibility_csvs_home = _get_feasibility_csvs()
+    benchmark_csvs_home = _get_benchmark_csvs()
     curve_by_label: dict[str, list[float]] = {}
     gpu_secs_by_env: dict[str, float] = {}     # total GPU seconds per environment
 
@@ -98,7 +98,7 @@ def render(ctx: DashboardContext) -> None:
         ("Energy", f"{total_energy_wh:.0f} Wh" if total_energy_wh else "—"),
         ("Models", str(n_models)),
         ("Environments", str(n_envs)),
-        ("Feasibility", str(len(feasibility_csvs_home))),
+        ("Benchmark", str(len(benchmark_csvs_home))),
     ])
 
     # ── Row 1: varied charts — a time bar, the dataset split (pie) and the class

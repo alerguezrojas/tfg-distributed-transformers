@@ -89,9 +89,9 @@ def test_dur_str_exact():
 # ── module layout ─────────────────────────────────────────────────────────────
 
 _FEAS_PKG = [
-    "tabs/feasibility/__init__.py", "tabs/feasibility/predict.py",
-    "tabs/feasibility/validate.py", "tabs/feasibility/report.py",
-    "tabs/feasibility/study.py", "tabs/feasibility/ddp.py",
+    "tabs/benchmark/__init__.py", "tabs/benchmark/predict.py",
+    "tabs/benchmark/validate.py", "tabs/benchmark/report.py",
+    "tabs/benchmark/study.py", "tabs/benchmark/ddp.py",
 ]
 _CMP_PKG = [
     "tabs/comparison/__init__.py", "tabs/comparison/_common.py",
@@ -136,10 +136,10 @@ def tabs_source() -> str:
             "comparison/summary.py", "comparison/perclass.py",
             "comparison/speedup.py", "comparison/charts.py",
             "comparison/__init__.py",
-            "feasibility/predict.py",
-            "feasibility/validate.py", "feasibility/report.py",
-            "feasibility/study.py", "feasibility/ddp.py",
-            "feasibility/__init__.py"]
+            "benchmark/predict.py",
+            "benchmark/validate.py", "benchmark/report.py",
+            "benchmark/study.py", "benchmark/ddp.py",
+            "benchmark/__init__.py"]
     return "\n".join(_src(f"tabs/{m}") for m in mods)
 
 
@@ -159,14 +159,14 @@ def test_app_is_thin_orchestrator(app_source):
     n_lines = len(app_source.splitlines())
     # Thin = page config + CSS + sidebar + dispatch (not the old 3000-line monolith).
     assert n_lines < 280, f"app.py has {n_lines} lines — expected a thin orchestrator"
-    for mod in ("home", "comparison", "feasibility", "dataset"):
+    for mod in ("home", "comparison", "benchmark", "dataset"):
         assert f"{mod}.render" in app_source, mod
     assert "run_tab.render" in app_source
 
 
 def test_sidebar_nav_sections(app_source):
     """The single-level icon-menu navigation labels (English) live in app.py."""
-    for t in ('"Overview"', '"Run results"', '"Compare"', '"Performance"',
+    for t in ('"Overview"', '"Run results"', '"Compare"', '"Estimate/Benchmark"',
               '"Dataset"'):
         assert t in app_source, f"missing nav item {t}"
     # Icon menu (streamlit-option-menu), single level, session-state driven.
@@ -181,7 +181,7 @@ def test_sub_tab_names(tabs_source):
     summary + speedup vs baseline + radar + energy + overlays).
     """
     for t in ('"Curves"', '"Per-class"', '"Confusions"', '"Batch"', '"Details"',
-              '"Estimate"', '"Compare vs runs"', '"Benchmark"'):
+              '"Estimate"', '"Benchmark"', '"Benchmark vs Run"'):
         assert t in tabs_source, f"missing sub-tab {t}"
     # The unified Compare keeps its key sections.
     for s in ("Speedup analysis", "Baseline run (= 1.00×)", "Energy consumption",

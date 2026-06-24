@@ -12,10 +12,10 @@ from src.web.dataset_stats import (
     CLASS_NAMES, class_distribution_from_parquet, find_example_patches, load_rgb_image,
     val_support_from_parquet, _canon_label,
 )
-from src.web.feasibility_parser import parse_feasibility_csv
+from src.web.benchmark_parser import parse_benchmark_csv
 from src.web.log_parser import parse_log
 from src.web.perclass_parser import parse_perclass_csv
-from src.web.run_registry import RunInfo, discover_feasibility_csvs, discover_runs
+from src.web.run_registry import RunInfo, discover_benchmark_csvs, discover_runs
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -63,19 +63,19 @@ def _get_runs() -> list[RunInfo]:
 
 
 @st.cache_data(ttl=60)
-def _get_feasibility_csvs() -> list[Path]:
-    return discover_feasibility_csvs(ROOT)
+def _get_benchmark_csvs() -> list[Path]:
+    return discover_benchmark_csvs(ROOT)
 
 
 @st.cache_data(ttl=60)
-def _feas_label(path_str: str) -> str:
-    """Readable label for a feasibility CSV: 'env · model · DD/MM HH:MM'
+def _bench_label(path_str: str) -> str:
+    """Readable label for a benchmark CSV: 'env · model · DD/MM HH:MM'
     instead of the raw date-based filename."""
     import re
     p = Path(path_str)
     env = p.parent.parent.name if p.parent.parent else "?"
     try:
-        m, _ = parse_feasibility_csv(p)
+        m, _ = parse_benchmark_csv(p)
         model = str(m.get("model_name", "?")).replace("_patch16_224", "")
     except Exception:
         model = "?"

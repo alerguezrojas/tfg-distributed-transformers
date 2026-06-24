@@ -8,7 +8,7 @@ from pathlib import Path
 
 import torch
 
-from src.feasibility.value_objects import HardwareInfo, CPUInfo, DiskInfo, DatasetProfile
+from src.benchmark.value_objects import HardwareInfo, CPUInfo, DiskInfo, DatasetProfile
 
 
 class HardwareProbe:

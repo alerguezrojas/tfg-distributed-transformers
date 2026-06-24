@@ -1,17 +1,17 @@
-"""Feasibility — distributed-scaling prediction (lean: table + speedup + total time)."""
+"""Benchmark — distributed-scaling prediction (lean: table + speedup + total time)."""
 from __future__ import annotations
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.web.feasibility_parser import (parse_ddp_scenarios)
+from src.web.benchmark_parser import (parse_ddp_scenarios)
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
 
 
-def render_ddp_analysis(meta, feasibility_csvs) -> None:
-    if not feasibility_csvs:
-        st.info("Run the feasibility analysis first.")
+def render_ddp_analysis(meta, benchmark_csvs) -> None:
+    if not benchmark_csvs:
+        st.info("Run the benchmark analysis first.")
         return
     ddp_df = parse_ddp_scenarios(meta)
     if ddp_df.empty:

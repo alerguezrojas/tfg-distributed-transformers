@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import math
 
-from src.feasibility.value_objects import (
+from src.benchmark.value_objects import (
     ModelInfo, HardwareInfo, CPUInfo, DiskInfo, DDPScenario, BenchmarkResult,
 )
 

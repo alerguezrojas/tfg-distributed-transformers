@@ -60,11 +60,11 @@ def test_order_is_canonical():
     assert avail == [p for p in ALL_PRECISIONS if p in avail]
 
 
-def test_feasibility_parser_reads_precision_blocks(tmp_path):
+def test_benchmark_parser_reads_precision_blocks(tmp_path):
     """The parser must round-trip the #precision and #precision_cmp blocks."""
-    from src.web.feasibility_parser import parse_feasibility_csv
+    from src.web.benchmark_parser import parse_benchmark_csv
 
-    csv = tmp_path / "feasibility_prec.csv"
+    csv = tmp_path / "benchmark_prec.csv"
     csv.write_text(
         "#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb\n"
         "#meta,vit_base_patch16_224,85.8,200.8,RTX 3060 Ti,8.2,8.2\n"
@@ -75,7 +75,7 @@ def test_feasibility_parser_reads_precision_blocks(tmp_path):
         "batch_size,trace_mode,oom\n"
         "32,off,no\n"
     )
-    meta, _ = parse_feasibility_csv(csv)
+    meta, _ = parse_benchmark_csv(csv)
     assert meta.get("precision") == "fp32"
     cmp = meta.get("precision_cmp")
     assert cmp is not None

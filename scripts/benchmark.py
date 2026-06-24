@@ -1,14 +1,14 @@
-"""Pre-training feasibility analysis — thin CLI.
+"""Pre-training benchmark analysis — thin CLI.
 
-The analysis logic lives in the ``src/feasibility`` package (one responsibility
+The analysis logic lives in the ``src/benchmark`` package (one responsibility
 per module: value objects, model analyzer, probes, predictor, DDP optimizer,
-benchmarker, time estimator, report formatter, and the FeasibilityChecker
+benchmarker, time estimator, report formatter, and the BenchmarkChecker
 facade). This file only parses arguments and wires the facade to the formatter.
 
 Examples:
-    uv run python scripts/check_feasibility.py --batch-sizes 16 32 --epochs 30
-    uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
-    uv run python scripts/check_feasibility.py --config configs/train_cluster_v3.yaml \\
+    uv run python scripts/benchmark.py --batch-sizes 16 32 --epochs 30
+    uv run python scripts/benchmark.py --model resnet50 --batch-sizes 32 64
+    uv run python scripts/benchmark.py --config configs/train_cluster_v3.yaml \\
         --batch-sizes 64 --nfs-factor 1.3 --convergence-study
 """
 from __future__ import annotations
@@ -20,7 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.feasibility import FeasibilityChecker, ReportFormatter
+from src.benchmark import BenchmarkChecker, ReportFormatter
 
 
 def parse_args():
@@ -96,9 +96,9 @@ def main():
         output_path = args.output
         if output_path is None:
             ts = datetime.now().strftime("%d%m%Y_%H%M%S")
-            output_path = Path(f"logs/{env}/feasibility/feasibility_{ts}.log")
+            output_path = Path(f"logs/{env}/benchmark/benchmark_{ts}.log")
 
-        checker = FeasibilityChecker(
+        checker = BenchmarkChecker(
             model_name=model_name,
             batch_sizes=batch_sizes,
             epochs_list=epochs_list,

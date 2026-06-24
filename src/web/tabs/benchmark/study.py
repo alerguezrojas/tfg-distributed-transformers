@@ -1,4 +1,4 @@
-"""Feasibility — study."""
+"""Benchmark — study."""
 from __future__ import annotations
 
 
@@ -9,9 +9,9 @@ import streamlit as st
 from src.web.ui.charts import (COLORS, _base_layout, _show)
 
 
-def render_study(meta, feasibility_csvs) -> None:
-    if not feasibility_csvs:
-        st.info("Run the feasibility analysis first.")
+def render_study(meta, benchmark_csvs) -> None:
+    if not benchmark_csvs:
+        st.info("Run the benchmark analysis first.")
     else:
         study = meta.get("study")
         if not study:

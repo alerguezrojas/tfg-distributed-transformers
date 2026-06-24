@@ -44,15 +44,15 @@ def check(name, fn):
         print(f"  FAIL {name}: {e}")
 
 # ── Load all runs ─────────────────────────────────────────────────────────────
-from src.web.run_registry import RunInfo, discover_runs, discover_feasibility_csvs
+from src.web.run_registry import RunInfo, discover_runs, discover_benchmark_csvs
 from src.web.log_parser import parse_log
 from src.web.perclass_parser import parse_perclass_csv
 from src.web.batch_parser import parse_batch_csv
-from src.web.feasibility_parser import parse_feasibility_csv
+from src.web.benchmark_parser import parse_benchmark_csv
 
 runs = discover_runs(ROOT)
-feasibility_csvs = discover_feasibility_csvs(ROOT)
-print(f"\nFound {len(runs)} runs, {len(feasibility_csvs)} feasibility CSVs\n")
+benchmark_csvs = discover_benchmark_csvs(ROOT)
+print(f"\nFound {len(runs)} runs, {len(benchmark_csvs)} benchmark CSVs\n")
 
 def load_df(run):
     if run.epoch_csv_path and run.epoch_csv_path.exists():
@@ -446,12 +446,12 @@ def test_compare_summary_table():
 
 check("compare_summary_table", test_compare_summary_table)
 
-# ── TAB: Feasibility ─────────────────────────────────────────────────────────
-print("\n=== Feasibility tab ===")
+# ── TAB: Benchmark ─────────────────────────────────────────────────────────
+print("\n=== Benchmark tab ===")
 
-def test_feasibility_all_csvs():
-    for csv_path in feasibility_csvs:
-        meta, bdf = parse_feasibility_csv(csv_path)
+def test_benchmark_all_csvs():
+    for csv_path in benchmark_csvs:
+        meta, bdf = parse_benchmark_csv(csv_path)
         assert isinstance(meta, dict)
         # Benchmark section
         if bdf.empty:
@@ -464,15 +464,15 @@ def test_feasibility_all_csvs():
                 x_labels = sub["batch_size"].astype(str) + f" [{mode}]"
                 assert len(x_labels) >= 0
 
-check("feasibility_all_csvs", test_feasibility_all_csvs)
+check("benchmark_all_csvs", test_benchmark_all_csvs)
 
-from src.web.feasibility_comparison import build_comparison
+from src.web.benchmark_comparison import build_comparison
 
-def test_feasibility_comparison():
-    if not feasibility_csvs:
+def test_benchmark_comparison():
+    if not benchmark_csvs:
         return
-    for csv_path in feasibility_csvs:
-        meta, feas_df = parse_feasibility_csv(csv_path)
+    for csv_path in benchmark_csvs:
+        meta, feas_df = parse_benchmark_csv(csv_path)
         if feas_df.empty or "batch_size" not in feas_df.columns:
             continue
         batch_sizes = feas_df["batch_size"].dropna().astype(int).unique().tolist()
@@ -501,7 +501,7 @@ def test_feasibility_comparison():
                             pass
             break  # one run per csv is enough
 
-check("feasibility_comparison_build", test_feasibility_comparison)
+check("benchmark_comparison_build", test_benchmark_comparison)
 
 # ── TAB: Time Analysis ────────────────────────────────────────────────────────
 print("\n=== Time tab ===")

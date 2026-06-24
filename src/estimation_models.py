@@ -1,6 +1,6 @@
-"""Selectable speedup models for the feasibility predictor.
+"""Selectable speedup models for the benchmark predictor.
 
-The feasibility checker computes a single speedup estimate with its own
+The benchmark checker computes a single speedup estimate with its own
 compute/IO-aware model. For the dashboard we expose several *analytic* scaling
 laws so the user can compare them against that estimate and against the real
 measurements, and pick the one that best matches their setup.
@@ -16,7 +16,7 @@ Models
 - **gustafson**  scaled problem size: ``S(n) = n - s*(n - 1)``. Optimistic;
                  grows ~linearly because the workload grows with ``n``.
 
-The feasibility's own curve (compute/IO-aware, including the NFS bottleneck and
+The benchmark's own curve (compute/IO-aware, including the NFS bottleneck and
 gradient-sync overhead) is read from the report CSV and shown alongside these.
 """
 from __future__ import annotations

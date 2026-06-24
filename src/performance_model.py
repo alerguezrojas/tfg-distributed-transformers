@@ -2,7 +2,7 @@ r"""Analytic performance model — predict training time/speedup/memory/cost for
 ANY (strategy, model, GPU, n_gpus, dataset, batch, precision) WITHOUT running a
 benchmark, from curated hardware/model specs.
 
-This generalizes the feasibility checker (which until now needed a real
+This generalizes the benchmark checker (which until now needed a real
 benchmark on the target machine) into a closed-form predictor, as requested by
 the tutor. The formulas are derived in docs/performance_model.md; the master
 equation for a DDP train epoch is:

@@ -11,7 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from src.cli import (build_train_cmd, build_feasibility_cmd, build_eval_cmd, STRATEGIES,
+from src.cli import (build_train_cmd, build_benchmark_cmd, build_eval_cmd, STRATEGIES,
                      _run_row, resolve_dataset_n)
 from src.performance_model import N_FULL_TRAIN, N_SUBSET_TRAIN
 from src.web.run_registry import discover_runs
@@ -91,20 +91,20 @@ def test_strategies_constant():
     assert set(STRATEGIES) == {"single", "ddp", "model-parallel", "heterogeneous"}
 
 
-# ── feasibility ──────────────────────────────────────────────────────────────────
+# ── benchmark ──────────────────────────────────────────────────────────────────
 
-def test_feasibility_basic():
-    cmd = build_feasibility_cmd(["vit_base_patch16_224"], [32, 64], 30, ["off", "simple"])
+def test_benchmark_basic():
+    cmd = build_benchmark_cmd(["vit_base_patch16_224"], [32, 64], 30, ["off", "simple"])
     s = _join(cmd)
-    assert "scripts/check_feasibility.py" in cmd
+    assert "scripts/benchmark.py" in cmd
     assert "--model vit_base_patch16_224" in s
     assert "--batch-sizes 32 64" in s
     assert "--trace-modes off simple" in s
     assert "--epochs 30" in s
 
 
-def test_feasibility_study_and_precision():
-    cmd = build_feasibility_cmd(None, [32], 15, None, precision="amp",
+def test_benchmark_study_and_precision():
+    cmd = build_benchmark_cmd(None, [32], 15, None, precision="amp",
                                 compare_precision=True, convergence_study=True,
                                 study_steps=80, nfs_factor=1.3)
     s = _join(cmd)

@@ -449,9 +449,9 @@ cd ~/tfg-distributed-transformers
 
 ---
 
-## Feasibility Checker
+## Benchmark — medición empírica (antes "Feasibility Checker")
 
-`scripts/check_feasibility.py` — análisis de viabilidad previo al entrenamiento. Usa datos sintéticos (sin tocar el dataset) para medir throughput real y estimar tiempos.
+`scripts/benchmark.py` (antes `check_feasibility.py`) — **medición empírica** previa al entrenamiento. Usa datos sintéticos (sin tocar el dataset) para medir throughput real y estimar tiempos. Comando: `tfg benchmark`.
 
 Arquitectura (patrón Facade + SRP):
 - `ModelAnalyzer` — FLOPs, parámetros, memoria estática
@@ -466,17 +466,17 @@ Arquitectura (patrón Facade + SRP):
 - `FeasibilityChecker` — Facade que coordina todo
 
 ```bash
-uv run python scripts/check_feasibility.py
-uv run python scripts/check_feasibility.py --batch-sizes 16 32 64 128 --epochs 30
-uv run python scripts/check_feasibility.py --batch-sizes 32 64 --trace-modes off deep
+uv run python scripts/benchmark.py
+uv run python scripts/benchmark.py --batch-sizes 16 32 64 128 --epochs 30
+uv run python scripts/benchmark.py --batch-sizes 32 64 --trace-modes off deep
 # Factor NFS para corregir estimación en Verode (NFS añade ~30% de latencia I/O)
-uv run python scripts/check_feasibility.py --batch-sizes 64 --nfs-factor 1.3
+uv run python scripts/benchmark.py --batch-sizes 64 --nfs-factor 1.3
 # Override de modelo (uno o varios separados por espacio)
-uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
+uv run python scripts/benchmark.py --model resnet50 --batch-sizes 32 64
 # Elegir GPU en máquina multi-GPU (registra sus núcleos CUDA/Tensor en el bloque #gpu del CSV)
-uv run python scripts/check_feasibility.py --model vit_base_patch16_224 --batch-sizes 64 --device 1
+uv run python scripts/benchmark.py --model vit_base_patch16_224 --batch-sizes 64 --device 1
 # Estudio empírico REAL (mini-training + LR range test + gradient noise) — más lento (~3-8 min)
-uv run python scripts/check_feasibility.py --model vit_base_patch16_224 --batch-sizes 64 \
+uv run python scripts/benchmark.py --model vit_base_patch16_224 --batch-sizes 64 \
   --dataset-path ~/datasets/bigearthnet/BigEarthNet-S2 --convergence-study --study-steps 80
 ```
 
@@ -912,18 +912,18 @@ src/web/
   log_parser.py             # parsea logs --trace simple y --trace deep → DataFrame (fallback)
   batch_parser.py           # lee batch_metrics_*.csv → DataFrame por batch
   perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
-  feasibility_parser.py     # lee feasibility_*.csv → (metadata dict, benchmark DataFrame); bloque #gpu
+  benchmark_parser.py     # lee feasibility_*.csv → (metadata dict, benchmark DataFrame); bloque #gpu
   confusion_matrix_parser.py # lee confusion_matrix_*.csv → matriz numpy por epoch
   system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo con specs de GPU (usado por el predictor)
 ```
 
 **Motor analítico de predicción** (`src/performance_model.py`): **único motor** de predicción del proyecto. Predice tiempo/speedup/memoria/cuello/coste **y calidad (F1)** de **cualquier** (estrategia, modelo, GPU, nº GPUs, dataset, batch, precisión) **sin benchmark** (fórmula maestra `T(n,π)`, estimación de `r_c/r_io/π` por specs, modelo de memoria/OOM). Calibrado contra los datos reales de Kaggle (<10%). Expuesto en **Feasibility → Predict** (una pantalla: tiempo + memoria + coste + calidad + puente de calibración `rc_measured`). Derivación en `docs/performance_model.md`.
 
-**Predicción de calidad honesta (`predict_quality`, 18/06/26):** la F1 esperada ya **no** es una tabla histórica plana que ignoraba el tamaño del dataset (devolvía 0.68 para vit_base aunque fuera el subset de 5000, real ≈ 0.55). Ahora usa la ley de escalado por datos `F1_inf(N) = F1_full − k·log10(N_full/N)`, calibrada con dos puntos reales (vit_base full=0.68 / subset-5000=0.55 → k≈0.078; vit_tiny subset-5000 → 0.27, también medido). Curva de aprendizaje saturante estándar, banda de incertidumbre por confianza, etiquetada honestamente como **empirical prior** (no medición — el estudio de convergencia sigue siendo la vía medida). `check_feasibility.PerformancePredictor` delega en este motor y le pasa el tamaño real del split. Rama: `feature/unified-prediction-engine`.
+**Predicción de calidad honesta (`predict_quality`, 18/06/26):** la F1 esperada ya **no** es una tabla histórica plana que ignoraba el tamaño del dataset (devolvía 0.68 para vit_base aunque fuera el subset de 5000, real ≈ 0.55). Ahora usa la ley de escalado por datos `F1_inf(N) = F1_full − k·log10(N_full/N)`, calibrada con dos puntos reales (vit_base full=0.68 / subset-5000=0.55 → k≈0.078; vit_tiny subset-5000 → 0.27, también medido). Curva de aprendizaje saturante estándar, banda de incertidumbre por confianza, etiquetada honestamente como **empirical prior** (no medición — el estudio de convergencia sigue siendo la vía medida). `PerformancePredictor (src/benchmark/predictor.py)` delega en este motor y le pasa el tamaño real del split. Rama: `feature/unified-prediction-engine`.
 
 **`scripts/eval.py` — evaluación en TEST (arreglado 18/06/26):** estaba **roto** (llamaba a `build_model(dropout=…)`, kwarg inexistente → reventaba; por eso nunca generó un `test_*.csv`). Corregido + endurecido (guard de split vacío, `--metadata`, `--max-batches`). Verificado end-to-end. Su salida (`test_*.csv`: per-clase + fila `# aggregate`) ya **se muestra en la web**: `run_registry` descubre los `test_*.csv` por carpeta y **Run results** muestra una tarjeta "Held-out test set" (F1 macro @0.5 y @umbral óptimo, accuracy, clases con F1=0) — el número honesto final, separado de la validación. Parser: `src/web/eval_parser.py`.
 
-**Specs de GPU** (`src/gpu_specs.py`): deriva núcleos CUDA y Tensor de cada GPU a partir de su compute capability (→ arquitectura → cores/SM) × nº de SMs (V100 5120/640, T4 2560/320, RTX 3060 Ti 4864/152). El `check_feasibility.py` los registra (bloque CSV `#gpu`) y acepta `--device INDEX`; el predictor analítico los usa para estimar `r_c`.
+**Specs de GPU** (`src/gpu_specs.py`): deriva núcleos CUDA y Tensor de cada GPU a partir de su compute capability (→ arquitectura → cores/SM) × nº de SMs (V100 5120/640, T4 2560/320, RTX 3060 Ti 4864/152). El `benchmark.py` los registra (bloque CSV `#gpu`) y acepta `--device INDEX`; el predictor analítico los usa para estimar `r_c`.
 
 **Modelos de speedup seleccionables** (`src/estimation_models.py`): leyes analíticas Linear / Amdahl / Gustafson (puras, con fórmula), superponibles sobre la estimación compute/IO-aware del feasibility en **Feasibility → Report (DDP)**, con slider de fracción serial *s*.
 
@@ -943,7 +943,7 @@ uv run streamlit run src/web/app.py
 | **Overview** | Dashboard compacto: tira de 8 KPIs · ranking Best F1 · tarjeta del run activo (mini F1/loss + veredicto) · velocidad media/epoch · donut de estrategias · **panel del dataset** (splits, subset usado por los runs recientes, clases frecuentes, **galería de las 19 clases** con info multi-etiqueta) · tabla "All runs" seleccionable con sparklines |
 | **Run results** | **Una fila de pestañas**: Curves · Per-class (barras+tendencia) · Confusions (diagnósticos multi-etiqueta) · Batch (selector de vista) · Details (tiempo + config/anomalías/log) |
 | **Compare** | **Sección única**: multiselect (≤8 runs) → resumen · speedup vs baseline (tabla+barras+veredictos+validación feasibility+escalado) · radar · energía · overlays |
-| **Performance** (antes "Feasibility") | **Estimate** (antes "Predict"; predictor **analítico**: formulario → headline + **tablas con las fórmulas** de tiempo `max(compute,I/O)+sync` y memoria `weights+grad+Adam+activations+overhead` con los valores puestos + calidad + escalado 1→8 GPU + coste nube; mismo motor que `tfg estimate`) · **Compare vs runs** (predicho vs real con tabla de fórmula por métrica) · **Benchmark** (antes "Report"; **medición empírica** generada en terminal con `tfg benchmark`: hardware, throughput, tiempo, escalado distribuido, coste, estudio de convergencia) |
+| **Estimate/Benchmark** (antes "Feasibility"→"Performance") | 3 pestañas, en orden: **Estimate** (antes "Predict"; predictor **analítico**: formulario → headline + **tablas con las fórmulas** de tiempo `max(compute,I/O)+sync` y memoria `weights+grad+Adam+activations+overhead` con los valores puestos + calidad + escalado 1→8 GPU + coste nube; mismo motor que `tfg estimate`) · **Benchmark** (antes "Report"; **medición empírica** generada en terminal con `tfg benchmark`: hardware, throughput, tiempo, escalado distribuido, coste, estudio de convergencia) · **Benchmark vs Run** (antes "Compare vs runs"; predicho vs real con tabla de fórmula por métrica) |
 | **Import** | Importar runs entrenados en otra máquina (zip o carpeta → copia a `logs/`) |
 
 **Predicción vs realidad** (rediseño de la antigua "Comparar vs training"): elige el run en la barra lateral → auto-empareja su feasibility (mismo modelo/entorno); muestra estimado vs real con semáforo y un veredicto en lenguaje natural (precisa / optimista por I/O / pesimista). Avisa si el run es distribuido (la estimación es single-GPU → la diferencia incluye el speedup).
@@ -996,7 +996,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Inspección modular: `--inspect model-summary batch-table grad-monitor anomalies`
 - [x] Early stopping: `patience` configurable en `EpochController`
 - [x] Log con timestamp (DDMMYYYY) a fichero en `logs/{env}/{mode}/{model}/` (ya no se generan PNGs — el dashboard web genera las gráficas de forma interactiva desde los CSVs)
-- [x] `check_feasibility.py`: benchmark train+eval por separado, `--nfs-factor`, auto-save log + CSV en `logs/{env}/feasibility/`
+- [x] `benchmark.py`: benchmark train+eval por separado, `--nfs-factor`, auto-save log + CSV en `logs/{env}/feasibility/`
 - [x] Entrenamiento local: 30 epochs, Val F1=0.6586 (01-02/05/26) → `logs/local/train_legacy.log`
 - [x] Test local stack completo: 1 epoch vit_tiny, Val F1=0.4457 (11/05/26)
 - [x] Smoke test v3 local: 1 epoch vit_tiny, Val F1=0.4019, threshold óptimo=0.30 (13/05/26)
@@ -1011,13 +1011,13 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] Entrenamiento v3b en Verode: 15 epochs, Val F1=0.6708 (epoch 5), early stop epoch 15 (14-15/05/26) → `logs/verode/train_14052026_145711.log` — confirma energía funcional (~35 Wh/eval, ~100 W media V100)
 - [x] **Entrenamiento distribuido DDP (20/05/26):** `DDPTrainer`, `scripts/train_ddp.py`, `configs/train_ddp_verode.yaml`; smoke test local 1 proceso completado sin errores (Val F1=0.4353) → `logs/local/train_20260520_221708.log`
 - [x] **Fix DDPTrainer con 1 GPU (21/05/26):** `TrainingSessionBuilder` usa `distributed=True` en vez de `world_size>1`; `torchrun --nproc_per_node=1` ahora usa `DDPTrainer` real
-- [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `feasibility_parser.py`; `check_feasibility.py` añade `--model` y escribe CSV
+- [x] **Web dashboard v2 (20/05/26):** 7 tabs, CSV-driven (epoch_metrics, perclass_metrics, feasibility), Plotly interactivo por clase, pestaña Feasibility, pestaña Time Analysis; `perclass_parser.py`, `benchmark_parser.py`; `benchmark.py` añade `--model` y escribe CSV
 - [x] Diagrama de clases v2: DDPTrainer, TracingDecorator con epoch_csv, ConfusionMatrixDecorator con write_csv, ReportFormatter con write_csv, RunInfo con epoch/perclass csv paths, web con 7 tabs (20/05/26)
 - [x] **Heatmap 19×19 de confusión — CSV + Plotly interactivo (26/05/26):** `ConfusionMatrixDecorator` genera `confusion_matrix_TIMESTAMP.csv`; `confusion_matrix_parser.py` lee el CSV; sub-tab muestra heatmap Plotly interactivo con hover y selector de epoch
 - [x] **Web dashboard v3 (27/05/26):** 9 tabs, interfaz profesional sin emojis; Launcher (lanzar entrenamientos con output en tiempo real); Live Monitor (auto-refresh, GPU via nvidia-smi); mejoras en todas las pestañas (moving average, comparativa multi-run, anomaly detection, etc.)
 - [x] **Gestión de carpetas y gitignore (27/05/26):** estructura `{env}/{mode}/{model}/` para logs, plots y checkpoints; feasibility en `{env}/feasibility/`; `run_registry.py` con rglob; `RunInfo` añade `mode` y `model`; `.gitignore` corregido — todos los CSVs y logs bajo `logs/` se commitean
 - [x] Diagrama de clases v3: RunInfo con mode/model, web con 9 tabs, confusion_matrix_parser (27/05/26)
-- [x] **Multi-model feasibility (27/05/26):** `check_feasibility.py --model` acepta N modelos separados por espacio (`nargs="+"`) — cada modelo genera su propio par log/CSV con timestamp independiente
+- [x] **Multi-model feasibility (27/05/26):** `benchmark.py --model` acepta N modelos separados por espacio (`nargs="+"`) — cada modelo genera su propio par log/CSV con timestamp independiente
 - [x] **DDP CPU/gloo support (27/05/26):** `train_ddp.py` lee `backend` del config; `DDPTrainer` omite `device_ids` en CPU; `configs/train_ddp_cpu_test.yaml` con backend gloo, vit_tiny, pretrained=false — permite validar infraestructura multi-nodo sin GPU compatible
 - [x] **Fix ZeroDivisionError scheduler (27/05/26):** `T_max = max(1, epochs - warmup_epochs)` en `builder.py` — evita división por cero cuando `epochs ≤ warmup_epochs`
 - [x] **Feasibility multi-modelo local (27/05/26):** vit_tiny, vit_small, vit_base, resnet50 con batch-sizes 16 y 32; trace-modes off y simple → 4 pares log/CSV en `logs/local/feasibility/`
@@ -1039,7 +1039,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **Estudio apples-to-apples single vs distribuido (04/06/26):** baseline single-GPU V100 (`configs/train_demo_single.yaml`, `logs/verode/single/vit_tiny_patch16_224/`) comparable con el heterogéneo. Ver sección "Estudio single-GPU vs distribuido". Conclusión: heterogéneo V100+CPU es **8.6× más lento** que la GPU sola (speedup 0.12×) por el cuello síncrono.
 - [x] **Speedup positivo real en Kaggle 2×T4 (04/06/26):** `scripts/export_kaggle_subset.py` + `docs/kaggle_speedup_runbook.md`. vit_tiny 1.27× (64%, I/O-bound) y **vit_base 1.90× (95%, compute-bound)**. Artefactos en `logs/kaggle/{single,ddp}/{vit_tiny,vit_base}_patch16_224/`. Hallazgo: NCCL no permite 2 ranks en 1 GPU ("Duplicate GPU detected") → fix `device = cuda:(local_rank % device_count)` en `train_ddp.py`.
 - [x] **Auditoría dashboard — 3 fixes (04/06/26):** (1) parser deep `_parse_deep` reescrito por extracción de campos por nombre (los logs tenían 2 órdenes distintos de `val_f1/best/val_acc` → el run v1 de 30 epochs estaba invisible); (2) pestaña Análisis DDP filtra `mode.startswith("ddp")` → empareja también `ddp_hetero`, etiquetas conscientes del modo (V100+CPU vs 2 GPUs) + aviso cuando speedup<1; (3) parser energía/timing casa `\w*Trainer` (DDPTrainer/HeterogeneousDDPTrainer) y `_load_df` mezcla energía del log al CSV. Borrados 3 runs abortados vacíos.
-- [x] **Fix tamaño de dataset en feasibility (04/06/26):** `check_feasibility.py` lee el conteo real de splits del metadata del config (antes hardcodeaba 237871 → estimaba 47× de más para el subset); escribe bloque `#sizes` (n_train, n_val, nfs_factor). `feasibility_comparison.py` y `feasibility_parser.py` usan ese tamaño real (con fallback al full set). Pestaña Tiempo: la línea de estimación usa el feasibility del mismo modelo que el run.
+- [x] **Fix tamaño de dataset en feasibility (04/06/26):** `benchmark.py` lee el conteo real de splits del metadata del config (antes hardcodeaba 237871 → estimaba 47× de más para el subset); escribe bloque `#sizes` (n_train, n_val, nfs_factor). `benchmark_comparison.py` y `benchmark_parser.py` usan ese tamaño real (con fallback al full set). Pestaña Tiempo: la línea de estimación usa el feasibility del mismo modelo que el run.
 - [x] **Feasibility en Kaggle 2×T4 + validación estimación-vs-real (04/06/26):** `logs/kaggle/feasibility/` para vit_tiny y vit_base. Reveló que el `DDPOptimizer` predecía **vit_base 2-GPU en 0.29×** cuando el real es **1.90×**.
 - [x] **Fix modelo de predicción DDP (04/06/26):** dos bugs en `DDPOptimizer`: (1) `_infer_network_type` asumía interconexión **Gigabit (0.125 GB/s)** solo porque el disco era NFS → all_reduce ~128× inflado. Ahora: **NVLink** para GPUs de datacenter (V100/A100…), **PCIe** para el resto (T4/RTX), Ethernet solo multi-nodo CPU. (2) `_build_scenario` reescrito a nivel de **epoch**: `time = max(compute/n_gpus, io_total) + sync` — el I/O es un total fijo que no escala con nº de GPUs. **Predicción tras el fix: vit_base 2-GPU 1.92× (real 1.90×), vit_tiny 1.0× (I/O-bound, real 1.27×).**
 - [x] **Fix `recommend_config` (04/06/26):** antes usaba speedup/n_gpus (= eficiencia) → siempre recomendaba 1 GPU. Ahora recomienda el mayor nº de GPUs con eficiencia ≥75% → compute-bound sugiere escalar (vit_base → 4 GPUs), I/O-bound se queda en 1.
@@ -1051,7 +1051,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 #### Mejoras post-seminario 3 (junio 2026) — propuestas de la reunión 05/06
 - [x] **Dashboard web en inglés (09/06/26):** toda la UI traducida a inglés (6 pestañas + sub-pestañas, métricas, gráficas, mensajes, botones) y los comentarios/docstrings de los módulos web. Se conservan en español solo las claves de parseo de logs (`Configuración:`, `threshold óptimo=`, `potencia media`, `RESUMEN`) para casar con logs existentes/backfilleados. Tests del dashboard reescritos a inglés. Ramas: `feature/web-english`.
 - [x] **Refactor del monolito → módulos (SRP) (09/06/26):** `app.py` (2972 líneas) partido en orquestador delgado (~127 líneas) + `ui/` (charts, helpers, context) + `tabs/` (home, run, comparison, feasibility, data_models, system), cada uno con `render(ctx)`. Demuestra SRP también en la herramienta de visualización. 6 pestañas + 21 sub-pestañas verificadas con Playwright. Bug latente corregido: `import pandas as pd` inline dentro de `feasibility.render` sombreaba el `pd` del módulo. Rama: `feature/web-split-modules`.
-- [x] **Specs de GPU (núcleos CUDA/Tensor) + selección de dispositivo (09/06/26):** `src/gpu_specs.py` deriva núcleos CUDA/Tensor de compute capability × SMs; visibles en System → Monitor y Feasibility → Report; `check_feasibility.py` los escribe (bloque `#gpu`) y acepta `--device INDEX` (selector en la web). Rama: `feature/gpu-specs`.
+- [x] **Specs de GPU (núcleos CUDA/Tensor) + selección de dispositivo (09/06/26):** `src/gpu_specs.py` deriva núcleos CUDA/Tensor de compute capability × SMs; visibles en System → Monitor y Feasibility → Report; `benchmark.py` los escribe (bloque `#gpu`) y acepta `--device INDEX` (selector en la web). Rama: `feature/gpu-specs`.
 - [x] **Modelos de speedup seleccionables (09/06/26):** `src/estimation_models.py` (Linear/Amdahl/Gustafson) superponibles a la estimación compute/IO-aware en Feasibility → Report (DDP), con slider de fracción serial. Rama: `feature/selectable-estimation-models`.
 - [x] **Paralelismo de MODELO (pipeline) (09/06/26):** `src/models/model_parallel.py` (`ModelParallelViT`) parte el ViT entre 2 dispositivos (stage 0 + stage 1); el forward reimplementa fielmente `forward_features`+`forward_head` de timm — **verificado numéricamente equivalente al modelo normal en CPU** (test crítico). `scripts/train_model_parallel.py` (bucle propio, 1 proceso; **luego unificado en el builder el 24/06** → ahora usa el mismo stack de decoradores) escribe los artefactos estándar → `logs/{env}/model_parallel/{model}/`; `configs/train_model_parallel_kaggle.yaml` (vit_base, 2×T4) + `docs/model_parallel_runbook.md`. Smoke probado en local cruzando una frontera real `cuda:0`→`cpu` (forward+backward+optimizer). Paralelismo *naive* (sin micro-batches): didáctico — más lento que el de datos en un modelo que cabe en 1 GPU; útil solo para modelos que no caben. **Validado en Kaggle 2×T4 (10/06/26): 1.02× (no acelera) con vit_base** — ver "Sesión Kaggle 2×T4 — 5 estrategias". Rama: `feature/model-parallel`.
 - [x] **Selector de precisión = interruptor de Tensor cores (10/06/26):** `src/precision.py` — la precisión numérica decide qué unidades hacen el cómputo: **fp32** → núcleos CUDA; **tf32/amp(fp16)/bf16** → **Tensor cores** (autocast + GradScaler para fp16). `available_precisions()` filtra por compute capability (fp16 en Volta+, tf32/bf16 en Ampere+). Integrado en `Trainer` (+ `DDPTrainer`, builder, `cfg.training.precision`), flag `--precision` en `train_single_gpu.py`. El **feasibility** benchmarkea por precisión y con `--compare-precision` mide FP32 vs Tensor y reporta el speedup (bloques CSV `#precision`/`#precision_cmp`). En la web: selector en **Run analysis** y **Launcher**, y comparación FP32-vs-Tensor en **Feasibility → Report**. **Medido en RTX 3060 Ti (vit_base, batch 32): FP32 68 img/s vs AMP 173 img/s → 2.54× con Tensor cores, y menos VRAM (5.63 → 4.15 GB).** Rama: `feature/precision-tensor-cores`.
@@ -1090,7 +1090,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 - [x] **`predict` elige dataset full/subset** en vez de teclear el nº (CLI `--dataset`, menú, y selectbox en la web). `resolve_dataset_n` testeado. PR #53.
 - [x] **Fix modelo de memoria** (`performance_model`): activaciones **por modelo** (`act_gb_per_img`, calibrado con vit_base 4.95 GB@b32 3060 Ti / vit_large 13.78 GB@b32 T4) + margen de VRAM usable (0.92). Antes decía que vit_base entraba a batch 64 en 8 GB (real: OOM, solo 32). PR #52.
 - [x] **Limpieza del repo:** fuera el tooling MLflow (`scripts/ingest_mlflow.py`, `run_mlflow.sh`) y artefactos locales (`mlflow.db`, `mlartifacts/`, `.venv-mlflow`) — Streamlit es EL dashboard; fuera `dashboard/` (pyc huérfanos del Dash) y `src/evaluation/` (placeholder vacío). PR #54.
-- [x] **No-ficheros-enormes (SRP):** `scripts/check_feasibility.py` (1600 ln) → paquete `src/feasibility/`; `src/web/tabs/run.py` (940 ln) → paquete `run/` (curves/perclass/confusions/batch/details); Predict extraído a `tabs/feasibility_predict.py`. PRs #55–#56.
+- [x] **No-ficheros-enormes (SRP):** `scripts/benchmark.py` (1600 ln) → paquete `src/benchmark/`; `src/web/tabs/run.py` (940 ln) → paquete `run/` (curves/perclass/confusions/batch/details); Predict extraído a `tabs/feasibility_predict.py`. PRs #55–#56.
 - [x] **Auditoría funcional completa (19/06):** todos los comandos del CLI (predict sweep, menu, runs, eval/feasibility/train reales — single + DDP torchrun), las 6 secciones de la web + sub-pestañas (Playwright) — **todo verde**.
 - [x] **Diagrama de clases (`docs/class_diagram.puml/.svg/.png`) actualizado y regenerado**: paquete `src.feasibility`, `src.cli`, nota de `src.web` (run/ paquete, sin i18n). El `.puml` es muy grande para el endpoint GET de plantuml.com, así que el `.svg`/`.png` se regeneran por **POST a Kroki** (`requests.post("https://kroki.io/plantuml/svg", data=puml)`) — o con `plantuml` local (java). ⚠ El SVG de PlantUML solo lleva fondo blanco como pista CSS (`style="background:#FFFFFF"`), que muchos visores ignoran → zonas vacías transparentes. Se post-procesa inyectando un `<rect fill="#FFFFFF">` que cubre el `viewBox` justo tras el primer `<g>`.
 
@@ -1115,6 +1115,7 @@ Sesión de mejoras incrementales sobre el dashboard, decididas una a una con el 
 - [x] **Fix de energía multi-GPU (24/06/26, rama `fix/energy-multi-gpu`):** la instrumentación medía **una sola GPU** (`_PowerSampler` leía el dispositivo 0 y en DDP solo el rank 0 logueaba) → los runs DDP de la web mostraban la energía de **1 de 2 GPUs** (infravalorada ~½) y el **model-parallel no medía nada** (su script no tenía `--fn`). Arreglado: (1) `_PowerSampler` acepta una **lista de dispositivos** y **suma su potencia**; (2) `measure_energy(fn, devices, label, logger_name)` resuelve los dispositivos con `_resolve_energy_devices` — en DDP el **rank 0 mide todas las GPUs del nodo** (total real), en single la suya, y acepta lista explícita; (3) `train_model_parallel.py` gana `--fn energy/timing` y envuelve train/eval midiendo **sus dos GPUs** (etiqueta `ModelParallelTrainer.(train|eval)_epoch` para que el parser web la reconozca, logger `model_parallel` para que caiga en el fichero). Formato de log intacto → la web lo lee igual. 5 tests nuevos (incl. sumado multi-GPU con `pynvml` simulado) → **372 tests**. ⚠ Aplica a runs **futuros**; los logs de la sesión Kaggle 10/06 son pre-fix (1 GPU).
 - [x] **Model-parallel integrado en la arquitectura de decoradores (24/06/26, rama `feature/model-parallel-decorator-stack`):** el model-parallel era la **única estrategia con bucle propio** → solo generaba curvas (le faltaban per-class, confusión, batch, metric reporters, deep/inspect). Ahora pasa por el **mismo `EpochController` (Template Method) y el mismo stack de decoradores** que single/DDP/heterogéneo. Cómo: (1) hook `Trainer._place_model(model, device)` (por defecto `model.to(device)`); (2) `ModelParallelTrainer(Trainer)` lo sobreescribe para **no mover** el modelo (ya está repartido) y usa `model.output_device` (dev1) para etiquetas/pérdida; (3) `builder.with_model_parallel(devices, split_block)` construye el `ModelParallelViT` + `ModelParallelTrainer` (LLRD sobre `model.base`, mode `model_parallel`); (4) la energía con `--fn energy` mide **ambas GPUs** del reparto (el builder pasa los índices explícitos, deduplicados); (5) `train_model_parallel.py` reescrito para usar el builder → gana `--layers/--metrics/--fn/--batch-log-every` (no `--trace deep`/`--inspect`: torchinfo y los probes de memoria asumen 1 dispositivo). **Verificado con el smoke `cuda:0→cpu`**: genera los 5 artefactos (log + epoch/perclass/confusion/batch CSV) y el parser web lee su energía. +1 test (`_place_model`) + test de energía actualizado → **373 tests**. La frase para la defensa: *el mismo bucle y los mismos decoradores sirven a las 4 estrategias.*
 - [x] **Renombrado predict→estimate y feasibility→benchmark (24/06/26, rama `refactor/rename-estimate-benchmark`):** a sugerencia del tutor, nombres con más sentido bajo el contraste **analítico ↔ empírico**. CLI: `tfg estimate` (predictor **analítico**, fórmulas sin GPU) y `tfg benchmark` (**medición empírica** real en la máquina) — vía `@app.command(name=...)`, las funciones internas y los builders (`build_feasibility_cmd`, paquete `src/web/tabs/feasibility/`) **no** cambian (cero churn interno). Web: sección de nav **Feasibility → Performance**; pestañas **Predict → Estimate** y **Report → Benchmark** (la clave de routing `feasibility` se mantiene). Tests de etiquetas y docs actualizados; menú y help reflejan los nombres nuevos. **373 tests.**
+- [x] **Consolidación total feasibility→benchmark (24/06/26, rama `refactor/consolidate-benchmark-naming`):** segunda pasada a petición del usuario — el nombre `feasibility` cambiado **en todos lados** (no solo el comando) para coherencia, incluido el diagrama de clases. (1) **Código:** paquete `src/feasibility/` → **`src/benchmark/`**; `scripts/check_feasibility.py` → **`scripts/benchmark.py`**; `src/web/feasibility_parser.py`/`feasibility_comparison.py` → `benchmark_parser.py`/`benchmark_comparison.py`; `src/web/tabs/feasibility/` → `tabs/benchmark/`; funciones (`build_feasibility_cmd`→`build_benchmark_cmd`, `parse_feasibility_csv`→`parse_benchmark_csv`, `_get_feasibility_csvs`→`_get_benchmark_csvs`, `FeasibilityChecker`→`BenchmarkChecker`, `FeasibilityReport`→`BenchmarkReport`…). (2) **Artefactos/logs:** los 58 ficheros `feasibility_*.{csv,log}` → `benchmark_*` y los 3 dirs `logs/{env}/feasibility/` → `logs/{env}/benchmark/` (git mv + `report_formatter` escribe los nombres nuevos + discovery actualizado; **verificado: la web descubre los 28 informes migrados**). (3) **Web:** nav **Performance → Estimate/Benchmark**; pestañas reordenadas a **Estimate · Benchmark · Benchmark vs Run** (antes Compare vs runs). (4) **Diagrama de clases** regenerado con el naming nuevo. Se **mantiene** `performance_model.py` y su API `predict()/predict_quality()/Prediction` — es el motor del Estimate, ya bien nombrado ("predict" = verbo correcto del predictor). **373 tests**; CLI (`tfg benchmark`→`scripts/benchmark.py`) y web verificados.
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
@@ -1185,8 +1186,8 @@ Estructura sugerida apoyándose en lo ya hecho (figuras desde el dashboard y `do
 ### Local
 ```bash
 # Feasibility checker (genera .log + .csv)
-uv run python scripts/check_feasibility.py --batch-sizes 16 32 --epochs 5
-uv run python scripts/check_feasibility.py --model resnet50 --batch-sizes 32 64
+uv run python scripts/benchmark.py --batch-sizes 16 32 --epochs 5
+uv run python scripts/benchmark.py --model resnet50 --batch-sizes 32 64
 
 # Test rápido single-GPU (1 epoch)
 uv run python scripts/train_single_gpu.py --model vit_tiny_patch16_224 --epochs 1 --trace simple
@@ -1231,7 +1232,7 @@ cd ~/tfg-distributed-transformers
 .venv/bin/python -c "import torch; print(torch.cuda.is_available(), torch.version.cuda)"
 
 # Feasibility previo al entrenamiento (usar --config para que guarde en logs/verode/)
-.venv/bin/python scripts/check_feasibility.py \
+.venv/bin/python scripts/benchmark.py \
   --config configs/train_cluster_v3.yaml \
   --batch-sizes 32 64 128 --epochs 30 --nfs-factor 1.3
 

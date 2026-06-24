@@ -4,7 +4,7 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-from src.feasibility.value_objects import ModelInfo, BenchmarkResult
+from src.benchmark.value_objects import ModelInfo, BenchmarkResult
 
 
 class TimeEstimator:

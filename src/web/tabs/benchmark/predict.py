@@ -1,4 +1,4 @@
-"""Feasibility — the analytic Predict tab (no GPU, just formulas).
+"""Benchmark — the analytic Predict tab (no GPU, just formulas).
 
 Mirrors `tfg predict`: pick a config and get the full estimate — time and memory
 with the formulas plugged in, expected quality, distributed scaling and cloud cost.

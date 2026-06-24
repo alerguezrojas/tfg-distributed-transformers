@@ -40,14 +40,14 @@ def test_import_archive_writes_artifacts(tmp_path):
     zip_bytes = _make_zip({
         "logs/kaggle/single/vit_base_patch16_224/train_10062026_173904.log": b"Configuracion: x\n",
         "logs/kaggle/single/vit_base_patch16_224/epoch_metrics_10062026_173904.csv": b"epoch\n1\n",
-        "logs/kaggle/feasibility/feasibility_10062026_172939.csv": b"#meta\n",
+        "logs/kaggle/benchmark/benchmark_10062026_172939.csv": b"#meta\n",
         "logs/kaggle/single/vit_base_patch16_224/notes.txt": b"ignored",   # not an artifact
         "logs/": b"",                                                       # dir entry
     })
     rel = import_run_archive(zip_bytes, logs)
     assert "kaggle/single/vit_base_patch16_224/train_10062026_173904.log" in rel
     assert (logs / "kaggle/single/vit_base_patch16_224/epoch_metrics_10062026_173904.csv").exists()
-    assert (logs / "kaggle/feasibility/feasibility_10062026_172939.csv").exists()
+    assert (logs / "kaggle/benchmark/benchmark_10062026_172939.csv").exists()
     assert not (logs / "kaggle/single/vit_base_patch16_224/notes.txt").exists()
     assert len(rel) == 3
 
@@ -82,9 +82,9 @@ def test_summarize_import():
         "kaggle/single/m/train_1.log",
         "kaggle/single/m/train_deep_2.log",
         "kaggle/single/m/epoch_metrics_1.csv",
-        "kaggle/feasibility/feasibility_3.csv",
+        "kaggle/benchmark/benchmark_3.csv",
     ])
     assert s["runs"] == 2
-    assert s["feasibility"] == 1
+    assert s["benchmark"] == 1
     assert s["metric_csvs"] == 1
     assert s["total"] == 4
