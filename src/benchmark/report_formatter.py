@@ -110,17 +110,26 @@ class ReportFormatter:
         m, h = report.model_info, report.hardware_info
         if not m.activation_mb_per_image:
             return
+        # The benchmark MEASURES the real peak VRAM per batch — that is ground
+        # truth and wins over the torchinfo activation estimate (which overcounts
+        # activations, so it would flag OOM for batches that actually fit). Fall
+        # back to the estimate only for batch sizes that were not benchmarked.
+        measured = {r.batch_size: r.peak_vram_gb for r in report.results
+                    if not r.oom and r.peak_vram_gb > 0}
         self._emit(f"\n{'─'*self.W}  MEMORIA POR BATCH SIZE")
-        self._emit(f"  {'Batch':>5}  {'Total est.':>11}  {'Estado':>10}")
+        self._emit(f"  {'Batch':>5}  {'VRAM':>11}  {'Fuente':>9}  {'Estado':>10}")
         for bs in report.batch_sizes:
-            total_gb = m.total_mb(bs) / 1024
-            if h.is_cuda and total_gb > h.total_vram_gb:
+            if bs in measured:
+                vram_gb, fuente = measured[bs], "medido"
+            else:
+                vram_gb, fuente = m.total_mb(bs) / 1024, "estimado"
+            if h.is_cuda and vram_gb > h.total_vram_gb:
                 estado = "OOM"
-            elif h.is_cuda and total_gb > h.total_vram_gb * 0.85:
+            elif h.is_cuda and vram_gb > h.total_vram_gb * 0.85:
                 estado = "Límite"
             else:
                 estado = "OK"
-            self._emit(f"  {bs:>5}  {total_gb:>9.2f} GB  {estado:>10}")
+            self._emit(f"  {bs:>5}  {vram_gb:>9.2f} GB  {fuente:>9}  {estado:>10}")
 
     def _benchmark_section(self, report: BenchmarkReport):
         self._emit(f"\n{'─'*self.W}  BENCHMARK  ({Benchmarker.N_MEASURE} batches sintéticos)")

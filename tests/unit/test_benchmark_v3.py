@@ -349,3 +349,47 @@ def test_benchmark_parser_parse_ddp_scenarios():
     assert len(ddp_df) == 2
     assert "n_gpus" in ddp_df.columns
     assert "speedup" in ddp_df.columns
+
+
+# ── _memory_section: la VRAM medida gana al estimado de torchinfo ─────────────
+
+def test_memory_section_uses_measured_vram_over_estimate():
+    """El estimado (torchinfo) sobrecuenta activaciones y marcaría OOM a batch 96,
+    pero el benchmark MIDE que cabe → el informe debe usar el valor medido."""
+    from src.benchmark.report_formatter import ReportFormatter
+    from src.benchmark.value_objects import (
+        ModelInfo, HardwareInfo, BenchmarkResult, BenchmarkReport)
+
+    mi = ModelInfo(name="vit_base", total_params=86_000_000, trainable_params=86_000_000,
+                   flops_per_image_mflops=17000, weight_mb=344, gradient_mb=344,
+                   optimizer_mb=688, activation_mb_per_image=170)   # estimado(96) ≈ 17.3 GB → OOM
+    hi = HardwareInfo(device_name="Tesla T4", total_vram_gb=16.0, free_vram_gb=15.0, is_cuda=True)
+    res = BenchmarkResult(batch_size=96, trace_mode="off",
+                          seconds_per_batch_train=2.9, seconds_per_batch_eval=1.0,
+                          images_per_second_train=33, images_per_second_eval=96,
+                          peak_vram_gb=12.67, avg_power_w=70)        # MEDIDO: cabe
+    report = BenchmarkReport(model_info=mi, hardware_info=hi, dataset_train=5000,
+                             dataset_val=1500, nfs_factor=1.0, results=[res], batch_sizes=[96])
+    rf = ReportFormatter()
+    rf._memory_section(report)
+    text = "\n".join(rf._lines)
+    assert "medido" in text            # usa la fuente medida
+    assert "12.67" in text             # el valor real, no el estimado ~17.3
+    assert "OOM" not in text           # cabe → no marca OOM
+
+
+def test_memory_section_falls_back_to_estimate_when_not_benchmarked():
+    """Para un batch que NO se benchmarkeó (sin medición), cae al estimado."""
+    from src.benchmark.report_formatter import ReportFormatter
+    from src.benchmark.value_objects import ModelInfo, HardwareInfo, BenchmarkReport
+
+    mi = ModelInfo(name="vit_base", total_params=86_000_000, trainable_params=86_000_000,
+                   flops_per_image_mflops=17000, weight_mb=344, gradient_mb=344,
+                   optimizer_mb=688, activation_mb_per_image=120)
+    hi = HardwareInfo(device_name="Tesla T4", total_vram_gb=16.0, free_vram_gb=15.0, is_cuda=True)
+    report = BenchmarkReport(model_info=mi, hardware_info=hi, dataset_train=5000,
+                             dataset_val=1500, nfs_factor=1.0, results=[], batch_sizes=[32])
+    rf = ReportFormatter()
+    rf._memory_section(report)
+    text = "\n".join(rf._lines)
+    assert "estimado" in text
