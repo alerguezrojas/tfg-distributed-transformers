@@ -14,58 +14,71 @@
 
 ---
 
-## De qué va
+## Descripción
 
-Este TFG entrena un **Vision Transformer** para clasificar imágenes de satélite Sentinel-2
-(**BigEarthNet-S2**, 19 clases de cobertura terrestre) y estudia, con medidas reales, **cómo escala el
-entrenamiento al distribuirlo** entre varias GPU o entre GPU y CPU. Además del modelo, incluye un
-**predictor** que estima tiempo, memoria y coste *sin entrenar*, un **análisis de viabilidad** que lo
-valida con un *benchmark* real, y un **dashboard web** para visualizar y comparar resultados. Todo se
-opera desde un único comando de terminal, `tfg`.
+Este Trabajo de Fin de Grado entrena un modelo **Vision Transformer** para la clasificación
+multietiqueta de imágenes de satélite Sentinel-2 (**BigEarthNet-S2**, 19 clases de cobertura
+terrestre) y analiza, mediante mediciones reales, **cómo escala el entrenamiento al distribuirlo**
+entre varias GPU o entre GPU y CPU. Junto al modelo, el proyecto proporciona una **estimación
+analítica** que predice tiempo, memoria, coste y calidad *sin necesidad de entrenar*; un **benchmark**
+que la contrasta con medidas empíricas en la propia máquina; y un **panel web** para visualizar y
+comparar los resultados. Toda la funcionalidad se gobierna desde una única herramienta de línea de
+órdenes, `tfg`.
 
-## Requisitos
+## Requisitos previos
 
-- **git** y **[uv](https://docs.astral.sh/uv/)** (el gestor de paquetes de Python; instala Python por ti).
-- Una **GPU NVIDIA** y el **dataset** solo hacen falta para *entrenar*. Para probar el proyecto
-  (dashboard, predictor, pruebas) **basta con CPU**: el repositorio ya incluye los resultados reales.
+- **git** y **[uv](https://docs.astral.sh/uv/)** (el gestor de paquetes de Python; instala la versión
+  de Python necesaria de forma automática).
+- Una **GPU NVIDIA** y el **conjunto de datos** únicamente son necesarios para *entrenar*. Para
+  explorar el proyecto (panel web, estimación, pruebas) **es suficiente con una CPU**: el repositorio
+  ya incluye los resultados reales de los entrenamientos.
 
-## Puesta en marcha
+## Instalación
 
 ```bash
 # 1. Instalar uv (Linux/macOS; en Windows PowerShell: irm https://astral.sh/uv/install.ps1 | iex)
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 2. Clonar el repositorio e instalar el entorno (uv crea .venv con todo lo necesario)
+# 2. Clonar el repositorio e instalar el entorno (uv crea .venv con las dependencias)
 git clone https://github.com/alerguezrojas/tfg-distributed-transformers.git
 cd tfg-distributed-transformers
 uv sync
 
-# 3. Abrir el menú interactivo
+# 3. Iniciar el menú interactivo
 uv run tfg.py menu
 ```
 
-## El menú (`tfg menu`)
+## Uso: el menú interactivo (`tfg menu`)
 
-Es la forma más sencilla de usar el proyecto: un **menú guiado** que pregunta los parámetros uno a uno,
-sin necesidad de recordar ningún comando. Desde él puedes:
+Constituye la forma más sencilla de utilizar el proyecto: un menú guiado que solicita los parámetros
+de manera secuencial, sin necesidad de memorizar ninguna orden. Desde él es posible:
 
-- **Estimar** (analítico) una configuración con fórmulas, **sin GPU**: tiempo, memoria, coste y F1 esperada.
-- **Entrenar** con la estrategia que quieras (1 GPU, varias GPU con DDP, paralelismo de modelo, GPU+CPU).
-- **Medir** (empírico) el rendimiento real de la máquina con un *benchmark*.
-- **Evaluar** un modelo en el conjunto de test.
+- **Estimar** de forma analítica una configuración mediante fórmulas, **sin GPU**: tiempo, memoria,
+  coste y F1 esperada.
+- **Entrenar** con la estrategia deseada: una GPU, varias GPU con DDP, paralelismo de modelo o GPU+CPU.
+- **Medir** de forma empírica el rendimiento real de la máquina mediante un *benchmark*.
+- **Evaluar** un modelo sobre el conjunto de test.
 
-Para ver y comparar los entrenamientos de forma visual, abre el **dashboard**:
+Para visualizar y comparar los entrenamientos de manera gráfica, ejecútese el **panel web**:
 
 ```bash
 uv run tfg.py dashboard          # → http://localhost:8501
 ```
 
-> ¿Prefieres comandos sueltos? `uv run tfg.py --help` los lista todos. Cada uno admite `--dry-run` para
-> ver el comando exacto sin ejecutarlo.
+> Para un uso por línea de órdenes, `uv run tfg.py --help` enumera todos los subcomandos. Cada uno
+> admite la opción `--dry-run`, que muestra la orden exacta sin llegar a ejecutarla.
 
-## Autoría
+## Diseño
+
+La arquitectura del ciclo de entrenamiento aplica los principios SOLID y los patrones de diseño
+**Decorator** (GoF) y **Template Method**, lo que permite incorporar aspectos transversales (trazado,
+métricas, monitorización, medición de energía) sin modificar la lógica del entrenador. El diagrama de
+clases completo se encuentra en [`docs/class_diagram.svg`](docs/class_diagram.svg).
+
+## Autoría y licencia
 
 **Alejandro Rodríguez Rojas** — Grado en Ingeniería Informática, Universidad de La Laguna.
 Tutor: **Francisco Carmelo Almeida Rodríguez**. Cotutor: **Daniel Suárez Labena**. Curso 2025/2026.
 
-Código bajo licencia [MIT](LICENSE). El dataset BigEarthNet-S2 mantiene su propia licencia.
+Código distribuido bajo licencia [MIT](LICENSE). El conjunto de datos BigEarthNet-S2 conserva su
+propia licencia.
