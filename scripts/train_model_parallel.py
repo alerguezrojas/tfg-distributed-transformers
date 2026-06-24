@@ -38,6 +38,7 @@ from src.data.dataset import BigEarthNetDataset, get_transforms
 from src.models.model_parallel import ModelParallelViT
 from src.models.vit import BigEarthModel, build_llrd_optimizer
 from src.training import metrics as M
+from src.training.fn_decorators import measure_energy, timed
 
 _CSV_COLS = ["epoch", "train_loss", "val_loss", "train_f1", "val_f1",
              "train_acc", "val_acc", "val_prec", "val_rec", "epoch_time_s"]
@@ -54,6 +55,9 @@ def parse_args():
     p.add_argument("--devices", type=str, default=None,
                    help="Comma-separated device list, e.g. 'cuda:0,cuda:1'. Auto-detected if omitted.")
     p.add_argument("--trace", choices=["off", "simple"], default="simple")
+    p.add_argument("--fn", nargs="*", choices=["timing", "energy"], default=[],
+                   help="Function decorators: 'energy' samples the power of BOTH "
+                        "split GPUs, 'timing' logs the wall-clock time.")
     return p.parse_args()
 
 
@@ -183,8 +187,9 @@ def main():
 
     grad_clip = float(cfg["training"].get("grad_clip", 0) or 0)
     best_f1, epoch_times = 0.0, []
-    for epoch in range(1, epochs + 1):
-        t0 = time.perf_counter()
+
+    # ── One epoch as closures, so --fn energy/timing can wrap them ───────────────
+    def _train_one_epoch():
         model.train()
         tot_loss, n = 0.0, 0
         tr_preds, tr_labels = [], []
@@ -203,10 +208,30 @@ def main():
             tr_preds.append((logits.detach() > 0).int().cpu())
             tr_labels.append(labels.int().cpu())
         scheduler.step()
-
         tp, tl = torch.cat(tr_preds), torch.cat(tr_labels)
-        train = {"loss": tot_loss / max(n, 1), "f1": M.f1_score(tp, tl), "acc": M.accuracy(tp, tl)}
-        val = _evaluate(model, val_loader, criterion, out_dev)
+        return {"loss": tot_loss / max(n, 1), "f1": M.f1_score(tp, tl), "acc": M.accuracy(tp, tl)}
+
+    def _eval_one_epoch():
+        return _evaluate(model, val_loader, criterion, out_dev)
+
+    # Energy: measure BOTH split GPUs (the run spans them) and write to this
+    # script's logger so the line lands in the run's log file (web parser reads it).
+    fns = set(args.fn or [])
+    mp_dev_idx = [int(d.split(":")[1]) for d in devices if str(d).startswith("cuda")]
+    if "energy" in fns:
+        _train_one_epoch = measure_energy(_train_one_epoch, devices=mp_dev_idx,
+                                          label="ModelParallelTrainer.train_epoch",
+                                          logger_name="model_parallel")
+        _eval_one_epoch = measure_energy(_eval_one_epoch, devices=mp_dev_idx,
+                                         label="ModelParallelTrainer.eval_epoch",
+                                         logger_name="model_parallel")
+    if "timing" in fns:
+        _train_one_epoch, _eval_one_epoch = timed(_train_one_epoch), timed(_eval_one_epoch)
+
+    for epoch in range(1, epochs + 1):
+        t0 = time.perf_counter()
+        train = _train_one_epoch()
+        val = _eval_one_epoch()
         dt = time.perf_counter() - t0
         epoch_times.append(dt)
         best_f1 = max(best_f1, val["f1"])
