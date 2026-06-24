@@ -32,7 +32,7 @@ ROOT = Path(__file__).resolve().parents[1]
 console = Console()
 app = typer.Typer(
     add_completion=False, no_args_is_help=True,
-    help="TFG — distributed Transformers. Train, predict, evaluate and visualise.",
+    help="TFG — distributed Transformers. Train, estimate, benchmark, evaluate and visualise.",
 )
 
 STRATEGIES = ("single", "ddp", "model-parallel", "heterogeneous")
@@ -205,7 +205,7 @@ def train(
     _run(cmd, dry_run)
 
 
-@app.command()
+@app.command(name="estimate")
 def predict(
     model: str = typer.Option("vit_base_patch16_224", help="Model (timm ID)."),
     gpu: str = typer.Option("Tesla T4", help="GPU name, e.g. 'Tesla V100', 'RTX 3060 Ti'."),
@@ -218,7 +218,7 @@ def predict(
     epochs: int = typer.Option(15, help="Number of epochs."),
     disk: str = typer.Option("ssd", help="ssd | nvme | hdd | nfs."),
 ) -> None:
-    """Predict time, memory, cost and quality for a config — no GPU, just formulas."""
+    """Analytic estimate of time, memory, cost and quality for a config — no GPU, just formulas."""
     n = resolve_dataset_n(dataset, dataset_size)
     _show_prediction(model, gpu, strategy, n_gpus, batch, precision, n, epochs, disk)
 
@@ -339,7 +339,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
         console.print(f"[yellow]•[/] {note}")
 
 
-@app.command()
+@app.command(name="benchmark")
 def feasibility(
     model: Optional[str] = typer.Option(None, help="Comma-separated model(s), e.g. vit_base_patch16_224,resnet50."),
     batch_sizes: Optional[str] = typer.Option(None, help="Comma-separated batch sizes, e.g. 32,64."),
@@ -355,7 +355,7 @@ def feasibility(
     device: int = typer.Option(0, help="CUDA device index."),
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
 ) -> None:
-    """Run the feasibility benchmark on this machine (measures real throughput)."""
+    """Empirical benchmark on this machine — measures real throughput, memory and scaling."""
     _bs = [int(x) for x in (_csv(batch_sizes) or [])] or None
     cmd = build_feasibility_cmd(_csv(model), _bs, epochs, _csv(trace_modes), config=config,
                                 dataset_path=dataset_path, precision=precision,
@@ -389,7 +389,7 @@ def dashboard(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
 ) -> None:
     """Open the read-only web dashboard (Overview · Run results · Compare ·
-    Feasibility · Dataset). Plan a config without running with `tfg predict`."""
+    Performance · Dataset). Plan a config without running with `tfg estimate`."""
     cmd = [sys.executable, "-m", "streamlit", "run", "src/web/app.py", "--server.port", str(port)]
     _run(cmd, dry_run)
 
@@ -550,8 +550,8 @@ def menu() -> None:
 
     while True:
         console.print(Panel(
-            "[bold]1[/] · Predict (no GPU)\n[bold]2[/] · Train\n"
-            "[bold]3[/] · Feasibility benchmark\n[bold]4[/] · Evaluate on test\n"
+            "[bold]1[/] · Estimate (analytic, no GPU)\n[bold]2[/] · Train\n"
+            "[bold]3[/] · Benchmark (empirical, real)\n[bold]4[/] · Evaluate on test\n"
             "[bold]5[/] · Open dashboard\n[bold]0[/] · Exit",
             title="TFG — what do you want to do?", border_style="cyan", expand=False))
         choice = Prompt.ask("Choose", choices=["0", "1", "2", "3", "4", "5"], default="1")
