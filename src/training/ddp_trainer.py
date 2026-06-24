@@ -74,19 +74,21 @@ class DDPTrainer(Trainer):
     def eval_epoch(self, loader: DataLoader) -> dict:
         result = super().eval_epoch(loader)
 
-        # _preds: bool tensor (N, C) on CPU from Trainer.eval_epoch
-        # _labels: float tensor (N, C) on CPU
-        # Move to the process device (CUDA or CPU depending on backend)
-        preds_gpu = result["_preds"].float().to(self.device)
+        # Gather the raw PROBABILITIES and labels from every rank, so all the
+        # global metrics — including the optimal-threshold search — are computed on
+        # the FULL validation set, not just this rank's shard. (Gathering binary
+        # preds would force the threshold search to stay per-rank.)
+        probs_gpu = result["_probs"].float().to(self.device)
         labels_gpu = result["_labels"].float().to(self.device)
 
-        gathered_preds = [torch.zeros_like(preds_gpu) for _ in range(self.world_size)]
+        gathered_probs = [torch.zeros_like(probs_gpu) for _ in range(self.world_size)]
         gathered_labels = [torch.zeros_like(labels_gpu) for _ in range(self.world_size)]
-        dist.all_gather(gathered_preds, preds_gpu)
+        dist.all_gather(gathered_probs, probs_gpu)
         dist.all_gather(gathered_labels, labels_gpu)
 
-        all_preds = torch.cat(gathered_preds).cpu().bool()
+        all_probs = torch.cat(gathered_probs).cpu()
         all_labels = torch.cat(gathered_labels).cpu()
+        all_preds = (all_probs > 0.5).long()
 
         # Average loss across all ranks.
         # NOTE: the AVG reduce op is NOT supported by the gloo backend (only
@@ -96,13 +98,24 @@ class DDPTrainer(Trainer):
         dist.all_reduce(loss_t, op=dist.ReduceOp.SUM)
         loss_t /= self.world_size
 
+        # Optimal-threshold search on the GLOBAL probabilities.
+        f1_base = m.f1_score(all_preds, all_labels)
+        best_thresh, best_f1_thresh = 0.5, f1_base
+        for t in m.THRESHOLD_GRID:
+            f1_t = m.f1_score((all_probs > t).long(), all_labels)
+            if f1_t > best_f1_thresh:
+                best_thresh, best_f1_thresh = t, f1_t
+
         result["_preds"] = all_preds
         result["_labels"] = all_labels
+        result["_probs"] = all_probs
         result["loss"] = loss_t.item()
-        result["f1"] = m.f1_score(all_preds, all_labels)
+        result["f1"] = f1_base
         result["accuracy"] = m.accuracy(all_preds, all_labels)
         result["precision"] = m.precision(all_preds, all_labels)
         result["recall"] = m.recall(all_preds, all_labels)
+        result["_optimal_threshold"] = best_thresh
+        result["_f1_at_optimal_threshold"] = best_f1_thresh
 
         return result
 

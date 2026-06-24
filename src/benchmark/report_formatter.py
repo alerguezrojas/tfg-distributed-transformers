@@ -230,10 +230,12 @@ class ReportFormatter:
             if r and not r.oom:
                 est = estimator.estimate(r, report.dataset_train, report.dataset_val, target_epochs, nfs, report.model_info)
                 if est:
+                    # Single-GPU estimate only here; the accurate distributed scaling
+                    # (compute/IO/sync-aware) is the DDP-scenarios section below, not a
+                    # flat-efficiency guess.
                     self._emit(
                         f"  → --trace {mode:<8} {target_epochs} epochs: "
                         f"~{TimeEstimator.format_time(est['total'])}"
-                        f"  [DDP×2: ~{est['ddp_total_2gpu_h']:.1f}h]"
                     )
         if nfs == 1.0:
             self._emit("\n  💡 En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas")
