@@ -16,8 +16,30 @@ sys.path.insert(0, str(ROOT))
 
 from src.models.model_parallel import ModelParallelViT, build_model_parallel_vit
 from src.models.vit import build_model
+from src.training.trainer import Trainer
+from src.training.model_parallel_trainer import ModelParallelTrainer
 
 MODEL = "vit_tiny_patch16_224"
+
+
+def test_place_model_hook():
+    """Trainer moves the model onto the device; ModelParallelTrainer leaves it
+    in place (it is already split across its stage devices)."""
+    moved = {"n": 0}
+
+    class _FakeModel:
+        def to(self, device):
+            moved["n"] += 1
+            return self
+
+    fm = _FakeModel()
+    # Plain Trainer relocates the model.
+    assert Trainer._place_model(object(), fm, "cpu") is fm
+    assert moved["n"] == 1
+    # ModelParallelTrainer must NOT move it (would collapse the device split).
+    moved["n"] = 0
+    assert ModelParallelTrainer._place_model(object(), fm, "cpu") is fm
+    assert moved["n"] == 0
 
 
 @pytest.fixture(scope="module")
