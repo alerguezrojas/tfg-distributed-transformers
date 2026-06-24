@@ -822,17 +822,19 @@ Artefactos: `logs/verode/single/vit_tiny_patch16_224/` (single), `logs/verode/dd
 
 Sesión única en Kaggle (2× Tesla T4) que extiende el estudio: **mismo modelo (vit_base), mismo subset (5000/1500), mismos 15 epochs, mismo batch global (96)**, variando solo la estrategia y la precisión. Primero se corrió el **feasibility completo** (predicción), luego las 5 ejecuciones (validación). Todo `precision=fp32` salvo donde se indica AMP.
 
-| Estrategia | Hardware | Train s/epoch | Speedup | Best Val F1 | Energía/ep (train) |
+| Estrategia | Hardware | Train s/epoch | Speedup | Best Val F1 | Energía/ep train |
 |---|---|---|---|---|---|
-| Single fp32 | 1×T4 | 194 s | 1.00× | 0.572 | 3.32 Wh |
-| **Model-parallel** (pipeline) | 2×T4 | ~211 s (epoch total) | **1.02×** (no acelera) | 0.534 | — |
-| **DDP** (datos, NCCL) | 2×T4 | 99 s | **1.96×** | 0.547 | 3.34 Wh (2 GPUs) |
-| **Single AMP** (Tensor cores) | 1×T4 | 51 s | **3.80×** | 0.550 | 0.85 Wh |
-| **DDP + AMP** | 2×T4 | 32.5 s | **5.97×** | 0.552 | 0.96 Wh |
+| Single fp32 | 1×T4 | 194 s | 1.00× | 0.572 | 3.32 Wh (1 GPU) |
+| **Model-parallel** (pipeline) | 2×T4 | ~211 s (epoch total) | **1.02×** (no acelera) | 0.534 | — (sin instrumentar) |
+| **DDP** (datos, NCCL) | 2×T4 | 99 s | **1.96×** | 0.547 | 1.67 Wh/GPU (≈3.34 total)\* |
+| **Single AMP** (Tensor cores) | 1×T4 | 51 s | **3.80×** | 0.550 | 0.85 Wh (1 GPU) |
+| **DDP + AMP** | 2×T4 | 32.5 s | **5.97×** | 0.552 | 0.44 Wh/GPU (≈0.88 total)\* |
+
+\* **Estos runs (10/06) se midieron con la instrumentación previa, que medía una sola GPU** (`_PowerSampler` leía el dispositivo 0 y en DDP solo el rank 0 escribía el log). Valores medidos por época de train (épocas estables, descartado el warmup): single fp32 **3.32 Wh** y single AMP **0.85 Wh** (1 GPU haciendo TODO el dato); DDP **1.67 Wh/GPU** y DDP+AMP **0.44 Wh/GPU** (cada GPU hace la MITAD del dato). El "total" de los DDP es esa medida **× 2 GPUs** (válido por simetría: T4 idénticas, reparto 50/50). El model-parallel de esta sesión no llevaba `--fn energy` → sin dato (el "—"). **Corregido el 24/06/2026** (rama `fix/energy-multi-gpu`): `_PowerSampler` mide ahora **el conjunto de GPUs del run** y suma su potencia; `measure_energy` resuelve los dispositivos (en DDP el rank 0 suma todas las GPUs del nodo; acepta lista explícita); el script de model-parallel ya tiene `--fn energy` sobre sus dos GPUs. Los runs **futuros** registran el total real; estos quedan como están.
 
 **Conclusiones (datos reales, una sola sesión → máxima comparabilidad):**
 - **Datos escala** (1.96×, ~98% eficiencia, compute-bound). **Modelo NO escala cuando cabe en 1 GPU** (1.02×): el paralelismo de modelo *naive* serializa las etapas (una GPU trabaja mientras la otra espera) → su utilidad es *permitir* modelos que no caben, no acelerar.
-- **La precisión (Tensor cores) gana al paralelismo de datos:** Single AMP en 1 GPU (3.80×) supera al DDP fp32 en 2 GPUs (1.96×), y con **~4× menos energía**. La precisión importa más que el nº de GPUs aquí.
+- **La precisión (Tensor cores) gana al paralelismo de datos:** Single AMP en 1 GPU (3.80×) supera al DDP fp32 en 2 GPUs (1.96×), y con **~4× menos energía total del trabajo** (0.85 Wh en 1 GPU vs ≈3.34 Wh entre las 2 — ver nota \* de la tabla). La precisión importa más que el nº de GPUs aquí.
 - **DDP+AMP se combina pero NO multiplica:** esperado 1.96 × 3.80 = 7.4×, medido **5.97×**. La comunicación de gradientes no se acelera con AMP, así que pesa relativamente más → la eficiencia del DDP cae **98% (fp32) → ~78% (AMP)**. Amdahl puro, conectado con el análisis cómputo/comunicación del feasibility.
 - **Val F1 ≈ 0.55 en las 5** → la matemática es correcta en todas las estrategias (el F1 es bajo por ser subset de 5000; la calidad real está en los runs del dataset completo en V100, ~0.68).
 - **Model-parallel validado por primera vez en 2 GPUs reales** (en local solo se pudo cruzar `cuda:0→cpu`).
@@ -1109,7 +1111,8 @@ Sesión de mejoras incrementales sobre el dashboard, decididas una a una con el 
 - [x] **`tfg predict` enriquecido (rama):** el CLI ya no da solo números finales — muestra **el trabajo** como la tabla de fórmulas de la web: headline + **fórmula de tiempo** `max(compute, I/O) + sync` con cada término + **fórmula de memoria** (weights+grad+Adam + activations + overhead = total vs GPU, fits/OOM, max batch) + calidad + **tabla de escalado 1→8 GPUs** + **coste** (5 proveedores) + **supuestos** (r_c/r_io/params/MFU). Expuestos `t_compute_s/t_io_s/t_sync_s/batch_per_gpu` en `Prediction` (defaults, compatibles). Help de `dashboard` actualizado (Predict pasó al terminal y luego volvió también a la web).
 - [x] **Predict de vuelta en la web (rama):** Feasibility pasa a **3 tabs: Predict · Compare vs runs · Report**. `src/web/tabs/feasibility/predict.py` (`_analytic_predictor`) replica el `tfg predict` enriquecido — formulario (modelo/GPU/estrategia/n_gpus/precisión/disco/dataset/batch/epochs) → headline + tablas de fórmula (tiempo + memoria) + calidad con curva + escalado 1→8 GPU (gráfica, solo distribuido) + coste nube + supuestos + expander de calibración con throughput medido. Solo calcula fórmulas, no entrena → respeta "la web mira, el terminal ejecuta".
 - [x] **Revisión a fondo del CLI:** todos los comandos verificados (predict/feasibility/train dry-run/eval/runs/menu/dashboard), sin referencias obsoletas (solo importa `eval_parser` y `run_registry` de la web, intactos), 16 tests de CLI en verde.
-- [x] **Suite en 367 tests.** README reescrito (sin emojis, requisitos previos + instalación + qué funciona sin GPU/dataset + entrenar de verdad; tutor/cotutor correctos). Diagrama de clases regenerado (paquete `feasibility/` con `predict.py`).
+- [x] **Suite en 367 tests.** README reescrito (sin emojis, requisitos previos + instalación + qué funciona sin GPU/dataset + entrenar de verdad; tutor/cotutor correctos) y luego adelgazado al mínimo (de qué va + requisitos + el menú). Diagrama de clases regenerado (paquete `feasibility/` con `predict.py`). Licencia **MIT** añadida (repo público).
+- [x] **Fix de energía multi-GPU (24/06/26, rama `fix/energy-multi-gpu`):** la instrumentación medía **una sola GPU** (`_PowerSampler` leía el dispositivo 0 y en DDP solo el rank 0 logueaba) → los runs DDP de la web mostraban la energía de **1 de 2 GPUs** (infravalorada ~½) y el **model-parallel no medía nada** (su script no tenía `--fn`). Arreglado: (1) `_PowerSampler` acepta una **lista de dispositivos** y **suma su potencia**; (2) `measure_energy(fn, devices, label, logger_name)` resuelve los dispositivos con `_resolve_energy_devices` — en DDP el **rank 0 mide todas las GPUs del nodo** (total real), en single la suya, y acepta lista explícita; (3) `train_model_parallel.py` gana `--fn energy/timing` y envuelve train/eval midiendo **sus dos GPUs** (etiqueta `ModelParallelTrainer.(train|eval)_epoch` para que el parser web la reconozca, logger `model_parallel` para que caiga en el fichero). Formato de log intacto → la web lo lee igual. 5 tests nuevos (incl. sumado multi-GPU con `pynvml` simulado) → **372 tests**. ⚠ Aplica a runs **futuros**; los logs de la sesión Kaggle 10/06 son pre-fix (1 GPU).
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
