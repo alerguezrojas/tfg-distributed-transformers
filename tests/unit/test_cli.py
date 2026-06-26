@@ -47,6 +47,16 @@ def test_train_single_fp32_omits_precision_flag():
     assert "--precision" not in cmd          # fp32 is the implicit default
 
 
+def test_train_precision_forwarded_to_ddp_and_model_parallel():
+    # single/ddp/model-parallel go through Trainer.train_epoch (autocast), so --precision
+    # applies; heterogeneous runs a hand-written fp32 loop on gloo, so it must NOT.
+    for strat in ("single", "ddp", "model-parallel"):
+        s = _join(build_train_cmd(strat, "cfg.yaml", precision="amp"))
+        assert "--precision amp" in s, strat
+    s_het = _join(build_train_cmd("heterogeneous", "cfg.yaml", precision="amp"))
+    assert "--precision" not in s_het
+
+
 def test_train_ddp_uses_torchrun_with_nproc():
     cmd = build_train_cmd("ddp", "configs/train_demo_ddp.yaml", n_gpus=2)
     s = _join(cmd)
