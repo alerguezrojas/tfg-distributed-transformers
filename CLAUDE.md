@@ -112,7 +112,7 @@ find ~/datasets/bigearthnet/BigEarthNet-S2/ -mindepth 2 -maxdepth 2 -type d | wc
 - 85 813 267 parámetros, embed_dim = 768
 - Cabeza personalizada: `Dropout(p) → Linear(768, 19)` — p=0.1 (configs v1/v2), p=0.3 (config v3)
 - Forward devuelve logits crudos (sin sigmoid)
-- Fichero: `src/models/vit.py` — clase `BigEarthViT`, función `build_model()`
+- Fichero: `src/models/vit.py` — clase `BigEarthModel` (alias retrocompat `BigEarthViT`), función `build_model()`
 
 ---
 
@@ -998,7 +998,7 @@ git remote set-url origin git@github.com:alerguezrojas/tfg-distributed-transform
 
 ### Completado
 - [x] Pipeline de datos: `BigEarthNetDataset` con metadata.parquet
-- [x] Modelo: `BigEarthViT` (ViT + cabeza multi-label, soporte genérico timm)
+- [x] Modelo: `BigEarthModel` (ViT + cabeza multi-label, soporte genérico timm; alias `BigEarthViT`)
 - [x] Entrenamiento single-GPU: `Trainer` + LLRD + warmup + cosine scheduler + checkpoints
 - [x] Arquitectura de decoradores: Decorator (GoF) + Template Method
   - `decorators/`: `TracingDecorator`, `DeepTracingDecorator`, `PlottingDecorator`, `LayerHooksDecorator`
