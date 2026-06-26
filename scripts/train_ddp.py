@@ -41,6 +41,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.dataset import BigEarthNetDataset, get_transforms
 from src.training.builder import TrainingSessionBuilder
+from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
 def parse_args():
@@ -104,6 +105,18 @@ def main():
     if args.epochs:
         cfg["training"]["epochs"] = args.epochs
 
+    # Reproducibility: if training.seed is set, seed each rank with a rank offset so
+    # ranks shuffle differently but deterministically, and wire the DataLoader RNG.
+    seed = cfg["training"].get("seed")
+    loader_generator = None
+    worker_init = None
+    if seed is not None:
+        set_seed(int(seed) + rank)
+        loader_generator = make_generator(int(seed) + rank)
+        worker_init = seed_worker
+        if rank == 0:
+            print(f"Semilla     : {seed} (+rank, run determinista)")
+
     # All ranks must use the same timestamp for consistent log/checkpoint naming
     ts_list = [datetime.now().strftime("%d%m%Y_%H%M%S") if rank == 0 else ""]
     dist.broadcast_object_list(ts_list, src=0)
@@ -141,6 +154,8 @@ def main():
         sampler=train_sampler,
         num_workers=cfg["data"]["num_workers"],
         pin_memory=True,
+        worker_init_fn=worker_init,
+        generator=loader_generator,
     )
     val_loader = DataLoader(
         val_ds,
@@ -148,6 +163,7 @@ def main():
         sampler=val_sampler,
         num_workers=cfg["data"]["num_workers"],
         pin_memory=True,
+        worker_init_fn=worker_init,
     )
 
     # ── Build trainer stack ──────────────────────────────────────────────────
@@ -157,13 +173,14 @@ def main():
     fn = args.fn or []
     trace = args.trace if rank == 0 else "off"
     layers_r0 = layers if rank == 0 else []
+    metrics_r0 = metrics if rank == 0 else []   # only rank 0 prints metric reporters
 
     builder = (
         TrainingSessionBuilder(cfg, device, timestamp, rank=rank, world_size=world_size, distributed=True)
         .with_trace(trace)
         .with_layers(*layers_r0)
         .with_fn(*fn)
-        .with_metrics(*metrics)
+        .with_metrics(*metrics_r0)
     )
     if args.model:
         builder = builder.with_model(args.model)

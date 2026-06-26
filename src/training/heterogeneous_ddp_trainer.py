@@ -73,8 +73,12 @@ class HeterogeneousDDPTrainer(DDPTrainer):
     def __init__(self, *args, local_batch_size: int, **kwargs):
         super().__init__(*args, **kwargs)
         self.local_batch_size = local_batch_size
-        # Criterio con reducción sum para normalización manual
-        self._criterion_sum = nn.BCEWithLogitsLoss(reduction="sum")
+        # Criterio con reducción sum para la normalización manual del gradiente.
+        # Hereda el pos_weight del criterion configurado (self.criterion) para que la
+        # pérdida de entrenamiento use los mismos pesos de clase que la de validación
+        # (antes se forzaba BCE sin pesos, descartando silenciosamente pos_weight).
+        pos_weight = getattr(self.criterion, "pos_weight", None)
+        self._criterion_sum = nn.BCEWithLogitsLoss(reduction="sum", pos_weight=pos_weight)
 
     # ── train_epoch con normalización de gradientes ────────────────────────────
 

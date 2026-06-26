@@ -82,8 +82,9 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
             cmd += ["--precision", precision]
         return cmd + layers_fn
     if strategy == "model-parallel":
-        # model_parallel takes config/model/epochs/trace only (no layers/fn).
-        return [sys.executable, "scripts/train_model_parallel.py", "--config", config] + common
+        # model_parallel runs through the builder, so it honours --layers/--fn too.
+        return ([sys.executable, "scripts/train_model_parallel.py", "--config", config]
+                + common + layers_fn)
     if strategy == "ddp":
         return (_torchrun(n_gpus, nnodes, node_rank, master_addr, master_port)
                 + ["scripts/train_ddp.py", "--config", config] + common + layers_fn)

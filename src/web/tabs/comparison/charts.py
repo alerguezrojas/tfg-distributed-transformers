@@ -33,7 +33,7 @@ def _radar_section(compare_dfs: list[tuple[str, pd.DataFrame]]) -> None:
         polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
         showlegend=True, height=380 + 20 * _n_radar,
         legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0),
-        margin=dict(l=60, r=60, t=40, b=40 + 20 * _n_radar), paper_bgcolor="white",
+        margin=dict(l=60, r=60, t=40, b=40 + 20 * _n_radar),
         title=dict(text="Metrics at the best Val F1 epoch", font=dict(size=13)),
     )
     _show(radar_fig, "radar_comparison")

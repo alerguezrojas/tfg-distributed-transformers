@@ -176,7 +176,11 @@ class ReportFormatter:
                 f"{s.num_workers_per_gpu:>7}  {s.estimated_speedup:>6.2f}×  "
                 f"{s.scaling_efficiency:>5.1f}%  {s.bottleneck:>8}"
             )
-        best = max(report.ddp_scenarios, key=lambda s: s.estimated_speedup / max(s.n_gpus, 1))
+        # Match DDPOptimizer.recommend_config: the largest GPU count that still scales
+        # at >=75% efficiency (the old max(speedup/n_gpus) criterion always picked 1 GPU).
+        _viable = [s for s in report.ddp_scenarios
+                   if s.n_gpus == 1 or s.scaling_efficiency >= 75.0]
+        best = max(_viable, key=lambda s: s.n_gpus)
         self._emit(f"\n  Configuración recomendada: {best.n_gpus} GPU(s) con batch={best.batch_per_gpu}/GPU")
         if best.bottleneck == "io":
             self._emit("  Aviso: I/O es el cuello de botella — más GPUs no ayudarán sin disco más rápido")
