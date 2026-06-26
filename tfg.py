@@ -1,7 +1,8 @@
-"""Entry point for the unified CLI: ``uv run tfg.py <command>``.
+"""Backward-compatible alias of the ParaViTLab launcher.
 
-Thin launcher so the whole project has one terminal entry point. The commands
-live in ``src/cli.py``. Run ``uv run tfg.py --help`` for the full list.
+The canonical entry point is ``paravit.py`` (``uv run paravit.py <command>``).
+This file is kept so that the older ``uv run tfg.py <command>`` invocation, used
+throughout the project history and runbooks, keeps working unchanged.
 """
 import sys
 from pathlib import Path

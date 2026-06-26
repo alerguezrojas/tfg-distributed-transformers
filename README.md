@@ -2,6 +2,8 @@
 
 # Entrenamiento distribuido de modelos abiertos de aprendizaje automático basados en Transformers
 
+### ParaViTLab &middot; *Parallel/Parallax ViT Lab*
+
 **Trabajo de Fin de Grado · Grado en Ingeniería Informática · Universidad de La Laguna**
 
 [![CI](https://github.com/alerguezrojas/tfg-distributed-transformers/actions/workflows/ci.yml/badge.svg)](https://github.com/alerguezrojas/tfg-distributed-transformers/actions/workflows/ci.yml)
@@ -23,7 +25,8 @@ entre varias GPU o entre GPU y CPU. Junto al modelo, el proyecto proporciona una
 analítica** que predice tiempo, memoria, coste y calidad *sin necesidad de entrenar*; un **benchmark**
 que la contrasta con medidas empíricas en la propia máquina; y un **panel web** para visualizar y
 comparar los resultados. Toda la funcionalidad se gobierna desde una única herramienta de línea de
-órdenes, `tfg`.
+órdenes, **`paravit`**. El sistema desarrollado se denomina **ParaViTLab** (*Parallel/Parallax ViT
+Lab*); el antiguo comando `tfg` se conserva como alias retrocompatible.
 
 ## Requisitos previos
 
@@ -45,10 +48,10 @@ cd tfg-distributed-transformers
 uv sync
 
 # 3. Iniciar el menú interactivo
-uv run tfg.py menu
+uv run paravit.py menu
 ```
 
-## Uso: el menú interactivo (`tfg menu`)
+## Uso: el menú interactivo (`paravit menu`)
 
 Constituye la forma más sencilla de utilizar el proyecto: un menú guiado que solicita los parámetros
 de manera secuencial, sin necesidad de memorizar ninguna orden. Desde él es posible:
@@ -62,11 +65,12 @@ de manera secuencial, sin necesidad de memorizar ninguna orden. Desde él es pos
 Para visualizar y comparar los entrenamientos de manera gráfica, ejecútese el **panel web**:
 
 ```bash
-uv run tfg.py dashboard          # → http://localhost:8501
+uv run paravit.py dashboard          # → http://localhost:8501
 ```
 
-> Para un uso por línea de órdenes, `uv run tfg.py --help` enumera todos los subcomandos. Cada uno
-> admite la opción `--dry-run`, que muestra la orden exacta sin llegar a ejecutarla.
+> Para un uso por línea de órdenes, `uv run paravit.py --help` enumera todos los subcomandos. Cada uno
+> admite la opción `--dry-run`, que muestra la orden exacta sin llegar a ejecutarla. (`uv run tfg.py`
+> sigue funcionando como alias.)
 
 ## Diseño
 

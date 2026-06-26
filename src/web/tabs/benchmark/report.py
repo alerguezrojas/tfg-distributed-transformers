@@ -15,7 +15,7 @@ from src.web.ui.helpers import (_throughput_col)
 def render_report(meta, bdf_feas, benchmark_csvs) -> object:
     if not benchmark_csvs:
         st.info("No benchmark CSVs found. Generate one from the terminal "
-                "(`tfg benchmark`).")
+                "(`paravit benchmark`).")
         return st.container()
 
     viable = bdf_feas[bdf_feas["oom"] == "no"].copy() if not bdf_feas.empty else bdf_feas

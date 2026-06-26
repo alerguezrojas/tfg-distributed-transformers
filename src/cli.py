@@ -1,4 +1,4 @@
-"""Unified command-line interface — ``tfg <command>``.
+"""ParaViTLab — unified command-line interface (``paravit <command>``).
 
 One entry point for everything that runs in a terminal, where the compute lives:
 launch trainings (any strategy), estimate before training (analytic), run a real
@@ -6,12 +6,14 @@ benchmark, evaluate on the test split, and open the dashboard. The web stays
 read-only (visualisation); anything that needs a GPU is driven from here — the
 same separation used by Weights & Biases / MLflow / TensorBoard.
 
-    uv run tfg.py --help
-    uv run tfg.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
-    uv run tfg.py train   --strategy single --config configs/train.yaml
-    uv run tfg.py train   --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.yaml
-    uv run tfg.py eval    --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
-    uv run tfg.py dashboard
+    uv run paravit.py --help
+    uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
+    uv run paravit.py train   --strategy single --config configs/train.yaml
+    uv run paravit.py train   --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.yaml
+    uv run paravit.py eval    --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
+    uv run paravit.py dashboard
+
+(``uv run tfg.py`` keeps working as a backward-compatible alias.)
 
 The argv builders (``build_*_cmd``) are pure and unit-tested; the Typer commands
 just assemble them and run them (or print them with ``--dry-run``).
@@ -32,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 console = Console()
 app = typer.Typer(
     add_completion=False, no_args_is_help=True,
-    help="TFG — distributed Transformers. Train, estimate, benchmark, evaluate and visualise.",
+    help="ParaViTLab — distributed Vision Transformers. Train, estimate, benchmark, evaluate and visualise.",
 )
 
 STRATEGIES = ("single", "ddp", "model-parallel", "heterogeneous")
@@ -394,7 +396,7 @@ def dashboard(
     dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
 ) -> None:
     """Open the read-only web dashboard (Overview · Run results · Compare ·
-    Performance · Dataset). Plan a config without running with `tfg estimate`."""
+    Performance · Dataset). Plan a config without running with `paravit estimate`."""
     cmd = [sys.executable, "-m", "streamlit", "run", "src/web/app.py", "--server.port", str(port)]
     _run(cmd, dry_run)
 
