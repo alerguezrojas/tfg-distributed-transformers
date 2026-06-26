@@ -1,7 +1,7 @@
 """Benchmark page — orchestrator. Three tabs: Predict / Compare vs runs / Report.
 Predict is the analytic predictor (closed-form, no GPU); Compare puts predictions
 next to real runs; Report reads a benchmark generated in the terminal
-(`tfg benchmark`). The web never *trains* — Predict only computes formulas."""
+(`paravit benchmark`). The web never *trains* — Predict only computes formulas."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -24,7 +24,7 @@ def render(ctx: DashboardContext) -> None:
     st.markdown("## Estimate / Benchmark")
     st.caption("**Estimate** computes any config from formulas — analytic, no GPU · "
                "**Benchmark** is a real (empirical) measurement generated in the "
-               "terminal with `tfg benchmark` · **Benchmark vs Run** puts those "
+               "terminal with `paravit benchmark` · **Benchmark vs Run** puts those "
                "estimates next to what actually happened in the real runs.")
 
     benchmark_csvs = _get_benchmark_csvs()
@@ -50,11 +50,11 @@ def render(ctx: DashboardContext) -> None:
     with tab_benchmark:
         if not benchmark_csvs:
             st.info("No benchmarks yet. Generate one from the terminal — e.g. "
-                    "`uv run tfg.py benchmark --model vit_base_patch16_224 "
+                    "`uv run paravit.py benchmark --model vit_base_patch16_224 "
                     "--batch-sizes 32,64` — and it will appear here.")
         else:
             st.caption("Benchmark selected above (generated in the terminal with "
-                       "`tfg benchmark`): hardware, throughput, time and cost "
+                       "`paravit benchmark`): hardware, throughput, time and cost "
                        "estimates, distributed scaling and the convergence study.")
             subtab_ddp_opt = render_report(meta, bdf_feas, benchmark_csvs)
             with subtab_ddp_opt:

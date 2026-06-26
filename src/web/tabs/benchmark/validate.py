@@ -88,7 +88,7 @@ def render_validate(ctx) -> object:
     feas_csvs = _get_benchmark_csvs()
     if not feas_csvs:
         st.info("No benchmark reports yet. Generate one from the terminal "
-                "(`tfg benchmark`).")
+                "(`paravit benchmark`).")
         st.divider()
         return st.container()
 
