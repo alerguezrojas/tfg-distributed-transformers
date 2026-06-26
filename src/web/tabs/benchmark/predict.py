@@ -1,6 +1,6 @@
 """Benchmark — the analytic Predict tab (no GPU, just formulas).
 
-Mirrors `tfg predict`: pick a config and get the full estimate — time and memory
+Mirrors `paravit estimate`: pick a config and get the full estimate — time and memory
 with the formulas plugged in, expected quality, distributed scaling and cloud cost.
 Powered by src/performance_model.py (no benchmark run)."""
 from __future__ import annotations
@@ -32,7 +32,7 @@ def _analytic_predictor() -> None:
     st.caption(
         "Pick the parameters and get the full estimate — **with the formulas behind "
         "it** — from analytic models calibrated on real data, **without running "
-        "anything**. Same engine as `tfg predict`. Errors vs the real Kaggle 2×T4 "
+        "anything**. Same engine as `paravit estimate`. Errors vs the real Kaggle 2×T4 "
         "runs: time +4%, DDP speedup <1%, AMP <2%."
     )
 

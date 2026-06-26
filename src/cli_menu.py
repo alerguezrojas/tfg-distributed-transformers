@@ -1,4 +1,4 @@
-"""Interactive guided menu for the ``tfg`` CLI.
+"""Interactive guided menu for the ``paravit`` CLI.
 
 Separated from ``src/cli.py`` (which defines the commands) so each file has a single
 responsibility: ``cli.py`` declares the Typer commands and their pure argv builders,
@@ -123,7 +123,7 @@ def run_menu() -> None:
             "[bold]1[/] · Estimate (analytic, no GPU)\n[bold]2[/] · Train\n"
             "[bold]3[/] · Benchmark (empirical, real)\n[bold]4[/] · Evaluate on test\n"
             "[bold]5[/] · Open dashboard\n[bold]0[/] · Exit",
-            title="TFG — what do you want to do?", border_style="cyan", expand=False))
+            title="ParaViTLab — what do you want to do?", border_style="cyan", expand=False))
         choice = Prompt.ask("Choose", choices=["0", "1", "2", "3", "4", "5"], default="1")
 
         if choice == "0":
