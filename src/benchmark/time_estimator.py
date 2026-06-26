@@ -39,9 +39,9 @@ class TimeEstimator:
             flops_train = flops_img * 3 * dataset_train
             flops_eval = flops_img * dataset_val
 
-        ddp_eff = 0.85
-        ddp_projections = {n: sec_total / (n * ddp_eff) for n in (2, 4, 8)}
-
+        # Note: distributed scaling is NOT projected here. The flat-efficiency DDP
+        # estimate was removed in favour of the compute/IO/sync-aware DDPOptimizer
+        # (the #ddp block), which is the single source of truth for DDP scaling.
         return {
             "train_per_epoch": sec_train,
             "eval_per_epoch": sec_eval,
@@ -53,9 +53,6 @@ class TimeEstimator:
             "flops_train_gflops_per_epoch": flops_train,
             "flops_eval_gflops_per_epoch": flops_eval,
             "optimizer_steps_per_epoch": train_batches,
-            "ddp_total_2gpu_h": ddp_projections[2] / 3600,
-            "ddp_total_4gpu_h": ddp_projections[4] / 3600,
-            "ddp_total_8gpu_h": ddp_projections[8] / 3600,
         }
 
     @staticmethod
