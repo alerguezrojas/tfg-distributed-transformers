@@ -75,19 +75,23 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
         layers_fn += ["--layers", *layers]
     if fn:
         layers_fn += ["--fn", *fn]
+    # Tensor-core precision for the strategies whose loop honours it (single, ddp and
+    # model-parallel all go through Trainer.train_epoch). Heterogeneous runs on gloo/CPU
+    # with a hand-written fp32 loop, so it does not expose --precision.
+    precision_arg = (["--precision", precision]
+                     if precision and precision != "fp32" else [])
 
     if strategy == "single":
-        cmd = [sys.executable, "scripts/train_single_gpu.py", "--config", config] + common
-        if precision and precision != "fp32":         # only single exposes --precision
-            cmd += ["--precision", precision]
-        return cmd + layers_fn
+        return ([sys.executable, "scripts/train_single_gpu.py", "--config", config]
+                + common + precision_arg + layers_fn)
     if strategy == "model-parallel":
-        # model_parallel runs through the builder, so it honours --layers/--fn too.
+        # model_parallel runs through the builder, so it honours --layers/--fn/--precision.
         return ([sys.executable, "scripts/train_model_parallel.py", "--config", config]
-                + common + layers_fn)
+                + common + precision_arg + layers_fn)
     if strategy == "ddp":
         return (_torchrun(n_gpus, nnodes, node_rank, master_addr, master_port)
-                + ["scripts/train_ddp.py", "--config", config] + common + layers_fn)
+                + ["scripts/train_ddp.py", "--config", config]
+                + common + precision_arg + layers_fn)
     # heterogeneous: one process per node, multi-node by definition
     return (_torchrun(1, nnodes, node_rank, master_addr, master_port)
             + ["scripts/train_heterogeneous_ddp.py", "--config", config] + common + layers_fn)

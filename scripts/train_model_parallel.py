@@ -37,6 +37,8 @@ def parse_args():
     p = argparse.ArgumentParser(description="Model-parallel training for BigEarthNet-S2")
     p.add_argument("--config", type=str, default="configs/train_model_parallel_kaggle.yaml")
     p.add_argument("--model", type=str, default=None, help="Override model name (timm ViT)")
+    p.add_argument("--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
+                   help="Override training.precision (Tensor cores)")
     p.add_argument("--epochs", type=int, default=None)
     p.add_argument("--batch-size", type=int, default=None)
     p.add_argument("--split-block", type=int, default=None,
@@ -75,6 +77,8 @@ def main():
         cfg = yaml.safe_load(f)
     if args.model:
         cfg["model"]["name"] = args.model
+    if args.precision:
+        cfg["training"]["precision"] = args.precision
     if args.epochs:
         cfg["training"]["epochs"] = args.epochs
     if args.batch_size:

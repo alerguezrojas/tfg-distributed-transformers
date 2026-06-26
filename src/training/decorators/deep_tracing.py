@@ -121,6 +121,13 @@ class DeepTracingDecorator(TracingDecorator):
         self._forward_hooks: list = []
         self._param_hooks: list = []
         self._current_epoch: int = 0
+        # The deep batch-table loop runs in fp32 on purpose: its backward hooks capture
+        # per-layer gradients, which a GradScaler (AMP) would scale and corrupt. Warn so
+        # a requested Tensor-core precision is not silently ignored for that path.
+        prec = getattr(self._trainer, "precision", "fp32")
+        if self._needs_own_train_loop() and prec not in ("fp32", None):
+            self._emit(f"[aviso] --trace deep (batch-table) corre en fp32; la precisión "
+                       f"'{prec}' no aplica a la inspección profunda por capa.")
 
     def _needs_hooks(self) -> bool:
         return bool(self._features & {"grad-monitor", "batch-table", "anomalies"})

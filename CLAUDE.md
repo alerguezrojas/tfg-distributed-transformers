@@ -1167,7 +1167,9 @@ Auditoría multi-agente de TODO el proyecto (núcleo, decoradores, estimador, be
 - [x] **Web: rectángulos de grupo de la matriz de confusión desalineados** (eje alfabético vs orden canónico) → eje en orden `CLASS_NAMES` + rectángulos mapeados por nombre.
 - [x] **Estimate: `fits` usaba 100% VRAM pero `max_batch` 92%** → ambos usan 0.92 (veredictos OOM coherentes).
 - [x] **Benchmark report: recomendación de nº de GPU con el criterio viejo** (siempre 1) → criterio ≥75% eficiencia (como `recommend_config`).
-- [x] Menores: guard de loader vacío (evita cuelgue DDP), `best_f1=-1.0` (siempre guarda baseline), métricas DDP solo en rank 0, radar de Compare sin fondo blanco (modo oscuro), imports muertos en `home.py`, `tfg benchmark --config <hetero>` ya no casca (KeyError). +2 tests (`retry_on_cuda_oom`). **381 tests.**
+- [x] Menores: guard de loader vacío (evita cuelgue DDP), `best_f1=-1.0` (siempre guarda baseline), métricas DDP solo en rank 0, radar de Compare sin fondo blanco (modo oscuro), imports muertos en `home.py`, `tfg benchmark --config <hetero>` ya no casca (KeyError). +2 tests (`retry_on_cuda_oom`).
+- [x] **`--precision` desde el CLI para DDP y model-parallel** (antes solo single): `train_ddp.py`/`train_model_parallel.py` aceptan `--precision` (sobreescribe `cfg.training.precision`) y `build_train_cmd` lo reenvía a single/ddp/model-parallel (NO a heterogéneo, fp32 en gloo). Cierra el hueco "no había forma de lanzar DDP+AMP desde el CLI". +1 test.
+- [x] **Aviso en `--trace deep` + precisión Tensor-core:** el bucle propio de deep (batch-table) corre en fp32 a propósito (sus hooks de backward capturan gradientes por capa, que un GradScaler escalaría y corrompería); ahora **avisa** en vez de ignorar la precisión en silencio. (No se mete AMP en el bucle deep: dañaría el diagnóstico.) **382 tests.**
 - **Limitaciones confirmadas como tales (no se tocan):** I/O sin caché de RAM (deriva +130% en vit_tiny cacheado), MFU calibrada en vit_base (resnet −24%, vit_large +18%), GPU+CPU con CPU fija. La prueba empírica confirma que se comportan como se documenta.
 
 ### Pendiente
