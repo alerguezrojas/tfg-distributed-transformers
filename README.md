@@ -84,5 +84,7 @@ clases completo se encuentra en [`docs/class_diagram.svg`](docs/class_diagram.sv
 **Alejandro Rodríguez Rojas** — Grado en Ingeniería Informática, Universidad de La Laguna.
 Tutor: **Francisco Carmelo Almeida Rodríguez**. Cotutor: **Daniel Suárez Labena**. Curso 2025/2026.
 
-Código distribuido bajo licencia [MIT](LICENSE). El conjunto de datos BigEarthNet-S2 conserva su
-propia licencia.
+Código distribuido bajo licencia [GNU GPL v3](LICENSE) — copyleft: cualquier versión modificada que
+se distribuya debe publicarse también como código abierto bajo GPLv3. © 2026 Alejandro Rodríguez
+Rojas. La **memoria** del TFG se distribuye por separado bajo **CC BY-NC-SA 4.0**. El conjunto de
+datos BigEarthNet-S2 y los pesos preentrenados conservan sus propias licencias.
