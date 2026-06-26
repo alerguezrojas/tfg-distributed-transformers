@@ -403,8 +403,6 @@ class ReportFormatter:
                 "est_energy_total_wh",
                 "flops_train_gflops_per_epoch", "flops_eval_gflops_per_epoch",
                 "optimizer_steps_per_epoch",
-                f"est_ddp_2gpu_h_{target_epochs}ep",
-                f"est_ddp_4gpu_h_{target_epochs}ep",
             ])
             for r in report.results:
                 est = (estimator.estimate(r, report.dataset_train, report.dataset_val,
@@ -429,8 +427,6 @@ class ReportFormatter:
                     round(est["flops_train_gflops_per_epoch"], 1) if est and est["flops_train_gflops_per_epoch"] else "",
                     round(est["flops_eval_gflops_per_epoch"], 1) if est and est["flops_eval_gflops_per_epoch"] else "",
                     est["optimizer_steps_per_epoch"] if est else "",
-                    round(est["ddp_total_2gpu_h"], 2) if est else "",
-                    round(est["ddp_total_4gpu_h"], 2) if est else "",
                 ])
 
         print(f"  → CSV guardado: {csv_path}")

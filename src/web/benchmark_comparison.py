@@ -254,23 +254,10 @@ def build_comparison(
             unit="steps",
         ))
 
-    # ── DDP projection ───────────────────────────────────────────────────────
-    est_total_h = _safe_float(frow.get(next(
-        (c for c in (frow.index if hasattr(frow, 'index') else [])
-         if c.startswith("est_total_h_")), None
-    ))) if hasattr(frow, 'index') else None
-    est_ddp2 = _safe_float(frow.get(next(
-        (c for c in (frow.index if hasattr(frow, 'index') else [])
-         if c.startswith("est_ddp_2gpu_h_")), None
-    ))) if hasattr(frow, 'index') else None
-    if est_ddp2 is not None:
-        rows.append(ComparisonRow(
-            metric="DDP ×2 GPU total (est.)",
-            formula="total_time / (2 × 0.85_efficiency)",
-            estimated=est_ddp2,
-            actual=None,
-            unit="h",
-        ))
+    # DDP scaling is intentionally NOT shown here: the compute/IO/sync-aware
+    # DDPOptimizer (#ddp block, parsed by parse_ddp_scenarios) is the single source
+    # of truth for distributed scaling. The old flat 0.85-efficiency projection was
+    # removed because it contradicted those precise scenarios.
 
     # ── Complexity / FLOPs ───────────────────────────────────────────────────
     if flops and n_train_batches and batch_size:

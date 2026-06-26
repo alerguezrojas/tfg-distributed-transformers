@@ -147,19 +147,12 @@ class TestTimeEstimator:
         expected = math.ceil(237_871 / 32)
         assert est["optimizer_steps_per_epoch"] == expected
 
-    def test_ddp_keys_present(self, sample_result):
+    def test_no_flat_ddp_projection(self, sample_result):
+        # DDP scaling is owned by the compute/IO/sync-aware DDPOptimizer, not by a
+        # flat-efficiency projection in the TimeEstimator (which was removed).
         est = TimeEstimator().estimate(sample_result, 237_871, 122_342, 30)
-        if "ddp_total_2gpu_h" not in est:
-            pytest.skip("DDP estimates not in this version")
-        assert "ddp_total_4gpu_h" in est
-        assert est["ddp_total_2gpu_h"] < est["ddp_total_4gpu_h"] * 2.1
-
-    def test_ddp_speedup_less_than_linear(self, sample_result):
-        est = TimeEstimator().estimate(sample_result, 237_871, 122_342, 30)
-        if "ddp_total_2gpu_h" not in est:
-            pytest.skip("DDP estimates not in this version")
-        total_h = est["total"] / 3600
-        assert est["ddp_total_2gpu_h"] == pytest.approx(total_h / (2 * 0.85), rel=1e-4)
+        assert "ddp_total_2gpu_h" not in est
+        assert "ddp_total_4gpu_h" not in est
 
     def test_format_time_hours(self):
         assert TimeEstimator.format_time(7200) == "2h 00m"
