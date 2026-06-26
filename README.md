@@ -2,7 +2,7 @@
 
 # Entrenamiento distribuido de modelos abiertos de aprendizaje automático basados en Transformers
 
-### ParaViTLab &middot; *Parallel/Parallax ViT Lab*
+### ParaViTLab
 
 **Trabajo de Fin de Grado · Grado en Ingeniería Informática · Universidad de La Laguna**
 
