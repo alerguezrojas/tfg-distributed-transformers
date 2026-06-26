@@ -125,6 +125,20 @@ package "src.training" #FDFEFE {
     Mezcla pares con coef. Beta(α,α).
   end note
 
+  class FocalLoss {
+    - gamma: float
+    - alpha: float
+    - reduction: str
+    + forward(logits, targets): Tensor
+  }
+
+  note as losses_note
+    **losses.py**
+    build_criterion → BCEWithLogitsLoss(+pos_weight) | FocalLoss
+    pos_weight_from_metadata('auto')
+    Palanca contra las clases raras.
+  end note
+
   note as metrics_note
     **metrics.py**
     f1_score / precision / recall /
@@ -346,7 +360,9 @@ package "src.training.fn_decorators" #FDFEFE {
 ' PACKAGE: src.models / src.data
 ' ════════════════════════════════════════════════════════════════
 package "src.models" #FDFEFE {
-  class BigEarthViT {
+  class BigEarthModel {
+    ' alias retrocompat: BigEarthViT = BigEarthModel
+    - model_name: str
     - backbone: VisionTransformer
     - head: nn.Sequential
     + is_vit: bool
@@ -759,6 +775,8 @@ TrainingSessionBuilder ..> DDPTrainer : creates (distributed) >
 TrainingSessionBuilder ..> HeterogeneousDDPTrainer : creates (hetero) >
 TrainingSessionBuilder ..> ModelParallelTrainer : creates (model-parallel) >
 TrainingSessionBuilder ..> aug_note : uses >
+TrainingSessionBuilder ..> FocalLoss : build_criterion >
+FocalLoss .. losses_note
 
 DDPTrainer ..> HeterogeneousDistributedSampler : usa en hetero >
 
@@ -807,7 +825,7 @@ BenchmarkReport *-- PerformancePrediction
 BenchmarkReport *-- BenchmarkResult
 BenchmarkReport o-- StudyReport
 
-BigEarthViT ..> BigEarthNetDataset : trained on >
+BigEarthModel ..> BigEarthNetDataset : trained on >
 ModelParallelViT ..> BigEarthNetDataset : trained on >
 ModelParallelTrainer ..> ModelParallelViT : drives >
 
