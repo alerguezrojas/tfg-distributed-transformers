@@ -97,6 +97,9 @@ class Trainer(BaseTrainer):
         self._batch_hooks.append(fn)
 
     def train_epoch(self, loader: DataLoader) -> dict:
+        if len(loader) == 0:
+            raise ValueError("empty training loader — check the split/subset/sampler "
+                             "(a rank with 0 samples would also hang the collectives)")
         self.model.train()
         self._current_epoch += 1
         total_loss = 0.0
@@ -177,6 +180,8 @@ class Trainer(BaseTrainer):
 
     @torch.no_grad()
     def eval_epoch(self, loader: DataLoader) -> dict:
+        if len(loader) == 0:
+            raise ValueError("empty validation loader — check the split/subset/sampler")
         self.model.eval()
         total_loss = 0.0
         all_probs: list[torch.Tensor] = []

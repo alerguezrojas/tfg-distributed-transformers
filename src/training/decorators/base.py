@@ -75,7 +75,7 @@ class EpochController(TrainerDecorator):
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         # Stack invariant: EpochController (controller) sits outermost; aspect decorators
         # (PlottingDecorator, LayerHooksDecorator) sit between it and the Trainer.
-        best_f1 = 0.0
+        best_f1 = -1.0   # so the first epoch always saves a baseline checkpoint
         epoch_times: list[float] = []
         epochs_no_improve: int = 0
 

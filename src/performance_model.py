@@ -318,7 +318,9 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
                        precision, disk_type, nfs, rc_measured, rio_measured)
 
     vram = estimate_vram_gb(model, batch_per_gpu, precision)
-    fits = vram <= gpu.vram_gb
+    # Use the SAME usable-VRAM threshold (0.92) as max_batch/fits_in_memory, so the
+    # `fits` flag, the OOM note and the recommended batch never contradict each other.
+    fits = fits_in_memory(model, gpu, batch_per_gpu, precision)
     rec_b = max_batch(model, gpu, precision)
 
     notes: list[str] = []
@@ -329,7 +331,9 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         notes.append("Synchronous DDP runs at the pace of the slowest worker (the CPU); "
                      "imbalanced hardware penalizes.")
     if not fits:
-        notes.append(f"OOM: needs ~{vram:.1f} GB but the GPU has {gpu.vram_gb:.0f} GB. "
+        usable = gpu.vram_gb * USABLE_VRAM_FRACTION
+        notes.append(f"OOM: needs ~{vram:.1f} GB but only ~{usable:.1f} GB of the "
+                     f"{gpu.vram_gb:.0f} GB is usable (PyTorch reserves ~8%). "
                      f"Largest batch that fits: {rec_b}.")
 
     return Prediction(

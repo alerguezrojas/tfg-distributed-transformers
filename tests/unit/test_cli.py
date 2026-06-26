@@ -64,13 +64,16 @@ def test_train_ddp_multinode_adds_rendezvous():
     assert "--master_addr=verode21" in s and "--master_port=29501" in s
 
 
-def test_train_model_parallel_plain_no_layers():
+def test_train_model_parallel_forwards_layers_and_fn():
+    # model_parallel runs through the builder, so it must honour --layers/--fn
+    # (single-process, no torchrun).
     cmd = build_train_cmd("model-parallel", "configs/train_model_parallel_kaggle.yaml",
-                          layers=["plot"])
+                          layers=["confusion"], fn=["energy"])
     s = _join(cmd)
     assert "scripts/train_model_parallel.py" in cmd
     assert "torch.distributed.run" not in s
-    assert "--layers" not in s               # model_parallel does not accept --layers
+    assert "--layers" in s and "confusion" in s
+    assert "--fn" in s and "energy" in s
 
 
 def test_train_heterogeneous_one_proc_per_node():

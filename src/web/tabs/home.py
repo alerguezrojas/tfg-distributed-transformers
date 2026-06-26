@@ -1,28 +1,15 @@
 """Tab render module — see src/web/app.py for the orchestrator."""
 from __future__ import annotations
 
-import subprocess
-import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 import streamlit as st
 
-from src.web.confusion_matrix_parser import get_matrix_for_epoch, parse_confusion_matrix_csv
 from src.web.dataset_stats import (
-    CLASS_NAMES, SPLIT_SIZES,
-    class_distribution_approximate, class_distribution_from_parquet,
-    get_country_distribution, find_example_patches, load_rgb_image,
+    CLASS_NAMES, SPLIT_SIZES, class_distribution_approximate,
 )
-from src.web.benchmark_comparison import build_comparison
-from src.web.benchmark_parser import parse_benchmark_csv, parse_ddp_scenarios
-from src.web.model_explorer import ALL_FAMILIES, CURATED_MODELS, compare_models
-from src.web.perclass_parser import parse_perclass_csv
-from src.web.run_registry import RunInfo
-from src.web.system_monitor import get_snapshot
 
 from src.web.ui.charts import (
     COLORS, _show, _dl_csv, _base_layout, _metric_fig, _overlay_fig,
