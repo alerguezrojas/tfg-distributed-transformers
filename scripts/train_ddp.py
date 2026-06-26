@@ -49,6 +49,8 @@ def parse_args():
     parser.add_argument("--config", type=str, default="configs/train_cluster.yaml")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
     parser.add_argument("--model", type=str, help="Override model name (any timm ID)")
+    parser.add_argument("--precision", choices=["fp32", "tf32", "amp", "bf16"],
+                        help="Override training.precision (Tensor cores)")
     parser.add_argument(
         "--trace", choices=["off", "simple", "deep"], default="simple",
         help="Logging controller mode (applies only to rank 0)",
@@ -104,6 +106,8 @@ def main():
 
     if args.epochs:
         cfg["training"]["epochs"] = args.epochs
+    if args.precision:
+        cfg["training"]["precision"] = args.precision
 
     # Reproducibility: if training.seed is set, seed each rank with a rank offset so
     # ranks shuffle differently but deterministically, and wire the DataLoader RNG.
