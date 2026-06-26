@@ -126,14 +126,23 @@ def _confusions_view(run) -> None:
                    "present). The diagonal is recall; bright off-diagonal cells are "
                    "the confusions above. Coloured borders group classes by ecosystem.")
         pivot = get_matrix_for_epoch(cm_df, ep)
-        class_order = list(pivot.index)
+        # Order the axes by the canonical CLASS_NAMES order (not the pivot's default
+        # alphabetical order): the ecosystem group rectangles index into CLASS_NAMES
+        # and are drawn as contiguous ranges, so the axis must follow that order or the
+        # borders land on the wrong cells. Fall back to the pivot order if the CSV's
+        # class names don't match CLASS_NAMES.
+        canonical = [c for c in CLASS_NAMES if c in pivot.index]
+        class_order = canonical if len(canonical) == len(pivot.index) else list(pivot.index)
         z_norm = pivot.reindex(index=class_order, columns=class_order).values
         n_classes = len(class_order)
         text = [[f"{v:.2f}" if v >= 0.05 else "" for v in row] for row in z_norm]
 
         shapes = []
         for _gname, (idxs, color) in _CLASS_GROUPS.items():
-            positions = [i for i in range(n_classes) if i in idxs]
+            # Map the group's class NAMES to their positions in the current axis order,
+            # so the border aligns regardless of the axis ordering.
+            group_names = {CLASS_NAMES[i] for i in idxs if i < len(CLASS_NAMES)}
+            positions = [pos for pos, name in enumerate(class_order) if name in group_names]
             if not positions:
                 continue
             lo, hi = min(positions), max(positions)

@@ -44,6 +44,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.data.dataset import BigEarthNetDataset, get_transforms
 from src.training.builder import TrainingSessionBuilder
 from src.training.heterogeneous_sampler import HeterogeneousDistributedSampler
+from src.training.reproducibility import set_seed
 
 
 def parse_args():
@@ -105,6 +106,13 @@ def main():
 
     if args.epochs:
         cfg["training"]["epochs"] = args.epochs
+
+    # Reproducibility: seed each rank with a rank offset (deterministic per-rank).
+    seed = cfg["training"].get("seed")
+    if seed is not None:
+        set_seed(int(seed) + rank)
+        if rank == 0:
+            print(f"Semilla     : {seed} (+rank, run determinista)")
 
     # Timestamp compartido desde rank 0 para coherencia en nombres de ficheros
     ts_list = [datetime.now().strftime("%d%m%Y_%H%M%S") if rank == 0 else ""]

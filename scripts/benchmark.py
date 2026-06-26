@@ -67,7 +67,14 @@ def main():
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
-    batch_sizes = args.batch_sizes or [cfg["training"]["batch_size"]]
+    # Heterogeneous configs put batch_size per-rank under distributed.ranks and omit
+    # the top-level training.batch_size, so fall back to the largest per-rank batch.
+    default_bs = cfg["training"].get("batch_size")
+    if default_bs is None:
+        ranks = (cfg.get("distributed") or {}).get("ranks") or []
+        per_rank = [r.get("batch_size") for r in ranks if r.get("batch_size")]
+        default_bs = max(per_rank) if per_rank else 32
+    batch_sizes = args.batch_sizes or [default_bs]
     epochs_list = args.epochs or [cfg["training"]["epochs"]]
     model_names = args.model or [cfg["model"]["name"]]
     env = cfg.get("output", {}).get("env", "local")

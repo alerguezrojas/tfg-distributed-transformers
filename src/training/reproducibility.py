@@ -24,6 +24,11 @@ def set_seed(seed: int) -> None:
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
+    # Make cuDNN deterministic so seeded GPU runs are reproducible (otherwise some
+    # conv/backward kernels still inject run-to-run noise). Slightly slower, but a
+    # seeded run that is not actually reproducible defeats the purpose.
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def seed_worker(worker_id: int) -> None:  # noqa: ARG001

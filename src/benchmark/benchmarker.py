@@ -72,14 +72,15 @@ class Benchmarker:
     def _benchmark(self, batches, trace_mode) -> tuple[float, float, float, float]:
         hooks = self._register_deep_hooks() if trace_mode == "deep" else []
         if self._device.type == "cuda":
-            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.reset_peak_memory_stats(self._device)
 
         self._model.train()
         for images, labels in batches[:self.N_WARMUP]:
             self._train_step(images, labels)
 
         power_samples = []
-        pynvml_handle = self._get_pynvml_handle()
+        pynvml_handle = self._get_pynvml_handle(
+            self._device.index if self._device.type == "cuda" else 0)
 
         if self._device.type == "cuda":
             torch.cuda.synchronize()
@@ -107,18 +108,19 @@ class Benchmarker:
             torch.cuda.synchronize()
         sec_eval = (time.perf_counter() - t0) / self.N_MEASURE
 
-        peak_vram = torch.cuda.max_memory_allocated() / 1e9 if self._device.type == "cuda" else 0.0
+        peak_vram = (torch.cuda.max_memory_allocated(self._device) / 1e9
+                     if self._device.type == "cuda" else 0.0)
 
         for h in hooks:
             h.remove()
         return sec_train, sec_eval, peak_vram, avg_power
 
     @staticmethod
-    def _get_pynvml_handle():
+    def _get_pynvml_handle(index: int = 0):
         try:
             import pynvml
             pynvml.nvmlInit()
-            return pynvml.nvmlDeviceGetHandleByIndex(0)
+            return pynvml.nvmlDeviceGetHandleByIndex(index)
         except Exception:
             return None
 
