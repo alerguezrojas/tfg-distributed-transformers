@@ -1,4 +1,4 @@
-"""ParaViTLab — unified command-line interface (``paravit <command>``).
+"""ParaViT-Lab — unified command-line interface (``paravit <command>``).
 
 One entry point for everything that runs in a terminal, where the compute lives:
 launch trainings (any strategy), estimate before training (analytic), run a real
@@ -34,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[1]
 console = Console()
 app = typer.Typer(
     add_completion=False, no_args_is_help=True,
-    help="ParaViTLab — distributed Vision Transformers. Train, estimate, benchmark, evaluate and visualise.",
+    help="ParaViT-Lab — distributed Vision Transformers. Train, estimate, benchmark, evaluate and visualise.",
 )
 
 STRATEGIES = ("single", "ddp", "model-parallel", "heterogeneous")
