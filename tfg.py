@@ -1,4 +1,4 @@
-"""Backward-compatible alias of the ParaViTLab launcher.
+"""Backward-compatible alias of the ParaViT-Lab launcher.
 
 The canonical entry point is ``paravit.py`` (``uv run paravit.py <command>``).
 This file is kept so that the older ``uv run tfg.py <command>`` invocation, used

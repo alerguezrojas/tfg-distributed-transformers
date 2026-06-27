@@ -2,7 +2,7 @@
 
 # Entrenamiento distribuido de modelos abiertos de aprendizaje automático basados en Transformers
 
-### ParaViTLab
+### ParaViT-Lab
 
 **Trabajo de Fin de Grado · Grado en Ingeniería Informática · Universidad de La Laguna**
 
@@ -25,7 +25,7 @@ entre varias GPU o entre GPU y CPU. Junto al modelo, el proyecto proporciona una
 analítica** que predice tiempo, memoria, coste y calidad *sin necesidad de entrenar*; un **benchmark**
 que la contrasta con medidas empíricas en la propia máquina; y un **panel web** para visualizar y
 comparar los resultados. Toda la funcionalidad se gobierna desde una única herramienta de línea de
-órdenes, **`paravit`**. El sistema desarrollado se denomina **ParaViTLab** (*Parallel/Parallax ViT
+órdenes, **`paravit`**. El sistema desarrollado se denomina **ParaViT-Lab** (*Parallel/Parallax ViT
 Lab*); el antiguo comando `tfg` se conserva como alias retrocompatible.
 
 ## Requisitos previos

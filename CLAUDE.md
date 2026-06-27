@@ -244,7 +244,7 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
 
 ## CLI unificado (`paravit`)
 
-**El sistema/framework se denomina `ParaViTLab`** (*Parallel/Parallax ViT Lab*); el comando es `paravit` y `tfg` se mantiene como **alias retrocompatible** (`tfg.py` sigue funcionando). Renombrado el 26/06/2026 (rama `feature/rename-paravit-cli`).
+**El sistema/framework se denomina `ParaViT-Lab`** (*Parallel/Parallax ViT Lab*); el comando es `paravit` y `tfg` se mantiene como **alias retrocompatible** (`tfg.py` sigue funcionando). Renombrado el 26/06/2026 (rama `feature/rename-paravit-cli`).
 
 `src/cli.py` (Typer) + lanzador `paravit.py` en la raíz (alias: `tfg.py`) → **un único punto de entrada en terminal** para todo lo que usa la máquina. Separación tipo W&B/MLflow/TensorBoard: **el terminal hace** (toca la GPU), **la web mira** (visualización de solo lectura).
 
