@@ -230,9 +230,10 @@ _SRC_COLOR = {"analytic": "#2563eb", "benchmark": "#10b981", "real": "#ef4444"}
 
 
 def _metric_block(records: list[dict], metric_key: str, title: str, ytitle: str,
-                  key: str) -> None:
+                  key: str, decimals: int = 2) -> None:
     """A per-metric block: a source picker (Analytic / Benchmark / Both — Real is always
-    shown) followed by a grouped bar chart with the chosen sources, in red/green/blue."""
+    shown) followed by a grouped bar chart with the chosen sources, in red/green/blue.
+    ``decimals`` controls the bar labels (F1 lives in [0,1] → use 3)."""
     recs = [{"run": d["run"], **{s: d[metric_key].get(s) for s in ("a", "b", "r")}}
             for d in records
             if any(d[metric_key].get(s) is not None for s in ("a", "b", "r"))]
@@ -247,7 +248,7 @@ def _metric_block(records: list[dict], metric_key: str, title: str, ytitle: str,
     def _trace(src_key, name, color):
         ys = [d.get(src_key) for d in recs]
         return go.Bar(name=name, x=labels, y=ys, marker_color=color,
-                      text=[f"{v:.2f}" if v is not None else "" for v in ys],
+                      text=[f"{v:.{decimals}f}" if v is not None else "" for v in ys],
                       textposition="outside")
 
     fig = go.Figure()
@@ -385,7 +386,7 @@ def render_validate(ctx) -> object:
                "on the slow CPU worker, below its compute-bound power). Note: DDP runs logged "
                "before the 24/06 multi-GPU energy fix measured only one GPU, so their **Real** "
                "bar reads ~½ — Analytic/Benchmark (all GPUs) will look ~2× those.")
-    _metric_block(records, "f", "Best Val F1", "F1 (macro)", "validate_f1_bars")
+    _metric_block(records, "f", "Best Val F1", "F1 (macro)", "validate_f1_bars", decimals=3)
     st.caption("Analytic and benchmark F1 are the SAME empirical prior (so they coincide "
                "for reports that record their dataset size; older reports may differ slightly); "
                "the real bar is the run's measured best Val F1.")
