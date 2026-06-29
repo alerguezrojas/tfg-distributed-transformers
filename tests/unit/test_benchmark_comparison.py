@@ -201,6 +201,45 @@ def test_select_benchmark_prefers_report_with_batch_and_sizes():
     assert _select_benchmark(parsed, "kaggle", "resnet50", 48) == (None, None)
 
 
+def _hetero_log(tmp_path):
+    from types import SimpleNamespace
+    log = tmp_path / "train_hetero.log"
+    log.write_text(
+        "2026-06-04 [INFO] Configuración: modelo=vit_tiny_patch16_224 | "
+        "batch=96/GPU (global=96, 2 GPUs) | epochs=3 | precision=fp32 | "
+        "train=5000 | val=1500\n"
+        "── Epoch 1/3\n"
+        "  loss   train=0.5 val=0.5\n"
+        "  f1   train=0.3 val=0.3\n"
+        "ETA: 00:00 (250.0s/epoch)\n"
+        "[energy] HeterogeneousDDPTrainer.train_epoch: 36000.0 J (10.0 Wh) potencia media 45.0 W\n"
+        "[energy] HeterogeneousDDPTrainer.eval_epoch: 1800.0 J (0.5 Wh) potencia media 44.0 W\n"
+    )
+    return SimpleNamespace(log_path=log, epoch_csv_path=None, precision="fp32",
+                           mode="ddp_hetero", model="vit_tiny_patch16_224",
+                           env="verode", label="04/06/2026 vit_tiny [ddp_hetero]")
+
+
+def test_run_record_hides_benchmark_for_heterogeneous(tmp_path):
+    """The empirical benchmark can't model heterogeneous (single-GPU only), so its
+    time/energy bars are dropped — only analytic + real are shown."""
+    from src.web.tabs.benchmark.validate import _run_record
+    r = _hetero_log(tmp_path)
+    fdf = pd.DataFrame([{
+        "batch_size": 96, "trace_mode": "simple", "s_per_batch_train": 0.1,
+        "s_per_batch_eval": 0.05, "imgs_per_s_train": 960.0, "avg_power_w": 100.0,
+        "peak_vram_gb": 3.0,
+    }])
+    m = {"model_name": "vit_tiny_patch16_224", "hardware_name": "Tesla V100",
+         "n_train": 5000, "n_val": 1500, "nfs_factor": 1.3,
+         "prediction": {"predicted_best_f1": 0.27}}
+    rec, _ = _run_record(r, m, fdf)
+    assert rec["t"]["b"] is None and rec["e"]["b"] is None    # benchmark dropped
+    assert rec["t"]["a"] is not None and rec["e"]["a"] is not None  # analytic present
+    assert rec["t"]["r"] is not None                          # real present
+    assert "does not model" in rec["note"]
+
+
 def test_run_sizes_unknown_returns_none(tmp_path):
     """A run with no config line matched to a benchmark with no #sizes → unknown size,
     NOT a fabricated 5000 default (which would make the estimate wildly off)."""

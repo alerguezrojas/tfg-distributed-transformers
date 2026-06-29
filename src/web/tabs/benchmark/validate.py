@@ -210,6 +210,15 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
         except Exception:
             pass
 
+    # The empirical benchmark only models single-GPU and data-parallel (DDP). It measures
+    # one GPU doing synthetic compute, so it cannot represent model-parallel (1-GPU energy,
+    # not the 2-GPU run) or heterogeneous (it has no notion of the GPU waiting on a slow CPU
+    # — it would read ~30× too fast). Drop its time/energy bars for those strategies; the
+    # analytic column is the estimate for them. (F1 is strategy-independent, so it stays.)
+    if strat in ("model_parallel", "heterogeneous"):
+        b_t = b_e = None
+        note_bits.append(f"benchmark does not model {r.mode} (single-GPU only) — analytic is the estimate")
+
     # A precision the report never benchmarked → benchmark time/energy not comparable.
     if not precision_ok:
         b_t = b_e = None
