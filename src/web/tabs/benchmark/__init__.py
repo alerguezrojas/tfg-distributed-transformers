@@ -24,24 +24,24 @@ def render(ctx: DashboardContext) -> None:
     st.markdown("## Estimate / Benchmark")
     st.caption("**Estimate** computes any config from formulas — analytic, no GPU · "
                "**Benchmark** is a real (empirical) measurement generated in the "
-               "terminal with `paravit benchmark` · **Benchmark vs Run** puts those "
-               "estimates next to what actually happened in the real runs.")
+               "terminal with `paravit benchmark` · **Estimate vs Benchmark vs Run** puts "
+               "both estimates next to what actually happened in the real runs.")
 
     benchmark_csvs = _get_benchmark_csvs()
     tab_estimate, tab_benchmark, tab_compare = st.tabs(
-        ["Estimate", "Benchmark", "Benchmark vs Run"])
+        ["Estimate", "Benchmark", "Estimate vs Benchmark vs Run"])
 
     # ── Estimate: closed-form estimate for any config (no GPU, just formulas) ────
     with tab_estimate:
         _analytic_predictor()
 
-    # The benchmark selector (feeds the Benchmark tab and Benchmark-vs-Run's F1 curve).
+    # The benchmark selector (feeds the Benchmark tab and the comparison tab's F1 curve).
     if benchmark_csvs:
         with tab_benchmark:
             selected_feas_path = st.selectbox(
                 "Benchmark report", [str(p) for p in benchmark_csvs],
                 format_func=_bench_label, key="bench_sel",
-                help="Used by the Benchmark tab and Benchmark-vs-Run's F1 curve.")
+                help="Used by the Benchmark tab and the Estimate-vs-Benchmark-vs-Run F1 curve.")
         meta, bdf_feas = parse_benchmark_csv(Path(selected_feas_path))
     else:
         meta, bdf_feas = {}, pd.DataFrame()
@@ -62,7 +62,7 @@ def render(ctx: DashboardContext) -> None:
             st.markdown("---")
             render_study(meta, benchmark_csvs)
 
-    # ── Benchmark vs Run: estimates next to the real run results ────────────────
+    # ── Estimate vs Benchmark vs Run: both estimates next to the real run results ─
     with tab_compare:
         subtab_prediction = render_validate(ctx)
         with subtab_prediction:

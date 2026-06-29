@@ -13,6 +13,7 @@ from src.performance_model import (
     GPU_TABLE, MODEL_TABLE, predict, predict_quality, gpu_spec, model_spec,
     estimate_rc, estimate_rio, precision_factor,
     BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, N_FULL_TRAIN, N_SUBSET_TRAIN,
+    EVAL_POWER_FRACTION,
 )
 from src.web.ui.charts import COLORS, _show, _base_layout, _dl_csv
 
@@ -94,6 +95,7 @@ def _analytic_predictor() -> None:
                 f"{precision}** → ~{_fmt_secs(p.time_per_epoch_train_s)}/epoch{sp} · "
                 f"{p.vram_per_gpu_gb:.1f} GB/GPU ({fit}) · total "
                 f"{_fmt_secs(p.time_total_train_s)} for {int(epochs)} ep · "
+                f"~{p.energy_per_epoch_wh:.1f} Wh/epoch ({p.energy_total_wh:.0f} Wh total) · "
                 f"bottleneck **{p.bottleneck}**")
 
     # ── Time / epoch formula ──────────────────────────────────────────────────────
@@ -127,6 +129,44 @@ def _analytic_predictor() -> None:
         if not p.fits_in_memory:
             st.error(f"Out of memory: needs ~{p.vram_per_gpu_gb:.1f} GB, GPU has "
                      f"{gs.vram_gb:.0f} GB. Largest batch that fits: **{p.recommended_batch}**.")
+
+    # ── Energy / epoch formula ────────────────────────────────────────────────────
+    _n_work = round(p.power_total_w / p.avg_power_w) if p.avg_power_w else int(n_gpus)
+    _p_src = "measured calibration" if p.power_calibrated else "TDP fallback (not measured)"
+    st.markdown("#### Energy / epoch = power × time")
+    energy_tbl = pd.DataFrame([
+        {"Term": "Power / GPU", "Value": f"{p.avg_power_w:.0f} W", "Formula": _p_src},
+        {"Term": "Total power", "Value": f"{p.power_total_w:.0f} W",
+         "Formula": f"{p.avg_power_w:.0f} W × {_n_work} working GPU(s)"},
+        {"Term": "Energy train", "Value": f"{p.energy_train_wh:.2f} Wh",
+         "Formula": f"{p.power_total_w:.0f} W × {p.time_per_epoch_train_s:.0f} s / 3600"},
+        {"Term": "Energy eval", "Value": f"{p.energy_eval_wh:.2f} Wh",
+         "Formula": f"{EVAL_POWER_FRACTION:g} × {p.power_total_w:.0f} W × {p.time_per_epoch_eval_s:.0f} s / 3600"},
+        {"Term": "Energy / epoch", "Value": f"{p.energy_per_epoch_wh:.2f} Wh",
+         "Formula": "train + eval"},
+        {"Term": f"Energy total ({int(epochs)} ep)", "Value": f"{p.energy_total_wh:.1f} Wh",
+         "Formula": "energy/epoch × epochs"},
+    ])
+    st.dataframe(energy_tbl, hide_index=True, use_container_width=True)
+    _energy_note = ""
+    if strategy == "ddp" and int(n_gpus) > 1:
+        if p.efficiency >= 0.85:
+            _energy_note = (" DDP scales well here (compute-bound), so wall-clock drops ~n× "
+                            "and total energy stays ≈ single-GPU.")
+        else:
+            _energy_note = (f" DDP is {p.bottleneck}-bound here: wall-clock barely drops while "
+                            f"{int(n_gpus)} GPUs draw full power, so total energy rises toward "
+                            f"~{int(n_gpus)}× — energy is only conserved with near-linear speedup.")
+    elif strategy == "heterogeneous":
+        _energy_note = (" Heterogeneous runs at the pace of the slow CPU worker; only the GPU "
+                        "draws meaningful power, and it idles below its compute-bound figure "
+                        "while it waits — so this energy is a conservative (high) estimate.")
+    elif strategy == "model_parallel" and int(n_gpus) > 1:
+        _energy_note = (" Naive model parallelism keeps every GPU powered but idling between "
+                        "pipeline stages (counted at ~0.83× each); it does not save energy.")
+    st.caption("Power is precision-independent (AMP saves energy through *time*, not watts) "
+               "and calibrated per GPU from the project's measured `--fn energy` runs; "
+               "unmeasured GPUs use a TDP fallback (flagged)." + _energy_note)
 
     # ── Expected quality (empirical prior) + curve ───────────────────────────────
     q = predict_quality(model_name, dataset_size=int(dataset_size), epochs=int(epochs))

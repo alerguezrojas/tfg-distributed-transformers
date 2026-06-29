@@ -238,7 +238,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     from src.performance_model import (
         predict as _predict, predict_quality, model_spec, gpu_spec,
         estimate_rc, estimate_rio, precision_factor,
-        BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB)
+        BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, EVAL_POWER_FRACTION)
     nfs = disk == "nfs"
     strat = strategy.replace("-", "_")
     p = _predict(strat, model, gpu, n_gpus=n_gpus, dataset_size=dataset_size,
@@ -258,6 +258,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
         f"[bold]{_fmt_secs(p.time_per_epoch_train_s)}[/]/epoch{sp}  ·  "
         f"{p.vram_per_gpu_gb:.1f} GB/GPU {fit}  ·  "
         f"total [bold]{_fmt_secs(p.time_total_train_s)}[/] for {epochs} ep  ·  "
+        f"~{p.energy_per_epoch_wh:.1f} Wh/epoch ([bold]{p.energy_total_wh:.0f} Wh[/] total)  ·  "
         f"bottleneck [bold]{p.bottleneck}[/]",
         title="Prediction", border_style="cyan", expand=False))
 
@@ -291,6 +292,23 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
                    f"vs {gs.vram_gb:.0f} GB → {'fits' if p.fits_in_memory else 'OOM'} · "
                    f"max batch {p.recommended_batch}")
         console.print(mt)
+
+    # ── Energy: power × time, with calibrated effective power ──────────────────────
+    _n_work = round(p.power_total_w / p.avg_power_w) if p.avg_power_w else n_gpus
+    _p_src = "measured calibration" if p.power_calibrated else "TDP fallback (not measured)"
+    et = Table(title="Energy / epoch = power × time", border_style="cyan")
+    et.add_column("Term", style="bold"); et.add_column("Value", justify="right")
+    et.add_column("Formula", style="dim")
+    et.add_row("Power / GPU", f"{p.avg_power_w:.0f} W", _p_src)
+    et.add_row("Total power", f"{p.power_total_w:.0f} W",
+               f"{p.avg_power_w:.0f} W × {_n_work} working GPU(s)")
+    et.add_row("Energy train", f"{p.energy_train_wh:.2f} Wh",
+               f"{p.power_total_w:.0f} W × {p.time_per_epoch_train_s:.0f} s / 3600")
+    et.add_row("Energy eval", f"{p.energy_eval_wh:.2f} Wh",
+               f"{EVAL_POWER_FRACTION:g} × {p.power_total_w:.0f} W × {p.time_per_epoch_eval_s:.0f} s / 3600")
+    et.add_row("Energy/epoch", f"{p.energy_per_epoch_wh:.2f} Wh", "train + eval")
+    et.add_row(f"Energy total ({epochs} ep)", f"{p.energy_total_wh:.1f} Wh", "energy/epoch × epochs")
+    console.print(et)
 
     # ── Expected quality ─────────────────────────────────────────────────────────
     if q is not None:
