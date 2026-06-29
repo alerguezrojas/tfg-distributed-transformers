@@ -1,5 +1,5 @@
 """Unit tests for src/web/benchmark_comparison.py — the THREE-way comparison
-(analytic vs benchmark vs real run) that powers the 'Benchmark vs Run' tab.
+(analytic vs benchmark vs real run) that powers the 'Estimate vs Benchmark vs Run' tab.
 """
 import sys
 from pathlib import Path

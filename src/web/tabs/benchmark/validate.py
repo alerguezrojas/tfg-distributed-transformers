@@ -156,11 +156,11 @@ def render_validate(ctx) -> object:
     'estimate very different from real' issue — the old code used the max-throughput
     batch, not the run's). Shows a table, a scorecard, a calibration scatter, the
     formula behind each estimate, and predicted-vs-real speedup."""
-    st.markdown("### Predicted vs actual")
-    st.caption("Pick runs and compare what the benchmark **estimated** with what they "
-               "actually did. Each single-GPU run is matched to the benchmark report "
-               "of its model **and its batch size**, so the estimate is for the same "
-               "configuration the run used.")
+    st.markdown("### Estimate vs Benchmark vs Run")
+    st.caption("Pick runs and compare the two **estimates** — the **analytic** prediction "
+               "(formulas, no GPU) and the **empirical benchmark** — with what the runs "
+               "**actually did**. Each run is matched to the benchmark report of its model "
+               "and its batch size, computed for the run's own dataset size.")
 
     feas_csvs = _get_benchmark_csvs()
     if not feas_csvs:
