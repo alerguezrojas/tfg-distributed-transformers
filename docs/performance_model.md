@@ -128,23 +128,73 @@ test the model.
 | **vit_tiny DDP regime** | I/O-bound, <1.4× | 1.27× | ✓ | **validation (out-of-sample)** |
 | **vit_large @ batch 48, T4** | OOM | OOM | ✓ | **validation (out-of-sample)** |
 | **Heterogeneous V100+CPU** | < 1× | 0.12× | ✓ (penalizes) | **validation (out-of-sample)** |
+| Energy single fp32, train/epoch | 3.4 Wh | 3.2 Wh | +6% | calibration (power in-sample) |
+| **Energy single AMP, train/epoch** | **0.90 Wh** | **0.84 Wh** | **+7%** | **validation (time-driven)** |
+| **Energy model-parallel/epoch** | **5.7 Wh** | **5.4 Wh** | **+5%** | validation (MP factor in-sample) |
 
 All rows are reproduced by the unit tests in `tests/unit/test_performance_model.py`.
 
 ---
 
-## 5. Unified API
+## 5. Energy model
+
+Energy is just **power × the time the model already predicts**, so the only missing
+term is the average power the GPU draws while training. Instead of the nameplate TDP
+(a ceiling the GPU rarely reaches), the **effective** average power is calibrated from
+the project's own `--fn energy` logs (the `potencia media XX W` lines):
+
+```
+energy_train_wh = power_total · time_train_s / 3600
+power_total     = train_power_w(gpu) · n_working_gpus            (× 0.83 for model-parallel)
+energy_eval_wh  = 0.9 · train_power_w · n · time_eval_s / 3600   (eval ≈ 0.9× train power)
+```
+
+Two measured facts shape it:
+
+1. **Power is almost precision-independent** (T4 fp32 ≈ 64 W ≈ AMP ≈ 63 W). AMP saves
+   energy by finishing ~4× faster — through **time** — not by drawing less power. So
+   precision is not a parameter of the power, only of the time.
+2. **n_working_gpus**: `single`/`heterogeneous` = 1 (the heterogeneous second worker is
+   a CPU, not a GPU), `ddp`/`model_parallel` = n. Naive model-parallel keeps both GPUs
+   powered but idling between stages, so each draws ~0.83× (calibrated from the 2×T4 MP
+   run: 106 W ≈ 0.83 × 2 × 64 W).
+
+Calibrated per GPU: **T4 64 W, V100 103 W, RTX 3060 Ti 180 W** (measured); the rest fall
+back to `0.65 × nameplate TDP` and are flagged `power_calibrated=False`.
+
+**Consequence for DDP:** the total energy is **conserved across GPUs only when
+compute-bound** (n GPUs each do 1/n of the work in 1/n the time, at n× the power). When
+the run is **I/O-bound**, the wall-clock does not drop while n GPUs draw full power, so
+total energy rises toward ~n×.
+
+**Known over-estimates (documented, not bugs):** the analytic energy reads **high** when
+the GPU is under-used, because it inherits the time model's I/O floor and uses a
+compute-bound power: (a) light/I/O-bound models on a RAM-cached subset (vit_tiny);
+(b) **DDP+AMP on a RAM-cached subset** — AMP shrinks compute below the disk floor, the
+epoch goes I/O-bound in the model and energy ~doubles, while the real RAM-cached run
+stays compute-bound (`predict()` flags this with an "I/O floor active under this
+precision" note; pass `rio_measured` to correct it); (c) heterogeneous (the GPU idles
+near ~45 W waiting on the slow CPU, below its compute-bound power).
+
+---
+
+## 6. Unified API
 
 ```python
 from src.performance_model import predict
 
 p = predict(strategy="ddp", model_name="vit_base_patch16_224",
             gpu_name="Tesla T4", n_gpus=2, dataset_size=5000, batch=96,
-            precision="amp", epochs=15, disk_type="ssd", nfs=False)
-# p.time_per_epoch_train_s, p.speedup, p.efficiency, p.bottleneck,
-# p.vram_per_gpu_gb, p.fits_in_memory, p.recommended_batch, p.notes
+            precision="amp", epochs=15, disk_type="ssd", nfs=False, val_size=1500)
+# time:   p.time_per_epoch_train_s, p.time_per_epoch_eval_s, p.time_per_epoch_total_s
+# scaling: p.speedup, p.efficiency, p.bottleneck
+# memory: p.vram_per_gpu_gb, p.fits_in_memory, p.recommended_batch
+# energy: p.avg_power_w, p.power_total_w, p.energy_train_wh, p.energy_eval_wh,
+#         p.energy_per_epoch_wh, p.energy_total_wh, p.power_calibrated
+# p.notes
 ```
 
-`strategy ∈ {single, ddp, model_parallel, heterogeneous}`. Pass `rc_measured` /
-`rio_measured` to calibrate against a real benchmark. Exposed in the web at
-**Feasibility → Predictor** (predict for hardware you don't have in front of you).
+`strategy ∈ {single, ddp, model_parallel, heterogeneous}` (an unknown strategy returns
+`None`). Pass `rc_measured` / `rio_measured` to calibrate against a real benchmark.
+Exposed in the web at **Estimate → Predict** and in the CLI as `paravit estimate`
+(predict for hardware you don't have in front of you).
