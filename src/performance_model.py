@@ -42,6 +42,39 @@ USABLE_VRAM_FRACTION: float = 0.92
 # an RTX 3060 Ti, and vit_large = 13.78 GB @ batch 32 on a T4 — and extended to
 # the rest by hidden_dim×layers. See ModelSpec.act_gb_per_img.
 
+# ── Energy calibration ────────────────────────────────────────────────────────────
+# Energy is just power × the time we already predict. The only missing term is the
+# average power the GPU draws while training; instead of the nameplate TDP (a
+# ceiling the GPU rarely reaches), we calibrate the EFFECTIVE average power from the
+# project's own `--fn energy` runs (the "potencia media XX W" lines in the logs),
+# exactly as MFU was calibrated from real throughput. Two measured facts shape the
+# model:
+#   1. Power is almost precision-independent (T4 fp32 ≈ 64 W ≈ AMP ≈ 63 W). AMP saves
+#      energy by finishing ~4× faster — through TIME, which the model already predicts
+#      — not by drawing less power. So power here does NOT vary with precision.
+#   2. Eval draws slightly less power than train: see EVAL_POWER_FRACTION.
+# Effective power lives on GpuSpec.train_power_w (W per GPU); GpuSpec.power_calibrated
+# flags whether it comes from a real measurement (True) or a TDP fallback (False).
+# The measured eval/train power ratio VARIES by GPU (T4 ≈ 0.98, V100 ≈ 0.7–1.0,
+# RTX 3060 Ti ≈ 0.67); 0.9 is a single conservative approximation. Eval is short
+# (forward-only over the small val split), so it is a few % of per-epoch energy.
+EVAL_POWER_FRACTION: float = 0.9
+# Fraction of nameplate TDP used as the effective-power fallback for GPUs we never
+# measured here (datacenter cards on NFS run well below TDP; ~0.65 is a fair middle).
+POWER_TDP_FALLBACK_FRACTION: float = 0.65
+
+# Nameplate TDP (W) for GPUs whose effective power we did NOT measure here; the
+# fallback power is POWER_TDP_FALLBACK_FRACTION × this (so editing the fraction
+# propagates instead of hardcoding each value).
+_TDP_W: dict[str, float] = {
+    "RTX 3090": 350.0, "RTX 4090": 450.0, "A100 40GB": 400.0, "A100 80GB": 400.0,
+    "P100": 250.0, "H100": 700.0,
+}
+
+
+def _tdp_fallback_power(name: str) -> float:
+    return round(_TDP_W[name] * POWER_TDP_FALLBACK_FRACTION)
+
 
 # ── Hardware spec tables ─────────────────────────────────────────────────────────
 
@@ -52,20 +85,25 @@ class GpuSpec:
     tensor_speedup: float    # measured r_c(amp)/r_c(fp32) — Tensor-core gain
     vram_gb: float
     interconnect: str        # "nvlink" | "pcie" (datacenter GPUs prefer NVLink)
+    train_power_w: float = 0.0     # effective avg power per GPU during train (W)
+    power_calibrated: bool = False  # True = measured here; False = TDP fallback
 
 
-# fp32 TFLOPS and the measured/typical Tensor-core speedup π per GPU.
+# fp32 TFLOPS, the measured/typical Tensor-core speedup π, and the effective average
+# training power per GPU (W). The power of T4 / V100 / RTX 3060 Ti is CALIBRATED from
+# the project's own `--fn energy` logs (potencia media); the rest are TDP-fallback
+# estimates (≈0.65 × nameplate TDP) and flagged power_calibrated=False.
 GPU_TABLE: dict[str, GpuSpec] = {
-    "Tesla T4":      GpuSpec("Tesla T4", 8.1, 3.8, 16.0, "pcie"),
-    "Tesla V100":    GpuSpec("Tesla V100", 14.0, 3.5, 32.0, "nvlink"),
-    "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink"),
-    "RTX 3060 Ti":   GpuSpec("RTX 3060 Ti", 16.2, 2.54, 8.0, "pcie"),
-    "RTX 3090":      GpuSpec("RTX 3090", 35.6, 3.5, 24.0, "pcie"),
-    "RTX 4090":      GpuSpec("RTX 4090", 82.6, 4.0, 24.0, "pcie"),
-    "A100 40GB":     GpuSpec("A100 40GB", 19.5, 4.0, 40.0, "nvlink"),
-    "A100 80GB":     GpuSpec("A100 80GB", 19.5, 4.0, 80.0, "nvlink"),
-    "P100":          GpuSpec("P100", 9.3, 1.0, 16.0, "pcie"),  # no usable Tensor cores
-    "H100":          GpuSpec("H100", 67.0, 5.0, 80.0, "nvlink"),
+    "Tesla T4":      GpuSpec("Tesla T4", 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True),    # Kaggle: 64 W fp32 ≈ 63 W amp
+    "Tesla V100":    GpuSpec("Tesla V100", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
+    "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True),
+    "RTX 3060 Ti":   GpuSpec("RTX 3060 Ti", 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True),   # local: ~180 W (SSD, compute-bound)
+    "RTX 3090":      GpuSpec("RTX 3090", 35.6, 3.5, 24.0, "pcie", train_power_w=_tdp_fallback_power("RTX 3090")),
+    "RTX 4090":      GpuSpec("RTX 4090", 82.6, 4.0, 24.0, "pcie", train_power_w=_tdp_fallback_power("RTX 4090")),
+    "A100 40GB":     GpuSpec("A100 40GB", 19.5, 4.0, 40.0, "nvlink", train_power_w=_tdp_fallback_power("A100 40GB")),
+    "A100 80GB":     GpuSpec("A100 80GB", 19.5, 4.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power("A100 80GB")),
+    "P100":          GpuSpec("P100", 9.3, 1.0, 16.0, "pcie", train_power_w=_tdp_fallback_power("P100")),  # no usable Tensor cores
+    "H100":          GpuSpec("H100", 67.0, 5.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power("H100")),
 }
 
 # Disk throughput in IMAGES/second (includes TIFF decode + transform), calibrated
@@ -153,6 +191,48 @@ def estimate_rio(disk_type: str = "ssd", nfs: bool = False,
         return measured
     key = "nfs" if nfs else disk_type
     return DISK_RIO.get(key, DISK_RIO["unknown"])
+
+
+def estimate_power(gpu: GpuSpec, phase: str = "train") -> float:
+    """Effective average power (W) for ONE GPU in the given phase ("train"|"eval").
+
+    Calibrated from the project's logged `potencia media` (GpuSpec.train_power_w);
+    eval draws ≈EVAL_POWER_FRACTION of train. Power is precision-independent (the
+    AMP saving is in TIME, not watts), so precision is not a parameter here."""
+    base = gpu.train_power_w if gpu.train_power_w and gpu.train_power_w > 0 else 0.0
+    return base * (EVAL_POWER_FRACTION if phase == "eval" else 1.0)
+
+
+def power_working_gpus(strategy: str, n_gpus: int) -> int:
+    """How many GPUs draw power for a strategy. ddp/model-parallel power all the GPUs
+    in the run (naive model-parallel keeps both GPUs powered even though the stages
+    serialize). single and heterogeneous draw on ONE GPU: in this project's
+    heterogeneous strategy the second worker is a CPU, not a GPU, so the GPU-power
+    calibration applies to a single GPU (the CPU's wall power is negligible)."""
+    if strategy in ("ddp", "model_parallel"):
+        return max(1, n_gpus)
+    return 1
+
+
+def estimate_eval_time_s(model: ModelSpec, gpu: GpuSpec, n_val: int, strategy: str,
+                         n_gpus: int, precision: str, disk_type: str = "ssd",
+                         nfs: bool = False, rc_measured: float | None = None,
+                         rio_measured: float | None = None) -> float:
+    """Eval-epoch time (s): a forward-only pass over the val split.
+
+    Eval has no backward, so its compute throughput is ≈TRAIN_FLOPS_FACTOR× the train
+    r_c (forward is ~1/3 of forward+backward). It still reads the val set from disk, so
+    it is max(compute, I/O), and it shards across the GPUs for ddp/heterogeneous."""
+    phi = 1.3 if nfs else 1.0
+    pi = precision_factor(gpu, precision)
+    rc_train = rc_measured if (rc_measured and rc_measured > 0) else estimate_rc(
+        model, gpu, precision="fp32")
+    rc_fwd = rc_train * TRAIN_FLOPS_FACTOR     # forward-only is ~3× the train rate
+    rio = estimate_rio(disk_type, nfs, rio_measured)
+    n_eff = n_gpus if strategy in ("ddp", "heterogeneous") else 1
+    t_compute = n_val / (pi * rc_fwd * max(1, n_eff))
+    t_io = n_val / rio
+    return phi * max(t_compute, t_io)
 
 
 # ── Memory model ─────────────────────────────────────────────────────────────────
@@ -296,16 +376,33 @@ class Prediction:
     t_io_s: float = 0.0
     t_sync_s: float = 0.0
     batch_per_gpu: int = 0
+    # Eval + total time (seconds). time_total covers train+eval, matching what a run
+    # and the benchmark report per epoch.
+    time_per_epoch_eval_s: float = 0.0
+    time_per_epoch_total_s: float = 0.0
+    time_total_s: float = 0.0          # total over all epochs (train+eval)
+    # Energy = effective power × the time above. avg_power_w is per GPU; power_total_w
+    # multiplies by the GPUs actually working. All energies in Wh.
+    avg_power_w: float = 0.0           # effective power per GPU during train
+    power_total_w: float = 0.0         # × n working GPUs
+    energy_train_wh: float = 0.0       # per epoch
+    energy_eval_wh: float = 0.0        # per epoch
+    energy_per_epoch_wh: float = 0.0   # train + eval, per epoch
+    energy_total_wh: float = 0.0       # × epochs (train + eval)
+    power_calibrated: bool = False     # power from a real measurement vs TDP fallback
 
 
 def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
             dataset_size: int = 5000, batch: int = 96, precision: str = "fp32",
             epochs: int = 15, disk_type: str = "ssd", nfs: bool = False,
             rc_measured: float | None = None,
-            rio_measured: float | None = None) -> Prediction | None:
+            rio_measured: float | None = None,
+            val_size: int | None = None) -> Prediction | None:
     """Closed-form prediction for any combination. Returns None for unknown specs.
 
     ``batch`` is the GLOBAL batch; it is split across the n GPUs for DDP.
+    ``dataset_size`` is the train split; ``val_size`` is the val split used for the
+    eval-epoch time/energy (defaults to ~0.51× the train split, the BigEarthNet ratio).
     Pass ``rc_measured`` / ``rio_measured`` to calibrate against a real benchmark.
     """
     model = model_spec(model_name)
@@ -316,6 +413,22 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     batch_per_gpu = max(1, batch // n_gpus) if strategy in ("ddp", "heterogeneous") else batch
     ep = predict_epoch(strategy, model, gpu, n_gpus, dataset_size, batch_per_gpu,
                        precision, disk_type, nfs, rc_measured, rio_measured)
+
+    # Eval-epoch time (forward-only over the val split) → total epoch = train + eval.
+    n_val = int(val_size) if val_size and val_size > 0 else round(dataset_size * 0.51)
+    t_eval = estimate_eval_time_s(model, gpu, n_val, strategy, n_gpus, precision,
+                                  disk_type, nfs, rc_measured, rio_measured)
+    t_total_epoch = ep.time_train_s + t_eval
+
+    # Energy = effective power × time. Power per GPU is calibrated (or a TDP fallback);
+    # the working-GPU count scales it for distributed strategies.
+    n_work = power_working_gpus(strategy, n_gpus)
+    p_train = estimate_power(gpu, "train")
+    p_eval = estimate_power(gpu, "eval")
+    power_total = p_train * n_work
+    e_train_wh = power_total * ep.time_train_s / 3600.0
+    e_eval_wh = (p_eval * n_work) * t_eval / 3600.0
+    e_epoch_wh = e_train_wh + e_eval_wh
 
     vram = estimate_vram_gb(model, batch_per_gpu, precision)
     # Use the SAME usable-VRAM threshold (0.92) as max_batch/fits_in_memory, so the
@@ -335,6 +448,10 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         notes.append(f"OOM: needs ~{vram:.1f} GB but only ~{usable:.1f} GB of the "
                      f"{gpu.vram_gb:.0f} GB is usable (PyTorch reserves ~8%). "
                      f"Largest batch that fits: {rec_b}.")
+    if not gpu.power_calibrated:
+        notes.append(f"Energy uses a TDP-fallback power for {gpu.name} (≈"
+                     f"{gpu.train_power_w:.0f} W/GPU, not measured here) — treat it as "
+                     f"a rough estimate.")
 
     return Prediction(
         strategy=strategy, model_name=model.name, gpu_name=gpu.name, n_gpus=n_gpus,
@@ -346,6 +463,13 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         calibrated=bool(rc_measured or rio_measured), notes=notes,
         t_compute_s=ep.t_compute_s, t_io_s=ep.t_io_s, t_sync_s=ep.t_sync_s,
         batch_per_gpu=batch_per_gpu,
+        time_per_epoch_eval_s=t_eval,
+        time_per_epoch_total_s=t_total_epoch,
+        time_total_s=t_total_epoch * epochs,
+        avg_power_w=p_train, power_total_w=power_total,
+        energy_train_wh=e_train_wh, energy_eval_wh=e_eval_wh,
+        energy_per_epoch_wh=e_epoch_wh, energy_total_wh=e_epoch_wh * epochs,
+        power_calibrated=gpu.power_calibrated,
     )
 
 

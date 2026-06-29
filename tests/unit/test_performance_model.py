@@ -15,6 +15,7 @@ from src.performance_model import (
     estimate_rc, estimate_rio, estimate_vram_gb, fits_in_memory, max_batch,
     gpu_spec, model_spec, predict, predict_epoch,
     expected_best_f1, predict_quality, N_FULL_TRAIN,
+    estimate_power, estimate_eval_time_s, power_working_gpus, EVAL_POWER_FRACTION,
 )
 
 
@@ -183,3 +184,92 @@ def test_quality_prediction_curve_and_fields():
 def test_quality_unknown_model_falls_back_to_vit_base():
     q = predict_quality("some_unknown_xyz", dataset_size=N_FULL_TRAIN)
     assert q.expected_best_f1 == pytest.approx(0.68, abs=0.01)
+
+
+# ── Energy model (calibrated from the project's --fn energy logs) ──────────────────
+
+def test_power_table_calibrated_for_measured_gpus():
+    """T4/V100/3060Ti effective power comes from real measurements (potencia media)."""
+    t4 = gpu_spec("Tesla T4")
+    assert t4.power_calibrated and t4.train_power_w == pytest.approx(64, abs=2)
+    assert gpu_spec("Tesla V100").power_calibrated
+    assert not gpu_spec("RTX 4090").power_calibrated  # TDP fallback, not measured here
+
+
+def test_estimate_power_eval_is_a_fraction_of_train():
+    g = gpu_spec("Tesla T4")
+    assert estimate_power(g, "eval") == pytest.approx(estimate_power(g, "train") * EVAL_POWER_FRACTION)
+
+
+def test_power_working_gpus_per_strategy():
+    assert power_working_gpus("single", 1) == 1
+    assert power_working_gpus("ddp", 2) == 2
+    assert power_working_gpus("model_parallel", 2) == 2
+    # heterogeneous = 1 GPU + 1 CPU worker → only ONE GPU draws power.
+    assert power_working_gpus("heterogeneous", 2) == 1
+
+
+def test_heterogeneous_energy_not_double_counted():
+    """The 2nd heterogeneous worker is a CPU, not a GPU, so power is a single GPU's."""
+    single = predict("single", "vit_tiny_patch16_224", "Tesla V100", n_gpus=1)
+    het = predict("heterogeneous", "vit_tiny_patch16_224", "Tesla V100", n_gpus=2)
+    assert het.power_total_w == pytest.approx(single.power_total_w)  # not ×2
+
+
+def test_v100_power_matches_documented():
+    assert gpu_spec("Tesla V100").train_power_w == pytest.approx(103, abs=1)
+
+
+def test_tdp_fallback_derives_from_fraction():
+    """Uncalibrated GPU power = round(TDP × POWER_TDP_FALLBACK_FRACTION), not a literal."""
+    from src.performance_model import POWER_TDP_FALLBACK_FRACTION
+    g = gpu_spec("RTX 4090")  # 450 W TDP
+    assert g.train_power_w == pytest.approx(round(450 * POWER_TDP_FALLBACK_FRACTION))
+
+
+def test_energy_equals_power_times_time():
+    """The whole point: energy_train_wh = power_total_w × time_train_s / 3600."""
+    p = predict("single", "vit_base_patch16_224", "Tesla T4", n_gpus=1,
+                dataset_size=5000, batch=96, precision="fp32", epochs=15, val_size=1500)
+    assert p.energy_train_wh == pytest.approx(p.power_total_w * p.time_per_epoch_train_s / 3600, rel=1e-6)
+    assert p.energy_per_epoch_wh == pytest.approx(p.energy_train_wh + p.energy_eval_wh, rel=1e-6)
+    assert p.energy_total_wh == pytest.approx(p.energy_per_epoch_wh * 15, rel=1e-6)
+
+
+def test_energy_single_fp32_matches_measured_kaggle():
+    """Single fp32 vit_base on a T4 measured ≈ 3.23 Wh/epoch train (Kaggle 24/06)."""
+    p = predict("single", "vit_base_patch16_224", "Tesla T4", n_gpus=1,
+                dataset_size=5000, batch=96, precision="fp32", epochs=15, val_size=1500)
+    assert p.energy_train_wh == pytest.approx(3.23, abs=0.6)
+
+
+def test_energy_amp_lower_than_fp32_via_time():
+    """AMP draws ~the same power but finishes faster → less energy (measured ~0.84 Wh)."""
+    fp32 = predict("single", "vit_base_patch16_224", "Tesla T4", precision="fp32",
+                   dataset_size=5000, batch=96, val_size=1500)
+    amp = predict("single", "vit_base_patch16_224", "Tesla T4", precision="amp",
+                  dataset_size=5000, batch=96, val_size=1500)
+    assert amp.avg_power_w == pytest.approx(fp32.avg_power_w)   # power precision-independent
+    assert amp.energy_train_wh < fp32.energy_train_wh           # saved through time
+
+
+def test_energy_ddp_scales_power_with_gpus():
+    """DDP powers all GPUs: total power = per-GPU × n_gpus."""
+    single = predict("single", "vit_base_patch16_224", "Tesla T4", n_gpus=1, batch=96)
+    ddp = predict("ddp", "vit_base_patch16_224", "Tesla T4", n_gpus=2, batch=96)
+    assert ddp.power_total_w == pytest.approx(2 * single.power_total_w)
+
+
+def test_total_time_includes_eval():
+    p = predict("single", "vit_base_patch16_224", "Tesla T4", batch=96,
+                dataset_size=5000, val_size=1500)
+    assert p.time_per_epoch_eval_s > 0
+    assert p.time_per_epoch_total_s == pytest.approx(
+        p.time_per_epoch_train_s + p.time_per_epoch_eval_s, rel=1e-6)
+
+
+def test_uncalibrated_gpu_flags_power_and_notes():
+    p = predict("single", "vit_base_patch16_224", "RTX 4090", batch=96)
+    assert not p.power_calibrated
+    assert p.avg_power_w > 0
+    assert any("TDP-fallback" in n or "TDP fallback" in n for n in p.notes)

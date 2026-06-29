@@ -30,8 +30,13 @@ class TimeEstimator:
 
         energy_train_wh = energy_eval_wh = 0.0
         if result.avg_power_w > 0:
+            # avg_power_w is sampled during the train loop (= train power). Eval draws a
+            # fraction of it; use the same calibrated EVAL_POWER_FRACTION as the analytic
+            # model so the two energy estimates are consistent (measured ratio ≈0.8–1.0,
+            # not the old 0.4 guess).
+            from src.performance_model import EVAL_POWER_FRACTION
             energy_train_wh = result.avg_power_w * sec_train / 3600
-            energy_eval_wh = result.avg_power_w * 0.4 * sec_eval / 3600
+            energy_eval_wh = result.avg_power_w * EVAL_POWER_FRACTION * sec_eval / 3600
 
         flops_train = flops_eval = 0.0
         if model_info and model_info.flops_per_image_mflops:
