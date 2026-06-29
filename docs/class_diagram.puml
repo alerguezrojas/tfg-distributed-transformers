@@ -419,6 +419,7 @@ package "src.support" as support #FDFEFE {
     ' src.performance_model — predictor analítico
     + strategy / model_name / gpu_name: str
     + time_per_epoch_train_s / time_total_train_s: float
+    + time_per_epoch_eval_s / _total_s / time_total_s: float
     + speedup / efficiency: float
     + bottleneck: str  ' compute | io | sync
     + vram_per_gpu_gb: float
@@ -427,6 +428,11 @@ package "src.support" as support #FDFEFE {
     + calibrated: bool
     + t_compute_s / t_io_s / t_sync_s: float
     + batch_per_gpu: int
+    ' energía = potencia efectiva × tiempo
+    + avg_power_w / power_total_w: float
+    + energy_train_wh / energy_eval_wh: float
+    + energy_per_epoch_wh / energy_total_wh: float
+    + power_calibrated: bool
   }
 
   note as perfmodel_note
@@ -434,9 +440,12 @@ package "src.support" as support #FDFEFE {
     (sin GPU, testeable). Estima sin benchmark:
     estimate_rc = MFU·TFLOPS/FLOPs_train
     estimate_rio / estimate_vram_gb / max_batch
+    estimate_eval_time_s / estimate_power
+    power_working_gpus (single/hetero=1, ddp/MP=n)
     predict_epoch (fórmula maestra T(n,π) por
     estrategia: single/ddp/model_parallel/hetero)
-    predict(...) → Prediction
+    predict(...) → Prediction (tiempo + energía:
+    E = train_power_w·n × tiempo, calibrada de logs)
     Tablas GpuSpec / ModelSpec. Calibrado <10%.
   end note
 
@@ -638,20 +647,24 @@ package "src.web" #FDFEFE {
   class ComparisonRow <<dataclass>> {
     + metric: str
     + formula: str
-    + estimated: float | None
-    + actual: float | None
+    + analytic: float | None   ' performance_model
+    + estimated: float | None  ' benchmark empírico
+    + actual: float | None     ' run real
     + unit: str
-    + error_pct: float | None
+    + error_pct / analytic_error_pct: float | None
   }
 
   note as cmp_note
-    **benchmark_comparison.py**
-    build_comparison(meta, feas_df,
-      actual_df, batch_size, ...)
+    **benchmark_comparison.py** — comparación
+    a 3 fuentes (Estimate vs Benchmark vs Run)
+    build_comparison(meta, feas_df, actual_df,
+      batch_size, strategy, gpu_name, n_gpus,
+      precision, ..., run_n_train, run_n_val)
     → BenchmarkComparison
-    Usa n_train/n_val del bloque #sizes
-    (no asume el full set). Compara
-    estimación vs real por métrica.
+    analítico vía performance_model.predict();
+    benchmark recalculado al tamaño del run desde
+    s/batch; energía real de energy_train_j.
+    Filas tiempo / energía / Best Val F1.
   end note
 
   class DashboardContext <<dataclass>> {

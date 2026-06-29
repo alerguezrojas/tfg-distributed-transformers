@@ -22,9 +22,10 @@ Este Trabajo de Fin de Grado entrena un modelo **Vision Transformer** para la cl
 multietiqueta de imágenes de satélite Sentinel-2 (**BigEarthNet-S2**, 19 clases de cobertura
 terrestre) y analiza, mediante mediciones reales, **cómo escala el entrenamiento al distribuirlo**
 entre varias GPU o entre GPU y CPU. Junto al modelo, el proyecto proporciona una **estimación
-analítica** que predice tiempo, memoria, coste y calidad *sin necesidad de entrenar*; un **benchmark**
-que la contrasta con medidas empíricas en la propia máquina; y un **panel web** para visualizar y
-comparar los resultados. Toda la funcionalidad se gobierna desde una única herramienta de línea de
+analítica** que predice tiempo, memoria, energía, coste y calidad *sin necesidad de entrenar*; un
+**benchmark** que la contrasta con medidas empíricas en la propia máquina; y un **panel web** para
+visualizar y comparar los resultados (incluida una vista que enfrenta, por métrica, la estimación
+analítica, el benchmark y el entrenamiento real). Toda la funcionalidad se gobierna desde una única herramienta de línea de
 órdenes, **`paravit`**. El sistema desarrollado se denomina **ParaViT-Lab** (*Parallel/Parallax ViT
 Lab*); el antiguo comando `tfg` se conserva como alias retrocompatible.
 
@@ -57,7 +58,7 @@ Constituye la forma más sencilla de utilizar el proyecto: un menú guiado que s
 de manera secuencial, sin necesidad de memorizar ninguna orden. Desde él es posible:
 
 - **Estimar** de forma analítica una configuración mediante fórmulas, **sin GPU**: tiempo, memoria,
-  coste y F1 esperada.
+  energía, coste y F1 esperada.
 - **Entrenar** con la estrategia deseada: una GPU, varias GPU con DDP, paralelismo de modelo o GPU+CPU.
 - **Medir** de forma empírica el rendimiento real de la máquina mediante un *benchmark*.
 - **Evaluar** un modelo sobre el conjunto de test.
