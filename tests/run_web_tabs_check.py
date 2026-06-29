@@ -491,12 +491,13 @@ def test_benchmark_comparison():
             if cmp is not None:
                 tbl = cmp.to_dataframe()
                 assert isinstance(tbl, pd.DataFrame)
-                # Test color function on all rows
-                err_col = next((c for c in tbl.columns if c == "Error %"), None)
-                if err_col:
-                    for val in tbl[err_col]:
+                # The 3-way table exposes per-source error columns; parse them all.
+                assert "Δ benchmark %" in tbl.columns
+                err_cols = [c for c in tbl.columns if c in ("Δ analytic %", "Δ benchmark %")]
+                for c in err_cols:
+                    for val in tbl[c]:
                         try:
-                            v = float(str(val).replace("%","").replace("+",""))
+                            float(str(val).replace("%", "").replace("+", ""))
                         except (ValueError, AttributeError):
                             pass
             break  # one run per csv is enough
