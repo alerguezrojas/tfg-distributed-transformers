@@ -148,7 +148,9 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
     bs = _run_batch(r)
     run_prec = (r.precision or "fp32")
     strat = _perf_strategy(r.mode)        # 'ddp_hetero' → 'heterogeneous' for the engine
-    ng = _run_ngpus(r) if strat in ("ddp", "heterogeneous") else 1
+    # All multi-GPU strategies draw power on n GPUs (model-parallel powers both even though
+    # the stages serialize); only 'single' is one GPU.
+    ng = _run_ngpus(r) if strat in ("ddp", "heterogeneous", "model_parallel") else 1
     gpu = _run_gpu(r, m)
     n_train, n_val = _run_sizes(r, m)
 

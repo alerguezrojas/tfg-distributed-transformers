@@ -62,6 +62,10 @@ EVAL_POWER_FRACTION: float = 0.9
 # Fraction of nameplate TDP used as the effective-power fallback for GPUs we never
 # measured here (datacenter cards on NFS run well below TDP; ~0.65 is a fair middle).
 POWER_TDP_FALLBACK_FRACTION: float = 0.65
+# Effective per-GPU power factor for naive model parallelism: the pipeline stages
+# serialize, so each GPU idles part of the time and draws less than a fully-loaded GPU.
+# Calibrated from the Kaggle 2×T4 model-parallel run (106 W for 2 GPUs ≈ 0.83 × 2×64 W).
+MODEL_PARALLEL_POWER_FRACTION: float = 0.83
 
 # Nameplate TDP (W) for GPUs whose effective power we did NOT measure here; the
 # fallback power is POWER_TDP_FALLBACK_FRACTION × this (so editing the fraction
@@ -423,10 +427,12 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     t_total_epoch = ep.time_train_s + t_eval
 
     # Energy = effective power × time. Power per GPU is calibrated (or a TDP fallback);
-    # the working-GPU count scales it for distributed strategies.
+    # the working-GPU count scales it for distributed strategies. Naive model parallelism
+    # keeps every GPU powered but idling between stages, so each draws less (×0.83).
     n_work = power_working_gpus(strategy, n_gpus)
-    p_train = estimate_power(gpu, "train")
-    p_eval = estimate_power(gpu, "eval")
+    mp = MODEL_PARALLEL_POWER_FRACTION if (strategy == "model_parallel" and n_work > 1) else 1.0
+    p_train = estimate_power(gpu, "train") * mp
+    p_eval = estimate_power(gpu, "eval") * mp
     power_total = p_train * n_work
     e_train_wh = power_total * ep.time_train_s / 3600.0
     e_eval_wh = (p_eval * n_work) * t_eval / 3600.0
