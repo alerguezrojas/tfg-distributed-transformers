@@ -229,7 +229,9 @@ def estimate_eval_time_s(model: ModelSpec, gpu: GpuSpec, n_val: int, strategy: s
         model, gpu, precision="fp32")
     rc_fwd = rc_train * TRAIN_FLOPS_FACTOR     # forward-only is ~3× the train rate
     rio = estimate_rio(disk_type, nfs, rio_measured)
-    n_eff = n_gpus if strategy in ("ddp", "heterogeneous") else 1
+    # Only DDP sticks the eval set across the GPUs; for heterogeneous the GPU does the
+    # eval (the CPU worker's contribution is negligible), so it does not divide.
+    n_eff = n_gpus if strategy == "ddp" else 1
     t_compute = n_val / (pi * rc_fwd * max(1, n_eff))
     t_io = n_val / rio
     return phi * max(t_compute, t_io)

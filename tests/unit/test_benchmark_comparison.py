@@ -180,6 +180,33 @@ def test_perf_strategy_maps_ddp_hetero():
         assert _perf_strategy(m) == m
 
 
+def test_select_benchmark_prefers_report_with_batch_and_sizes():
+    from src.web.tabs.benchmark.validate import _select_benchmark
+    df_no48 = pd.DataFrame({"batch_size": [32, 64]})
+    df_48 = pd.DataFrame({"batch_size": [48, 96]})
+    parsed = [
+        ("kaggle", "vit_base", {"n_train": None}, df_no48),
+        ("kaggle", "vit_base", {"n_train": 5000}, df_48),     # has bs 48 AND #sizes
+    ]
+    m, df = _select_benchmark(parsed, "kaggle", "vit_base", 48)
+    assert m["n_train"] == 5000 and (df["batch_size"] == 48).any()
+    # No candidate of that model → (None, None)
+    assert _select_benchmark(parsed, "kaggle", "resnet50", 48) == (None, None)
+
+
+def test_run_sizes_unknown_returns_none(tmp_path):
+    """A run with no config line matched to a benchmark with no #sizes → unknown size,
+    NOT a fabricated 5000 default (which would make the estimate wildly off)."""
+    from types import SimpleNamespace
+    from src.web.tabs.benchmark.validate import _run_sizes
+    log = tmp_path / "train_old.log"
+    log.write_text("2026-05-01 [INFO] some old run with no Configuración line\n")
+    r = SimpleNamespace(log_path=log)
+    assert _run_sizes(r, {"n_train": None, "n_val": None}) == (None, None)
+    # With a #sizes benchmark, it uses that.
+    assert _run_sizes(r, {"n_train": 5000, "n_val": 1500}) == (5000, 1500)
+
+
 def test_single_predict_receives_run_batch(monkeypatch):
     import src.performance_model as pm
     captured = {}

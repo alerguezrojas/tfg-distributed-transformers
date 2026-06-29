@@ -71,24 +71,23 @@ def _perf_strategy(mode: str) -> str:
     return "heterogeneous" if mode == "ddp_hetero" else mode
 
 
-def _run_sizes(r, meta) -> tuple[int, int]:
-    """(n_train, n_val) for the run: from its config line, else the benchmark meta,
-    else the demo-subset default. n_val falls back to ~0.51× n_train."""
+def _run_sizes(r, meta) -> tuple[int | None, int | None]:
+    """(n_train, n_val) for the run: from its config line, else the benchmark meta.
+    Returns (None, None) when the size is genuinely unknown (a run with no config line
+    matched to a benchmark with no #sizes) — we do NOT invent a default, because guessing
+    the wrong size makes the estimate wildly off (a full-dataset run guessed as a 5 000
+    subset, or vice-versa). n_val falls back to ~0.51× n_train (the BigEarthNet ratio)."""
     cfg = _run_config(str(r.log_path))
 
     def _i(v):
         m = re.search(r"\d+", str(v)) if v is not None else None
         return int(m.group()) if m else None
 
-    n_train = _i(cfg.get("train"))
-    n_val = _i(cfg.get("val"))
-    if n_train is None and meta:
-        n_train = _i(meta.get("n_train"))
-    if n_val is None and meta:
-        n_val = _i(meta.get("n_val"))
-    n_train = n_train or 5000
-    n_val = n_val or round(n_train * 0.51)
-    return n_train, n_val
+    n_train = _i(cfg.get("train")) or (_i(meta.get("n_train")) if meta else None)
+    n_val = _i(cfg.get("val")) or (_i(meta.get("n_val")) if meta else None)
+    if n_train is None:
+        return None, None
+    return n_train, (n_val or round(n_train * 0.51))
 
 
 def _real_energy_per_epoch(df) -> float | None:
@@ -111,6 +110,116 @@ def _cmp_metric(cmp, metric: str) -> tuple[float | None, float | None]:
         if row.metric == metric:
             return row.analytic, row.estimated
     return None, None
+
+
+def _select_benchmark(parsed, env, model, bs):
+    """Pick the best benchmark report for a run from `parsed` (list of
+    (env, model, meta, df)). Same model is required; among those, prefer one that
+    contains the run's batch size, then the same environment, then one that records its
+    dataset size (#sizes). Returns (meta, df) or (None, None)."""
+    cands = [(e, mo, m, df) for (e, mo, m, df) in parsed if mo == model]
+    if not cands:
+        return None, None
+
+    def _score(item):
+        e, _mo, m, df = item
+        has_bs = bool(bs) and "batch_size" in getattr(df, "columns", []) and \
+            (df["batch_size"] == bs).any()
+        return (has_bs, e == env, m.get("n_train") is not None)
+
+    e, _mo, m, df = max(cands, key=_score)
+    return m, df
+
+
+def _run_record(r, m, fdf) -> tuple[dict, object]:
+    """The three-way (analytic / benchmark / real) record for one run, plus the
+    BenchmarkComparison (or None). Pure given the run, its matched benchmark meta (m)
+    and DataFrame (fdf); this is exactly what the charts and table render, so it is
+    unit-testable and auditable without Streamlit.
+
+    The three sources share the same physics (energy = power × time):
+      - analytic : performance_model.predict() for the run's OWN config + dataset size,
+      - benchmark: the empirical report's per-batch throughput, recomputed for the run's
+                   size and corrected to its precision (÷ Tensor-core speedup) and GPU
+                   count (time ÷ predicted DDP speedup),
+      - real     : what the run measured.
+    """
+    run_df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
+    bs = _run_batch(r)
+    run_prec = (r.precision or "fp32")
+    strat = _perf_strategy(r.mode)        # 'ddp_hetero' → 'heterogeneous' for the engine
+    ng = _run_ngpus(r) if strat in ("ddp", "heterogeneous") else 1
+    gpu = _run_gpu(r, m)
+    n_train, n_val = _run_sizes(r, m)
+
+    tensor_core = run_prec in ("amp", "fp16", "tf32", "bf16")
+    _pc = (m.get("precision_cmp") or {}) if m else {}
+    try:
+        prec_sp = float(_pc.get("speedup")) if _pc.get("speedup") else None
+    except (TypeError, ValueError):
+        prec_sp = None
+    precision_ok = (not tensor_core) or (prec_sp is not None)
+    # Only DDP scales with the data-parallel speedup; heterogeneous is not modeled by the
+    # benchmark's DDP scenarios (its analytic column handles that case instead).
+    ddp_sp = _predicted_speedup(m, ng) if (m and r.mode == "ddp") else None
+
+    # Real values, measured by the run (independent of the benchmark).
+    real_t = _real_min_per_epoch(r)
+    real_e = _real_energy_per_epoch(run_df)
+    real_f1 = _safe_max(run_df["val_f1"]) if "val_f1" in run_df.columns else float("nan")
+    real_f1 = None if (real_f1 is None or pd.isna(real_f1)) else float(real_f1)
+
+    a_t = b_t = a_e = b_e = a_f = b_f = None
+    note_bits: list[str] = []
+    cmp = None
+    if n_train is None:
+        # No dataset size recorded (old run, no config line, benchmark with no #sizes):
+        # we cannot estimate a per-epoch time/energy without it, so show only the real run.
+        note_bits.append("dataset size not recorded — no estimate")
+    if n_train is not None and m and fdf is not None and not fdf.empty and bs:
+        nfs = float(m.get("nfs_factor", 1.0) or 1.0)
+        cmp = build_comparison(
+            meta=m, feas_df=fdf, actual_df=run_df, batch_size=bs, trace_mode="simple",
+            nfs_factor=nfs, strategy=strat, gpu_name=gpu, n_gpus=ng, precision=run_prec,
+            precision_speedup=(prec_sp if precision_ok else None), ddp_speedup=ddp_sp,
+            run_n_train=n_train, run_n_val=n_val)
+    if cmp is not None:
+        a_t, b_t = _cmp_metric(cmp, "Total time / epoch")
+        a_e, b_e = _cmp_metric(cmp, "Energy total / epoch")
+        a_f, b_f = _cmp_metric(cmp, "Best Val F1")
+        if strat in ("ddp", "heterogeneous") and ddp_sp:
+            note_bits.append(f"bench ÷ {ddp_sp:.2f}× ({ng} GPU)")
+        if tensor_core and prec_sp and precision_ok:
+            note_bits.append(f"bench ÷ {prec_sp:.1f}× ({run_prec})")
+    elif gpu and n_train is not None:
+        # Pure-analytic fallback when no benchmark covers this batch/model (e.g. vit_large
+        # MP @24, or a model with no report). Benchmark stays empty; analytic still applies.
+        try:
+            from src.performance_model import predict, expected_best_f1
+            _gb = (bs or 96) * ng if strat in ("ddp", "heterogeneous") else (bs or 96)
+            p = predict(strat, r.model, gpu, ng, dataset_size=n_train, batch=_gb,
+                        precision=run_prec, epochs=1, val_size=n_val)
+            if p:
+                a_t = p.time_per_epoch_total_s / 60.0
+                a_e = p.energy_per_epoch_wh
+            a_f = expected_best_f1(r.model, n_train)[0]
+            note_bits.append("analytic only (batch not benchmarked)")
+        except Exception:
+            pass
+
+    # A precision the report never benchmarked → benchmark time/energy not comparable.
+    if not precision_ok:
+        b_t = b_e = None
+        note_bits.append(f"≠ precision ({run_prec}, not benchmarked)")
+
+    record = {
+        "run": _short(r.label), "strategy": r.mode, "batch": bs, "precision": run_prec,
+        "t": {"a": a_t, "b": b_t, "r": real_t},
+        "e": {"a": a_e, "b": b_e, "r": real_e},
+        "f": {"a": a_f, "b": b_f, "r": real_f1},
+        "note": " · ".join(note_bits),
+    }
+    return record, cmp
 
 
 # Fixed, easy-to-tell-apart colours for the three sources (red/green/blue).
@@ -175,13 +284,6 @@ def render_validate(ctx) -> object:
         env = p.parent.parent.name if p.parent.parent else "?"
         parsed.append((env, m.get("model_name", "?"), m, df))
 
-    def _feas_for(env, model):
-        same = [(m, df) for e, mo, m, df in parsed if mo == model and e == env]
-        if same:
-            return same[0]
-        any_m = [(m, df) for e, mo, m, df in parsed if mo == model]
-        return any_m[0] if any_m else (None, None)
-
     runs = _get_runs()
     labelled = {r.label: r for r in runs}
     feas_models = {mo for _, mo, _, _ in parsed}
@@ -209,83 +311,11 @@ def render_validate(ctx) -> object:
     cmp_by_run: dict = {}
     for lbl in sel:
         r = labelled[lbl]
-        run_df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
-        m, fdf = _feas_for(r.env, r.model)
-        bs = _run_batch(r)
-        run_prec = (r.precision or "fp32")
-        strat = _perf_strategy(r.mode)   # 'ddp_hetero' → 'heterogeneous' for the engine
-        ng = _run_ngpus(r) if strat in ("ddp", "heterogeneous") else 1
-        gpu = _run_gpu(r, m)
-        n_train, n_val = _run_sizes(r, m)
-
-        tensor_core = run_prec in ("amp", "fp16", "tf32", "bf16")
-        _pc = (m.get("precision_cmp") or {}) if m else {}
-        try:
-            prec_sp = float(_pc.get("speedup")) if _pc.get("speedup") else None
-        except (TypeError, ValueError):
-            prec_sp = None
-        precision_ok = (not tensor_core) or (prec_sp is not None)
-        # Only DDP scales with the data-parallel speedup; heterogeneous is not modeled by
-        # the benchmark's DDP scenarios (its analytic column handles that case instead).
-        ddp_sp = _predicted_speedup(m, ng) if (m and r.mode == "ddp") else None
-
-        # Real values, measured by the run (independent of the benchmark).
-        real_t = _real_min_per_epoch(r)
-        real_e = _real_energy_per_epoch(run_df)
-        real_f1 = _safe_max(run_df["val_f1"]) if "val_f1" in run_df.columns else float("nan")
-        real_f1 = None if (real_f1 is None or pd.isna(real_f1)) else float(real_f1)
-
-        # Analytic + benchmark via build_comparison when the batch was benchmarked.
-        a_t = b_t = a_e = b_e = a_f = b_f = None
-        note_bits = []
-        cmp = None
-        if m and fdf is not None and not fdf.empty and bs:
-            nfs = float(m.get("nfs_factor", 1.0) or 1.0)
-            cmp = build_comparison(
-                meta=m, feas_df=fdf, actual_df=run_df, batch_size=bs,
-                trace_mode="simple", nfs_factor=nfs, strategy=strat, gpu_name=gpu,
-                n_gpus=ng, precision=run_prec,
-                precision_speedup=(prec_sp if precision_ok else None), ddp_speedup=ddp_sp,
-                run_n_train=n_train, run_n_val=n_val)
-        if cmp is not None:
-            a_t, b_t = _cmp_metric(cmp, "Total time / epoch")
-            a_e, b_e = _cmp_metric(cmp, "Energy total / epoch")
-            a_f, b_f = _cmp_metric(cmp, "Best Val F1")
-            if r.mode == "single":
-                cmp_by_run[lbl] = cmp      # the formula table is the single-GPU one
-            if strat in ("ddp", "heterogeneous") and ddp_sp:
-                note_bits.append(f"bench ÷ {ddp_sp:.2f}× ({ng} GPU)")
-            if tensor_core and prec_sp and precision_ok:
-                note_bits.append(f"bench ÷ {prec_sp:.1f}× ({run_prec})")
-        else:
-            # Pure-analytic fallback when there is no benchmark for this batch/model
-            # (e.g. vit_large MP @24, or a model with no report). Benchmark stays empty.
-            if gpu:
-                try:
-                    from src.performance_model import predict, expected_best_f1
-                    _gb = (bs or 96) * ng if strat in ("ddp", "heterogeneous") else (bs or 96)
-                    p = predict(strat, r.model, gpu, ng, dataset_size=n_train,
-                                batch=_gb, precision=run_prec, epochs=1, val_size=n_val)
-                    if p:
-                        a_t = p.time_per_epoch_total_s / 60.0
-                        a_e = p.energy_per_epoch_wh
-                    a_f = expected_best_f1(r.model, n_train)[0]
-                    note_bits.append("analytic only (batch not benchmarked)")
-                except Exception:
-                    pass
-
-        # A precision the report never benchmarked → benchmark time/energy not comparable.
-        if not precision_ok:
-            b_t = b_e = None
-            note_bits.append(f"≠ precision ({run_prec}, not benchmarked)")
-
-        records.append({
-            "run": _short(lbl), "strategy": r.mode, "batch": bs, "precision": run_prec,
-            "t": {"a": a_t, "b": b_t, "r": real_t},
-            "e": {"a": a_e, "b": b_e, "r": real_e},
-            "f": {"a": a_f, "b": b_f, "r": real_f1},
-            "note": " · ".join(note_bits),
-        })
+        m, fdf = _select_benchmark(parsed, r.env, r.model, _run_batch(r))
+        record, cmp = _run_record(r, m, fdf)
+        records.append(record)
+        if cmp is not None and r.mode == "single":
+            cmp_by_run[lbl] = cmp      # the formula table is the single-GPU one
 
     # ── Summary table (analytic / benchmark / real, per metric) ──────────────────
     def _rnd(v, n=2):
@@ -345,9 +375,11 @@ def render_validate(ctx) -> object:
     _metric_block(records, "e", "Energy per epoch (train+eval)", "Wh", "validate_energy_bars")
     st.caption("Energy = effective power × time. Analytic power is calibrated per GPU on a "
                "compute-heavy workload (vit_base); AMP saves energy through time (same watts), "
-               "so it tracks the time chart. It runs **high** for light/I/O-bound models "
-               "(e.g. vit_tiny draws ~47 W not ~64 W and the demo subset is RAM-cached, so the "
-               "time model's I/O floor over-counts); it is most accurate for compute-bound runs.")
+               "so it tracks the time chart. It is most accurate for compute-bound runs and "
+               "runs **high** when the GPU is under-used: light/I/O-bound models (vit_tiny "
+               "draws ~47 W not ~64 W, and the demo subset is RAM-cached so the I/O floor "
+               "over-counts time) and **heterogeneous** runs (the GPU idles near ~45 W waiting "
+               "on the slow CPU worker, below its compute-bound power).")
     _metric_block(records, "f", "Best Val F1", "F1 (macro)", "validate_f1_bars")
     st.caption("Analytic and benchmark F1 are the SAME empirical prior (so they coincide "
                "for reports that record their dataset size; older reports may differ slightly); "
