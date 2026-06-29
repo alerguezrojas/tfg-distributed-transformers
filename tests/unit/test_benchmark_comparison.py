@@ -127,6 +127,13 @@ def test_to_dataframe_has_three_columns():
         assert col in df.columns
 
 
+def test_no_batch_size_column_returns_none():
+    """A non-empty benchmark df without a 'batch_size' column must not crash."""
+    bad = pd.DataFrame({"s_per_batch_train": [1.0], "avg_power_w": [64.0]})
+    assert build_comparison(_meta(), bad, _actual(), batch_size=96,
+                            strategy="single", gpu_name="Tesla T4") is None
+
+
 def test_error_pct_helpers():
     r = ComparisonRow("m", "f", estimated=11.0, actual=10.0, analytic=9.0)
     assert r.error_pct == pytest.approx(10.0)

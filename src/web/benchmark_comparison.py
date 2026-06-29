@@ -122,7 +122,7 @@ def build_comparison(
         per-batch throughput is dataset-size-independent, so a run and a benchmark report
         of different sizes stay comparable). Defaults to the benchmark report's #sizes.
     """
-    if feas_df.empty or actual_df.empty:
+    if feas_df.empty or actual_df.empty or "batch_size" not in feas_df.columns:
         return None
 
     model_name = meta.get("model_name", "unknown")
@@ -414,9 +414,11 @@ def build_comparison(
         ))
 
     # ── Best Val F1 ───────────────────────────────────────────────────────────
-    # Analytic and benchmark F1 share the SAME empirical-prior engine
-    # (performance_model.predict_quality / expected_best_f1), so those two columns
-    # match by construction; only the run is a real measurement.
+    # Analytic and benchmark F1 use the SAME empirical-prior engine (expected_best_f1),
+    # but the analytic column recomputes it for the RUN's dataset size while the benchmark
+    # column carries the value stored in the report at ITS profiled size — so the two
+    # coincide only when the run and the matched report share a dataset size, and differ
+    # otherwise. Only the run is a real measurement.
     bench_f1 = None
     try:
         bench_f1 = float((meta.get("prediction") or {}).get("predicted_best_f1") or 0) or None

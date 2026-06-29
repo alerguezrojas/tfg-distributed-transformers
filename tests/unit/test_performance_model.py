@@ -273,3 +273,16 @@ def test_uncalibrated_gpu_flags_power_and_notes():
     assert not p.power_calibrated
     assert p.avg_power_w > 0
     assert any("TDP-fallback" in n or "TDP fallback" in n for n in p.notes)
+
+
+def test_unknown_strategy_returns_none():
+    assert predict("frobnicate", "vit_base_patch16_224", "Tesla T4") is None
+
+
+def test_model_parallel_powers_both_gpus_with_idle_factor():
+    """MP keeps both GPUs powered but each idles between stages (×0.83)."""
+    from src.performance_model import MODEL_PARALLEL_POWER_FRACTION
+    single = predict("single", "vit_base_patch16_224", "Tesla T4", n_gpus=1, batch=96)
+    mp = predict("model_parallel", "vit_base_patch16_224", "Tesla T4", n_gpus=2, batch=96)
+    assert mp.power_total_w == pytest.approx(
+        2 * single.avg_power_w * MODEL_PARALLEL_POWER_FRACTION, rel=1e-6)

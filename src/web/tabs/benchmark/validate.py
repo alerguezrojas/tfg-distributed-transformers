@@ -117,7 +117,8 @@ def _select_benchmark(parsed, env, model, bs):
     (env, model, meta, df)). Same model is required; among those, prefer one that
     contains the run's batch size, then the same environment, then one that records its
     dataset size (#sizes). Returns (meta, df) or (None, None)."""
-    cands = [(e, mo, m, df) for (e, mo, m, df) in parsed if mo == model]
+    cands = [(e, mo, m, df) for (e, mo, m, df) in parsed if mo == model
+             and df is not None and "batch_size" in getattr(df, "columns", [])]
     if not cands:
         return None, None
 
@@ -381,7 +382,9 @@ def render_validate(ctx) -> object:
                "runs **high** when the GPU is under-used: light/I/O-bound models (vit_tiny "
                "draws ~47 W not ~64 W, and the demo subset is RAM-cached so the I/O floor "
                "over-counts time) and **heterogeneous** runs (the GPU idles near ~45 W waiting "
-               "on the slow CPU worker, below its compute-bound power).")
+               "on the slow CPU worker, below its compute-bound power). Note: DDP runs logged "
+               "before the 24/06 multi-GPU energy fix measured only one GPU, so their **Real** "
+               "bar reads ~½ — Analytic/Benchmark (all GPUs) will look ~2× those.")
     _metric_block(records, "f", "Best Val F1", "F1 (macro)", "validate_f1_bars")
     st.caption("Analytic and benchmark F1 are the SAME empirical prior (so they coincide "
                "for reports that record their dataset size; older reports may differ slightly); "

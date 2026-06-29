@@ -415,6 +415,8 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     gpu = gpu_spec(gpu_name)
     if model is None or gpu is None:
         return None
+    if strategy not in ("single", "ddp", "model_parallel", "heterogeneous"):
+        return None
 
     batch_per_gpu = max(1, batch // n_gpus) if strategy in ("ddp", "heterogeneous") else batch
     ep = predict_epoch(strategy, model, gpu, n_gpus, dataset_size, batch_per_gpu,
@@ -460,6 +462,14 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         notes.append(f"Energy uses a TDP-fallback power for {gpu.name} (≈"
                      f"{gpu.train_power_w:.0f} W/GPU, not measured here) — treat it as "
                      f"a rough estimate.")
+    # When a Tensor-core precision shrinks compute below the disk floor, the epoch goes
+    # I/O-bound: time stops dropping and the per-GPU energy stays high. On a RAM-cached
+    # dataset (e.g. the demo subset) the real run stays compute-bound and uses roughly
+    # half this — flag it so the time/energy are read as a conservative upper bound.
+    if precision != "fp32" and ep.bottleneck == "io":
+        notes.append("I/O floor active under this precision: if the dataset is RAM-cached "
+                     "the real run stays compute-bound and uses ~half this time/energy — "
+                     "pass a measured throughput (rc/rio) to calibrate.")
 
     return Prediction(
         strategy=strategy, model_name=model.name, gpu_name=gpu.name, n_gpus=n_gpus,
