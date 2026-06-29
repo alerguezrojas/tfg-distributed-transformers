@@ -94,6 +94,8 @@ def build_comparison(
     precision: str = "fp32",
     precision_speedup: float | None = None,
     ddp_speedup: float | None = None,
+    run_n_train: int | None = None,
+    run_n_val: int | None = None,
 ) -> BenchmarkComparison | None:
     """Build a BenchmarkComparison from parsed benchmark data and actual metrics.
 
@@ -115,6 +117,10 @@ def build_comparison(
     ddp_speedup: predicted N-GPU speedup; for a distributed run the single-GPU
         benchmark time/energy-train are divided by it so the benchmark column reflects
         the run's GPU count. None → no correction.
+    run_n_train/run_n_val: the RUN's actual dataset size. When given, the analytic AND
+        the benchmark per-epoch estimates are computed for THIS size (the benchmark's
+        per-batch throughput is dataset-size-independent, so a run and a benchmark report
+        of different sizes stay comparable). Defaults to the benchmark report's #sizes.
     """
     if feas_df.empty or actual_df.empty:
         return None
@@ -127,8 +133,11 @@ def build_comparison(
             return int(float(v))
         except (ValueError, TypeError):
             return default
-    n_train = _int(meta.get("n_train"), _N_TRAIN_DEFAULT)
-    n_val = _int(meta.get("n_val"), _N_VAL_DEFAULT)
+    # Prefer the RUN's dataset size; fall back to the benchmark report's #sizes, then
+    # the full set. Using the run's size keeps the comparison valid even when the
+    # matched benchmark report profiled a different dataset size.
+    n_train = _int(run_n_train, None) or _int(meta.get("n_train"), _N_TRAIN_DEFAULT)
+    n_val = _int(run_n_val, None) or _int(meta.get("n_val"), _N_VAL_DEFAULT)
 
     # ── Analytic prediction (third source) — closed-form, no GPU ─────────────────
     pred = None
@@ -184,19 +193,39 @@ def build_comparison(
     def _scale(v, factor):
         return (v / factor) if (v is not None and factor) else v
 
-    # Benchmark estimates (single-GPU fp32 → corrected to the run's config)
-    est_train_min = _scale(_safe_float(frow.get("est_train_min_per_epoch")), _time_factor)
-    est_eval_min = _scale(_safe_float(frow.get("est_eval_min_per_epoch")), _time_factor)
-    est_total_min = _scale(_safe_float(frow.get("est_total_min_per_epoch")), _time_factor)
     est_vram = _safe_float(frow.get("peak_vram_gb"))
     s_per_batch_train = _safe_float(frow.get("s_per_batch_train") or frow.get("s_per_batch"))
     s_per_batch_eval = _safe_float(frow.get("s_per_batch_eval") or frow.get("s_per_batch"))
     imgs_per_s_train = _safe_float(frow.get("imgs_per_s_train") or frow.get("imgs_per_s"))
     if imgs_per_s_train is not None and _time_factor:
         imgs_per_s_train *= _time_factor
+    avg_power = _safe_float(frow.get("avg_power_w"))
 
     n_train_batches = math.ceil(n_train / batch_size) if batch_size > 0 else None
     n_val_batches = math.ceil(n_val / batch_size) if batch_size > 0 else None
+
+    # Recompute the benchmark per-epoch time/energy for the RUN's dataset size from the
+    # measured per-batch throughput (which is dataset-size-independent), so the benchmark
+    # column stays comparable even when the matched report profiled a different N. Falls
+    # back to the CSV per-epoch totals only if the per-batch figure is missing.
+    def _bench_sec(n_batches, s_per_batch, fallback_min):
+        if n_batches and s_per_batch:
+            return n_batches * s_per_batch * nfs_factor
+        return fallback_min * 60 if fallback_min is not None else None
+
+    sec_train = _bench_sec(n_train_batches, s_per_batch_train,
+                           _safe_float(frow.get("est_train_min_per_epoch")))
+    sec_eval = _bench_sec(n_val_batches, s_per_batch_eval,
+                          _safe_float(frow.get("est_eval_min_per_epoch")))
+    # Benchmark estimates (single-GPU fp32 → corrected to the run's config).
+    est_train_min = _scale(sec_train / 60 if sec_train is not None else None, _time_factor)
+    est_eval_min = _scale(sec_eval / 60 if sec_eval is not None else None, _time_factor)
+    est_total_min = _sum_opt(est_train_min, est_eval_min)
+    # Energy = the benchmark's measured train power × the recomputed time (eval at
+    # EVAL_POWER_FRACTION), so both energy estimates use one consistent eval factor.
+    _bench_e_train = avg_power * sec_train / 3600 if (avg_power and sec_train is not None) else None
+    _bench_e_eval = (avg_power * EVAL_POWER_FRACTION * sec_eval / 3600
+                     if (avg_power and sec_eval is not None) else None)
 
     # Actual values from training
     act_epoch_time_s = (
@@ -297,8 +326,9 @@ def build_comparison(
     ))
 
     # ── Energy ───────────────────────────────────────────────────────────────
-    est_energy_train = _scale(_safe_float(frow.get("est_energy_train_wh_per_epoch")), _energy_factor)
-    est_energy_eval_raw = _scale(_safe_float(frow.get("est_energy_eval_wh_per_epoch")), _energy_factor)
+    # Recomputed for the run's dataset size (above) and corrected for precision.
+    est_energy_train = _scale(_bench_e_train, _energy_factor)
+    est_energy_eval_raw = _scale(_bench_e_eval, _energy_factor)
     # Actual train energy is in the log as Joules (energy_train_j); the eval energy is
     # already in Wh (energy_eval_wh). Derive train Wh = J / 3600 when present.
     act_energy_train_wh = None
@@ -308,7 +338,6 @@ def build_comparison(
         actual_df["energy_eval_wh"].mean() if "energy_eval_wh" in actual_df.columns
         and actual_df["energy_eval_wh"].notna().any() else None
     )
-    avg_power = _safe_float(frow.get("avg_power_w"))
     if (est_energy_train is not None or act_energy_train_wh is not None
             or _a_energy_train is not None):
         formula_energy = (

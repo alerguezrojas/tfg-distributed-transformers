@@ -157,6 +157,29 @@ def test_ddp_predict_receives_global_batch(monkeypatch):
     assert captured["batch"] == 96   # 48 per-GPU × 2 GPUs
 
 
+def test_run_dataset_size_overrides_benchmark_size():
+    """The comparison uses the RUN's dataset size, recomputing the benchmark per-epoch
+    estimate from its (size-independent) s/batch — so a run and a benchmark report of
+    different sizes stay comparable, and the estimate scales with the run's N."""
+    small = build_comparison(_meta(n_train=999999), _feas(), _actual(), batch_size=96,
+                             strategy="single", gpu_name="Tesla T4", precision="fp32",
+                             run_n_train=5000, run_n_val=1500)
+    big = build_comparison(_meta(n_train=999999), _feas(), _actual(), batch_size=96,
+                           strategy="single", gpu_name="Tesla T4", precision="fp32",
+                           run_n_train=10000, run_n_val=3000)
+    ts = _row(small, "Total time / epoch").estimated
+    tb = _row(big, "Total time / epoch").estimated
+    assert ts is not None and tb is not None
+    assert tb == pytest.approx(2 * ts, rel=0.05)   # ~linear in dataset size, not 999999
+
+
+def test_perf_strategy_maps_ddp_hetero():
+    from src.web.tabs.benchmark.validate import _perf_strategy
+    assert _perf_strategy("ddp_hetero") == "heterogeneous"
+    for m in ("single", "ddp", "model_parallel"):
+        assert _perf_strategy(m) == m
+
+
 def test_single_predict_receives_run_batch(monkeypatch):
     import src.performance_model as pm
     captured = {}

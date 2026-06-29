@@ -65,6 +65,12 @@ def _run_gpu(r, meta) -> str | None:
     return _ENV_GPU.get(r.env)
 
 
+def _perf_strategy(mode: str) -> str:
+    """Map a run's mode to a performance_model strategy name. The registry calls the
+    GPU+CPU run 'ddp_hetero'; the analytic engine knows it as 'heterogeneous'."""
+    return "heterogeneous" if mode == "ddp_hetero" else mode
+
+
 def _run_sizes(r, meta) -> tuple[int, int]:
     """(n_train, n_val) for the run: from its config line, else the benchmark meta,
     else the demo-subset default. n_val falls back to ~0.51× n_train."""
@@ -107,28 +113,37 @@ def _cmp_metric(cmp, metric: str) -> tuple[float | None, float | None]:
     return None, None
 
 
-def _three_bar(records: list[dict], title: str, ytitle: str, key: str) -> None:
-    """Grouped bar chart with three bars per run: analytic / benchmark / real."""
-    recs = [d for d in records if any(d.get(k) is not None
-            for k in ("analytic", "benchmark", "real"))]
+# Fixed, easy-to-tell-apart colours for the three sources (red/green/blue).
+_SRC_COLOR = {"analytic": "#2563eb", "benchmark": "#10b981", "real": "#ef4444"}
+
+
+def _metric_block(records: list[dict], metric_key: str, title: str, ytitle: str,
+                  key: str) -> None:
+    """A per-metric block: a source picker (Analytic / Benchmark / Both — Real is always
+    shown) followed by a grouped bar chart with the chosen sources, in red/green/blue."""
+    recs = [{"run": d["run"], **{s: d[metric_key].get(s) for s in ("a", "b", "r")}}
+            for d in records
+            if any(d[metric_key].get(s) is not None for s in ("a", "b", "r"))]
     if not recs:
-        st.caption("No data for this metric across the selected runs.")
+        st.caption(f"No data for **{title}** across the selected runs.")
         return
+    choice = st.radio(f"{title} — compare Real with", ["Both", "Analytic", "Benchmark"],
+                      horizontal=True, key=f"{key}_src")
+    show = {"Both": ["a", "b"], "Analytic": ["a"], "Benchmark": ["b"]}[choice]
     labels = [d["run"] for d in recs]
 
-    def _series(k):
-        return [d.get(k) for d in recs]
-
-    def _txt(k):
-        return [f"{v:.2f}" if v is not None else "" for v in _series(k)]
+    def _trace(src_key, name, color):
+        ys = [d.get(src_key) for d in recs]
+        return go.Bar(name=name, x=labels, y=ys, marker_color=color,
+                      text=[f"{v:.2f}" if v is not None else "" for v in ys],
+                      textposition="outside")
 
     fig = go.Figure()
-    fig.add_trace(go.Bar(name="Analytic", x=labels, y=_series("analytic"),
-                         marker_color="#8b5cf6", text=_txt("analytic"), textposition="outside"))
-    fig.add_trace(go.Bar(name="Benchmark", x=labels, y=_series("benchmark"),
-                         marker_color="#94a3b8", text=_txt("benchmark"), textposition="outside"))
-    fig.add_trace(go.Bar(name="Real", x=labels, y=_series("real"),
-                         marker_color=COLORS[0], text=_txt("real"), textposition="outside"))
+    if "a" in show:
+        fig.add_trace(_trace("a", "Analytic", _SRC_COLOR["analytic"]))
+    if "b" in show:
+        fig.add_trace(_trace("b", "Benchmark", _SRC_COLOR["benchmark"]))
+    fig.add_trace(_trace("r", "Real", _SRC_COLOR["real"]))
     fig.update_layout(**_base_layout(360, title), barmode="group",
                       yaxis_title=ytitle, xaxis_title="")
     _show(fig, key)
@@ -198,7 +213,8 @@ def render_validate(ctx) -> object:
         m, fdf = _feas_for(r.env, r.model)
         bs = _run_batch(r)
         run_prec = (r.precision or "fp32")
-        ng = _run_ngpus(r) if r.mode in ("ddp", "heterogeneous") else 1
+        strat = _perf_strategy(r.mode)   # 'ddp_hetero' → 'heterogeneous' for the engine
+        ng = _run_ngpus(r) if strat in ("ddp", "heterogeneous") else 1
         gpu = _run_gpu(r, m)
         n_train, n_val = _run_sizes(r, m)
 
@@ -227,16 +243,17 @@ def render_validate(ctx) -> object:
             nfs = float(m.get("nfs_factor", 1.0) or 1.0)
             cmp = build_comparison(
                 meta=m, feas_df=fdf, actual_df=run_df, batch_size=bs,
-                trace_mode="simple", nfs_factor=nfs, strategy=r.mode, gpu_name=gpu,
+                trace_mode="simple", nfs_factor=nfs, strategy=strat, gpu_name=gpu,
                 n_gpus=ng, precision=run_prec,
-                precision_speedup=(prec_sp if precision_ok else None), ddp_speedup=ddp_sp)
+                precision_speedup=(prec_sp if precision_ok else None), ddp_speedup=ddp_sp,
+                run_n_train=n_train, run_n_val=n_val)
         if cmp is not None:
             a_t, b_t = _cmp_metric(cmp, "Total time / epoch")
             a_e, b_e = _cmp_metric(cmp, "Energy total / epoch")
             a_f, b_f = _cmp_metric(cmp, "Best Val F1")
             if r.mode == "single":
                 cmp_by_run[lbl] = cmp      # the formula table is the single-GPU one
-            if r.mode in ("ddp", "heterogeneous") and ddp_sp:
+            if strat in ("ddp", "heterogeneous") and ddp_sp:
                 note_bits.append(f"bench ÷ {ddp_sp:.2f}× ({ng} GPU)")
             if tensor_core and prec_sp and precision_ok:
                 note_bits.append(f"bench ÷ {prec_sp:.1f}× ({run_prec})")
@@ -246,8 +263,8 @@ def render_validate(ctx) -> object:
             if gpu:
                 try:
                     from src.performance_model import predict, expected_best_f1
-                    _gb = (bs or 96) * ng if r.mode in ("ddp", "heterogeneous") else (bs or 96)
-                    p = predict(r.mode, r.model, gpu, ng, dataset_size=n_train,
+                    _gb = (bs or 96) * ng if strat in ("ddp", "heterogeneous") else (bs or 96)
+                    p = predict(strat, r.model, gpu, ng, dataset_size=n_train,
                                 batch=_gb, precision=run_prec, epochs=1, val_size=n_val)
                     if p:
                         a_t = p.time_per_epoch_total_s / 60.0
@@ -322,20 +339,17 @@ def render_validate(ctx) -> object:
 
     # ── Three grouped-bar charts: time, energy, F1 (analytic / benchmark / real) ─
     st.markdown("#### Per-metric comparison — analytic vs benchmark vs real")
-    _three_bar([{"run": d["run"], **{k2: d["t"][k1] for k1, k2 in
-                 (("a", "analytic"), ("b", "benchmark"), ("r", "real"))}} for d in records],
-               "Time per epoch (train+eval)", "Minutes", "validate_time_bars")
-    _three_bar([{"run": d["run"], **{k2: d["e"][k1] for k1, k2 in
-                 (("a", "analytic"), ("b", "benchmark"), ("r", "real"))}} for d in records],
-               "Energy per epoch (train+eval)", "Wh", "validate_energy_bars")
-    st.caption("Energy = effective power × time. Analytic power is calibrated per GPU from the "
-               "project's measured runs; AMP saves energy through time (same watts), so it "
-               "tracks the time chart. Where the analytic energy is high for AMP/DDP it inherits "
-               "the time model's I/O floor (the demo subset is RAM-cached in reality).")
-    _three_bar([{"run": d["run"], **{k2: d["f"][k1] for k1, k2 in
-                 (("a", "analytic"), ("b", "benchmark"), ("r", "real"))}} for d in records],
-               "Best Val F1", "F1 (macro)", "validate_f1_bars")
-    st.caption("Analytic and benchmark F1 are the SAME empirical prior (so their bars coincide "
+    st.caption("Each chart shows the **Real** run (red) next to the source(s) you pick: "
+               "**Analytic** (blue) and/or **Benchmark** (green).")
+    _metric_block(records, "t", "Time per epoch (train+eval)", "Minutes", "validate_time_bars")
+    _metric_block(records, "e", "Energy per epoch (train+eval)", "Wh", "validate_energy_bars")
+    st.caption("Energy = effective power × time. Analytic power is calibrated per GPU on a "
+               "compute-heavy workload (vit_base); AMP saves energy through time (same watts), "
+               "so it tracks the time chart. It runs **high** for light/I/O-bound models "
+               "(e.g. vit_tiny draws ~47 W not ~64 W and the demo subset is RAM-cached, so the "
+               "time model's I/O floor over-counts); it is most accurate for compute-bound runs.")
+    _metric_block(records, "f", "Best Val F1", "F1 (macro)", "validate_f1_bars")
+    st.caption("Analytic and benchmark F1 are the SAME empirical prior (so they coincide "
                "for reports that record their dataset size; older reports may differ slightly); "
                "the real bar is the run's measured best Val F1.")
 
@@ -353,7 +367,8 @@ def render_validate(ctx) -> object:
         figc.add_trace(go.Scatter(x=[0, _hi], y=[0, _hi], mode="lines",
                                   line=dict(color="#94a3b8", dash="dash"),
                                   name="perfect estimate", hoverinfo="skip"))
-        for _src, _name, _col in (("a", "analytic", "#8b5cf6"), ("b", "benchmark", "#94a3b8")):
+        for _src, _name, _col in (("a", "analytic", _SRC_COLOR["analytic"]),
+                                  ("b", "benchmark", _SRC_COLOR["benchmark"])):
             _xs = [d[_key][_src] for d in pts if d[_key][_src] is not None]
             _ys = [d[_key]["r"] for d in pts if d[_key][_src] is not None]
             _tx = [d["run"] for d in pts if d[_key][_src] is not None]
@@ -367,8 +382,8 @@ def render_validate(ctx) -> object:
         figc.update_layout(**_base_layout(360, f"Predicted vs real — {_unit}"),
                            xaxis_title=f"Predicted ({_unit})", yaxis_title=f"Real ({_unit})")
         _show(figc, "validate_calibration")
-        st.caption("On the dashed diagonal = perfect estimate. **Violet** = analytic, "
-                   "**grey** = benchmark; closer to the diagonal = more accurate.")
+        st.caption("On the dashed diagonal = perfect estimate. **Blue** = analytic, "
+                   "**green** = benchmark; closer to the diagonal = more accurate.")
     else:
         st.caption(f"Not enough runs with a predicted and real {_unit} for the plot.")
 
