@@ -32,6 +32,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 ROOT = Path(__file__).resolve().parents[1]
+_DRY_RUN_HELP = "Print the command without running it."
 console = Console()
 app = typer.Typer(
     add_completion=False, no_args_is_help=True,
@@ -203,7 +204,7 @@ def train(
     node_rank: int = typer.Option(0, help="This node's rank (multi-node)."),
     master_addr: str = typer.Option("localhost", help="Rendez-vous host (multi-node)."),
     master_port: int = typer.Option(29500, help="Rendez-vous port (multi-node)."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Launch a training run with the chosen distribution strategy."""
     cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
@@ -379,7 +380,7 @@ def benchmark(
     study_steps: int = typer.Option(60, help="Mini-training steps."),
     nfs_factor: float = typer.Option(1.0, help="NFS latency factor (Verode ≈ 1.3)."),
     device: int = typer.Option(0, help="CUDA device index."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Empirical benchmark on this machine — measures real throughput, memory and scaling."""
     _bs = [int(x) for x in (_csv(batch_sizes) or [])] or None
@@ -401,7 +402,7 @@ def eval(
     metadata: Optional[str] = typer.Option(None, help="Override metadata.parquet."),
     batch_size: Optional[int] = typer.Option(None, help="Batch size."),
     max_batches: Optional[int] = typer.Option(None, help="Stop after N batches (sanity)."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Evaluate a checkpoint on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
@@ -412,7 +413,7 @@ def eval(
 @app.command()
 def dashboard(
     port: int = typer.Option(8501, help="Port for the Streamlit server."),
-    dry_run: bool = typer.Option(False, "--dry-run", help="Print the command without running it."),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Open the read-only web dashboard (Overview · Run results · Compare ·
     Performance · Dataset). Plan a config without running with `paravit estimate`."""

@@ -10,6 +10,8 @@ from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (_load_batch)
 
+_LR_LABEL = "Learning rate"
+
 
 def _batch(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
@@ -73,7 +75,7 @@ def _batch(ctx: DashboardContext) -> None:
 
             # Single-level view switcher (replaces the old nested tab row). Default is
             # the whole-training curve — the most intuitive of the three.
-            view = st.radio("View", ["Whole training", "Compare epochs", "Learning rate"],
+            view = st.radio("View", ["Whole training", "Compare epochs", _LR_LABEL],
                             horizontal=True, key="batch_view")
 
             # ── View: compare epochs ───────────────────────────────────────────
@@ -212,7 +214,7 @@ def _batch(ctx: DashboardContext) -> None:
                     _dl_csv(bdf, "batch_metrics_full.csv", "Download full history")
 
             # ── View: learning rate ────────────────────────────────────────────
-            elif view == "Learning rate":
+            elif view == _LR_LABEL:
                 if not has_lr:
                     st.info(
                         "No learning-rate data. "
@@ -226,7 +228,7 @@ def _batch(ctx: DashboardContext) -> None:
                     fig_lr = go.Figure()
                     fig_lr.add_trace(go.Scatter(
                         x=lr_sorted["global_batch"], y=lr_sorted["lr"],
-                        name="Learning rate", mode="lines",
+                        name=_LR_LABEL, mode="lines",
                         line={"color": COLORS[2], "width": 2},
                     ))
 
@@ -242,7 +244,7 @@ def _batch(ctx: DashboardContext) -> None:
                     fig_lr.update_layout(
                         **_base_layout(380, "Learning-rate evolution"),
                         xaxis_title="Global batch",
-                        yaxis_title="Learning rate",
+                        yaxis_title=_LR_LABEL,
                     )
                     # Log scale if the range is large
                     lr_range = lr_sorted["lr"].max() / (lr_sorted["lr"].min() + 1e-12)

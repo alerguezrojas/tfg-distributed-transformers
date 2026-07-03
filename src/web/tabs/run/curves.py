@@ -11,6 +11,8 @@ from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _metric_fig, _show
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (_dur_str, _load_df, _safe_max, _safe_val_at_best)
 
+_TRAIN_WH = "Train (Wh)"
+
 
 def _test_callout(ctx: DashboardContext) -> None:
     """Held-out TEST-set results (from scripts/eval.py), shown above the tabs.
@@ -144,13 +146,13 @@ def _curves(ctx: DashboardContext) -> None:
                         if pd.notna(row.get("energy_eval_wh")):
                             entry = {"epoch": row["epoch"], "Eval (Wh)": row["energy_eval_wh"]}
                             if pd.notna(row.get("energy_train_j")):
-                                entry["Train (Wh)"] = row["energy_train_j"] / 3600
+                                entry[_TRAIN_WH] = row["energy_train_j"] / 3600
                             rows_e.append(entry)
                     if rows_e:
                         df_e = pd.DataFrame(rows_e)
                         fig_e = go.Figure()
-                        if "Train (Wh)" in df_e.columns:
-                            fig_e.add_trace(go.Bar(x=df_e["epoch"], y=df_e["Train (Wh)"],
+                        if _TRAIN_WH in df_e.columns:
+                            fig_e.add_trace(go.Bar(x=df_e["epoch"], y=df_e[_TRAIN_WH],
                                                    name="Train", marker_color=COLORS[0], opacity=0.85))
                         fig_e.add_trace(go.Bar(x=df_e["epoch"], y=df_e["Eval (Wh)"],
                                                name="Eval", marker_color=COLORS[1], opacity=0.85))

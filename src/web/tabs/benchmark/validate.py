@@ -15,6 +15,9 @@ from src.web.ui.helpers import (_get_benchmark_csvs, _get_runs, _load_df, _run_c
                                 _safe_max)
 
 
+_VAL_F1 = "Val F1"
+
+
 def _short(lbl: str) -> str:
     return re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
 
@@ -401,10 +404,10 @@ def render_validate(_ctx) -> object:
                "the real bar is the run's measured best Val F1.")
 
     # ── Calibration scatter (predicted vs real, with the diagonal) ──────────────
-    metric = st.radio("Calibration plot", ["Time/epoch (min)", "Energy/epoch (Wh)", "Val F1"],
+    metric = st.radio("Calibration plot", ["Time/epoch (min)", "Energy/epoch (Wh)", _VAL_F1],
                       horizontal=True, key="cal_metric")
-    _key = {"Time/epoch (min)": "t", "Energy/epoch (Wh)": "e", "Val F1": "f"}[metric]
-    _unit = {"t": "min/epoch", "e": "Wh/epoch", "f": "Val F1"}[_key]
+    _key = {"Time/epoch (min)": "t", "Energy/epoch (Wh)": "e", _VAL_F1: "f"}[metric]
+    _unit = {"t": "min/epoch", "e": "Wh/epoch", "f": _VAL_F1}[_key]
     pts = [d for d in records if d[_key]["r"] is not None
            and (d[_key]["a"] is not None or d[_key]["b"] is not None)]
     if pts:

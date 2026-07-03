@@ -30,42 +30,49 @@ class CloudOption:
     note: str = ""
 
 
+# GPU / provider names shared by the tables below.
+_TESLA_T4 = "Tesla T4"
+_TESLA_V100 = "Tesla V100"
+_RTX_4090 = "RTX 4090"
+_A100_40GB = "A100 40GB"
+_LAMBDA_LABS = "Lambda Labs"
+
 # Approximate on-demand single-GPU prices (USD/hour). Editable — they drift.
 CLOUD_OPTIONS: list[CloudOption] = [
     CloudOption("Kaggle", "Tesla T4 ×2", 0.0, "Free, 30 h/week, 2 GPUs"),
-    CloudOption("Google Colab", "Tesla T4", 0.0, "Free tier (or ~0.1–0.2 $/h Pro)"),
+    CloudOption("Google Colab", _TESLA_T4, 0.0, "Free tier (or ~0.1–0.2 $/h Pro)"),
     CloudOption("Vast.ai", "RTX 3090", 0.20, "Community marketplace, variable"),
-    CloudOption("Vast.ai", "RTX 4090", 0.35, "Community marketplace, variable"),
-    CloudOption("GCP", "Tesla T4", 0.35, "+ instance cost"),
-    CloudOption("Azure", "Tesla T4", 0.53, "NCasT4_v3"),
-    CloudOption("AWS", "Tesla T4", 0.526, "g4dn.xlarge"),
+    CloudOption("Vast.ai", _RTX_4090, 0.35, "Community marketplace, variable"),
+    CloudOption("GCP", _TESLA_T4, 0.35, "+ instance cost"),
+    CloudOption("Azure", _TESLA_T4, 0.53, "NCasT4_v3"),
+    CloudOption("AWS", _TESLA_T4, 0.526, "g4dn.xlarge"),
     CloudOption("GCP", "L4", 0.71, "g2 instance"),
-    CloudOption("RunPod", "RTX 4090", 0.69, "Secure cloud"),
-    CloudOption("Lambda Labs", "RTX 6000 Ada", 0.80, ""),
+    CloudOption("RunPod", _RTX_4090, 0.69, "Secure cloud"),
+    CloudOption(_LAMBDA_LABS, "RTX 6000 Ada", 0.80, ""),
     CloudOption("AWS", "A10G", 1.006, "g5.xlarge"),
-    CloudOption("Lambda Labs", "A100 40GB", 1.10, ""),
+    CloudOption(_LAMBDA_LABS, _A100_40GB, 1.10, ""),
     CloudOption("RunPod", "A100 80GB", 1.19, ""),
     CloudOption("GCP", "V100", 2.48, ""),
-    CloudOption("Lambda Labs", "H100", 2.49, ""),
-    CloudOption("AWS", "Tesla V100", 3.06, "p3.2xlarge"),
-    CloudOption("Azure", "Tesla V100", 3.06, "NC6s_v3"),
-    CloudOption("GCP", "A100 40GB", 3.67, ""),
-    CloudOption("AWS", "A100 40GB", 4.10, "p4d (per-GPU share)"),
+    CloudOption(_LAMBDA_LABS, "H100", 2.49, ""),
+    CloudOption("AWS", _TESLA_V100, 3.06, "p3.2xlarge"),
+    CloudOption("Azure", _TESLA_V100, 3.06, "NC6s_v3"),
+    CloudOption("GCP", _A100_40GB, 3.67, ""),
+    CloudOption("AWS", _A100_40GB, 4.10, "p4d (per-GPU share)"),
 ]
 
 # Approximate FP16 / Tensor-core throughput (dense TFLOPS) — used only to scale
 # the training time across GPUs (relative, not an absolute benchmark).
 GPU_TFLOPS_FP16: dict[str, float] = {
     "P100": 19.0,
-    "Tesla T4": 65.0, "T4": 65.0,
+    _TESLA_T4: 65.0, "T4": 65.0,
     "RTX 3060 Ti": 35.0,
     "RTX 3090": 142.0,
-    "RTX 4090": 330.0,
+    _RTX_4090: 330.0,
     "RTX 6000 Ada": 91.0,
     "A10G": 125.0,
     "L4": 121.0,
-    "Tesla V100": 112.0, "V100": 112.0,
-    "A100 40GB": 312.0, "A100 80GB": 312.0, "A100": 312.0,
+    _TESLA_V100: 112.0, "V100": 112.0,
+    _A100_40GB: 312.0, "A100 80GB": 312.0, "A100": 312.0,
     "H100": 990.0,
 }
 

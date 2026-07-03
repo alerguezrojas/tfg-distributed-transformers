@@ -11,6 +11,9 @@ from src.web.dataset_stats import (
     CLASS_NAMES, SPLIT_SIZES, class_distribution_approximate,
 )
 
+_BEST_VAL_F1 = "Best Val F1"
+_VAL_F1_CURVE = "Val F1 curve"
+
 from src.web.ui.charts import (
     COLORS, _show, _dl_csv, _base_layout, _metric_fig, _overlay_fig,
     _CLASS_GROUPS, _CLASS_GROUP_COLOR,
@@ -79,7 +82,7 @@ def render(ctx: DashboardContext) -> None:
     # ── Compact KPI strip (one dense row) ───────────────────────────────────────
     _kpi_strip([
         ("Runs", str(len(runs))),
-        ("Best Val F1", f"{best_f1_global:.3f}" if best_f1_global > float("-inf") else "—"),
+        (_BEST_VAL_F1, f"{best_f1_global:.3f}" if best_f1_global > float("-inf") else "—"),
         ("Fastest epoch", f"{fastest_min:.1f} min" if fastest_min < float("inf") else "—"),
         ("GPU time", f"{total_gpu_h:.0f} h"),
         ("Energy", f"{total_energy_wh:.0f} Wh" if total_energy_wh else "—"),
@@ -285,7 +288,7 @@ def _run_highlight(df: pd.DataFrame, compact: bool = False) -> None:
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Epochs", len(df))
-    m2.metric("Best Val F1", f"{best_f1:.4f}" if not pd.isna(best_f1) else "—")
+    m2.metric(_BEST_VAL_F1, f"{best_f1:.4f}" if not pd.isna(best_f1) else "—")
     m3.metric("Best epoch", int(best_ep) if best_ep is not None else "—")
     m4.metric("Duration", dur)
     if thr is not None:
@@ -342,12 +345,12 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
                          else None)
             rows.append({
                 "Run": r.label,
-                "Val F1 curve": curve_by_label.get(r.label, []),
+                _VAL_F1_CURVE: curve_by_label.get(r.label, []),
                 "Mode": r.mode,
                 "Precision": r.precision or "fp32",
                 "Env": r.env,
                 "Epochs": len(df_r),
-                "Best Val F1": round(best_f1, 4),
+                _BEST_VAL_F1: round(best_f1, 4),
                 "Best epoch": int(best_ep) if best_ep is not None else None,
                 "Duration": _dur_str(dur_s) if not pd.isna(dur_s) else "—",
                 "Eval Wh": round(energy_wh) if energy_wh else None,
@@ -360,7 +363,7 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
         return
 
     ov_df = pd.DataFrame(rows)
-    _f1 = ov_df["Best Val F1"]
+    _f1 = ov_df[_BEST_VAL_F1]
     # Bounded height: ~8 rows are visible, the rest scroll *inside* the table so
     # the page itself stays within one screen (no page scroll on the Overview).
     _table_h = min(34 + 30 * len(ov_df), 160)
@@ -369,10 +372,10 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
         use_container_width=True, hide_index=True, height=_table_h,
         on_select="rerun", selection_mode="single-row", key="runs_table",
         column_config={
-            "Val F1 curve": st.column_config.LineChartColumn(
-                "Val F1 curve", y_min=0.0, y_max=float(_f1.max()) + 0.05, width="medium"),
-            "Best Val F1": st.column_config.ProgressColumn(
-                "Best Val F1", min_value=0.0, max_value=float(_f1.max()) + 1e-9,
+            _VAL_F1_CURVE: st.column_config.LineChartColumn(
+                _VAL_F1_CURVE, y_min=0.0, y_max=float(_f1.max()) + 0.05, width="medium"),
+            _BEST_VAL_F1: st.column_config.ProgressColumn(
+                _BEST_VAL_F1, min_value=0.0, max_value=float(_f1.max()) + 1e-9,
                 format="%.4f"),
         },
     )
@@ -386,5 +389,5 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
             st.session_state["_last_table_row"] = chosen
             st.session_state["run_label"] = chosen
             st.rerun()
-    _dl_csv(ov_df.drop(columns=["Val F1 curve"]), "runs_summary.csv", "Download runs table")
+    _dl_csv(ov_df.drop(columns=[_VAL_F1_CURVE]), "runs_summary.csv", "Download runs table")
 

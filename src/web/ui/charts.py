@@ -19,6 +19,8 @@ theme.register_plotly_template()
 # Backwards-compatible alias: the categorical palette from the design system.
 COLORS = theme.CATEGORICAL
 
+_LINES_MARKERS = "lines+markers"
+
 # ── Chart helpers ───────────────────────────────────────────────────────────────
 
 # No displayModeBar key → Plotly shows the toolbar only on hover (cleaner than a
@@ -68,12 +70,12 @@ def _metric_fig(
     if col_train in df.columns and df[col_train].notna().any():
         fig.add_trace(go.Scatter(
             x=df["epoch"], y=df[col_train], name="Train",
-            mode="lines+markers", line={"color": color_train},
+            mode=_LINES_MARKERS, line={"color": color_train},
         ))
     if col_val in df.columns and df[col_val].notna().any():
         fig.add_trace(go.Scatter(
             x=df["epoch"], y=df[col_val], name="Val",
-            mode="lines+markers", line={"color": color_val},
+            mode=_LINES_MARKERS, line={"color": color_val},
         ))
     for tr in (extra_traces or []):
         fig.add_trace(tr)
@@ -95,7 +97,7 @@ def _overlay_fig(
         if col in df.columns and df[col].notna().any():
             n_series += 1
             fig.add_trace(go.Scatter(
-                x=df["epoch"], y=df[col], name=label, mode="lines+markers",
+                x=df["epoch"], y=df[col], name=label, mode=_LINES_MARKERS,
                 line={"color": COLORS[i % len(COLORS)]},
             ))
     # Many runs with long labels: legend below the plot (one row per run), and the
