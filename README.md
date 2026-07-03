@@ -9,9 +9,10 @@
 [![CI](https://github.com/alerguezrojas/tfg-distributed-transformers/actions/workflows/ci.yml/badge.svg)](https://github.com/alerguezrojas/tfg-distributed-transformers/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-ee4c2c)
-![Maintainability](https://img.shields.io/badge/Maintainability-A-brightgreen?logo=sonarqubeserver)
-![Reliability](https://img.shields.io/badge/Reliability-A-brightgreen?logo=sonarqubeserver)
-![Security](https://img.shields.io/badge/Security-A-brightgreen?logo=sonarqubeserver)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=alerguezrojas_tfg-distributed-transformers&metric=alert_status)](https://sonarcloud.io/summary/overall?id=alerguezrojas_tfg-distributed-transformers)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=alerguezrojas_tfg-distributed-transformers&metric=sqale_rating)](https://sonarcloud.io/summary/overall?id=alerguezrojas_tfg-distributed-transformers)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=alerguezrojas_tfg-distributed-transformers&metric=reliability_rating)](https://sonarcloud.io/summary/overall?id=alerguezrojas_tfg-distributed-transformers)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=alerguezrojas_tfg-distributed-transformers&metric=security_rating)](https://sonarcloud.io/summary/overall?id=alerguezrojas_tfg-distributed-transformers)
 
 **Autor:** Alejandro Rodríguez Rojas · **Tutor:** Francisco Carmelo Almeida Rodríguez · **Cotutor:** Daniel Suárez Labena
 
@@ -35,9 +36,10 @@ Lab*); el antiguo comando `tfg` se conserva como alias retrocompatible.
 ## Calidad del código
 
 El proyecto se acompaña de una batería de **411 pruebas automáticas** ejecutadas en integración
-continua y se ha analizado con **SonarQube**: calificación **A en mantenibilidad** (deuda técnica
-0,4 %), **A en fiabilidad** (0 bugs) y **A en seguridad** (0 vulnerabilidades), con un **0,0 % de
-código duplicado** sobre ~10 500 líneas.
+continua y se analiza de forma continua en
+[SonarCloud](https://sonarcloud.io/summary/overall?id=alerguezrojas_tfg-distributed-transformers):
+calificación **A en mantenibilidad**, **A en fiabilidad** y **A en seguridad**, con un **0,0 % de
+código duplicado** sobre ~10 500 líneas (las insignias de la cabecera reflejan el último análisis).
 
 ## Requisitos previos
 
