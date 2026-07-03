@@ -10,12 +10,12 @@ from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (_load_batch)
 
+_LR_LABEL = "Learning rate"
+
 
 def _batch(ctx: DashboardContext) -> None:
-    runs = ctx.runs
     selected_run = ctx.selected_run
     run = ctx.run
-    refresh_interval = ctx.refresh_interval
     if selected_run is None:
         st.info("Select a run in the sidebar.")
     elif not run.batch_csv_path:
@@ -31,7 +31,6 @@ def _batch(ctx: DashboardContext) -> None:
             return _load_batch(p)
 
         bdf = _load_batch_live(str(run.batch_csv_path))
-        has_batch_loss = "batch_loss" in bdf.columns and bdf["batch_loss"].notna().any()
         has_lr = "lr" in bdf.columns and bdf["lr"].notna().any()
 
         # Map of available per-batch metrics → readable label
@@ -76,7 +75,7 @@ def _batch(ctx: DashboardContext) -> None:
 
             # Single-level view switcher (replaces the old nested tab row). Default is
             # the whole-training curve — the most intuitive of the three.
-            view = st.radio("View", ["Whole training", "Compare epochs", "Learning rate"],
+            view = st.radio("View", ["Whole training", "Compare epochs", _LR_LABEL],
                             horizontal=True, key="batch_view")
 
             # ── View: compare epochs ───────────────────────────────────────────
@@ -113,7 +112,7 @@ def _batch(ctx: DashboardContext) -> None:
                         fig_b.add_trace(go.Scatter(
                             x=subset["batch"], y=subset[batch_metric],
                             name=f"Ep {ep}", mode="lines",
-                            line=dict(color=color, width=1), opacity=0.35,
+                            line={"color": color, "width": 1}, opacity=0.35,
                             legendgroup=f"ep{ep}",
                         ))
 
@@ -122,7 +121,7 @@ def _batch(ctx: DashboardContext) -> None:
                             fig_b.add_trace(go.Scatter(
                                 x=subset["batch"], y=ma,
                                 name=f"Ep {ep} MA{ma_window}", mode="lines",
-                                line=dict(color=color, width=2.5),
+                                line={"color": color, "width": 2.5},
                                 legendgroup=f"ep{ep}",
                             ))
 
@@ -135,7 +134,7 @@ def _batch(ctx: DashboardContext) -> None:
                                 fig_b.add_trace(go.Scatter(
                                     x=spikes["batch"], y=spikes[batch_metric],
                                     name=f"Spike Ep{ep}", mode="markers",
-                                    marker=dict(color="red", size=7, symbol="x"),
+                                    marker={"color": "red", "size": 7, "symbol": "x"},
                                     legendgroup=f"ep{ep}", showlegend=False,
                                 ))
 
@@ -183,7 +182,7 @@ def _batch(ctx: DashboardContext) -> None:
                     fig_g.add_trace(go.Scatter(
                         x=all_sorted["global_batch"], y=all_sorted[global_metric],
                         name="Data", mode="lines",
-                        line=dict(color=COLORS[0], width=1), opacity=0.3,
+                        line={"color": COLORS[0], "width": 1}, opacity=0.3,
                     ))
 
                     if gma_window > 1 and len(all_sorted) >= gma_window:
@@ -191,7 +190,7 @@ def _batch(ctx: DashboardContext) -> None:
                         fig_g.add_trace(go.Scatter(
                             x=all_sorted["global_batch"], y=gma,
                             name=f"MA{gma_window}", mode="lines",
-                            line=dict(color=COLORS[0], width=2.5),
+                            line={"color": COLORS[0], "width": 2.5},
                         ))
 
                     # Vertical lines per epoch
@@ -215,7 +214,7 @@ def _batch(ctx: DashboardContext) -> None:
                     _dl_csv(bdf, "batch_metrics_full.csv", "Download full history")
 
             # ── View: learning rate ────────────────────────────────────────────
-            elif view == "Learning rate":
+            elif view == _LR_LABEL:
                 if not has_lr:
                     st.info(
                         "No learning-rate data. "
@@ -229,8 +228,8 @@ def _batch(ctx: DashboardContext) -> None:
                     fig_lr = go.Figure()
                     fig_lr.add_trace(go.Scatter(
                         x=lr_sorted["global_batch"], y=lr_sorted["lr"],
-                        name="Learning rate", mode="lines",
-                        line=dict(color=COLORS[2], width=2),
+                        name=_LR_LABEL, mode="lines",
+                        line={"color": COLORS[2], "width": 2},
                     ))
 
                     # Mark epoch boundaries
@@ -245,7 +244,7 @@ def _batch(ctx: DashboardContext) -> None:
                     fig_lr.update_layout(
                         **_base_layout(380, "Learning-rate evolution"),
                         xaxis_title="Global batch",
-                        yaxis_title="Learning rate",
+                        yaxis_title=_LR_LABEL,
                     )
                     # Log scale if the range is large
                     lr_range = lr_sorted["lr"].max() / (lr_sorted["lr"].min() + 1e-12)

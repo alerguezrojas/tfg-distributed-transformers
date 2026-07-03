@@ -100,13 +100,13 @@ def _confusions_view(run) -> None:
         fig_top.update_layout(
             **_base_layout(120 + 28 * len(top),
                            "When the left class is present, the model also predicts the right one",
-                           margin=dict(l=300, r=40, t=48, b=40)),
+                           margin={"l": 300, "r": 40, "t": 48, "b": 40}),
             showlegend=False,
         )
         if use_lift:
             fig_top.update_xaxes(
                 title="Lift (× vs base rate — &gt;1 = real confusion, not just a common class)")
-            fig_top.add_vline(x=1.0, line=dict(color="gray", width=1, dash="dot"))
+            fig_top.add_vline(x=1.0, line={"color": "gray", "width": 1, "dash": "dot"})
         else:
             fig_top.update_xaxes(range=[0, 1],
                                  title="P(also predicts right label | left is present)")
@@ -146,24 +146,24 @@ def _confusions_view(run) -> None:
             if not positions:
                 continue
             lo, hi = min(positions), max(positions)
-            shapes.append(dict(
-                type="rect", x0=lo - 0.5, x1=hi + 0.5, y0=lo - 0.5, y1=hi + 0.5,
-                line=dict(color=color, width=2.5), fillcolor="rgba(0,0,0,0)", layer="above",
-            ))
+            shapes.append({
+                "type": "rect", "x0": lo - 0.5, "x1": hi + 0.5, "y0": lo - 0.5, "y1": hi + 0.5,
+                "line": {"color": color, "width": 2.5}, "fillcolor": "rgba(0,0,0,0)", "layer": "above",
+            })
 
         fig_cm = go.Figure(go.Heatmap(
             z=z_norm.tolist(), x=class_order, y=class_order,
             colorscale="Blues", zmin=0, zmax=1,
             text=text, texttemplate="%{text}", textfont={"size": 8},
             hovertemplate="True: %{y}<br>Also predicts: %{x}<br>P = %{z:.3f}<extra></extra>",
-            colorbar=dict(title="P(pred j | true i)"),
+            colorbar={"title": "P(pred j | true i)"},
         ))
         fig_cm.update_layout(
-            title=dict(text=f"Co-activation matrix — Epoch {ep}", font=dict(size=13)),
-            xaxis=dict(title="Also predicted", tickangle=45, tickfont=dict(size=9),
-                       tickmode="array", tickvals=list(range(n_classes)), ticktext=class_order),
-            yaxis=dict(title="True class", tickfont=dict(size=9), autorange="reversed",
-                       tickmode="array", tickvals=list(range(n_classes)), ticktext=class_order),
-            height=660, margin=dict(l=180, r=20, t=50, b=180), shapes=shapes,
+            title={"text": f"Co-activation matrix — Epoch {ep}", "font": {"size": 13}},
+            xaxis={"title": "Also predicted", "tickangle": 45, "tickfont": {"size": 9},
+                       "tickmode": "array", "tickvals": list(range(n_classes)), "ticktext": class_order},
+            yaxis={"title": "True class", "tickfont": {"size": 9}, "autorange": "reversed",
+                       "tickmode": "array", "tickvals": list(range(n_classes)), "ticktext": class_order},
+            height=660, margin={"l": 180, "r": 20, "t": 50, "b": 180}, shapes=shapes,
         )
         _show(fig_cm, f"confusion_matrix_ep{ep}")

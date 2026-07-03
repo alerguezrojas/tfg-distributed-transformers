@@ -101,8 +101,7 @@ def test_dataset_profiler_io_bottleneck():
 
 def test_performance_predictor_vit_base_v3():
     from src.benchmark import PerformancePredictor
-    pred = PerformancePredictor().predict("vit_base_patch16_224", n_epochs=30,
-                                          has_llrd=True, has_label_smoothing=True)
+    pred = PerformancePredictor().predict("vit_base_patch16_224", n_epochs=30)
     assert pred.predicted_best_f1 > 0.6, "ViT-Base debería alcanzar F1 > 0.6"
     assert 1 <= pred.predicted_best_epoch <= 30
     assert pred.predicted_early_stop_epoch > pred.predicted_best_epoch
@@ -120,8 +119,7 @@ def test_performance_predictor_vit_tiny():
 
 def test_performance_predictor_curve_monotone_increasing_initially():
     from src.benchmark import PerformancePredictor
-    pred = PerformancePredictor().predict("vit_base_patch16_224", n_epochs=15,
-                                          has_llrd=True, has_label_smoothing=True)
+    pred = PerformancePredictor().predict("vit_base_patch16_224", n_epochs=15)
     # Los primeros 5 epochs deben mostrar crecimiento
     early = pred.curve_f1_val[:5]
     assert early[-1] > early[0], "La curva debe crecer en los primeros epochs"

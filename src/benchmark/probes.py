@@ -44,7 +44,6 @@ class HardwareProbe:
     def probe_cpu(self) -> CPUInfo:
         try:
             import psutil, platform
-            cpu = psutil.cpu_percent  # trigger import
             freq = psutil.cpu_freq()
             ram = psutil.virtual_memory()
             return CPUInfo(

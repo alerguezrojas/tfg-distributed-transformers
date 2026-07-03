@@ -11,6 +11,8 @@ from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _metric_fig, _show
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (_dur_str, _load_df, _safe_max, _safe_val_at_best)
 
+_TRAIN_WH = "Train (Wh)"
+
 
 def _test_callout(ctx: DashboardContext) -> None:
     """Held-out TEST-set results (from scripts/eval.py), shown above the tabs.
@@ -56,10 +58,8 @@ def _test_callout(ctx: DashboardContext) -> None:
 
 
 def _curves(ctx: DashboardContext) -> None:
-    runs = ctx.runs
     selected_run = ctx.selected_run
     run = ctx.run
-    refresh_interval = ctx.refresh_interval
     if selected_run is None:
         st.info("Select a run in the sidebar.")
     else:
@@ -115,7 +115,7 @@ def _curves(ctx: DashboardContext) -> None:
                 extra_thresh = [go.Scatter(
                     x=df["epoch"], y=df["f1_at_threshold"],
                     name="F1 @ optimal threshold", mode="lines",
-                    line=dict(color=COLORS[2], width=2, dash="dot"),
+                    line={"color": COLORS[2], "width": 2, "dash": "dot"},
                 )]
 
             c1, c2 = st.columns(2)
@@ -146,13 +146,13 @@ def _curves(ctx: DashboardContext) -> None:
                         if pd.notna(row.get("energy_eval_wh")):
                             entry = {"epoch": row["epoch"], "Eval (Wh)": row["energy_eval_wh"]}
                             if pd.notna(row.get("energy_train_j")):
-                                entry["Train (Wh)"] = row["energy_train_j"] / 3600
+                                entry[_TRAIN_WH] = row["energy_train_j"] / 3600
                             rows_e.append(entry)
                     if rows_e:
                         df_e = pd.DataFrame(rows_e)
                         fig_e = go.Figure()
-                        if "Train (Wh)" in df_e.columns:
-                            fig_e.add_trace(go.Bar(x=df_e["epoch"], y=df_e["Train (Wh)"],
+                        if _TRAIN_WH in df_e.columns:
+                            fig_e.add_trace(go.Bar(x=df_e["epoch"], y=df_e[_TRAIN_WH],
                                                    name="Train", marker_color=COLORS[0], opacity=0.85))
                         fig_e.add_trace(go.Bar(x=df_e["epoch"], y=df_e["Eval (Wh)"],
                                                name="Eval", marker_color=COLORS[1], opacity=0.85))
@@ -170,7 +170,7 @@ def _curves(ctx: DashboardContext) -> None:
                         for name_p, col_p, color_p in power_cols:
                             fig_p.add_trace(go.Scatter(x=df["epoch"], y=df[col_p],
                                                        name=name_p, mode="lines+markers",
-                                                       line=dict(color=color_p, width=2)))
+                                                       line={"color": color_p, "width": 2}))
                         fig_p.update_layout(**_base_layout(260, "Average GPU power per epoch (W)"),
                                             xaxis_title="Epoch", yaxis_title="Watts")
                         _show(fig_p, "gpu_power")

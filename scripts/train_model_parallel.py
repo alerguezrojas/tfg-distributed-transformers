@@ -60,14 +60,17 @@ def parse_args():
     return p.parse_args()
 
 
+_CUDA_0 = "cuda:0"
+
+
 def _pick_devices(arg: str | None) -> list[str]:
     if arg:
         return [d.strip() for d in arg.split(",")]
     n = torch.cuda.device_count() if torch.cuda.is_available() else 0
     if n >= 2:
-        return ["cuda:0", "cuda:1"]
+        return [_CUDA_0, "cuda:1"]
     if n == 1:
-        return ["cuda:0", "cuda:0"]
+        return [_CUDA_0, _CUDA_0]
     return ["cpu", "cpu"]
 
 

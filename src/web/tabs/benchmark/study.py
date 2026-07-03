@@ -44,7 +44,7 @@ def render_study(meta, benchmark_csvs) -> None:
                 fig_lr = go.Figure()
                 fig_lr.add_trace(go.Scatter(
                     x=lr_lrs, y=lr_losses, mode="lines+markers",
-                    line=dict(color=COLORS[0], width=2), name="Loss",
+                    line={"color": COLORS[0], "width": 2}, name="Loss",
                 ))
                 if sug > 0:
                     fig_lr.add_vline(x=sug, line_dash="dash", line_color=COLORS[2],
@@ -78,7 +78,7 @@ def render_study(meta, benchmark_csvs) -> None:
                 fig_conv = go.Figure()
                 fig_conv.add_trace(go.Scatter(
                     x=conv_steps, y=conv_losses, mode="markers",
-                    marker=dict(color=COLORS[0], size=5), name="Measured loss",
+                    marker={"color": COLORS[0], "size": 5}, name="Measured loss",
                 ))
                 # Fitted curve a·t^-b+c
                 a = float(conv.get("fit_a", 0) or 0)
@@ -89,7 +89,7 @@ def render_study(meta, benchmark_csvs) -> None:
                     y_fit = a * np.power(t_fit, -b) + c
                     fig_conv.add_trace(go.Scatter(
                         x=t_fit, y=y_fit, mode="lines",
-                        line=dict(color=COLORS[1], width=2, dash="dash"),
+                        line={"color": COLORS[1], "width": 2, "dash": "dash"},
                         name=f"Fit a·t^-b+c (R²={float(conv.get('r_squared',0) or 0):.2f})",
                     ))
                 fig_conv.update_layout(
@@ -102,7 +102,7 @@ def render_study(meta, benchmark_csvs) -> None:
                 if conv_f1s:
                     fig_cf1 = go.Figure(go.Scatter(
                         x=conv_steps, y=conv_f1s, mode="lines+markers",
-                        line=dict(color=COLORS[2], width=2), marker=dict(size=4),
+                        line={"color": COLORS[2], "width": 2}, marker={"size": 4},
                         name="Train F1 (batch)",
                     ))
                     fig_cf1.update_layout(

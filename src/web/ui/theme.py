@@ -41,8 +41,8 @@ _FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial
 
 
 # ── Dark-mode palette (the chart/plot surfaces; CSS handles the Streamlit chrome) ──
-_DARK = dict(ink="#E6E8EB", muted="#9AA0A6", grid="#2A2F3A", line="#5B626B",
-             paper="#161A23", border="#2A2F3A")
+_DARK = {"ink": "#E6E8EB", "muted": "#9AA0A6", "grid": "#2A2F3A", "line": "#5B626B",
+             "paper": "#161A23", "border": "#2A2F3A"}
 
 
 # ── Plotly template ─────────────────────────────────────────────────────────────────
@@ -55,27 +55,27 @@ def register_plotly_template(mode: str = "light") -> None:
     line = _DARK["line"] if dark else "#9aa0a6"
     paper = _DARK["paper"] if dark else "white"
     border = _DARK["border"] if dark else BORDER
-    axis = dict(
-        gridcolor=grid, linecolor=line, zeroline=False, ticks="outside",
-        tickcolor=line, ticklen=4,
-        title=dict(font=dict(size=12, color=muted)),
-        tickfont=dict(size=11, color=muted),
-    )
+    axis = {
+        "gridcolor": grid, "linecolor": line, "zeroline": False, "ticks": "outside",
+        "tickcolor": line, "ticklen": 4,
+        "title": {"font": {"size": 12, "color": muted}},
+        "tickfont": {"size": 11, "color": muted},
+    }
     tmpl = go.layout.Template()
     tmpl.layout = go.Layout(
-        font=dict(family=_FONT, size=12.5, color=ink),
-        title=dict(font=dict(size=13, color=ink), x=0, xanchor="left", pad=dict(b=6)),
+        font={"family": _FONT, "size": 12.5, "color": ink},
+        title={"font": {"size": 13, "color": ink}, "x": 0, "xanchor": "left", "pad": {"b": 6}},
         paper_bgcolor=paper, plot_bgcolor=paper,
         colorway=CATEGORICAL,
-        margin=dict(l=56, r=20, t=40, b=42),
+        margin={"l": 56, "r": 20, "t": 40, "b": 42},
         xaxis=axis, yaxis=axis,
-        legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1,
-                    font=dict(size=11.5), bgcolor="rgba(0,0,0,0)"),
-        hoverlabel=dict(font=dict(family=_FONT, size=12), bgcolor=paper, bordercolor=border),
-        colorscale=dict(sequential=SEQUENTIAL, diverging=DIVERGING),
+        legend={"orientation": "h", "yanchor": "bottom", "y": 1.0, "xanchor": "right", "x": 1,
+                    "font": {"size": 11.5}, "bgcolor": "rgba(0,0,0,0)"},
+        hoverlabel={"font": {"family": _FONT, "size": 12}, "bgcolor": paper, "bordercolor": border},
+        colorscale={"sequential": SEQUENTIAL, "diverging": DIVERGING},
     )
-    tmpl.data.scatter = [go.Scatter(line=dict(width=1.8), marker=dict(size=4))]
-    tmpl.data.bar = [go.Bar(marker=dict(line=dict(width=0)))]
+    tmpl.data.scatter = [go.Scatter(line={"width": 1.8}, marker={"size": 4})]
+    tmpl.data.bar = [go.Bar(marker={"line": {"width": 0}})]
     pio.templates["tfg"] = tmpl
     pio.templates.default = "tfg"
 

@@ -162,7 +162,7 @@ def main():
         num_classes=num_classes,
         pretrained=False,
     )
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=False)
+    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state_dict"])
     model = model.to(device)
     resumed_epoch = ckpt.get("epoch", "?")
@@ -195,7 +195,6 @@ def main():
     rec_05    = m.recall(preds_05, labels)
 
     best_t, best_f1 = threshold_search(probs, labels)
-    preds_bt = (probs > best_t).long()
 
     print("\n── Aggregate metrics ─────────────────────────────────────────────")
     print(f"  BCE Loss          : {avg_loss:.6f}")

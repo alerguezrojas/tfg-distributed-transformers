@@ -133,7 +133,7 @@ class Benchmarker:
         self._scaler.step(self._optimizer)
         self._scaler.update()
 
-    def _eval_step(self, images, labels):
+    def _eval_step(self, images, _labels):
         with torch.no_grad(), self._autocast():
             self._model(images.to(self._device))
 

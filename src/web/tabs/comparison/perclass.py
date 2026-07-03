@@ -50,15 +50,15 @@ def _perclass_heatmap_section(sel: list[tuple[str, RunInfo]]) -> None:
         colorscale=[[0.0, theme.BAD], [0.5, theme.WARN], [1.0, theme.GOOD]],
         zmin=0.0, zmax=1.0, xgap=2, ygap=2,   # cell gaps → rows easy to tell apart
         text=[[f"{v:.2f}" for v in row] for row in mat.values],
-        texttemplate="%{text}", textfont=dict(size=10),
-        colorbar=dict(title="F1", thickness=12),
+        texttemplate="%{text}", textfont={"size": 10},
+        colorbar={"title": "F1", "thickness": 12},
         hovertemplate="%{y}<br>%{x}<br>F1=%{z:.3f}<extra></extra>",
     ))
     fig.update_layout(
-        title=dict(text="Per-class F1 across runs"),
+        title={"text": "Per-class F1 across runs"},
         height=max(420, 24 * len(mat) + 170),
-        margin=dict(l=240, b=40, t=95),
-        xaxis=dict(tickangle=0, side="top", tickfont=dict(size=10)),
+        margin={"l": 240, "b": 40, "t": 95},
+        xaxis={"tickangle": 0, "side": "top", "tickfont": {"size": 10}},
     )
     _show(fig, "compare_perclass_heatmap")
     zeros = (mat <= 0.01).all(axis=1)

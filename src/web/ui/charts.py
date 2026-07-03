@@ -19,6 +19,8 @@ theme.register_plotly_template()
 # Backwards-compatible alias: the categorical palette from the design system.
 COLORS = theme.CATEGORICAL
 
+_LINES_MARKERS = "lines+markers"
+
 # ── Chart helpers ───────────────────────────────────────────────────────────────
 
 # No displayModeBar key → Plotly shows the toolbar only on hover (cleaner than a
@@ -50,7 +52,7 @@ def _dl_csv(df: pd.DataFrame, filename: str = "data.csv", label: str = "Download
 
 def _base_layout(height: int = 320, title: str = "", margin: dict | None = None) -> dict:
     """Chart-specific layout only; the rest is inherited from the tfg template."""
-    d = dict(title=dict(text=title), height=height)
+    d = {"title": {"text": title}, "height": height}
     if margin is not None:
         d["margin"] = margin
     return d
@@ -68,17 +70,17 @@ def _metric_fig(
     if col_train in df.columns and df[col_train].notna().any():
         fig.add_trace(go.Scatter(
             x=df["epoch"], y=df[col_train], name="Train",
-            mode="lines+markers", line=dict(color=color_train),
+            mode=_LINES_MARKERS, line={"color": color_train},
         ))
     if col_val in df.columns and df[col_val].notna().any():
         fig.add_trace(go.Scatter(
             x=df["epoch"], y=df[col_val], name="Val",
-            mode="lines+markers", line=dict(color=color_val),
+            mode=_LINES_MARKERS, line={"color": color_val},
         ))
     for tr in (extra_traces or []):
         fig.add_trace(tr)
     fig.update_layout(
-        title=dict(text=title), xaxis_title="Epoch", yaxis_title=y_label,
+        title={"text": title}, xaxis_title="Epoch", yaxis_title=y_label,
         height=height, hovermode="x unified",
     )
     return fig
@@ -95,18 +97,18 @@ def _overlay_fig(
         if col in df.columns and df[col].notna().any():
             n_series += 1
             fig.add_trace(go.Scatter(
-                x=df["epoch"], y=df[col], name=label, mode="lines+markers",
-                line=dict(color=COLORS[i % len(COLORS)]),
+                x=df["epoch"], y=df[col], name=label, mode=_LINES_MARKERS,
+                line={"color": COLORS[i % len(COLORS)]},
             ))
     # Many runs with long labels: legend below the plot (one row per run), and the
     # figure grows so the plot area keeps its size. Overrides the template's
     # top-right legend, which only fits a couple of short series.
     legend_px = 20 * max(n_series, 1)
     fig.update_layout(
-        title=dict(text=title), xaxis_title="Epoch", yaxis_title=y_label,
-        height=height + legend_px, margin=dict(b=60 + legend_px),
-        legend=dict(orientation="h", yanchor="top", y=-0.18, xanchor="left", x=0,
-                    font=dict(size=11)),
+        title={"text": title}, xaxis_title="Epoch", yaxis_title=y_label,
+        height=height + legend_px, margin={"b": 60 + legend_px},
+        legend={"orientation": "h", "yanchor": "top", "y": -0.18, "xanchor": "left", "x": 0,
+                    "font": {"size": 11}},
     )
     return fig
 
