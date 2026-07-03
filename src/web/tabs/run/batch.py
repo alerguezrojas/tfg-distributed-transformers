@@ -113,7 +113,7 @@ def _batch(ctx: DashboardContext) -> None:
                         fig_b.add_trace(go.Scatter(
                             x=subset["batch"], y=subset[batch_metric],
                             name=f"Ep {ep}", mode="lines",
-                            line=dict(color=color, width=1), opacity=0.35,
+                            line={"color": color, "width": 1}, opacity=0.35,
                             legendgroup=f"ep{ep}",
                         ))
 
@@ -122,7 +122,7 @@ def _batch(ctx: DashboardContext) -> None:
                             fig_b.add_trace(go.Scatter(
                                 x=subset["batch"], y=ma,
                                 name=f"Ep {ep} MA{ma_window}", mode="lines",
-                                line=dict(color=color, width=2.5),
+                                line={"color": color, "width": 2.5},
                                 legendgroup=f"ep{ep}",
                             ))
 
@@ -135,7 +135,7 @@ def _batch(ctx: DashboardContext) -> None:
                                 fig_b.add_trace(go.Scatter(
                                     x=spikes["batch"], y=spikes[batch_metric],
                                     name=f"Spike Ep{ep}", mode="markers",
-                                    marker=dict(color="red", size=7, symbol="x"),
+                                    marker={"color": "red", "size": 7, "symbol": "x"},
                                     legendgroup=f"ep{ep}", showlegend=False,
                                 ))
 
@@ -183,7 +183,7 @@ def _batch(ctx: DashboardContext) -> None:
                     fig_g.add_trace(go.Scatter(
                         x=all_sorted["global_batch"], y=all_sorted[global_metric],
                         name="Data", mode="lines",
-                        line=dict(color=COLORS[0], width=1), opacity=0.3,
+                        line={"color": COLORS[0], "width": 1}, opacity=0.3,
                     ))
 
                     if gma_window > 1 and len(all_sorted) >= gma_window:
@@ -191,7 +191,7 @@ def _batch(ctx: DashboardContext) -> None:
                         fig_g.add_trace(go.Scatter(
                             x=all_sorted["global_batch"], y=gma,
                             name=f"MA{gma_window}", mode="lines",
-                            line=dict(color=COLORS[0], width=2.5),
+                            line={"color": COLORS[0], "width": 2.5},
                         ))
 
                     # Vertical lines per epoch
@@ -230,7 +230,7 @@ def _batch(ctx: DashboardContext) -> None:
                     fig_lr.add_trace(go.Scatter(
                         x=lr_sorted["global_batch"], y=lr_sorted["lr"],
                         name="Learning rate", mode="lines",
-                        line=dict(color=COLORS[2], width=2),
+                        line={"color": COLORS[2], "width": 2},
                     ))
 
                     # Mark epoch boundaries

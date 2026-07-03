@@ -115,7 +115,7 @@ def _curves(ctx: DashboardContext) -> None:
                 extra_thresh = [go.Scatter(
                     x=df["epoch"], y=df["f1_at_threshold"],
                     name="F1 @ optimal threshold", mode="lines",
-                    line=dict(color=COLORS[2], width=2, dash="dot"),
+                    line={"color": COLORS[2], "width": 2, "dash": "dot"},
                 )]
 
             c1, c2 = st.columns(2)
@@ -170,7 +170,7 @@ def _curves(ctx: DashboardContext) -> None:
                         for name_p, col_p, color_p in power_cols:
                             fig_p.add_trace(go.Scatter(x=df["epoch"], y=df[col_p],
                                                        name=name_p, mode="lines+markers",
-                                                       line=dict(color=color_p, width=2)))
+                                                       line={"color": color_p, "width": 2}))
                         fig_p.update_layout(**_base_layout(260, "Average GPU power per epoch (W)"),
                                             xaxis_title="Epoch", yaxis_title="Watts")
                         _show(fig_p, "gpu_power")

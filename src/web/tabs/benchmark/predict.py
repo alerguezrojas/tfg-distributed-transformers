@@ -183,11 +183,11 @@ def _analytic_predictor() -> None:
             x=ep + ep[::-1],
             y=[v + q.band for v in q.curve_val_f1] + [v - q.band for v in q.curve_val_f1[::-1]],
             fill="toself", fillcolor="rgba(34,114,180,0.10)",
-            line=dict(color="rgba(255,255,255,0)"), name=f"±{q.band:.3f}", hoverinfo="skip"))
+            line={"color": "rgba(255,255,255,0)"}, name=f"±{q.band:.3f}", hoverinfo="skip"))
         fig_q.add_trace(go.Scatter(x=ep, y=q.curve_val_f1, name="Expected Val F1",
-                                   mode="lines", line=dict(color=COLORS[0], width=3)))
+                                   mode="lines", line={"color": COLORS[0], "width": 3}))
         fig_q.add_trace(go.Scatter(x=ep, y=q.curve_train_f1, name="Expected Train F1",
-                                   mode="lines", line=dict(color=COLORS[0], width=1.6, dash="dot"),
+                                   mode="lines", line={"color": COLORS[0], "width": 1.6, "dash": "dot"},
                                    opacity=0.6))
         fig_q.update_layout(**_base_layout(300, "Expected Val F1 curve (empirical prior)"),
                             xaxis_title="Epoch", yaxis_title="Val F1 (macro)")
@@ -205,9 +205,9 @@ def _analytic_predictor() -> None:
             sp_vals.append(pn.speedup if pn else 0.0)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=ns, y=ns, name="Ideal (linear)",
-                                 line=dict(color="#94a3b8", dash="dash")))
+                                 line={"color": "#94a3b8", "dash": "dash"}))
         fig.add_trace(go.Scatter(x=ns, y=sp_vals, name="Predicted", mode="lines+markers",
-                                 line=dict(color=COLORS[0], width=2), marker=dict(size=8)))
+                                 line={"color": COLORS[0], "width": 2}, marker={"size": 8}))
         fig.update_layout(**_base_layout(300, "Speedup vs number of GPUs"),
                           xaxis_title="GPUs", yaxis_title="Speedup ×")
         fig.update_xaxes(tickvals=ns)

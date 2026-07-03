@@ -178,12 +178,12 @@ def _time_by_env_bars(gpu_secs_by_env: dict[str, float]) -> None:
     hrs = [s / 3600 for _, s in items]
     fig = go.Figure(go.Bar(
         x=[e.capitalize() for e in envs], y=hrs,
-        marker=dict(color=[_env_color(e) for e in envs], line=dict(width=0)),
+        marker={"color": [_env_color(e) for e in envs], "line": {"width": 0}},
         text=[f"{h:.0f} h" for h in hrs], textposition="outside",
         hovertemplate="<b>%{x}</b><br>%{y:.1f} GPU hours<extra></extra>",
     ))
     fig.update_layout(**_base_layout(145), showlegend=False, yaxis_title="GPU hours",
-                      margin=dict(l=10, r=10, t=20, b=10))
+                      margin={"l": 10, "r": 10, "t": 20, "b": 10})
     _show(fig, "ov_time_env_bars")
 
 
@@ -193,13 +193,13 @@ def _split_pie() -> None:
     vals = [SPLIT_SIZES["train"], SPLIT_SIZES["val"], SPLIT_SIZES["test"]]
     fig = go.Figure(go.Pie(
         labels=labels, values=vals, sort=False,
-        marker=dict(colors=[COLORS[0], COLORS[1], COLORS[2]],
-                    line=dict(width=1.5, color="white")),
-        textinfo="label+percent", textfont=dict(size=11),
+        marker={"colors": [COLORS[0], COLORS[1], COLORS[2]],
+                    "line": {"width": 1.5, "color": "white"}},
+        textinfo="label+percent", textfont={"size": 11},
         hovertemplate="<b>%{label}</b><br>%{value:,} patches · %{percent}<extra></extra>",
     ))
     fig.update_layout(**_base_layout(145), showlegend=False,
-                      margin=dict(l=6, r=6, t=10, b=6))
+                      margin={"l": 6, "r": 6, "t": 10, "b": 6})
     _show(fig, "ov_split_pie")
 
 
@@ -211,12 +211,12 @@ def _class_treemap(dist) -> None:
     fig = go.Figure(go.Treemap(
         labels=[_short_cls(c, 16) for c in d["class"]], parents=[""] * len(d),
         values=d["train_count"],
-        marker=dict(colors=colors, line=dict(width=1, color="white")),
-        texttemplate="%{label}", textfont=dict(size=9), customdata=list(d["class"]),
+        marker={"colors": colors, "line": {"width": 1, "color": "white"}},
+        texttemplate="%{label}", textfont={"size": 9}, customdata=list(d["class"]),
         hovertemplate="<b>%{customdata}</b><br>%{value:,} patches · %{percentRoot}<extra></extra>",
-        tiling=dict(pad=2),
+        tiling={"pad": 2},
     ))
-    fig.update_layout(**_base_layout(145), margin=dict(t=6, l=0, r=0, b=0))
+    fig.update_layout(**_base_layout(145), margin={"t": 6, "l": 0, "r": 0, "b": 0})
     _show(fig, "ov_class_treemap")
 
 
@@ -297,9 +297,9 @@ def _run_highlight(df: pd.DataFrame, anomalies_path=None, compact: bool = False)
             fig = go.Figure()
             if "train_f1" in df.columns:
                 fig.add_trace(go.Scatter(x=df["epoch"], y=df["train_f1"], name="Train",
-                                         line=dict(color=COLORS[0], width=2)))
+                                         line={"color": COLORS[0], "width": 2}))
             fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_f1"], name="Val",
-                                     line=dict(color=COLORS[1], width=2)))
+                                     line={"color": COLORS[1], "width": 2}))
             fig.update_layout(**_base_layout(108, "F1 (macro)"), xaxis_title="Epoch", yaxis_title="F1")
             _show(fig, "hub_f1")
         with cc2:
@@ -307,9 +307,9 @@ def _run_highlight(df: pd.DataFrame, anomalies_path=None, compact: bool = False)
                 fig = go.Figure()
                 if "train_loss" in df.columns:
                     fig.add_trace(go.Scatter(x=df["epoch"], y=df["train_loss"], name="Train",
-                                             line=dict(color=COLORS[0], width=2)))
+                                             line={"color": COLORS[0], "width": 2}))
                 fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_loss"], name="Val",
-                                         line=dict(color=COLORS[3], width=2)))
+                                         line={"color": COLORS[3], "width": 2}))
                 fig.update_layout(**_base_layout(108, "Loss (BCE)"), xaxis_title="Epoch", yaxis_title="Loss")
                 _show(fig, "hub_loss")
 

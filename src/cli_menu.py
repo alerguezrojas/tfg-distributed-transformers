@@ -145,9 +145,9 @@ def run_menu() -> None:
         elif choice == "2":
             strat = Prompt.ask("Strategy", choices=list(STRATEGIES), default="single")
             config = _pick("Config", _list_configs(), default="configs/train.yaml")
-            kw = dict(model=_pick_model("Model", allow_from_config=True),
-                      epochs=_opt_int("Epochs (blank = from config)"),
-                      trace=Prompt.ask("Trace", choices=["off", "simple", "deep"], default="simple"))
+            kw = {"model": _pick_model("Model", allow_from_config=True),
+                      "epochs": _opt_int("Epochs (blank = from config)"),
+                      "trace": Prompt.ask("Trace", choices=["off", "simple", "deep"], default="simple")}
             if strat in ("ddp", "heterogeneous"):
                 kw["n_gpus"] = IntPrompt.ask("GPUs per node", default=2)
             if Confirm.ask("Advanced options (precision, layers, fn, multi-node)?", default=False):

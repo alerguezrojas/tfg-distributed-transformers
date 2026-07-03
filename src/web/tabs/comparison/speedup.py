@@ -116,7 +116,7 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
     ))
     fig_sp.update_layout(
         **_base_layout(150 + 40 * len(s_lbls), "Speedup vs baseline",
-                       margin=dict(l=10, r=64, t=48, b=40)),
+                       margin={"l": 10, "r": 64, "t": 48, "b": 40}),
         xaxis_title="× speedup  (green = faster than baseline, red = slower)",
         showlegend=False,
     )
@@ -176,21 +176,21 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
         fig_scale.add_trace(go.Scatter(
             x=world_sizes, y=[base_t / ws / 60 for ws in world_sizes],
             name="Theoretical (100% efficiency)",
-            line=dict(color=COLORS[4], width=2, dash="dash"), mode="lines+markers",
+            line={"color": COLORS[4], "width": 2, "dash": "dash"}, mode="lines+markers",
         ))
         for i, (lbl, r, t) in enumerate(dist_timed):
             fig_scale.add_trace(go.Scatter(
                 x=[2], y=[t / 60], name=lbl, mode="markers",
-                marker=dict(color=COLORS[i % len(COLORS)], size=14, symbol="star"),
+                marker={"color": COLORS[i % len(COLORS)], "size": 14, "symbol": "star"},
             ))
         _n = len(dist_timed)
         fig_scale.update_layout(
             **_base_layout(320 + 20 * _n, "Epoch time vs number of workers",
-                           margin=dict(l=50, r=16, t=48, b=70 + 20 * _n)),
+                           margin={"l": 50, "r": 16, "t": 48, "b": 70 + 20 * _n}),
             xaxis_title="Number of workers (processes)", yaxis_title="Minutes per epoch",
         )
-        fig_scale.update_layout(legend=dict(orientation="h", yanchor="top", y=-0.22,
-                                            xanchor="left", x=0, font=dict(size=11)))
+        fig_scale.update_layout(legend={"orientation": "h", "yanchor": "top", "y": -0.22,
+                                            "xanchor": "left", "x": 0, "font": {"size": 11}})
         fig_scale.update_xaxes(tickvals=world_sizes)
         _show(fig_scale, "ddp_scaling")
         st.caption(
