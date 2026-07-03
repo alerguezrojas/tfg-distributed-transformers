@@ -1,0 +1,6 @@
+projectKey=paravit-lab
+serverUrl=http://localhost:9000
+serverVersion=26.6.0.123539
+dashboardUrl=http://localhost:9000/dashboard?id=paravit-lab
+ceTaskId=7deede67-6008-46ca-b1dc-d2d061db061e
+ceTaskUrl=http://localhost:9000/api/ce/task?id=7deede67-6008-46ca-b1dc-d2d061db061e

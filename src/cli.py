@@ -20,6 +20,7 @@ just assemble them and run them (or print them with ``--dry-run``).
 """
 from __future__ import annotations
 
+import math
 import subprocess
 import sys
 from pathlib import Path
@@ -123,7 +124,7 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
         cmd += ["--compare-precision"]
     if convergence_study:
         cmd += ["--convergence-study", "--study-steps", str(study_steps)]
-    if nfs_factor != 1.0:
+    if not math.isclose(nfs_factor, 1.0):
         cmd += ["--nfs-factor", str(nfs_factor)]
     if device:
         cmd += ["--device", str(device)]
