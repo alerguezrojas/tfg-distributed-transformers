@@ -1189,6 +1189,7 @@ A raíz de una nota de Paco en la memoria (medir la **mantenibilidad** del códi
 - El primer análisis dio: 4 bugs (comparaciones de floats con `==`), 2 vulnerabilidades (`torch.load` con `weights_only=False`, regla S6985) y 224 smells. Arreglos: `math.isclose` en las comparaciones; **`weights_only=True` verificado cargando un checkpoint real** (con `add_safe_globals` donde hizo falta); `dict()/list()` → literales (S7498); variables locales y parámetros sin usar (S1481/S1172); literales repetidos → constantes de módulo (S1192).
 - **411 tests en verde antes y después** + humo del CLI (`paravit estimate`, `train --dry-run`): comportamiento intacto.
 - Documentado en el README (sección "Calidad del código") y en la memoria (cap 1 §1.5 y cap 5 §Verificación).
+- **SonarCloud conectado (03/07/26):** el repo se analiza automáticamente en cada push a main (proyecto `alerguezrojas_tfg-distributed-transformers`, organización `alerguezrojas`, plan gratuito para repo público). `.sonarcloud.properties` fija el mismo alcance que el análisis local. Quality Gate OK + triple A; los 13 avisos de seguridad (S2245 pseudorandom en código ML y S8707 rutas por CLI) están **aceptados con justificación** (usos legítimos, no criptografía / herramienta local). Insignias vivas en el README (alert_status + 3 ratings). Panel: https://sonarcloud.io/summary/overall?id=alerguezrojas_tfg-distributed-transformers
 
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
