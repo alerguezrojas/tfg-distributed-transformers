@@ -15,6 +15,9 @@ from src.web.ui.helpers import (_get_benchmark_csvs, _get_runs, _load_df, _run_c
                                 _safe_max)
 
 
+_VAL_F1 = "Val F1"
+
+
 def _short(lbl: str) -> str:
     return re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
 
@@ -128,7 +131,7 @@ def _select_benchmark(parsed, env, model, bs):
             (df["batch_size"] == bs).any()
         return (has_bs, e == env, m.get("n_train") is not None)
 
-    e, _mo, m, df = max(cands, key=_score)
+    _e, _mo, m, df = max(cands, key=_score)
     return m, df
 
 
@@ -271,7 +274,7 @@ def _metric_block(records: list[dict], metric_key: str, title: str, ytitle: str,
     _show(fig, key)
 
 
-def render_validate(ctx) -> object:
+def render_validate(_ctx) -> object:
     """Predicted vs actual, Compare-style. Each single-GPU run is matched to the
     benchmark report of its model AND the batch size it actually used, so the
     estimate is for the same configuration the run ran (this is the fix for the
@@ -401,10 +404,10 @@ def render_validate(ctx) -> object:
                "the real bar is the run's measured best Val F1.")
 
     # ── Calibration scatter (predicted vs real, with the diagonal) ──────────────
-    metric = st.radio("Calibration plot", ["Time/epoch (min)", "Energy/epoch (Wh)", "Val F1"],
+    metric = st.radio("Calibration plot", ["Time/epoch (min)", "Energy/epoch (Wh)", _VAL_F1],
                       horizontal=True, key="cal_metric")
-    _key = {"Time/epoch (min)": "t", "Energy/epoch (Wh)": "e", "Val F1": "f"}[metric]
-    _unit = {"t": "min/epoch", "e": "Wh/epoch", "f": "Val F1"}[_key]
+    _key = {"Time/epoch (min)": "t", "Energy/epoch (Wh)": "e", _VAL_F1: "f"}[metric]
+    _unit = {"t": "min/epoch", "e": "Wh/epoch", "f": _VAL_F1}[_key]
     pts = [d for d in records if d[_key]["r"] is not None
            and (d[_key]["a"] is not None or d[_key]["b"] is not None)]
     if pts:
@@ -412,7 +415,7 @@ def render_validate(ctx) -> object:
         _hi = (max(_vals) * 1.1) if _vals else 1.0
         figc = go.Figure()
         figc.add_trace(go.Scatter(x=[0, _hi], y=[0, _hi], mode="lines",
-                                  line=dict(color="#94a3b8", dash="dash"),
+                                  line={"color": "#94a3b8", "dash": "dash"},
                                   name="perfect estimate", hoverinfo="skip"))
         for _src, _name, _col in (("a", "analytic", _SRC_COLOR["analytic"]),
                                   ("b", "benchmark", _SRC_COLOR["benchmark"])):
@@ -422,8 +425,8 @@ def render_validate(ctx) -> object:
             if _xs:
                 figc.add_trace(go.Scatter(
                     x=_xs, y=_ys, mode="markers+text", text=_tx,
-                    textposition="top center", textfont=dict(size=9),
-                    marker=dict(size=12, color=_col, line=dict(width=1, color="white")),
+                    textposition="top center", textfont={"size": 9},
+                    marker={"size": 12, "color": _col, "line": {"width": 1, "color": "white"}},
                     name=_name,
                     hovertemplate="%{text}<br>predicted %{x:.2f}<br>real %{y:.2f}<extra></extra>"))
         figc.update_layout(**_base_layout(360, f"Predicted vs real — {_unit}"),
@@ -528,7 +531,7 @@ def render_f1_prediction(meta, selected_run, benchmark_csvs) -> None:
                     x=curve_epochs + curve_epochs[::-1],
                     y=[v + uncertainty for v in curve_val] + [v - uncertainty for v in curve_val[::-1]],
                     fill="toself", fillcolor="rgba(37,99,235,0.1)",
-                    line=dict(color="rgba(255,255,255,0)"),
+                    line={"color": "rgba(255,255,255,0)"},
                     name="Uncertainty (±0.015 F1)",
                     showlegend=True,
                 ))
@@ -537,7 +540,7 @@ def render_f1_prediction(meta, selected_run, benchmark_csvs) -> None:
                 fig_pred.add_trace(go.Scatter(
                     x=curve_epochs, y=curve_val,
                     name="Estimated Val F1",
-                    mode="lines", line=dict(color=COLORS[0], width=3),
+                    mode="lines", line={"color": COLORS[0], "width": 3},
                 ))
 
                 # Predicted Train F1
@@ -545,7 +548,7 @@ def render_f1_prediction(meta, selected_run, benchmark_csvs) -> None:
                     fig_pred.add_trace(go.Scatter(
                         x=curve_epochs, y=curve_train,
                         name="Estimated Train F1",
-                        mode="lines", line=dict(color=COLORS[0], width=2, dash="dot"),
+                        mode="lines", line={"color": COLORS[0], "width": 2, "dash": "dot"},
                         opacity=0.6,
                     ))
 
@@ -555,7 +558,7 @@ def render_f1_prediction(meta, selected_run, benchmark_csvs) -> None:
                     fig_pred.add_trace(go.Scatter(
                         x=[pred_best_ep], y=[best_val],
                         name=f"Best epoch ({pred_best_ep})",
-                        mode="markers", marker=dict(color="gold", size=14, symbol="star"),
+                        mode="markers", marker={"color": "gold", "size": 14, "symbol": "star"},
                     ))
 
                 # Mark early stop
@@ -579,8 +582,8 @@ def render_f1_prediction(meta, selected_run, benchmark_csvs) -> None:
                                 y=df_actual_pred["val_f1"].tolist(),
                                 name="Real Val F1",
                                 mode="lines+markers",
-                                line=dict(color=COLORS[1], width=2.5),
-                                marker=dict(size=5),
+                                line={"color": COLORS[1], "width": 2.5},
+                                marker={"size": 5},
                             ))
                     except Exception:
                         pass

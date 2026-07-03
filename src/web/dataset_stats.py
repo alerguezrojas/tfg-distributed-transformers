@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 
 # ── Official BigEarthNet-S2 v2.0 class labels ────────────────────────────────
+_AGRICULTURE = "Land principally occupied by agriculture"
+
 CLASS_NAMES = [
     "Urban fabric",
     "Industrial or commercial units",
@@ -21,7 +23,7 @@ CLASS_NAMES = [
     "Permanent crops",
     "Pastures",
     "Complex cultivation patterns",
-    "Land principally occupied by agriculture",
+    _AGRICULTURE,
     "Agro-forestry areas",
     "Broad-leaved forest",
     "Coniferous forest",
@@ -45,7 +47,7 @@ _APPROX_TRAIN_COUNTS = {
     "Permanent crops": 14_500,
     "Pastures": 23_500,
     "Complex cultivation patterns": 33_000,
-    "Land principally occupied by agriculture": 3_800,
+    _AGRICULTURE: 3_800,
     "Agro-forestry areas": 11_200,
     "Broad-leaved forest": 40_000,
     "Coniferous forest": 48_000,
@@ -68,7 +70,7 @@ SPLIT_SIZES = {"train": 237_871, "val": 122_342, "test": 119_825}
 # count — the per-class support and the Overview treemap.
 _LABEL_ALIASES = {
     "Land principally occupied by agriculture, with significant areas of natural vegetation":
-        "Land principally occupied by agriculture",
+        _AGRICULTURE,
 }
 
 

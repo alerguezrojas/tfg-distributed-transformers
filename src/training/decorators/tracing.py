@@ -6,6 +6,7 @@ Extends EpochController: only overrides the _on_* hooks, never the fit loop.
 
 import csv
 import logging
+import math
 import time
 from pathlib import Path
 
@@ -76,7 +77,7 @@ class TracingDecorator(EpochController):
         opt_t = val_m.get("_optimal_threshold")
         opt_f1 = val_m.get("_f1_at_optimal_threshold")
         thresh_note = ""
-        if opt_t is not None and opt_t != 0.5:
+        if opt_t is not None and not math.isclose(opt_t, 0.5):
             thresh_note = f"  (threshold óptimo={opt_t:.2f}, F1={opt_f1:.4f})"
         self._emit(
             f"  ETA: {eta_str(epoch_times, epoch, epochs)}  "

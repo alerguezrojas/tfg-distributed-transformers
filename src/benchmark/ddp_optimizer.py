@@ -16,16 +16,6 @@ _NETWORK_BW = {
     "Gigabit":     0.125, # Ethernet Gigabit (Verode cluster)
 }
 
-# Eficiencia DDP observada en función del tipo de red
-_DDP_EFF = {
-    "NVLink":    0.92,
-    "PCIe":      0.85,
-    "InfiniBand": 0.80,
-    "Ethernet":  0.70,
-    "Gigabit":   0.60,
-}
-
-
 class DDPOptimizer:
     """Calcula la distribución óptima de recursos para entrenamiento distribuido."""
 
@@ -60,7 +50,6 @@ class DDPOptimizer:
         # Detectar tipo de interconexión
         net_type = self._infer_network_type()
         bw_gb_s = _NETWORK_BW[net_type]
-        eff_base = _DDP_EFF[net_type]
 
         for n_gpus in [1, 2, 4, 8]:
             scenario = self._build_scenario(
@@ -68,7 +57,6 @@ class DDPOptimizer:
                 base_result=base_result,
                 n_epochs=n_epochs,
                 bw_gb_s=bw_gb_s,
-                eff_base=eff_base,
             )
             scenarios.append(scenario)
 
@@ -108,7 +96,6 @@ class DDPOptimizer:
         base_result: BenchmarkResult,
         n_epochs: int,
         bw_gb_s: float,
-        eff_base: float,
     ) -> DDPScenario:
         # Batch por GPU: el batch del benchmark ya es lo óptimo por GPU
         batch_per_gpu = base_result.batch_size

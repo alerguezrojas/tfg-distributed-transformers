@@ -24,17 +24,17 @@ def _radar_section(compare_dfs: list[tuple[str, pd.DataFrame]]) -> None:
         radar_fig.add_trace(go.Scatterpolar(
             r=vals_closed, theta=radar_metrics + [radar_metrics[0]],
             fill="toself", name=lbl,
-            line=dict(color=COLORS[i % len(COLORS)]), opacity=0.6,
+            line={"color": COLORS[i % len(COLORS)]}, opacity=0.6,
         ))
     # Full-label legend below the radar: one row per run stays readable
     # even with 7-8 runs selected.
     _n_radar = len(compare_dfs)
     radar_fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+        polar={"radialaxis": {"visible": True, "range": [0, 1]}},
         showlegend=True, height=380 + 20 * _n_radar,
-        legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0),
-        margin=dict(l=60, r=60, t=40, b=40 + 20 * _n_radar),
-        title=dict(text="Metrics at the best Val F1 epoch", font=dict(size=13)),
+        legend={"orientation": "h", "yanchor": "top", "y": -0.08, "xanchor": "left", "x": 0},
+        margin={"l": 60, "r": 60, "t": 40, "b": 40 + 20 * _n_radar},
+        title={"text": "Metrics at the best Val F1 epoch", "font": {"size": 13}},
     )
     _show(radar_fig, "radar_comparison")
 
@@ -70,15 +70,15 @@ def _energy_section(compare_dfs: list[tuple[str, pd.DataFrame]]) -> None:
     ))
     fig_energy.update_layout(
         **_base_layout(160 + 44 * len(energy_rows), "Total energy per run (Wh)",
-                       margin=dict(l=10, r=16, t=48, b=40)),
+                       margin={"l": 10, "r": 16, "t": 48, "b": 40}),
         barmode="stack", xaxis_title="Wh",
     )
     fig_energy.update_yaxes(autorange="reversed", automargin=True)
     # Outside the plot: the inside-top-left default would cover the first bar.
-    fig_energy.update_layout(legend=dict(
-        orientation="h", yanchor="bottom", y=1.0, xanchor="right", x=1.0,
-        bgcolor="rgba(0,0,0,0)",
-    ))
+    fig_energy.update_layout(legend={
+        "orientation": "h", "yanchor": "bottom", "y": 1.0, "xanchor": "right", "x": 1.0,
+        "bgcolor": "rgba(0,0,0,0)",
+    })
     _show(fig_energy, "compare_energy_total")
 
     _n_eff = [(l, (t + e)) for l, t, e in energy_rows]

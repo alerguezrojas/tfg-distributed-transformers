@@ -67,11 +67,17 @@ POWER_TDP_FALLBACK_FRACTION: float = 0.65
 # Calibrated from the Kaggle 2×T4 model-parallel run (106 W for 2 GPUs ≈ 0.83 × 2×64 W).
 MODEL_PARALLEL_POWER_FRACTION: float = 0.83
 
+# GPU names shared by the TDP and spec tables below.
+_RTX_3090 = "RTX 3090"
+_RTX_4090 = "RTX 4090"
+_A100_40GB = "A100 40GB"
+_A100_80GB = "A100 80GB"
+
 # Nameplate TDP (W) for GPUs whose effective power we did NOT measure here; the
 # fallback power is POWER_TDP_FALLBACK_FRACTION × this (so editing the fraction
 # propagates instead of hardcoding each value).
 _TDP_W: dict[str, float] = {
-    "RTX 3090": 350.0, "RTX 4090": 450.0, "A100 40GB": 400.0, "A100 80GB": 400.0,
+    _RTX_3090: 350.0, _RTX_4090: 450.0, _A100_40GB: 400.0, _A100_80GB: 400.0,
     "P100": 250.0, "H100": 700.0,
 }
 
@@ -102,10 +108,10 @@ GPU_TABLE: dict[str, GpuSpec] = {
     "Tesla V100":    GpuSpec("Tesla V100", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
     "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True),
     "RTX 3060 Ti":   GpuSpec("RTX 3060 Ti", 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True),   # local: ~180 W (SSD, compute-bound)
-    "RTX 3090":      GpuSpec("RTX 3090", 35.6, 3.5, 24.0, "pcie", train_power_w=_tdp_fallback_power("RTX 3090")),
-    "RTX 4090":      GpuSpec("RTX 4090", 82.6, 4.0, 24.0, "pcie", train_power_w=_tdp_fallback_power("RTX 4090")),
-    "A100 40GB":     GpuSpec("A100 40GB", 19.5, 4.0, 40.0, "nvlink", train_power_w=_tdp_fallback_power("A100 40GB")),
-    "A100 80GB":     GpuSpec("A100 80GB", 19.5, 4.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power("A100 80GB")),
+    _RTX_3090:      GpuSpec(_RTX_3090, 35.6, 3.5, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_3090)),
+    _RTX_4090:      GpuSpec(_RTX_4090, 82.6, 4.0, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_4090)),
+    _A100_40GB:     GpuSpec(_A100_40GB, 19.5, 4.0, 40.0, "nvlink", train_power_w=_tdp_fallback_power(_A100_40GB)),
+    _A100_80GB:     GpuSpec(_A100_80GB, 19.5, 4.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power(_A100_80GB)),
     "P100":          GpuSpec("P100", 9.3, 1.0, 16.0, "pcie", train_power_w=_tdp_fallback_power("P100")),  # no usable Tensor cores
     "H100":          GpuSpec("H100", 67.0, 5.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power("H100")),
 }

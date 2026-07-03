@@ -51,10 +51,10 @@ def render_ddp_analysis(meta, benchmark_csvs) -> None:
         with g1:
             fig = go.Figure()
             fig.add_trace(go.Scatter(x=ns, y=ns, name="Ideal (linear)",
-                                     line=dict(color="#94a3b8", dash="dash")))
+                                     line={"color": "#94a3b8", "dash": "dash"}))
             fig.add_trace(go.Scatter(x=ns, y=d["speedup"], name="Predicted",
                                      mode="lines+markers",
-                                     line=dict(color=COLORS[2], width=3), marker=dict(size=9)))
+                                     line={"color": COLORS[2], "width": 3}, marker={"size": 9}))
             fig.update_layout(**_base_layout(300, "Speedup vs number of GPUs"),
                               xaxis_title="GPUs", yaxis_title="Speedup ×")
             fig.update_xaxes(tickvals=ns)

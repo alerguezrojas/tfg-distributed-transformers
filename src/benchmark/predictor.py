@@ -21,8 +21,6 @@ class PerformancePredictor:
         self,
         model_name: str,
         n_epochs: int,
-        has_llrd: bool = True,
-        has_label_smoothing: bool = True,
         dataset_size: int = N_FULL_TRAIN,
     ) -> PerformancePrediction:
         q = predict_quality(model_name, dataset_size=dataset_size, epochs=n_epochs)

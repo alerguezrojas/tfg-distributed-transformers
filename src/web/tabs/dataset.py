@@ -109,11 +109,11 @@ def _imbalance_treemap(meta: str | None) -> None:
     st.caption("Class frequency in the train split — area = number of patches")
     fig = go.Figure(go.Treemap(
         labels=dist["class"], parents=[""] * len(dist), values=dist["train_count"],
-        marker=dict(colors=dist["train_count"], colorscale="Blues", showscale=False,
-                    line=dict(width=1, color="white")),
-        texttemplate="%{label}<br>%{value:,}", textfont=dict(size=11),
+        marker={"colors": dist["train_count"], "colorscale": "Blues", "showscale": False,
+                    "line": {"width": 1, "color": "white"}},
+        texttemplate="%{label}<br>%{value:,}", textfont={"size": 11},
         hovertemplate="<b>%{label}</b><br>%{value:,} patches<br>%{percentRoot} of train<extra></extra>",
-        tiling=dict(pad=2),
+        tiling={"pad": 2},
     ))
-    fig.update_layout(height=300, margin=dict(t=4, l=0, r=0, b=0))
+    fig.update_layout(height=300, margin={"t": 4, "l": 0, "r": 0, "b": 0})
     _show(fig, "dataset_imbalance_treemap")

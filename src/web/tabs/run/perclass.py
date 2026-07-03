@@ -68,15 +68,15 @@ def _per_class(ctx: DashboardContext) -> None:
     fig_pc = go.Figure(go.Heatmap(
         z=z, x=["Precision", "Recall", "F1"], y=classes, customdata=cdata,
         colorscale=scale, zmin=0.0, zmax=1.0, xgap=2, ygap=2,
-        texttemplate="%{z:.2f}", textfont=dict(size=10, color="white"),
-        colorbar=dict(title="Score", thickness=12, len=0.8),
+        texttemplate="%{z:.2f}", textfont={"size": 10, "color": "white"},
+        colorbar={"title": "Score", "thickness": 12, "len": 0.8},
         hovertemplate=hover,
     ))
     fig_pc.update_layout(
-        title=dict(text=f"Per-class metrics — Epoch {selected_ep}"),
+        title={"text": f"Per-class metrics — Epoch {selected_ep}"},
         height=max(360, 24 * len(classes) + 110),
-        margin=dict(l=210, t=48, r=10, b=10),
-        xaxis=dict(side="top"),
+        margin={"l": 210, "t": 48, "r": 10, "b": 10},
+        xaxis={"side": "top"},
     )
     _show(fig_pc, f"per_class_hm_ep{selected_ep}")
     st.caption("Colour = score (green good · amber middling · red poor). Compare the "
@@ -115,7 +115,7 @@ def _per_class(ctx: DashboardContext) -> None:
             cdf = pcdf[pcdf["class_name"] == cls].sort_values("epoch")
             fig_trend.add_trace(go.Scatter(
                 x=cdf["epoch"], y=cdf[metric_sel], name=cls, mode="lines+markers",
-                line=dict(color=COLORS[i % len(COLORS)], width=2), marker=dict(size=4),
+                line={"color": COLORS[i % len(COLORS)], "width": 2}, marker={"size": 4},
             ))
         fig_trend.update_layout(
             **_base_layout(400, f"{metric_sel.capitalize()} per class across epochs"),

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import math
 from datetime import datetime
 from pathlib import Path
 
@@ -48,7 +49,7 @@ class ReportFormatter:
         self._emit("═" * self.W)
         self._emit("  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)")
         self._emit(f"  {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
-        if report.nfs_factor != 1.0:
+        if not math.isclose(report.nfs_factor, 1.0):
             self._emit(f"  Factor NFS aplicado: ×{report.nfs_factor:.2f}")
         self._emit("═" * self.W)
 
@@ -250,7 +251,7 @@ class ReportFormatter:
                         f"  → --trace {mode:<8} {target_epochs} epochs: "
                         f"~{TimeEstimator.format_time(est['total'])}"
                     )
-        if nfs == 1.0:
+        if math.isclose(nfs, 1.0):
             self._emit("\n  Nota: En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas")
         self._emit()
 
