@@ -29,6 +29,13 @@ analítica, el benchmark y el entrenamiento real). Toda la funcionalidad se gobi
 órdenes, **`paravit`**. El sistema desarrollado se denomina **ParaViT-Lab** (*Parallel/Parallax ViT
 Lab*); el antiguo comando `tfg` se conserva como alias retrocompatible.
 
+## Calidad del código
+
+El proyecto se acompaña de una batería de **411 pruebas automáticas** ejecutadas en integración
+continua y se ha analizado con **SonarQube**: calificación **A en mantenibilidad** (deuda técnica
+0,4 %), **A en fiabilidad** (0 bugs) y **A en seguridad** (0 vulnerabilidades), con un **0,0 % de
+código duplicado** sobre ~10 500 líneas.
+
 ## Requisitos previos
 
 - **git** y **[uv](https://docs.astral.sh/uv/)** (el gestor de paquetes de Python; instala la versión
