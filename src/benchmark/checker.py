@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 
 from src.models.vit import build_model
-from src.benchmark.value_objects import DatasetProfile, BenchmarkReport
+from src.benchmark.value_objects import BenchmarkReport
 from src.benchmark.model_analyzer import ModelAnalyzer
 from src.benchmark.probes import HardwareProbe, DiskProbe, DatasetProfiler
 from src.benchmark.predictor import PerformancePredictor
@@ -70,11 +70,10 @@ class BenchmarkChecker:
         disk_probe = DiskProbe()
         disk_info = disk_probe.probe(self._dataset_path) if self._profile_disk else None
 
-        dataset_profile: DatasetProfile | None = None
         if disk_info and self._profile_disk:
             # Usar el primer resultado viable del benchmark para el ratio I/O
             # (lo calculamos después del benchmark, lo actualizamos en _finalize)
-            dataset_profile = DatasetProfiler(
+            DatasetProfiler(
                 self._dataset_path, disk_info
             ).profile(0.5, self._batch_sizes[0])  # placeholder, actualizado después
 
@@ -215,7 +214,6 @@ class BenchmarkChecker:
         from src.training.convergence_study import ConvergenceStudy
 
         # Elegir el batch viable más grande para el estudio
-        viable_bs = [r.batch_size for r in []]  # placeholder
         batch_size = min(self._batch_sizes)  # conservador (menos VRAM)
         lr = float(self._config.get("training", {}).get("lr", 1e-4))
         target_epochs = max(self._epochs_list)

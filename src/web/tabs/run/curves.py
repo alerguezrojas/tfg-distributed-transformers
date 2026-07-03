@@ -56,10 +56,8 @@ def _test_callout(ctx: DashboardContext) -> None:
 
 
 def _curves(ctx: DashboardContext) -> None:
-    runs = ctx.runs
     selected_run = ctx.selected_run
     run = ctx.run
-    refresh_interval = ctx.refresh_interval
     if selected_run is None:
         st.info("Select a run in the sidebar.")
     else:

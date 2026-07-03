@@ -105,10 +105,6 @@ def _ram() -> RamInfo:
 
 def _disks(paths: list[str]) -> list[DiskInfo]:
     result = []
-    try:
-        io = psutil.disk_io_counters()
-    except Exception:
-        io = None
     for path in paths:
         try:
             usage = psutil.disk_usage(path)

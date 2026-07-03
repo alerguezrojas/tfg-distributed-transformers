@@ -128,7 +128,7 @@ def _select_benchmark(parsed, env, model, bs):
             (df["batch_size"] == bs).any()
         return (has_bs, e == env, m.get("n_train") is not None)
 
-    e, _mo, m, df = max(cands, key=_score)
+    _e, _mo, m, df = max(cands, key=_score)
     return m, df
 
 

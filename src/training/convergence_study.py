@@ -113,8 +113,6 @@ def fit_power_law(
         # Insuficiente para ajustar 3 parámetros
         return float(losses[0]) if len(losses) else 0.0, 0.5, 0.0, 0.0
 
-    # c ≈ asíntota: usar un valor por debajo del mínimo observado
-    c0 = float(losses.min()) * 0.8
     # Linealizar: log(loss - c) = log(a) - b·log(t)
     best = None
     for c in np.linspace(0, float(losses.min()) * 0.95, 12):

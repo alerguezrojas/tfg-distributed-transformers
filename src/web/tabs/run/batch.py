@@ -12,10 +12,8 @@ from src.web.ui.helpers import (_load_batch)
 
 
 def _batch(ctx: DashboardContext) -> None:
-    runs = ctx.runs
     selected_run = ctx.selected_run
     run = ctx.run
-    refresh_interval = ctx.refresh_interval
     if selected_run is None:
         st.info("Select a run in the sidebar.")
     elif not run.batch_csv_path:
@@ -31,7 +29,6 @@ def _batch(ctx: DashboardContext) -> None:
             return _load_batch(p)
 
         bdf = _load_batch_live(str(run.batch_csv_path))
-        has_batch_loss = "batch_loss" in bdf.columns and bdf["batch_loss"].notna().any()
         has_lr = "lr" in bdf.columns and bdf["lr"].notna().any()
 
         # Map of available per-batch metrics → readable label
