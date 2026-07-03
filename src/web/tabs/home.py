@@ -272,7 +272,7 @@ def _kpi_strip(items: list[tuple[str, str]]) -> None:
     st.markdown(f"<div class='kpi-strip'>{cells}</div>", unsafe_allow_html=True)
 
 
-def _run_highlight(df: pd.DataFrame, anomalies_path=None, compact: bool = False) -> None:
+def _run_highlight(df: pd.DataFrame, compact: bool = False) -> None:
     """Metric strip + a one-line verdict (card body). With ``compact=False`` it
     also draws the two mini F1/loss curves; the Overview uses ``compact=True`` to
     fit one screen — the full curves live in Run results."""

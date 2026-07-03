@@ -31,7 +31,7 @@ def set_seed(seed: int) -> None:
     torch.backends.cudnn.benchmark = False
 
 
-def seed_worker(worker_id: int) -> None:  # noqa: ARG001
+def seed_worker(_worker_id: int) -> None:
     """DataLoader ``worker_init_fn``: reseed NumPy and Python ``random`` per worker.
 
     torch already seeds each worker's torch RNG from the base seed; this also

@@ -399,7 +399,7 @@ class TrainingSessionBuilder:
 
     # ── Criterion ──────────────────────────────────────────────────────────────
 
-    def _build_criterion(self, cfg: dict, model_name: str):
+    def _build_criterion(self, cfg: dict, _model_name: str):
         """Build the loss from config: 'bce' (+ optional pos_weight) or 'focal'.
 
         Returns None to keep the Trainer's default BCEWithLogitsLoss when the

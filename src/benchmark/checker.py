@@ -111,15 +111,10 @@ class BenchmarkChecker:
 
         # Predicción de rendimiento
         if self._predict_performance:
-            training_cfg = self._config.get("training", {})
-            has_llrd = "llrd_decay" in training_cfg
-            has_ls = training_cfg.get("label_smoothing", 0.0) > 0
             target_epochs = max(self._epochs_list)
             report.performance_prediction = PerformancePredictor().predict(
                 model_name=self._model_name,
                 n_epochs=target_epochs,
-                has_llrd=has_llrd,
-                has_label_smoothing=has_ls,
                 dataset_size=self._dataset_train,
             )
 

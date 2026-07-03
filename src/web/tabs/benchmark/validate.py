@@ -271,7 +271,7 @@ def _metric_block(records: list[dict], metric_key: str, title: str, ytitle: str,
     _show(fig, key)
 
 
-def render_validate(ctx) -> object:
+def render_validate(_ctx) -> object:
     """Predicted vs actual, Compare-style. Each single-GPU run is matched to the
     benchmark report of its model AND the batch size it actually used, so the
     estimate is for the same configuration the run ran (this is the fix for the
