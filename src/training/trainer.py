@@ -246,7 +246,7 @@ class Trainer(BaseTrainer):
 
         Returns the checkpoint dict (contains 'epoch' and 'metrics').
         """
-        ckpt = torch.load(path, map_location=self.device, weights_only=False)
+        ckpt = torch.load(path, map_location=self.device, weights_only=True)
         self.model.load_state_dict(ckpt["model_state_dict"])
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in ckpt and self.scheduler is not None:
