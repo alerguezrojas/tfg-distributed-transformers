@@ -9,6 +9,9 @@
 [![CI](https://github.com/alerguezrojas/tfg-distributed-transformers/actions/workflows/ci.yml/badge.svg)](https://github.com/alerguezrojas/tfg-distributed-transformers/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-blue)
 ![PyTorch](https://img.shields.io/badge/PyTorch-2.x-ee4c2c)
+![Maintainability](https://img.shields.io/badge/Maintainability-A-brightgreen?logo=sonarqubeserver)
+![Reliability](https://img.shields.io/badge/Reliability-A-brightgreen?logo=sonarqubeserver)
+![Security](https://img.shields.io/badge/Security-A-brightgreen?logo=sonarqubeserver)
 
 **Autor:** Alejandro Rodríguez Rojas · **Tutor:** Francisco Carmelo Almeida Rodríguez · **Cotutor:** Daniel Suárez Labena
 
