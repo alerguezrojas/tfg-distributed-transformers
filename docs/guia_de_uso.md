@@ -12,8 +12,9 @@ memoria del TFG: aquí el foco son los comandos, las configuraciones y la resolu
 5. [Las cuatro estrategias de entrenamiento](#5-las-cuatro-estrategias-de-entrenamiento)
 6. [Artefactos: qué produce un entrenamiento](#6-artefactos-qué-produce-un-entrenamiento)
 7. [El panel web](#7-el-panel-web)
-8. [Las pruebas](#8-las-pruebas)
-9. [Solución de problemas](#9-solución-de-problemas)
+8. [Un flujo de trabajo completo](#8-un-flujo-de-trabajo-completo)
+9. [Las pruebas](#9-las-pruebas)
+10. [Solución de problemas](#10-solución-de-problemas)
 
 ---
 
@@ -65,9 +66,13 @@ imágenes de entrenamiento y 1 500 de validación, semilla fija).
 Punto de entrada único: `uv run paravit.py <comando>` (el antiguo `tfg.py` sigue funcionando como
 alias). `--help` funciona en cada subcomando.
 
+![Ayuda de ParaViT-CLI](img/term_help.png)
+
 | Comando | Qué hace | ¿Necesita GPU? |
 |---|---|---|
 | `menu` | Menú interactivo: pregunta la acción y los parámetros paso a paso | — |
+
+![Menú interactivo](img/term_menu.png)
 | `estimate` | Predicción **analítica** de tiempo, memoria, energía, coste y F1 (solo fórmulas) | No |
 | `benchmark` | Medición **empírica** en la máquina: throughput real, VRAM, I/O, escalado DDP | Sí |
 | `train` | Entrenamiento con la estrategia elegida | Sí |
@@ -87,6 +92,8 @@ fórmulas de tiempo `max(cómputo, I/O) + sincronización`, memoria, energía, c
 escalado de 1 a 8 GPU y coste en proveedores de nube. Estrategias: `single`, `ddp`,
 `model-parallel`, `heterogeneous`. La derivación completa del modelo está en
 [`docs/performance_model.md`](performance_model.md).
+
+![Salida de paravit estimate](img/term_estimate.png)
 
 ### `benchmark` — medir la máquina real
 
@@ -132,6 +139,8 @@ Los scripts de `scripts/` (`train_single_gpu.py`, `train_ddp.py`, `train_model_p
 `train_heterogeneous_ddp.py`) pueden ejecutarse también directamente; aceptan además `--metrics`
 (reporteros individuales de métricas) y `--inspect` (inspección modular del modelo:
 `model-summary`, `batch-table`, `grad-monitor`, `anomalies`).
+
+![Listado de runs](img/term_runs.png)
 
 ### `eval` — el número honesto final
 
@@ -233,13 +242,36 @@ referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el es
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
 del conjunto e importación de runs). Idioma inglés con vista opcional en español y modo oscuro.
 
-## 8. Las pruebas
+![Overview del cuadro de mandos](img/dashboard_overview.png)
+
+![Run results](img/web_run.png)
+
+![Compare](img/web_compare.png)
+
+![Estimate en la web](img/web_estimate.png)
+
+## 8. Un flujo de trabajo completo
+
+Las dos interfaces se complementan: el terminal ejecuta y la web analiza. El flujo seguido en los
+experimentos del TFG es el siguiente.
+
+1. **Estimar.** Antes de gastar tiempo de GPU, `paravit estimate` predice el tiempo, la memoria, la
+   energía y el coste de la configuración prevista, y avisa si el modelo no entra en la GPU elegida.
+2. **Medir la máquina.** `paravit benchmark` comprueba sobre el equipo real el rendimiento, el estado
+   del disco y el escalado esperado del paralelismo de datos.
+3. **Entrenar.** `paravit train` lanza el entrenamiento con la estrategia y la instrumentación
+   elegidas. En una máquina remota, `--dry-run` proporciona el comando exacto que hay que ejecutar.
+4. **Analizar.** Los artefactos del entrenamiento se importan en el cuadro de mandos si vienen de otra
+   máquina, y las secciones Run results, Compare y Estimate/Benchmark permiten estudiar el run,
+   compararlo con los demás y contrastar lo predicho con lo medido.
+
+## 9. Las pruebas
 
 ```bash
 uv run pytest            # 411 pruebas, también ejecutadas en CI en cada push
 ```
 
-## 9. Solución de problemas
+## 10. Solución de problemas
 
 | Síntoma | Causa | Solución |
 |---|---|---|
