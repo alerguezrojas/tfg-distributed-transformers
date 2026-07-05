@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +20,22 @@ _ENERGY_TRAIN = re.compile(r"\[energy\]\s+\w*Trainer\.train_epoch:\s+([0-9.]+)\s
 _ENERGY_EVAL = re.compile(r"\[energy\]\s+\w*Trainer\.eval_epoch:\s+([0-9.]+)\s+J\s+\(([0-9.]+) Wh\)\s+potencia media\s+([0-9.]+) W")
 _TIMED_TRAIN = re.compile(r"\[timed\]\s+\w*Trainer\.train_epoch:\s+([0-9.]+)s")
 _TIMED_EVAL = re.compile(r"\[timed\]\s+\w*Trainer\.eval_epoch:\s+([0-9.]+)s")
+
+# ── Line timestamps ───────────────────────────────────────────────────────────
+# The `time=` field of the old logs (legacy and deep, pre epoch_metrics CSV)
+# only timed the TRAIN phase, so summing it under-reports the epoch (it leaves
+# out the evaluation). When the log carries line timestamps, the full epoch
+# time is recovered as the clock delta between consecutive per-epoch summary
+# lines (anchored to the session start for the first epoch); `time=` is kept
+# as a fallback for logs without timestamps.
+_TS_LINE = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})")
+_SESSION_START = re.compile(r"Iniciando entrenamiento")
+
+
+def _line_ts(line: str) -> datetime | None:
+    m = _TS_LINE.match(line)
+    return datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S") if m else None
+
 
 # ── Deep-trace patterns ───────────────────────────────────────────────────────
 # There are (at least) two field-order variants of the RESUMEN line:
@@ -147,7 +164,13 @@ _DEEP_FIELDS = [
 
 def _parse_deep(text: str) -> pd.DataFrame:
     rows: list[dict] = []
+    anchor_ts = None   # inicio de sesión, o resumen de la época anterior
+    prev_epoch = None
     for line in text.splitlines():
+        ts = _line_ts(line)
+        if ts is not None and (anchor_ts is None or _SESSION_START.search(line)):
+            anchor_ts = ts
+            prev_epoch = None
         a = _DEEP_ANCHOR.search(line)
         if not a:
             continue
@@ -156,25 +179,49 @@ def _parse_deep(text: str) -> pd.DataFrame:
             val = _deep_field(field, line)
             if val is not None:
                 row[col] = val
+        if ts is not None and anchor_ts is not None and \
+                (prev_epoch is None or row["epoch"] == prev_epoch + 1):
+            delta = (ts - anchor_ts).total_seconds()
+            if delta > 0:
+                row["epoch_time"] = delta
+        if ts is not None:
+            anchor_ts = ts
+            prev_epoch = row["epoch"]
         rows.append(row)
     return _to_df(rows)
 
 
 def _parse_legacy(text: str) -> pd.DataFrame:
     rows: list[dict] = []
+    anchor_ts = None
+    prev_epoch = None
     for line in text.splitlines():
+        ts = _line_ts(line)
+        if ts is not None and (anchor_ts is None or _SESSION_START.search(line)):
+            anchor_ts = ts
+            prev_epoch = None
         m = _LEGACY_LINE.search(line)
-        if m:
-            rows.append({
-                "epoch": int(m.group(1)),
-                "train_loss": float(m.group(2)),
-                "train_f1": float(m.group(3)),
-                "train_acc": float(m.group(4)),
-                "val_loss": float(m.group(5)),
-                "val_f1": float(m.group(6)),
-                "val_acc": float(m.group(7)),
-                "epoch_time": float(m.group(8)),
-            })
+        if not m:
+            continue
+        row = {
+            "epoch": int(m.group(1)),
+            "train_loss": float(m.group(2)),
+            "train_f1": float(m.group(3)),
+            "train_acc": float(m.group(4)),
+            "val_loss": float(m.group(5)),
+            "val_f1": float(m.group(6)),
+            "val_acc": float(m.group(7)),
+            "epoch_time": float(m.group(8)),
+        }
+        if ts is not None and anchor_ts is not None and \
+                (prev_epoch is None or row["epoch"] == prev_epoch + 1):
+            delta = (ts - anchor_ts).total_seconds()
+            if delta > 0:
+                row["epoch_time"] = delta
+        if ts is not None:
+            anchor_ts = ts
+            prev_epoch = row["epoch"]
+        rows.append(row)
     return _to_df(rows)
 
 
