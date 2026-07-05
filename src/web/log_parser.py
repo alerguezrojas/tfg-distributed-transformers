@@ -79,13 +79,43 @@ def parse_log(log_path: Path) -> pd.DataFrame:
 def _parse_simple(text: str) -> pd.DataFrame:
     rows: list[dict] = []
     cur: dict = {}
+    # Época completa por reloj: cada época se cierra con la hora de su última
+    # línea (el ETA/checkpoint del final) menos el cierre de la anterior (o el
+    # inicio de sesión para la primera). El s/epoch del ETA de los logs
+    # antiguos solo cronometraba el entrenamiento, así que se usa de respaldo.
+    epoch_start_ts = None   # cierre de la época anterior o inicio de sesión
+    cur_end_ts = None       # última hora vista dentro de la época en curso
+
+    def _close(cur: dict) -> dict:
+        nonlocal epoch_start_ts
+        if epoch_start_ts is not None and cur_end_ts is not None:
+            delta = (cur_end_ts - epoch_start_ts).total_seconds()
+            if delta > 0:
+                cur["epoch_time"] = delta
+        if cur_end_ts is not None:
+            epoch_start_ts = cur_end_ts
+        return cur
 
     for line in text.splitlines():
+        ts = _line_ts(line)
+        if ts is not None:
+            if _SESSION_START.search(line):
+                if cur:
+                    rows.append(_close(cur))
+                    cur = {}
+                epoch_start_ts = ts
+                cur_end_ts = None
+            elif cur:
+                cur_end_ts = ts
+            elif epoch_start_ts is None:
+                epoch_start_ts = ts
+
         m = _SIMPLE_EPOCH.search(line)
         if m:
             if cur:
-                rows.append(cur)
+                rows.append(_close(cur))
             cur = {"epoch": int(m.group(1))}
+            cur_end_ts = None
             continue
 
         if not cur:
@@ -143,7 +173,7 @@ def _parse_simple(text: str) -> pd.DataFrame:
             cur["time_eval_s"] = float(m.group(1))
 
     if cur:
-        rows.append(cur)
+        rows.append(_close(cur))
 
     return _to_df(rows)
 
