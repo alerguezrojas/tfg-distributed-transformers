@@ -47,7 +47,7 @@ not the raw fp16/fp32 TFLOPS ratio (which is ~8× and never reached in practice)
 ## 2. Master formula — DDP train epoch
 
 ```
-T(n, π) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (8P/β)·⌈N/(b·n)⌉ ]
+T(N, n) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (8P/β)·⌈N/(b·n)⌉ ]
                \________ compute ∥ disk ________/   \____ gradient sync ____/
 ```
 
@@ -58,7 +58,7 @@ T(n, π) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (8P/β)·⌈N/(b·n)⌉ ]
 ### Speedup and the three regimes
 
 ```
-S(n) = T(1)/T(n)
+S(n) = T(N,1)/T(N,n)
 ```
 
 | Regime | Condition | Limit | Example |
@@ -112,7 +112,7 @@ are *calibration targets*, marked **(in-sample)** below.
 
 The genuinely predictive results are the **speedups and regimes**, and they are
 **out-of-sample because they do not depend on the fitted constants**. A speedup is
-a ratio `S(n)=T(1)/T(n)`: in the compute-bound regime `MFU` cancels, so `S→n`
+a ratio `S(n)=T(N,1)/T(N,n)`: in the compute-bound regime `MFU` cancels, so `S→n`
 regardless of its value; the FP32→AMP factor is the separately-measured `π` from
 `GPU_TABLE` (not `MFU`); the I/O-bound and heterogeneous regimes are set by
 `r_io`/β, again independent of the calibration. These are the rows that actually
