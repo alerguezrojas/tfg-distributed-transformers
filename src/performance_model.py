@@ -7,7 +7,7 @@ benchmark on the target machine) into a closed-form predictor, as requested by
 the tutor. The formulas are derived in docs/performance_model.md; the master
 equation for a DDP train epoch is:
 
-    T(n, π) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (8P/β)·⌈N/(b·n)⌉ ]
+    T(N, n) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (8P/β)·⌈N/(b·n)⌉ ]
               \_______ compute ∥ disk (the slower) ______/   \__ gradient sync __/
 
 with parameters estimated from specs:
