@@ -33,6 +33,25 @@ analítica, el benchmark y el entrenamiento real). Toda la funcionalidad se gobi
 órdenes, **`paravit`**. El sistema desarrollado se denomina **ParaViT-Lab** (*Parallel/Parallax ViT
 Lab*); el antiguo comando `tfg` se conserva como alias retrocompatible.
 
+## Resultados principales
+
+- **Calidad del modelo:** ViT-Base preentrenado alcanza un **F1 macro de 0,6816 en validación** y
+  **0,6200 en el test oficial** (0,6308 con umbral óptimo) sobre el conjunto completo, por encima del
+  ViT de referencia publicado para el dataset (≈0,55) usando solo las 3 bandas RGB de las 10 disponibles.
+- **Estudio controlado de estrategias** (mismo modelo, mismos datos y épocas, 2× Tesla T4):
+
+  | Estrategia | Aceleración | Lectura |
+  |---|---|---|
+  | Paralelismo de datos (DDP) | **1,99×** | escala casi lineal cuando el cuello es el cómputo |
+  | Paralelismo de modelo | 1,06× | no acelera, pero permite entrenar modelos que no entran en una GPU (vit_large) |
+  | Precisión mixta (1 GPU) | **3,69×** | los núcleos tensoriales superan a añadir una segunda GPU |
+  | DDP + precisión mixta | **5,71×** | se combinan, pero por debajo del producto teórico (7,3×) |
+  | GPU + CPU (heterogéneo) | 0,12× | el entrenamiento síncrono avanza al ritmo del dispositivo más lento |
+
+- **Predicción validada:** el estimador analítico predice tiempo, memoria y energía con un error
+  inferior al 10 % en el régimen limitado por cómputo, y anticipó los desbordamientos de memoria
+  antes de ejecutarlos.
+
 ## Calidad del código
 
 El proyecto se acompaña de una batería de **411 pruebas automáticas** ejecutadas en integración
@@ -81,9 +100,19 @@ Para visualizar y comparar los entrenamientos de manera gráfica, ejecútese el 
 uv run paravit.py dashboard          # → http://localhost:8501
 ```
 
+![Panel web de ParaViT-Lab](docs/img/dashboard_overview.png)
+
 > Para un uso por línea de órdenes, `uv run paravit.py --help` enumera todos los subcomandos. Cada uno
 > admite la opción `--dry-run`, que muestra la orden exacta sin llegar a ejecutarla. (`uv run tfg.py`
 > sigue funcionando como alias.)
+
+## Documentación
+
+- **[Guía de uso](docs/guia_de_uso.md)** — manual de referencia: comandos, configuraciones,
+  estrategias de entrenamiento, artefactos y solución de problemas.
+- [Modelo analítico de rendimiento](docs/performance_model.md) — derivación y validación de las
+  fórmulas del estimador.
+- [Diagrama de clases](docs/class_diagram.svg) — arquitectura completa del sistema.
 
 ## Diseño
 

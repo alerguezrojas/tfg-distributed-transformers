@@ -1191,9 +1191,13 @@ A raíz de una nota de Paco en la memoria (medir la **mantenibilidad** del códi
 - Documentado en el README (sección "Calidad del código") y en la memoria (cap 1 §1.5 y cap 5 §Verificación).
 - **SonarCloud conectado (03/07/26):** el repo se analiza automáticamente en cada push a main (proyecto `alerguezrojas_tfg-distributed-transformers`, organización `alerguezrojas`, plan gratuito para repo público). `.sonarcloud.properties` fija el mismo alcance que el análisis local. Quality Gate OK + triple A; los 13 avisos de seguridad (S2245 pseudorandom en código ML y S8707 rutas por CLI) están **aceptados con justificación** (usos legítimos, no criptografía / herramienta local). Insignias vivas en el README (alert_status + 3 ratings). Panel: https://sonarcloud.io/summary/overall?id=alerguezrojas_tfg-distributed-transformers
 
+#### Evaluación en test + documentación de usuario (04-05/07/26)
+- [x] **Evaluación única en TEST del mejor modelo (04/07/26):** ejecutada en verode21 con `scripts/eval.py` sobre el checkpoint v4 (época 7) → **F1 macro test 0,6200 @0,5 / 0,6308 @0,35**, accuracy 0,9368. CSV en `logs/verode/single/vit_base_patch16_224/test_best_epoch007.csv`, detectado automáticamente por la web (tarjeta "Held-out test set") e integrado en el cap 4 de la memoria. Supera al ViT publicado de reBEN (0,552, entrenado desde cero con 10 bandas) usando solo 3 bandas RGB preentrenadas.
+- [x] **Documentación de usuario (05/07/26, rama `feature/docs-user-guide`):** README ampliado para el tribunal (sección "Resultados principales" con la tabla de aceleraciones, captura del dashboard en `docs/img/dashboard_overview.png` y sección "Documentación") + **`docs/guia_de_uso.md`**, manual de referencia por comandos: instalación, descarga del dataset (Zenodo), CLI completo con tabla de opciones de `train`, configs YAML comentados, las 4 estrategias con comandos reales, artefactos por run, web y solución de problemas. Complementa el Apéndice A de la memoria (orientado a capturas).
+
 ### Pendiente
 - [ ] (Opcional) Entrenamiento completo en Verode con la versión actual si se quiere un Val F1 de referencia final con todo el stack.
-- [ ] (Opcional, **ya implementado, falta correr**) Run focal-vs-BCE en Verode (V100, dataset completo) para confirmar a escala si focal sube el F1 macro / rescata la clase 6. Capacidad y configs listas; solo falta GPU libre.
+- [x] ~~Run focal-vs-BCE en Verode~~ **Descartado (04/07/26)** por falta de tiempo: queda como línea futura en la memoria (cap 6). La capacidad (losses, configs) está implementada y validada en la demo local (clases con F1=0: 8→6).
 
 ---
 
@@ -1219,7 +1223,8 @@ A raíz de una nota de Paco en la memoria (medir la **mantenibilidad** del códi
 - *(Cuando el tutor fije fechas, anotarlas aquí.)*
 
 ### Memoria final — entrega junio/julio 2026
-Estructura sugerida apoyándose en lo ya hecho (figuras desde el dashboard y `docs/class_diagram.svg`):
+**Estado (05/07/26): memoria COMPLETA** — caps 1-8 + Apéndice A (guía de uso con capturas reales del terminal y de la web) redactados; cuerpo ≈50 páginas sin las notas del tutor; subida a Overleaf; pendiente de la revisión final del tutor. Repo de la memoria: `~/Escritorio/MEMORIA TFG ALEJANDRO` (remotos `backup` = GitHub, `overleaf`; a Overleaf solo con autorización explícita).
+Estructura orientativa original (la redactada se corresponde con ella):
 1. Introducción y objetivos.
 2. Dataset BigEarthNet-S2 (estructura, 19 clases CORINE, multi-label, splits).
 3. Diseño software: principios SOLID + patrones Decorator (GoF) y Template Method → arquitectura de decoradores (usar diagrama de clases).
