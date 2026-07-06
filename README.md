@@ -128,5 +128,5 @@ Tutor: **Francisco Carmelo Almeida Rodríguez**. Cotutor: **Daniel Suárez Laben
 
 Código distribuido bajo licencia [GNU GPL v3](LICENSE) — copyleft: cualquier versión modificada que
 se distribuya debe publicarse también como código abierto bajo GPLv3. © 2026 Alejandro Rodríguez
-Rojas. La **memoria** del TFG se distribuye por separado bajo **CC BY-NC-SA 4.0**. El conjunto de
+Rojas. La **memoria** del TFG se distribuye por separado bajo **CC BY-NC-ND 4.0**. El conjunto de
 datos BigEarthNet-S2 y los pesos preentrenados conservan sus propias licencias.
