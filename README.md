@@ -36,8 +36,8 @@ Lab*); el antiguo comando `tfg` se conserva como alias retrocompatible.
 ## Resultados principales
 
 - **Calidad del modelo:** ViT-Base preentrenado alcanza un **F1 macro de 0,6816 en validación** y
-  **0,6200 en el test oficial** (0,6308 con umbral óptimo) sobre el conjunto completo, por encima del
-  ViT de referencia publicado para el dataset (≈0,55) usando solo las 3 bandas RGB de las 10 disponibles.
+  **0,6200 en el test oficial** (0,6308 con umbral óptimo) sobre el conjunto completo, usando solo
+  las 3 bandas RGB de las 10 disponibles.
 - **Estudio controlado de estrategias** (mismo modelo, mismos datos y épocas, 2× Tesla T4):
 
   | Estrategia | Aceleración | Lectura |
