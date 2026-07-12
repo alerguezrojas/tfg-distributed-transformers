@@ -65,16 +65,17 @@ def _metric_fig(
     color_train: str = theme.CATEGORICAL[0], color_val: str = theme.CATEGORICAL[1],
     extra_traces: list | None = None,
     height: int = 320,
+    name_train: str = "Train", name_val: str = "Val",
 ) -> go.Figure:
     fig = go.Figure()
     if col_train in df.columns and df[col_train].notna().any():
         fig.add_trace(go.Scatter(
-            x=df["epoch"], y=df[col_train], name="Train",
+            x=df["epoch"], y=df[col_train], name=name_train,
             mode=_LINES_MARKERS, line={"color": color_train},
         ))
     if col_val in df.columns and df[col_val].notna().any():
         fig.add_trace(go.Scatter(
-            x=df["epoch"], y=df[col_val], name="Val",
+            x=df["epoch"], y=df[col_val], name=name_val,
             mode=_LINES_MARKERS, line={"color": color_val},
         ))
     for tr in (extra_traces or []):
