@@ -126,7 +126,8 @@ def _curves(ctx: DashboardContext) -> None:
                 _show(_metric_fig(df, "train_acc", "val_acc", "Accuracy", "Accuracy",
                                   color_train=COLORS[4], color_val=COLORS[5]), "accuracy")
                 _show(_metric_fig(df, "val_prec", "val_rec", "Precision & Recall (val)",
-                                  "Score", color_train=COLORS[2], color_val=COLORS[3]), "prec_rec")
+                                  "Score", color_train=COLORS[2], color_val=COLORS[3],
+                                  name_train="Precision", name_val="Recall"), "prec_rec")
 
             if "epoch_time" in df.columns and df["epoch_time"].notna().any():
                 et = df[["epoch", "epoch_time"]].dropna()
