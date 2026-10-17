@@ -48,7 +48,7 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 ### Fase 1 — Higiene (en curso)
 - [x] Etiqueta `v1.0-tfg` + GitHub Release.
 - [x] Ramas locales mergeadas eliminadas; borrado automático de ramas al mergear activado en GitHub.
-- [ ] Borrar las ramas remotas ya mergeadas (pendiente de confirmación).
+- [x] Ramas remotas ya mergeadas eliminadas (solo quedan `main` y `develop`).
 - [x] `AGENTS.md` + `CLAUDE.md` mínimo + `CHANGELOG.md`; el antiguo `CLAUDE.md` repartido en `docs/`.
 - [ ] (Opcional) Integración con Zenodo para tener un DOI de cada release.
 
