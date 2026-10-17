@@ -4,17 +4,46 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
-### Cambiado
-- Documentación para agentes estandarizada: `AGENTS.md` (instrucciones compartidas) + `CLAUDE.md`
-  mínimo que lo importa. El antiguo `CLAUDE.md` (1300 líneas) se reparte en `docs/`:
-  `arquitectura.md`, `infraestructura.md`, `resultados_tfg.md`, `historial_tfg.md` y
-  `datasets/bigearthnet.md`, con un índice en `docs/README.md`.
-- Corregidas en la documentación varias referencias obsoletas (PNGs que ya no se generan, carpetas
-  `feasibility/` renombradas a `benchmark/`, `FeasibilityChecker` → `BenchmarkChecker`).
-
 ### Añadido
-- `docs/roadmap.md`: plan de trabajo posterior al TFG.
-- `CHANGELOG.md`.
+- Soporte multi-dataset: ficha de dataset (`DatasetSpec`) y registro por nombre; el config
+  elige el dataset con `data.name` (por defecto `bigearthnet`, sin cambios para los configs
+  existentes). Guía para añadir datasets en `docs/datasets/README.md`.
+- Tareas `multilabel`, `binary` y `multiclass` (`src/training/tasks.py`): pérdida, suavizado,
+  predicciones, métricas y búsqueda de umbral según el tipo de problema.
+- El modelo acepta un número de canales de entrada distinto de 3 (`in_chans`).
+- Tests de caracterización que fijan los números exactos del entrenamiento y test de punta a
+  punta con un dataset multiclase de un canal y otro binario.
+- `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
+
+### Cambiado
+- Trainers (single, DDP, heterogéneo, model-parallel), deep tracing, `eval.py`, benchmark y
+  estudio de convergencia dejan de asumir BigEarthNet. Para BigEarthNet los resultados son
+  idénticos: verificado en GPU (vit_tiny, subset, semilla fija) con single, DDP, paralelismo de
+  modelo y heterogéneo GPU+CPU, comparando todos los CSV y el log contra el código anterior.
+- `model.num_classes` pasa a ser opcional: sale de la ficha del dataset; si se indica, debe
+  coincidir. El validador comprueba la pérdida y `pos_weight` según la tarea.
+- `src/data/dataset.py` pasa a `src/data/bigearthnet.py`; `BigEarthModel` pasa a
+  `TimmClassifier` (se mantienen los alias antiguos).
+- Las métricas de validación se calculan en un único sitio (`Trainer._evaluate`), que DDP
+  reutiliza; antes estaban duplicadas.
+- `eval.py` usa la misma búsqueda de umbral que el entrenamiento: en caso de empate prefiere 0,5
+  (antes elegía el umbral más bajo). En tareas sin umbral no escribe `f1_opt`/`threshold`.
+- Cambios mínimos de comportamiento, documentados:
+  - el trainer heterogéneo predice con `> 0.5` como los demás (antes `>= 0.5`); solo difiere si
+    un logit es exactamente 0;
+  - `pos_weight` se aplica también con los alias de la pérdida (`bcewithlogits`), que antes lo
+    ignoraban sin avisar.
+- El validador rechaza `select_by: f1_optimal` en tareas sin umbral y nombres de dataset en
+  mayúsculas.
+
+### Corregido
+- El resumen de torchinfo (`--inspect model-summary`) y el análisis del benchmark asumían 3
+  canales de entrada; ahora los leen del modelo.
+- Documentación para agentes estandarizada: `CLAUDE.md` mínimo que importa `AGENTS.md`; el
+  antiguo `CLAUDE.md` (1300 líneas) se reparte en `docs/` (`arquitectura.md`,
+  `infraestructura.md`, `resultados_tfg.md`, `historial_tfg.md`, `datasets/`), con un índice en
+  `docs/README.md`. Corregidas varias referencias obsoletas (PNGs que ya no se generan,
+  `feasibility` → `benchmark`).
 
 ## [v1.0-tfg] - 2026-07-12
 

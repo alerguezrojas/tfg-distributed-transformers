@@ -1,4 +1,4 @@
-"""Single-GPU training script for BigEarthNet-S2.
+"""Single-GPU training script; the dataset comes from the config (data.name).
 
 Flags
 -----
@@ -58,13 +58,13 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.dataset import BigEarthNetDataset, get_transforms
+from src.data.registry import dataset_spec_from_config
 from src.training.builder import TrainingSessionBuilder
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Train on BigEarthNet-S2 (single GPU)")
+    parser = argparse.ArgumentParser(description="Single-GPU training")
     parser.add_argument("--config", type=str, default="configs/train.yaml")
     parser.add_argument("--data-root", type=str, help="Override data.root")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
@@ -156,14 +156,9 @@ def main():
 
     # ── Datos ────────────────────────────────────────────────────────────────
 
-    train_ds = BigEarthNetDataset(
-        cfg["data"]["root"], cfg["data"]["metadata"], split="train",
-        transform=get_transforms("train"),
-    )
-    val_ds = BigEarthNetDataset(
-        cfg["data"]["root"], cfg["data"]["metadata"], split="val",
-        transform=get_transforms("val"),
-    )
+    spec = dataset_spec_from_config(cfg)
+    train_ds = spec.dataset(cfg["data"], "train")
+    val_ds = spec.dataset(cfg["data"], "val")
     print(f"Train: {len(train_ds)} patches | Val: {len(val_ds)} patches")
 
     train_loader = DataLoader(

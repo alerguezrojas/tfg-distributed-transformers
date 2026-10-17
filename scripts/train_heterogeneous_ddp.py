@@ -41,7 +41,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.dataset import BigEarthNetDataset, get_transforms
+from src.data.registry import dataset_spec_from_config
 from src.training.builder import TrainingSessionBuilder
 from src.training.heterogeneous_sampler import HeterogeneousDistributedSampler
 from src.training.reproducibility import set_seed
@@ -144,14 +144,9 @@ def main():
         print(f"Rank 0 device: {device} | batch: {rank_batch_size}")
 
     # ── Dataset y DataLoaders ─────────────────────────────────────────────────
-    train_ds = BigEarthNetDataset(
-        cfg["data"]["root"], cfg["data"]["metadata"], split="train",
-        transform=get_transforms("train"),
-    )
-    val_ds = BigEarthNetDataset(
-        cfg["data"]["root"], cfg["data"]["metadata"], split="val",
-        transform=get_transforms("val"),
-    )
+    spec = dataset_spec_from_config(cfg)
+    train_ds = spec.dataset(cfg["data"], "train")
+    val_ds = spec.dataset(cfg["data"], "val")
 
     train_sampler = HeterogeneousDistributedSampler(
         train_ds, weights=compute_weights, rank=rank, world_size=world_size,

@@ -23,15 +23,15 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from src.models.vit import BigEarthModel
+from src.models.vit import TimmClassifier
 
 
 class ModelParallelViT(nn.Module):
-    """Wrap a :class:`BigEarthModel` (ViT backbone) split across two devices."""
+    """Wrap a :class:`TimmClassifier` (ViT backbone) split across two devices."""
 
     def __init__(
         self,
-        base: BigEarthModel,
+        base: TimmClassifier,
         devices: list[str] | None = None,
         split_block: int | None = None,
     ):
@@ -111,11 +111,13 @@ def build_model_parallel_vit(
     pretrained: bool = True,
     devices: list[str] | None = None,
     split_block: int | None = None,
+    in_chans: int = 3,
 ) -> ModelParallelViT:
     """Build a ViT and wrap it for model parallelism across ``devices``."""
-    base = BigEarthModel(
+    base = TimmClassifier(
         model_name=model_name,
         num_classes=num_classes,
         pretrained=pretrained,
+        in_chans=in_chans,
     )
     return ModelParallelViT(base, devices=devices, split_block=split_block)

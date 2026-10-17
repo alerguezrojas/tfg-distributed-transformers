@@ -56,11 +56,20 @@ class TestThresholdGrid:
         assert 0.5 in m.THRESHOLD_GRID
         assert max(m.THRESHOLD_GRID) >= 0.60
 
-    def test_trainer_and_eval_share_the_grid(self):
-        import src.training.trainer as trainer_mod
+    def test_trainer_and_eval_share_the_grid(self, monkeypatch, tmp_path):
+        # Both the training-time search and scripts/eval.py delegate to the task,
+        # which reads metrics.THRESHOLD_GRID — so changing the grid moves both.
+        import torch
         import scripts.eval as eval_mod
-        assert trainer_mod._THRESHOLD_GRID is m.THRESHOLD_GRID
-        assert eval_mod._THRESHOLD_GRID is m.THRESHOLD_GRID
+        from src.training.trainer import Trainer
+        monkeypatch.setattr(m, "THRESHOLD_GRID", [0.2])
+        probs = torch.tensor([[0.3, 0.1], [0.1, 0.25]])
+        labels = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+        model = torch.nn.Linear(2, 2)
+        trainer = Trainer(model, torch.optim.SGD(model.parameters(), lr=0.1), None,
+                          torch.device("cpu"), checkpoint_dir=str(tmp_path))
+        assert trainer._evaluate(probs, labels)["_optimal_threshold"] == 0.2
+        assert eval_mod.threshold_search(probs, labels)[0] == 0.2
 
     def test_grid_sorted_and_in_range(self):
         assert m.THRESHOLD_GRID == sorted(m.THRESHOLD_GRID)

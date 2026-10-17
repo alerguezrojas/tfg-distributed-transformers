@@ -21,7 +21,7 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 
 | Sitio | Qué asume |
 |---|---|
-| `src/data/dataset.py` | 19 clases CORINE, TIFF por banda (rasterio), `/10000`, normalización ImageNet, rotaciones de 90° |
+| `src/data/dataset.py` (ahora `bigearthnet.py`) | 19 clases CORINE, TIFF por banda (rasterio), `/10000`, normalización ImageNet, rotaciones de 90° |
 | `src/models/vit.py` | 3 canales de entrada (no pasa `in_chans`) |
 | `src/training/trainer.py`, `metrics.py` | Multi-etiqueta fijo: `sigmoid > 0.5`, F1 macro, búsqueda de umbral |
 | `src/training/losses.py`, `decorators/confusion.py`, `scripts/eval.py` | Importan o duplican la lista de clases |
@@ -52,13 +52,19 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 - [x] `AGENTS.md` + `CLAUDE.md` mínimo + `CHANGELOG.md`; el antiguo `CLAUDE.md` repartido en `docs/`.
 - [ ] (Opcional) Integración con Zenodo para tener un DOI de cada release.
 
-### Fase 2 — Abstracción dataset/tarea
-- [ ] `DatasetSpec` (clases, canales, normalización, splits, lector) + registro elegible con `data.name`.
-- [ ] `TaskSpec` (multi-etiqueta / multiclase / binaria): define la pérdida, la activación, las
+### Fase 2 — Abstracción dataset/tarea (hecha, 17/10/2026)
+- [x] `DatasetSpec` (clases, canales, tarea, lector, transforms) + registro elegible con `data.name`.
+- [x] `Task` (multi-etiqueta / multiclase / binaria): define la pérdida, la activación, las
       métricas y si hay búsqueda de umbral.
-- [ ] BigEarthNet como primera implementación, con un **test de regresión** que confirme los mismos resultados.
-- [ ] Quitar las listas de clases duplicadas (eval, confusion, web) y leerlas del `DatasetSpec`.
-- [ ] `in_chans` configurable (habilita las 12 bandas de Sentinel-2).
+- [x] BigEarthNet como primera implementación, con **tests de caracterización** y comparación
+      en GPU de las cuatro estrategias con resultados idénticos.
+- [x] Quitar las listas de clases duplicadas (eval, confusion, web) y leerlas de la ficha.
+- [x] `in_chans` configurable en el modelo (las 12 bandas necesitan además un lector multibanda).
+- [ ] Corregir: `model.dropout` del YAML no se aplica (la cabeza usa siempre 0.1).
+- [ ] Corregir: el builder no pasa la pérdida configurada al trainer heterogéneo (`pos_weight` se pierde).
+- [ ] La web (galería y estadísticas del dataset) sigue siendo específica de BigEarthNet.
+- [ ] El benchmark aún toma de BigEarthNet los tamaños de split por defecto y el perfil de I/O
+      (ficheros `*.tif`); se generaliza junto con el modelo de I/O en la fase 5.
 
 ### Fase 3 — Nuevos datasets
 - [ ] Prueba rápida con MedMNIST (p. ej. ChestMNIST, multi-etiqueta).

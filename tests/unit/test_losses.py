@@ -97,17 +97,24 @@ class TestBuilderWiring:
         }
         return TrainingSessionBuilder(cfg, torch.device("cpu")), cfg
 
-    def test_default_bce_returns_none(self):
+    @staticmethod
+    def _spec():
+        from src.data.registry import get_dataset_spec
+        return get_dataset_spec("bigearthnet")
+
+    def test_default_is_plain_bce(self):
         b, cfg = self._builder({})
-        assert b._build_criterion(cfg, "vit_tiny_patch16_224") is None
+        crit = b._build_criterion(cfg, self._spec())
+        assert isinstance(crit, torch.nn.BCEWithLogitsLoss)
+        assert crit.pos_weight is None
 
     def test_focal_wired(self):
         b, cfg = self._builder({"loss": "focal", "focal_gamma": 2.0})
-        crit = b._build_criterion(cfg, "vit_tiny_patch16_224")
+        crit = b._build_criterion(cfg, self._spec())
         assert isinstance(crit, FocalLoss)
 
     def test_pos_weight_list_wired(self):
         b, cfg = self._builder({"pos_weight": [1.0] * 19})
-        crit = b._build_criterion(cfg, "vit_tiny_patch16_224")
+        crit = b._build_criterion(cfg, self._spec())
         assert isinstance(crit, torch.nn.BCEWithLogitsLoss)
         assert crit.pos_weight is not None and crit.pos_weight.shape[0] == 19

@@ -21,7 +21,7 @@ from __future__ import annotations
 import copy
 import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 import torch
@@ -29,6 +29,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.training import metrics as m
+from src.training.tasks import MultiLabelTask, Task
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -170,10 +171,12 @@ def loss_to_f1_estimate(loss: float, model_family: str = "vit_base") -> float:
 class ConvergenceStudy:
     """Ejecuta el estudio empírico de convergencia sobre datos reales."""
 
-    def __init__(self, device: torch.device, model_family: str = "vit_base"):
+    def __init__(self, device: torch.device, model_family: str = "vit_base",
+                 task: Task | None = None):
         self._device = device
         self._family = model_family
-        self._criterion = nn.BCEWithLogitsLoss()
+        self._task = task or MultiLabelTask()
+        self._criterion = self._task.build_criterion()
 
     # ── LR range test ─────────────────────────────────────────────────────────
 
@@ -273,8 +276,8 @@ class ConvergenceStudy:
             opt.step()
 
             with torch.no_grad():
-                preds = (torch.sigmoid(logits) > 0.5).long().cpu()
-                f1 = m.f1_score(preds, (labels > 0.5).long().cpu())
+                preds = self._task.predict(self._task.probabilities(logits)).cpu()
+                f1 = m.f1_score(preds, self._task.hard_targets(labels).cpu())
             steps.append(step)
             losses.append(loss.item())
             f1s.append(f1)

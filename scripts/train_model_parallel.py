@@ -1,4 +1,4 @@
-"""Model-parallel (pipeline) training for BigEarthNet-S2.
+"""Model-parallel (pipeline) training; the dataset comes from the config (data.name).
 
 Splits a ViT across two devices (see ``src/models/model_parallel.py``) and trains
 it through the SAME stack as every other strategy: the Template-Method loop in
@@ -28,13 +28,13 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.dataset import BigEarthNetDataset, get_transforms
+from src.data.registry import dataset_spec_from_config
 from src.training.builder import TrainingSessionBuilder
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
 def parse_args():
-    p = argparse.ArgumentParser(description="Model-parallel training for BigEarthNet-S2")
+    p = argparse.ArgumentParser(description="Model-parallel training")
     p.add_argument("--config", type=str, default="configs/train_model_parallel_kaggle.yaml")
     p.add_argument("--model", type=str, default=None, help="Override model name (timm ViT)")
     p.add_argument("--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
@@ -106,10 +106,9 @@ def main():
     fn = args.fn or []
 
     # ── Data ──────────────────────────────────────────────────────────────────
-    train_ds = BigEarthNetDataset(cfg["data"]["root"], cfg["data"]["metadata"],
-                                  split="train", transform=get_transforms("train"))
-    val_ds = BigEarthNetDataset(cfg["data"]["root"], cfg["data"]["metadata"],
-                                split="val", transform=get_transforms("val"))
+    spec = dataset_spec_from_config(cfg)
+    train_ds = spec.dataset(cfg["data"], "train")
+    val_ds = spec.dataset(cfg["data"], "val")
     bs = cfg["training"]["batch_size"]
     nw = cfg["data"].get("num_workers", 4)
     train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, num_workers=nw,

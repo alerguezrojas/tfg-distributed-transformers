@@ -1,4 +1,4 @@
-"""Single-GPU trainer for BigEarthNet multi-label classification."""
+"""Single-process trainer — the pure training logic shared by every strategy."""
 
 import contextlib
 import random
@@ -13,14 +13,15 @@ from src import precision as precision_mod
 from src.training.base_trainer import BaseTrainer
 from src.training import metrics as m
 from src.training.augmentations import mixup_batch
-
-_THRESHOLD_GRID = m.THRESHOLD_GRID
+from src.training.tasks import MultiLabelTask, Task
 
 
 class Trainer(BaseTrainer):
-    """Single-GPU trainer for BigEarthNet classification.
+    """Single-process trainer for any classification task.
 
-    Pure training logic — no logging or printing.
+    Pure training logic — no logging or printing. What depends on the problem type
+    (loss default, label smoothing, logits → predictions, metrics, threshold search)
+    is delegated to ``task`` (multi-label by default, as BigEarthNet).
     Wrap with an OOP decorator or apply Python @ decorators to its methods.
 
     Batch hooks
@@ -35,7 +36,7 @@ class Trainer(BaseTrainer):
         batch_loss   — loss of this specific batch (instantaneous)
         lr           — current learning rate (first param group)
         batch_f1     — macro F1 of this batch (indicative; post-mixup labels)
-        batch_acc    — sample accuracy of this batch
+        batch_acc    — accuracy of this batch (as defined by the task)
         batch_prec   — macro precision of this batch
 
     BatchMonitorDecorator uses this mechanism instead of duplicating train_epoch.
@@ -53,14 +54,16 @@ class Trainer(BaseTrainer):
         label_smoothing: float = 0.0,
         mixup_alpha: float = 0.0,
         precision: str = "fp32",
+        task: Task | None = None,
     ):
+        self.task: Task = task if task is not None else MultiLabelTask()
         self.model = self._place_model(model, device)
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.device = device
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
-        self.criterion = criterion if criterion is not None else nn.BCEWithLogitsLoss()
+        self.criterion = criterion if criterion is not None else self.task.build_criterion()
         self.grad_clip = grad_clip
         self.label_smoothing = label_smoothing
         self.mixup_alpha = mixup_alpha
@@ -112,7 +115,7 @@ class Trainer(BaseTrainer):
             images = images.to(self.device)
             labels = labels.to(self.device)
 
-            # `labels` keeps the original 0/1 multi-hot targets — used for METRICS.
+            # `labels` keeps the original 0/1 targets — used for METRICS.
             # The loss is computed on the augmented targets (`train_labels`); mixing
             # those into the reported train F1 would bias it (thresholding a soft
             # mixed label at 0.5 fabricates wrong "true" labels). See test_trainer.
@@ -121,7 +124,7 @@ class Trainer(BaseTrainer):
             if mixed:
                 train_images, train_labels = mixup_batch(images, labels, self.mixup_alpha)
             if self.label_smoothing > 0.0:
-                train_labels = train_labels * (1.0 - self.label_smoothing) + 0.5 * self.label_smoothing
+                train_labels = self.task.smooth_targets(train_labels, self.label_smoothing)
 
             self.optimizer.zero_grad()
             with self._autocast():
@@ -136,8 +139,8 @@ class Trainer(BaseTrainer):
 
             total_loss += loss.item()
             with torch.no_grad():
-                hard_labels = (labels > 0.5).long()      # ORIGINAL targets, not mixed
-                preds = (torch.sigmoid(logits) > 0.5).long()
+                hard_labels = self.task.hard_targets(labels)   # ORIGINAL targets, not mixed
+                preds = self.task.predict(self.task.probabilities(logits))
                 preds_cpu = preds.cpu()
                 hard_labels_cpu = hard_labels.cpu()
                 # Epoch train metrics aggregate only un-mixed batches: on a mixed
@@ -153,7 +156,7 @@ class Trainer(BaseTrainer):
                     "batch_loss": loss.item(),
                     "lr": self.optimizer.param_groups[0]["lr"],
                     "batch_f1": m.f1_score(preds_cpu, hard_labels_cpu),
-                    "batch_acc": m.accuracy(preds_cpu, hard_labels_cpu),
+                    "batch_acc": self.task.accuracy(preds_cpu, hard_labels_cpu),
                     "batch_prec": m.precision(preds_cpu, hard_labels_cpu),
                 }
                 for hook in self._batch_hooks:
@@ -174,7 +177,7 @@ class Trainer(BaseTrainer):
         return {
             "loss": total_loss / n_batches,
             "f1": m.f1_score(all_preds_t, all_labels_t),
-            "accuracy": m.accuracy(all_preds_t, all_labels_t),
+            "accuracy": self.task.accuracy(all_preds_t, all_labels_t),
             "time": time.time() - start,
         }
 
@@ -196,38 +199,28 @@ class Trainer(BaseTrainer):
                 loss = self.criterion(logits, labels)
             total_loss += loss.item()
 
-            all_probs.append(torch.sigmoid(logits.float()).cpu())
+            all_probs.append(self.task.probabilities(logits.float()).cpu())
             all_labels.append(labels.cpu())
 
-        all_probs_t = torch.cat(all_probs)
-        all_labels_t = torch.cat(all_labels)
-        all_preds_t = (all_probs_t > 0.5).long()
+        return {"loss": total_loss / len(loader),
+                **self._evaluate(torch.cat(all_probs), torch.cat(all_labels))}
 
-        f1_base = m.f1_score(all_preds_t, all_labels_t)
+    def _evaluate(self, probs: torch.Tensor, labels: torch.Tensor) -> dict:
+        """Validation metrics from the probabilities and targets of a whole split.
 
-        # Threshold grid search on validation set to find optimal F1 threshold
-        best_thresh, best_f1_thresh = 0.5, f1_base
-        for t in _THRESHOLD_GRID:
-            preds_t = (all_probs_t > t).long()
-            f1_t = m.f1_score(preds_t, all_labels_t)
-            if f1_t > best_f1_thresh:
-                best_thresh, best_f1_thresh = t, f1_t
-
-        return {
-            "loss": total_loss / len(loader),
-            "f1": f1_base,                          # at threshold=0.5 (used for checkpoint criterion)
-            "accuracy": m.accuracy(all_preds_t, all_labels_t),
-            "precision": m.precision(all_preds_t, all_labels_t),
-            "recall": m.recall(all_preds_t, all_labels_t),
-            "_optimal_threshold": best_thresh,
-            "_f1_at_optimal_threshold": best_f1_thresh,
-            # Raw tensors for ConfusionMatrixDecorator (consumed by decorator, stripped before checkpoint)
-            "_preds": all_preds_t,
-            "_labels": all_labels_t,
-            # Probabilities — DDPTrainer all_gathers these to redo the threshold
-            # search on the GLOBAL validation set (not just one rank's shard).
-            "_probs": all_probs_t,
-        }
+        Shared by every strategy: DDP calls it again on the probabilities gathered
+        from all ranks, so the metrics and the threshold search are always global.
+        """
+        hard = self.task.hard_targets(labels)
+        preds = self.task.predict(probs)
+        result = self.task.metrics(preds, hard)   # f1 @ default threshold = checkpoint criterion
+        found = self.task.search_threshold(probs, hard)
+        if found is not None:
+            result["_optimal_threshold"], result["_f1_at_optimal_threshold"] = found
+        # Raw tensors for ConfusionMatrixDecorator (consumed there, stripped before
+        # checkpoint) and the probabilities DDPTrainer gathers across ranks.
+        result.update({"_preds": preds, "_labels": hard, "_probs": probs})
+        return result
 
     def save_checkpoint(self, epoch: int, metrics: dict):
         path = self.checkpoint_dir / f"checkpoint_epoch_{epoch:03d}.pt"

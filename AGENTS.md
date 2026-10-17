@@ -32,9 +32,9 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 
 | Ruta | Responsabilidad |
 |---|---|
-| `src/data/` | Dataset (hoy solo `BigEarthNetDataset`) y transforms |
-| `src/models/` | `BigEarthModel` (backbone timm + cabeza), optimizador LLRD, `ModelParallelViT` |
-| `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, pérdidas, métricas |
+| `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`); hoy, BigEarthNet |
+| `src/models/` | `TimmClassifier` (backbone timm + cabeza), optimizador LLRD, `ModelParallelViT` |
+| `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, tareas (`tasks.py`), pérdidas, métricas |
 | `src/training/decorators/` | Decoradores GoF: controladores (`EpochController` → tracing/deep) y aspectos (plot, hooks, confusion, batch-monitor, reporters) |
 | `src/training/fn_decorators.py` | Decoradores `@` de Python: `timed`, `measure_energy`, `retry_on_cuda_oom` |
 | `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md) |
@@ -52,6 +52,11 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
   lanza `NotImplementedError` a propósito. Las cuatro estrategias comparten el mismo bucle y los
   mismos decoradores; una estrategia nueva es una subclase de `Trainer` + un `with_*` en el builder.
 - **Nuevo comportamiento transversal = nuevo decorador**, no `if`s dentro de `Trainer`.
+- **El núcleo no asume un dataset.** Clases, canales y lector vienen de la `DatasetSpec`; lo que
+  depende del tipo de problema (pérdida, sigmoide/softmax, métricas, umbral) vive en la `Task`.
+  Un dataset nuevo se añade sin tocar el entrenamiento ([guía](docs/datasets/README.md)).
+- **`tests/integration/test_behaviour_golden.py` fija números exactos** del entrenamiento. Si
+  falla, el comportamiento ha cambiado: se investiga, no se reescriben los valores.
 - **El terminal hace, la web mira:** la web nunca entrena ni toca la GPU; lee `logs/`.
 - **`performance_model.py` se mantiene puro** (testeable sin hardware). Toda constante calibrada
   lleva un comentario con el run del que sale.
@@ -87,4 +92,5 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 
 Índice completo en [`docs/README.md`](docs/README.md). Lo más consultado:
 [arquitectura](docs/arquitectura.md) · [modelo de rendimiento](docs/performance_model.md) ·
-[infraestructura](docs/infraestructura.md) · [roadmap](docs/roadmap.md) · [guía de uso](docs/guia_de_uso.md).
+[infraestructura](docs/infraestructura.md) · [datasets](docs/datasets/README.md) · [roadmap](docs/roadmap.md) ·
+[guía de uso](docs/guia_de_uso.md).
