@@ -100,10 +100,12 @@ def _overlay_charts(compare_dfs: list[tuple[str, pd.DataFrame]]) -> None:
                      for _, d in compare_dfs)
     _energy_opts = (["energy_train_wh", "energy_eval_wh", "power_train_w"]
                     if has_energy else [])
+    # val_auc only exists in epoch CSVs written since the AUC is logged.
+    _auc_opts = ["val_auc"] if any(_has(d, "val_auc") for _, d in compare_dfs) else []
     metrics_to_compare = st.multiselect(
         "Metrics to overlay",
-        ["val_f1", "val_loss", "train_f1", "train_loss", "val_prec", "val_rec",
-         "epoch_time"] + _energy_opts,
+        ["val_f1", "val_loss", "train_f1", "train_loss", "val_prec", "val_rec"]
+        + _auc_opts + ["epoch_time"] + _energy_opts,
         default=["val_f1", "val_loss"],
     )
     cols = st.columns(2)

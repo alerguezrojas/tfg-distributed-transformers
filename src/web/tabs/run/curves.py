@@ -9,7 +9,8 @@ import streamlit as st
 from src.web.eval_parser import parse_eval_csv
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _metric_fig, _show)
 from src.web.ui.context import DashboardContext
-from src.web.ui.helpers import (_dur_str, _load_df, _safe_max, _safe_val_at_best)
+from src.web.ui.helpers import (_best_metric, _dur_str, _load_df, _safe_max,
+                                 _safe_val_at_best)
 
 _TRAIN_WH = "Train (Wh)"
 
@@ -65,6 +66,18 @@ def _test_callout(ctx: DashboardContext) -> None:
                     _dl_csv(pcdf, f"{p.stem}.csv", "Download")
 
 
+def _auc_fig(df: pd.DataFrame, best: tuple[float, int]) -> go.Figure:
+    """Validation macro ROC AUC per epoch, with the best epoch marked."""
+    best_auc, best_ep = best
+    marker = go.Scatter(
+        x=[best_ep], y=[best_auc], name=f"Best (epoch {best_ep})", mode="markers",
+        marker={"color": COLORS[3], "size": 11, "symbol": "star"},
+    )
+    return _metric_fig(df, "", "val_auc", "ROC AUC (macro, val)", "AUC",
+                       color_val=COLORS[1], name_val="Val AUC", extra_traces=[marker],
+                       height=240)  # same height as its row neighbour (epoch time)
+
+
 def _curves(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     run = ctx.run
@@ -89,7 +102,11 @@ def _curves(ctx: DashboardContext) -> None:
                 else None
             )
 
-            c1, c2, c3, c4, c5 = st.columns(5)
+            # Validation macro ROC AUC: only in epoch CSVs written since it is
+            # logged. Runs without it keep exactly the previous layout.
+            auc_best = _best_metric(df, "val_auc")
+
+            c1, c2, c3, c4, c5, *c_auc = st.columns(6 if auc_best else 5)
             c1.metric("Epochs", n_epochs)
             c2.metric("Best Val F1", f"{best_f1:.4f}" if not pd.isna(best_f1) else "—")
             c3.metric("Best epoch", best_epoch)
@@ -97,6 +114,9 @@ def _curves(ctx: DashboardContext) -> None:
                 c4.metric("F1 @ optimal threshold", f"{best_thresh_f1:.4f}")
             if "epoch_time" in df.columns and df["epoch_time"].notna().any():
                 c5.metric("Total duration", _dur_str(df["epoch_time"].sum()))
+            if auc_best:
+                c_auc[0].metric("Best Val AUC", f"{auc_best[0]:.4f}",
+                                delta=f"epoch {auc_best[1]}", delta_color="off")
 
             src = "epoch_metrics CSV" if (run.epoch_csv_path and run.epoch_csv_path.exists()) else "log file"
             st.caption(f"Source: {src}")
@@ -112,6 +132,8 @@ def _curves(ctx: DashboardContext) -> None:
                     vl = df.sort_values("epoch")["val_loss"].dropna()
                     if len(vl) > 2 and vl.iloc[-1] > vl.min() * 1.15:
                         bits.append("val loss diverges after the best epoch")
+                if auc_best:
+                    bits.append(f"· best Val AUC **{auc_best[0]:.3f}** at epoch {auc_best[1]}")
                 # Yellow when the message flags a problem (overfitting gap OR a
                 # diverging val loss); blue otherwise. Keeps colour and text in sync.
                 _text = " ".join(bits)
@@ -137,13 +159,22 @@ def _curves(ctx: DashboardContext) -> None:
                                   "Score", color_train=COLORS[2], color_val=COLORS[3],
                                   name_train="Precision", name_val="Recall"), "prec_rec")
 
+            # With AUC, the AUC curve and the epoch-time bars share a row;
+            # without it, epoch time keeps the full width as before.
+            c_time = st.container()
+            if auc_best:
+                c_auc_fig, c_time = st.columns(2)
+                with c_auc_fig:
+                    _show(_auc_fig(df, auc_best), "val_auc")
+
             if "epoch_time" in df.columns and df["epoch_time"].notna().any():
                 et = df[["epoch", "epoch_time"]].dropna()
                 fig_et = go.Figure(go.Bar(x=et["epoch"], y=et["epoch_time"] / 60,
                                           marker_color=COLORS[0], opacity=0.8))
                 fig_et.update_layout(**_base_layout(240, "Time per epoch (min)"),
                                      xaxis_title="Epoch", yaxis_title="Minutes")
-                _show(fig_et, "epoch_time")
+                with c_time:
+                    _show(fig_et, "epoch_time")
 
             has_energy = "energy_eval_wh" in df.columns and df["energy_eval_wh"].notna().any()
             if has_energy:
