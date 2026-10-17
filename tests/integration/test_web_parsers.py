@@ -247,7 +247,7 @@ class TestRunRegistry:
         assert len(runs) > 0
 
     def test_run_has_required_attrs(self):
-        from src.web.run_registry import discover_runs, RunInfo
+        from src.web.run_registry import discover_runs
         runs = discover_runs(ROOT)
         for run in runs[:5]:
             assert hasattr(run, "log_path")

@@ -4,7 +4,6 @@ import csv
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from src.web.benchmark_parser import parse_benchmark_csv
 

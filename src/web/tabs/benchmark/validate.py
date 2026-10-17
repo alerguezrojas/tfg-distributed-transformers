@@ -344,7 +344,7 @@ def render_validate(_ctx) -> object:
         "Note": d["note"],
     } for d in records]
     tdf = pd.DataFrame(table_rows).set_index("Run")
-    st.dataframe(tdf, use_container_width=True,
+    st.dataframe(tdf, width="stretch",
                  column_config={"Note": st.column_config.TextColumn("Note", width="large")})
     _dl_csv(tdf.reset_index(), "three_way_comparison.csv", "Download comparison")
     st.caption("**A** = analytic prediction · **B** = empirical benchmark · **R** = real run. "
@@ -449,7 +449,7 @@ def render_validate(_ctx) -> object:
         pick = st.selectbox("Run (single-GPU)", list(cmp_by_run.keys()),
                             format_func=_short, key="formula_run")
         ftab = cmp_by_run[pick].to_dataframe()
-        st.dataframe(ftab, hide_index=True, use_container_width=True)
+        st.dataframe(ftab, hide_index=True, width="stretch")
         _dl_csv(ftab, "benchmark_formulas.csv", "Download formulas")
 
     # ── Speedup validation when a single + DDP pair of the same model is picked ──

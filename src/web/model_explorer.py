@@ -7,7 +7,6 @@ tiny batch to measure actual FLOPs and activation memory.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from functools import lru_cache
 

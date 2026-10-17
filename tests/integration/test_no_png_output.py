@@ -6,7 +6,6 @@ Los decoradores de training solo deben escribir CSVs, nunca PNGs.
 import tempfile
 from pathlib import Path
 
-import pytest
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset

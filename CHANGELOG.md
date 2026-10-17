@@ -52,6 +52,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- Web: `use_container_width` (obsoleto en Streamlit) pasa a `width="stretch"`; la columna
+  "Best epoch" usa un solo tipo y ya no provoca trazas de Arrow en Compare y Details.
+- Imports sin usar eliminados en `src/` y `tests/` (ruff F401/F541).
 - El builder no pasaba la pérdida configurada al trainer heterogéneo, así que `pos_weight` se
   ignoraba en esa estrategia. Ningún run usó `pos_weight` en heterogéneo.
 - `model.dropout` del config no llegaba al modelo: todos los entrenamientos usaban 0.1, también

@@ -1,7 +1,6 @@
 """Compare — speedup."""
 from __future__ import annotations
 
-import re
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -100,7 +99,7 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
         bar_vals.append(sp)
         bar_colors.append("#94a3b8" if lbl == base_lbl else COLORS[0])
 
-    st.dataframe(pd.DataFrame(rows).set_index("Run"), use_container_width=True)
+    st.dataframe(pd.DataFrame(rows).set_index("Run"), width="stretch")
 
     # Ranked bar: sort by speedup (fastest on top) and colour by faster / slower
     # than the baseline, so "scales up" vs "penalises" reads instantly.
