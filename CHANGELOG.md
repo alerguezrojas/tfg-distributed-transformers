@@ -37,6 +37,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- El builder no pasaba la pérdida configurada al trainer heterogéneo, así que `pos_weight` se
+  ignoraba en esa estrategia. Ningún run usó `pos_weight` en heterogéneo.
 - `model.dropout` del config no llegaba al modelo: todos los entrenamientos usaban 0.1, también
   los configs "v3" que pedían 0.3. Los resultados del TFG llevan una nota con la corrección.
 - El resumen de torchinfo (`--inspect model-summary`) y el análisis del benchmark asumían 3
