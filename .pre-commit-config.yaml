@@ -1,0 +1,22 @@
+# Comprobaciones locales antes de cada commit (las mismas que CI y los hooks de Claude Code).
+# Instalación, una vez por clon:
+#   uvx pre-commit install --hook-type pre-commit --hook-type commit-msg
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.1                     # misma versión que uv.lock
+    hooks:
+      - id: ruff                     # reglas de [tool.ruff] en pyproject.toml
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-yaml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ["--maxkb=2000"]       # evita subir checkpoints o datasets por error
+  - repo: local
+    hooks:
+      - id: sin-atribucion-ia
+        name: mensaje de commit sin Co-Authored-By ni "Generated with"
+        language: system
+        stages: [commit-msg]
+        entry: bash -c '! grep -qiE "co-authored-by|generated with" "$1"' --
