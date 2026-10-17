@@ -5,7 +5,7 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.17.1                     # misma versión que uv.lock
     hooks:
-      - id: ruff                     # reglas de [tool.ruff] en pyproject.toml
+      - id: ruff-check               # reglas de [tool.ruff] en pyproject.toml
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
