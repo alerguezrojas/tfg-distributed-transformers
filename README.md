@@ -113,6 +113,10 @@ uv run paravit.py dashboard          # → http://localhost:8501
 - [Modelo analítico de rendimiento](docs/performance_model.md) — derivación y validación de las
   fórmulas del estimador.
 - [Diagrama de clases](docs/class_diagram.svg) — arquitectura completa del sistema.
+- [Índice de la documentación](docs/README.md) — arquitectura, infraestructura, resultados del TFG
+  y [roadmap](docs/roadmap.md) del trabajo posterior.
+- Versión entregada como TFG: etiqueta [`v1.0-tfg`](https://github.com/alerguezrojas/tfg-distributed-transformers/releases/tag/v1.0-tfg);
+  cambios desde entonces en el [CHANGELOG](CHANGELOG.md).
 
 ## Diseño
 
