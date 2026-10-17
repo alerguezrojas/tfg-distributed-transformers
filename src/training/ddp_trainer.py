@@ -3,7 +3,7 @@
 Inherits from Trainer and overrides only the three methods that differ in a
 distributed context:
   - train_epoch: sets the DistributedSampler epoch for correct per-epoch shuffling
-  - eval_epoch:  all_gathers _preds and _labels from every rank before computing metrics
+  - eval_epoch:  all_gathers _probs and _labels from every rank before computing metrics
   - save_checkpoint: only rank 0 writes to disk
 
 The decorator stack (TracingDecorator, PlottingDecorator, etc.) remains entirely
@@ -19,7 +19,6 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 
 from src.training.trainer import Trainer
-from src.training import metrics as m
 
 
 class DDPTrainer(Trainer):
@@ -88,7 +87,6 @@ class DDPTrainer(Trainer):
 
         all_probs = torch.cat(gathered_probs).cpu()
         all_labels = torch.cat(gathered_labels).cpu()
-        all_preds = (all_probs > 0.5).long()
 
         # Average loss across all ranks.
         # NOTE: the AVG reduce op is NOT supported by the gloo backend (only
@@ -98,26 +96,8 @@ class DDPTrainer(Trainer):
         dist.all_reduce(loss_t, op=dist.ReduceOp.SUM)
         loss_t /= self.world_size
 
-        # Optimal-threshold search on the GLOBAL probabilities.
-        f1_base = m.f1_score(all_preds, all_labels)
-        best_thresh, best_f1_thresh = 0.5, f1_base
-        for t in m.THRESHOLD_GRID:
-            f1_t = m.f1_score((all_probs > t).long(), all_labels)
-            if f1_t > best_f1_thresh:
-                best_thresh, best_f1_thresh = t, f1_t
-
-        result["_preds"] = all_preds
-        result["_labels"] = all_labels
-        result["_probs"] = all_probs
-        result["loss"] = loss_t.item()
-        result["f1"] = f1_base
-        result["accuracy"] = m.accuracy(all_preds, all_labels)
-        result["precision"] = m.precision(all_preds, all_labels)
-        result["recall"] = m.recall(all_preds, all_labels)
-        result["_optimal_threshold"] = best_thresh
-        result["_f1_at_optimal_threshold"] = best_f1_thresh
-
-        return result
+        # Metrics and optimal-threshold search on the GLOBAL probabilities.
+        return {"loss": loss_t.item(), **self._evaluate(all_probs, all_labels)}
 
     def save_checkpoint(self, epoch: int, metrics: dict):
         # Only rank 0 writes to disk; DDP.state_dict() delegates to module

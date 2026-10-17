@@ -1,7 +1,8 @@
 """Evaluation script — measures model performance on the test split.
 
-Loads a saved checkpoint and evaluates it on BigEarthNet-S2 test set,
-reporting per-class and aggregate metrics with optimal threshold search.
+Loads a saved checkpoint and evaluates it on the test split of the dataset named
+in the config (``data.name``, default BigEarthNet-S2), reporting per-class and
+aggregate metrics — with optimal threshold search for sigmoid tasks.
 
 Usage:
     # Evaluate best checkpoint with default config
@@ -29,33 +30,10 @@ from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.dataset import BigEarthNetDataset, get_transforms
+from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
-
-_THRESHOLD_GRID = m.THRESHOLD_GRID
-
-CLASS_NAMES = [
-    "Urban fabric",
-    "Industrial or commercial units",
-    "Arable land",
-    "Permanent crops",
-    "Pastures",
-    "Complex cultivation patterns",
-    "Land principally occupied by agriculture",
-    "Agro-forestry areas",
-    "Broad-leaved forest",
-    "Coniferous forest",
-    "Mixed forest",
-    "Natural grassland and sparsely vegetated areas",
-    "Moors, heathland and sclerophyllous vegetation",
-    "Transitional woodland, shrub",
-    "Beaches, dunes, sands",
-    "Inland wetlands",
-    "Coastal wetlands",
-    "Inland waters",
-    "Marine waters",
-]
+from src.training.tasks import MultiLabelTask, Task
 
 
 def parse_args():
@@ -80,19 +58,20 @@ def parse_args():
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, max_batches=None):
-    """Run inference and return probabilities + labels."""
+def evaluate(model, loader, device, max_batches=None, task: Task | None = None):
+    """Run inference and return probabilities, targets and mean loss."""
+    task = task or MultiLabelTask()
     model.eval()
     all_probs, all_labels = [], []
     total_loss = 0.0
     n_batches = 0
-    criterion = torch.nn.BCEWithLogitsLoss()
+    criterion = task.build_criterion()
 
     for images, labels in loader:
         images, labels = images.to(device), labels.to(device)
         logits = model(images)
         total_loss += criterion(logits, labels).item()
-        all_probs.append(torch.sigmoid(logits).cpu())
+        all_probs.append(task.probabilities(logits).cpu())
         all_labels.append(labels.cpu())
         n_batches += 1
         if max_batches and n_batches >= max_batches:
@@ -103,25 +82,29 @@ def evaluate(model, loader, device, max_batches=None):
     return probs, labels, total_loss / n_batches
 
 
-def threshold_search(probs, labels):
-    """Find threshold that maximises macro F1."""
-    best_t, best_f1 = 0.5, 0.0
-    for t in _THRESHOLD_GRID:
-        preds = (probs > t).long()
-        f1 = m.f1_score(preds, labels)
-        if f1 > best_f1:
-            best_t, best_f1 = t, f1
-    return best_t, best_f1
+def threshold_search(probs, labels, task: Task | None = None):
+    """(threshold, macro F1) maximising F1 — same search as during training.
+
+    Tasks without a tunable threshold (multi-class) return the default 0.5 and
+    its F1."""
+    task = task or MultiLabelTask()
+    hard = task.hard_targets(labels.float())
+    found = task.search_threshold(probs, hard)
+    if found is None:
+        return 0.5, m.f1_score(task.predict(probs), hard)
+    return found
 
 
-def per_class_metrics(probs, labels, threshold):
+def per_class_metrics(probs, labels, threshold, class_names=(), task: Task | None = None):
     """Compute F1, precision, recall per class."""
-    preds = (probs > threshold).long()
-    n_classes = labels.shape[1]
+    task = task or MultiLabelTask()
+    preds = task.predict(probs, threshold)
+    hard = task.hard_targets(labels.float())
+    n_classes = hard.shape[1]
     rows = []
     for i in range(n_classes):
         p = preds[:, i]
-        l = labels[:, i].long()
+        l = hard[:, i]
         tp = (p & l).sum().item()
         fp = (p & ~l.bool()).sum().item()
         fn = (~p.bool() & l.bool()).sum().item()
@@ -130,7 +113,7 @@ def per_class_metrics(probs, labels, threshold):
         f1   = 2 * prec * rec / (prec + rec + 1e-8)
         rows.append({
             "class_idx": i,
-            "class_name": CLASS_NAMES[i] if i < len(CLASS_NAMES) else f"class_{i}",
+            "class_name": class_names[i] if i < len(class_names) else f"class_{i}",
             "f1": round(f1, 4),
             "precision": round(prec, 4),
             "recall": round(rec, 4),
@@ -147,9 +130,11 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_name = args.model or cfg["model"]["name"]
     batch_size = args.batch_size or cfg["training"].get("batch_size", 32)
-    num_classes = cfg["model"].get("num_classes", 19)
+    spec = dataset_spec_from_config(cfg)
+    task = spec.make_task()
 
     print(f"Checkpoint : {args.checkpoint}")
+    print(f"Dataset    : {spec.name} ({task.name}, {spec.num_classes} clases)")
     print(f"Modelo     : {model_name}")
     print(f"Split      : {args.split}")
     print(f"Dispositivo: {device}")
@@ -159,8 +144,9 @@ def main():
     # affect the state_dict shape, so build_model need not take it.
     model = build_model(
         model_name=model_name,
-        num_classes=num_classes,
+        num_classes=spec.num_classes,
         pretrained=False,
+        in_chans=spec.in_channels,
     )
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state_dict"])
@@ -169,11 +155,11 @@ def main():
     print(f"Epoch      : {resumed_epoch}")
 
     # ── Dataset ───────────────────────────────────────────────────────────────
-    metadata_path = args.metadata or cfg["data"]["metadata"]
-    ds = BigEarthNetDataset(
-        cfg["data"]["root"], metadata_path, split=args.split,
-        transform=get_transforms("val"),
-    )
+    data_cfg = dict(cfg["data"])
+    if args.metadata:
+        data_cfg["metadata"] = args.metadata
+    metadata_path = data_cfg.get("metadata", data_cfg.get("root"))
+    ds = spec.dataset(data_cfg, args.split)
     loader = DataLoader(
         ds, batch_size=batch_size, shuffle=False,
         num_workers=cfg["data"].get("num_workers", 4), pin_memory=True,
@@ -186,18 +172,17 @@ def main():
         sys.exit(1)
 
     # ── Evaluate ──────────────────────────────────────────────────────────────
-    probs, labels, avg_loss = evaluate(model, loader, device, max_batches=args.max_batches)
-    preds_05 = (probs > 0.5).long()
+    probs, labels, avg_loss = evaluate(model, loader, device,
+                                       max_batches=args.max_batches, task=task)
+    hard = task.hard_targets(labels)
+    agg = task.metrics(task.predict(probs), hard)
+    f1_05, acc_05 = agg["f1"], agg["accuracy"]
+    prec_05, rec_05 = agg["precision"], agg["recall"]
 
-    f1_05     = m.f1_score(preds_05, labels)
-    acc_05    = m.accuracy(preds_05, labels)
-    prec_05   = m.precision(preds_05, labels)
-    rec_05    = m.recall(preds_05, labels)
-
-    best_t, best_f1 = threshold_search(probs, labels)
+    best_t, best_f1 = threshold_search(probs, labels, task)
 
     print("\n── Aggregate metrics ─────────────────────────────────────────────")
-    print(f"  BCE Loss          : {avg_loss:.6f}")
+    print(f"  Loss              : {avg_loss:.6f}")
     print(f"  F1  (t=0.50)      : {f1_05:.4f}")
     print(f"  Accuracy (t=0.50) : {acc_05:.4f}")
     print(f"  Precision(t=0.50) : {prec_05:.4f}")
@@ -205,7 +190,7 @@ def main():
     print(f"  Optimal threshold : {best_t:.2f}")
     print(f"  F1  (t={best_t:.2f})     : {best_f1:.4f}")
 
-    pc = per_class_metrics(probs, labels, best_t)
+    pc = per_class_metrics(probs, labels, best_t, spec.classes, task)
     pc_sorted = sorted(pc, key=lambda r: r["f1"], reverse=True)
 
     print("\n── Per-class F1 (threshold={:.2f}, sorted desc) ─────────────────".format(best_t))

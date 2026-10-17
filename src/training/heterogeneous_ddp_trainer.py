@@ -55,10 +55,6 @@ from src.training import metrics as m
 from src.training.augmentations import mixup_batch
 
 
-def _smooth(labels: torch.Tensor, smoothing: float) -> torch.Tensor:
-    return labels * (1 - smoothing) + smoothing / 2
-
-
 class HeterogeneousDDPTrainer(DDPTrainer):
     """DDP trainer que maneja batch sizes heterogéneos entre ranks.
 
@@ -73,6 +69,10 @@ class HeterogeneousDDPTrainer(DDPTrainer):
     def __init__(self, *args, local_batch_size: int, **kwargs):
         super().__init__(*args, **kwargs)
         self.local_batch_size = local_batch_size
+        if not self.task.sigmoid_outputs:
+            raise NotImplementedError(
+                f"heterogeneous DDP normalizes an element-wise sigmoid loss; the "
+                f"{self.task.name!r} task is not supported on this strategy yet")
         # Criterio con reducción sum para la normalización manual del gradiente.
         # Hereda el pos_weight del criterion configurado (self.criterion) para que la
         # pérdida de entrenamiento use los mismos pesos de clase que la de validación
@@ -111,11 +111,11 @@ class HeterogeneousDDPTrainer(DDPTrainer):
             # Mixup: devuelve (mixed_images, mixed_labels) — dos valores
             if self.mixup_alpha > 0 and torch.rand(1).item() < 0.5:
                 images, labels_mixed = mixup_batch(images, labels, self.mixup_alpha)
-                labels_for_loss = _smooth(labels_mixed, self.label_smoothing)
+                labels_for_loss = self.task.smooth_targets(labels_mixed, self.label_smoothing)
                 labels_for_metrics = labels > 0.5  # usar labels originales para métricas
             else:
                 labels_for_loss = (
-                    _smooth(labels, self.label_smoothing)
+                    self.task.smooth_targets(labels, self.label_smoothing)
                     if self.label_smoothing > 0 else labels
                 )
                 labels_for_metrics = labels
@@ -148,8 +148,8 @@ class HeterogeneousDDPTrainer(DDPTrainer):
             total_loss += batch_loss
 
             with torch.no_grad():
-                preds = (torch.sigmoid(logits.detach()) >= 0.5).cpu()
-                labels_metrics = (labels_for_metrics.detach() >= 0.5).cpu()
+                preds = self.task.predict(self.task.probabilities(logits.detach())).cpu()
+                labels_metrics = self.task.hard_targets(labels_for_metrics.detach().float()).cpu()
                 all_preds.append(preds)
                 all_labels_list.append(labels_metrics)
 
@@ -159,9 +159,9 @@ class HeterogeneousDDPTrainer(DDPTrainer):
                     "running_loss": total_loss / batch_idx,
                     "batch_loss": batch_loss,
                     "lr": self.optimizer.param_groups[0]["lr"],
-                    "batch_f1": m.f1_score(preds.long(), labels_metrics.long()),
-                    "batch_acc": m.accuracy(preds.long(), labels_metrics.long()),
-                    "batch_prec": m.precision(preds.long(), labels_metrics.long()),
+                    "batch_f1": m.f1_score(preds, labels_metrics),
+                    "batch_acc": self.task.accuracy(preds, labels_metrics),
+                    "batch_prec": m.precision(preds, labels_metrics),
                 }
                 for hook in self._batch_hooks:
                     hook(self._current_epoch, batch_idx, n_batches, batch_metrics)
@@ -175,7 +175,7 @@ class HeterogeneousDDPTrainer(DDPTrainer):
         return {
             "loss": total_loss / n_batches if n_batches > 0 else 0.0,
             "f1": m.f1_score(preds_t, labels_t),
-            "accuracy": m.accuracy(preds_t, labels_t),
+            "accuracy": self.task.accuracy(preds_t, labels_t),
             "time": time.time() - start,
             "_preds": preds_t,
             "_labels": labels_t,

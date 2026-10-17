@@ -6,6 +6,7 @@ from pathlib import Path
 
 import torch
 
+from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.benchmark.value_objects import BenchmarkReport
 from src.benchmark.model_analyzer import ModelAnalyzer
@@ -56,10 +57,16 @@ class BenchmarkChecker:
         self._device = torch.device(
             f"cuda:{self._device_index}" if torch.cuda.is_available() else "cpu"
         )
+        # Input channels / classes / loss come from the dataset in the config
+        # (BigEarthNet when there is no config): the synthetic batches match it.
+        self._spec = dataset_spec_from_config(self._config)
+        self._task = self._spec.make_task()
 
     def run(self) -> BenchmarkReport:
         print(f"Cargando modelo {self._model_name}...")
-        model = build_model(model_name=self._model_name, pretrained=False)
+        model = build_model(model_name=self._model_name, pretrained=False,
+                            num_classes=self._spec.num_classes,
+                            in_chans=self._spec.in_channels)
 
         hw_probe = HardwareProbe()
         model_info = ModelAnalyzer(model, self._model_name, self._device).analyze()
@@ -77,7 +84,7 @@ class BenchmarkChecker:
                 self._dataset_path, disk_info
             ).profile(0.5, self._batch_sizes[0])  # placeholder, actualizado después
 
-        benchmarker = Benchmarker(model, self._device, precision=self._precision)
+        benchmarker = self._benchmarker(model, self._precision)
         report = BenchmarkReport(
             model_info=model_info,
             hardware_info=hardware_info,
@@ -153,7 +160,7 @@ class BenchmarkChecker:
         bs = self._batch_sizes[0]
         out = {"batch_size": bs, "tc_precision": tc}
         for key, prec in (("fp32", "fp32"), ("tc", tc)):
-            bench = Benchmarker(model, self._device, precision=prec)
+            bench = self._benchmarker(model, prec)
             try:
                 res = bench.run(bs, "off")
             except Exception:
@@ -173,23 +180,23 @@ class BenchmarkChecker:
                 return "resnet50" if fam == "resnet" else fam
         return "vit_base"
 
+    def _benchmarker(self, model, precision: str) -> Benchmarker:
+        return Benchmarker(model, self._device, precision=precision,
+                           num_classes=self._spec.num_classes,
+                           in_chans=self._spec.in_channels, task=self._task)
+
     def _build_real_loader(self, batch_size: int):
         """Construye un DataLoader del dataset real para el estudio.
 
         Devuelve None si el dataset no está disponible (se hace fallback a sintético).
         """
         data_cfg = self._config.get("data", {})
-        root = data_cfg.get("root")
-        metadata = data_cfg.get("metadata")
-        if not root or not metadata:
-            return None
-        if not (Path(root).exists() and Path(metadata).exists()):
+        paths = [data_cfg.get(k) for k in self._spec.required_keys]
+        if not all(paths) or not all(Path(p).exists() for p in paths):
             return None
         try:
-            from src.data.dataset import BigEarthNetDataset, get_transforms
             from torch.utils.data import DataLoader
-            ds = BigEarthNetDataset(root, metadata, split="train",
-                                    transform=get_transforms("train"))
+            ds = self._spec.dataset(data_cfg, "train")
             return DataLoader(ds, batch_size=batch_size, shuffle=True,
                               num_workers=data_cfg.get("num_workers", 2),
                               pin_memory=(self._device.type == "cuda"))
@@ -201,8 +208,8 @@ class BenchmarkChecker:
         """Loader sintético de respaldo si el dataset no está disponible."""
         from torch.utils.data import DataLoader, TensorDataset
         n = batch_size * (self._study_steps + 25)
-        x = torch.randn(n, 3, 224, 224)
-        y = torch.randint(0, 2, (n, 19)).float()
+        x = torch.randn(n, self._spec.in_channels, 224, 224)
+        y = torch.randint(0, 2, (n, self._spec.num_classes)).float()
         return DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
 
     def _run_convergence_study(self, model):
@@ -220,7 +227,7 @@ class BenchmarkChecker:
             source = "datos sintéticos (dataset no disponible)"
 
         print(f"Estudio de convergencia ({self._study_steps} steps, batch={batch_size}, {source})…")
-        study = ConvergenceStudy(self._device, self._model_family())
+        study = ConvergenceStudy(self._device, self._model_family(), task=self._task)
         try:
             report = study.run_full_study(
                 model, loader, lr=lr, batch_size=batch_size,

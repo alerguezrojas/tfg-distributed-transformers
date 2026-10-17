@@ -141,11 +141,12 @@ def test_heterogeneous_trainer_matches_golden(tmp_path, gloo):
 def test_confusion_decorator_csvs_match_golden(tmp_path):
     from src.training.trainer import Trainer
     from src.training.decorators import ConfusionMatrixDecorator
+    from src.data.bigearthnet import BIGEARTHNET
     model = _model()
     opt = torch.optim.AdamW(model.parameters(), lr=1e-2)
     base = Trainer(model, opt, None, torch.device("cpu"), checkpoint_dir=str(tmp_path))
     dec = ConfusionMatrixDecorator(base, output_dir=str(tmp_path), timestamp="g",
-                                   csv_dir=str(tmp_path))
+                                   csv_dir=str(tmp_path), class_names=BIGEARTHNET.classes)
     _seed(0)
     dec.eval_epoch(_loader())
     per = pd.read_csv(tmp_path / "perclass_metrics_g.csv")
@@ -183,7 +184,7 @@ def _fake_bigearthnet(tmp_path):
 
 
 def test_bigearthnet_reader_matches_golden(tmp_path):
-    from src.data.dataset import BigEarthNetDataset, get_transforms
+    from src.data.bigearthnet import BigEarthNetDataset, get_transforms
     root, meta = _fake_bigearthnet(tmp_path)
     raw = BigEarthNetDataset(str(root), str(meta), split="train")
     img, lab = raw[0]
@@ -202,9 +203,10 @@ def test_bigearthnet_reader_matches_golden(tmp_path):
 
 
 def test_pos_weight_auto_matches_golden(tmp_path):
-    from src.training.losses import pos_weight_from_metadata
+    from src.data.bigearthnet import BIGEARTHNET
+    from src.training.losses import pos_weight_from_counts
     _, meta = _fake_bigearthnet(tmp_path)
-    pw = pos_weight_from_metadata(str(meta), split="train")
+    pw = pos_weight_from_counts(*BIGEARTHNET.class_counts({"metadata": str(meta)}, "train"))
     assert pw.tolist() == pytest.approx(GOLDEN_POS_WEIGHT)
 
 

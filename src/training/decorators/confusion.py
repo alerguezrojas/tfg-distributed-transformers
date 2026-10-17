@@ -1,24 +1,26 @@
-"""ConfusionMatrixDecorator — métricas por clase para clasificación multi-label.
+"""ConfusionMatrixDecorator — métricas por clase tras cada evaluación.
 
 Genera por epoch dos CSVs (sin PNGs — el dashboard web genera las gráficas de forma
 interactiva con Plotly desde estos CSVs):
   - perclass_metrics_TIMESTAMP.csv  — F1, precision, recall por clase
-  - confusion_matrix_TIMESTAMP.csv  — matriz 19×19 normalizada
+  - confusion_matrix_TIMESTAMP.csv  — matriz C×C normalizada por filas
 
 CSV columns: epoch, true_class, pred_class, value
-Celda (i, j) = P(predice j | verdadero es i). Diagonal = recall por clase.
+Celda (i, j) = P(predice j | verdadero es i). Diagonal = recall por clase. En
+multi-etiqueta es una matriz de co-activación; en multiclase, la matriz de
+confusión clásica (las predicciones y etiquetas llegan en one-hot).
 
 Trainer.eval_epoch debe incluir '_preds' y '_labels' en su dict de retorno.
 """
 
 import csv
+from collections.abc import Sequence
 from pathlib import Path
 
 import torch
 from torch.utils.data import DataLoader
 
 from src.training.decorators.base import TrainerDecorator
-from src.data.dataset import CLASSES
 
 
 class ConfusionMatrixDecorator(TrainerDecorator):
@@ -39,8 +41,12 @@ class ConfusionMatrixDecorator(TrainerDecorator):
         timestamp: str = "",
         every_n_epochs: int = 1,
         csv_dir: str | None = None,
+        class_names: Sequence[str] | None = None,
     ):
         super().__init__(trainer)
+        # Names written to the CSVs; without them, generic ``class_<i>`` labels
+        # (the decorator itself does not depend on any particular dataset).
+        self._class_names: list[str] | None = list(class_names) if class_names else None
         self._output_dir = Path(output_dir)
         self._output_dir.mkdir(parents=True, exist_ok=True)
         self._timestamp = timestamp
@@ -74,6 +80,14 @@ class ConfusionMatrixDecorator(TrainerDecorator):
 
         return result
 
+    def _names(self, n_classes: int) -> list[str]:
+        if self._class_names is None:
+            return [f"class_{i}" for i in range(n_classes)]
+        if len(self._class_names) != n_classes:
+            raise ValueError(f"{len(self._class_names)} class names for "
+                             f"{n_classes} model outputs")
+        return self._class_names
+
     def _write_confusion_matrix_csv(self, preds: torch.Tensor, labels: torch.Tensor, epoch: int):
         import numpy as np
         preds_b = preds.bool().numpy().astype(float)
@@ -84,8 +98,9 @@ class ConfusionMatrixDecorator(TrainerDecorator):
         matrix = co / row_sums[:, None]
         with open(self._confusion_csv_path, "a", newline="") as f:
             writer = csv.writer(f)
-            for i, true_name in enumerate(CLASSES):
-                for j, pred_name in enumerate(CLASSES):
+            names = self._names(matrix.shape[0])
+            for i, true_name in enumerate(names):
+                for j, pred_name in enumerate(names):
                     writer.writerow([epoch, true_name, pred_name, round(float(matrix[i, j]), 6)])
 
     def _write_csv(self, preds: torch.Tensor, labels: torch.Tensor, epoch: int):
@@ -99,7 +114,7 @@ class ConfusionMatrixDecorator(TrainerDecorator):
         per_f1 = [2 * p * r / (p + r + 1e-8) for p, r in zip(per_prec, per_rec)]
         with open(self._csv_path, "a", newline="") as f:
             writer = csv.writer(f)
-            for i, name in enumerate(CLASSES):
+            for i, name in enumerate(self._names(len(per_f1))):
                 writer.writerow([epoch, name, i,
                                   round(per_f1[i], 6),
                                   round(per_prec[i], 6),

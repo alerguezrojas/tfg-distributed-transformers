@@ -13,30 +13,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from src.data.bigearthnet_classes import CLASSES
+
 # ── Official BigEarthNet-S2 v2.0 class labels ────────────────────────────────
 _AGRICULTURE = "Land principally occupied by agriculture"
 
-CLASS_NAMES = [
-    "Urban fabric",
-    "Industrial or commercial units",
-    "Arable land",
-    "Permanent crops",
-    "Pastures",
-    "Complex cultivation patterns",
-    _AGRICULTURE,
-    "Agro-forestry areas",
-    "Broad-leaved forest",
-    "Coniferous forest",
-    "Mixed forest",
-    "Natural grassland and sparsely vegetated areas",
-    "Moors, heathland and sclerophyllous vegetation",
-    "Transitional woodland, shrub",
-    "Beaches, dunes, sands",
-    "Inland wetlands",
-    "Coastal wetlands",
-    "Inland waters",
-    "Marine waters",
-]
+CLASS_NAMES = list(CLASSES)   # single source of truth: the dataset definition
 
 # Approximate sample counts per class in BigEarthNet-S2 v2.0 (train split)
 # Source: official BigEarthNet statistics

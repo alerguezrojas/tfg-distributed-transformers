@@ -4,12 +4,13 @@ import torch.nn as nn
 import torch.optim
 
 
-class BigEarthModel(nn.Module):
-    """Generic timm model for multi-label classification on BigEarthNet-S2.
+class TimmClassifier(nn.Module):
+    """Any timm backbone + a ``Dropout → Linear`` classification head.
 
-    Wraps any pretrained model from timm and replaces the classification head
-    with one suited for multi-label output (19 classes, no softmax).
-    Supports ViT, DeiT, Swin, ResNet, EfficientNet, and any other timm model.
+    The head returns raw logits (no sigmoid/softmax): the task decides how to read
+    them. ``num_classes`` and ``in_chans`` come from the dataset spec (BigEarthNet:
+    19 classes, 3 channels). Supports ViT, DeiT, Swin, ResNet, EfficientNet and any
+    other timm model; with ``in_chans != 3`` timm adapts the pretrained stem.
     """
 
     # Model families whose backbone exposes `.blocks` and `.patch_embed` → LLRD-compatible
@@ -21,6 +22,7 @@ class BigEarthModel(nn.Module):
         num_classes: int = 19,
         pretrained: bool = True,
         dropout: float = 0.1,
+        in_chans: int = 3,
     ):
         super().__init__()
         self.model_name = model_name
@@ -29,6 +31,7 @@ class BigEarthModel(nn.Module):
             model_name,
             pretrained=pretrained,
             num_classes=0,  # Remove the original classification head
+            in_chans=in_chans,
         )
 
         embed_dim = self.backbone.num_features
@@ -46,34 +49,37 @@ class BigEarthModel(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Args:
-            x: Input tensor of shape (B, 3, H, W).
+            x: Input tensor of shape (B, in_chans, H, W).
         Returns:
-            Logits of shape (B, num_classes). No sigmoid applied —
-            use BCEWithLogitsLoss during training.
+            Logits of shape (B, num_classes). No activation applied — the
+            task's loss works on logits.
         """
         features = self.backbone(x)
         return self.head(features)
 
 
-# Backward-compatible alias
-BigEarthViT = BigEarthModel
+# Backward-compatible aliases (names used before multi-dataset support)
+BigEarthModel = TimmClassifier
+BigEarthViT = TimmClassifier
 
 
 def build_model(
     model_name: str = "vit_base_patch16_224",
     num_classes: int = 19,
     pretrained: bool = True,
-) -> BigEarthModel:
+    in_chans: int = 3,
+) -> TimmClassifier:
     """Instantiate and return the model."""
-    return BigEarthModel(
+    return TimmClassifier(
         model_name=model_name,
         num_classes=num_classes,
         pretrained=pretrained,
+        in_chans=in_chans,
     )
 
 
 def build_llrd_optimizer(
-    model: BigEarthModel,
+    model: TimmClassifier,
     lr_base: float,
     weight_decay: float,
     llrd_decay: float = 0.75,
