@@ -60,7 +60,7 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
       en GPU de las cuatro estrategias con resultados idénticos.
 - [x] Quitar las listas de clases duplicadas (eval, confusion, web) y leerlas de la ficha.
 - [x] `in_chans` configurable en el modelo (las 12 bandas necesitan además un lector multibanda).
-- [ ] Corregir: `model.dropout` del YAML no se aplica (la cabeza usa siempre 0.1).
+- [x] Corregido: `model.dropout` del YAML no se aplicaba (la cabeza usaba siempre 0.1).
 - [ ] Corregir: el builder no pasa la pérdida configurada al trainer heterogéneo (`pos_weight` se pierde).
 - [ ] La web (galería y estadísticas del dataset) sigue siendo específica de BigEarthNet.
 - [ ] El benchmark aún toma de BigEarthNet los tamaños de split por defecto y el perfil de I/O

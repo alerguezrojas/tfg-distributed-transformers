@@ -3,6 +3,12 @@
 > Registro de los entrenamientos y estudios realizados hasta la entrega (`v1.0-tfg`, julio 2026).
 > Es un documento **histórico**: los números aquí son los que se citan en la memoria. Los
 > resultados nuevos van en documentos propios de cada campaña de medidas.
+>
+> **Corrección (17/10/2026):** el `model.dropout` del YAML nunca llegó al modelo (el builder no
+> lo pasaba), así que **todos** los entrenamientos de este documento usaron dropout **0.1** en la
+> cabeza. En v3, v3b y v4 el config pedía 0.3: su regularización real fue label smoothing + mixup
+> + weight decay 0.1, sin el aumento de dropout. Los números medidos son correctos; lo que cambia
+> es la atribución. Corregido en el código a partir de esta fecha.
 
 ## Resultados de entrenamiento
 
@@ -70,7 +76,7 @@ cosine scheduler, grad_clip=1.0, early stopping patience=10. Flags: `--trace sim
 
 ### Clúster v3 — V100 32 GB, batch_size=64, label smoothing + mixup (completado 2026-05-13/14)
 
-Ejecutado con `configs/train_cluster_v3.yaml`: label smoothing=0.1, mixup α=0.2, dropout=0.3, weight decay=0.1, LLRD decay=0.75, warmup=5, early stopping patience=10. Flags: `--trace simple --layers plot confusion batch-monitor --fn energy`.
+Ejecutado con `configs/train_cluster_v3.yaml`: label smoothing=0.1, mixup α=0.2, dropout=0.3 en el config (aplicado: 0.1, ver la corrección del inicio), weight decay=0.1, LLRD decay=0.75, warmup=5, early stopping patience=10. Flags: `--trace simple --layers plot confusion batch-monitor --fn energy`.
 
 | Epoch | Train F1 | Val F1 | Val Loss | Threshold óptimo | F1@threshold |
 |-------|----------|--------|----------|-------------------|--------------|
@@ -168,13 +174,15 @@ Mismo config que v3/v3b (`configs/train_cluster_v3.yaml`). Primera ejecución co
 | **Early stopping** | No | Sí (patience=10) | Sí (patience=10) | Sí (patience=10) | Sí (patience=10) |
 | **Label smoothing** | No | No | Sí (0.1) | Sí (0.1) | Sí (0.1) |
 | **Mixup** | No | No | Sí (α=0.2) | Sí (α=0.2) | Sí (α=0.2) |
-| **Dropout** | 0.1 | 0.1 | 0.3 | 0.3 | 0.3 |
+| **Dropout** (aplicado) | 0.1 | 0.1 | 0.1\* | 0.1\* | 0.1\* |
 | **Weight decay** | 0.05 | 0.05 | 0.1 | 0.1 | 0.1 |
 | **Energía medida** | No | No | No | Sí (~35 Wh/eval, ~100 W) | Sí (~35 Wh/eval, ~103 W) |
 | **Epochs ejecutados** | 30 | 17 | 16 | 15 | 17 |
 | **Duración** | ~45.8h | ~19h | **~18h** | ~17.3h | ~19h |
 | **Mejor Val F1** | 0.6588 (epoch 28) | 0.6707 (epoch 7) | 0.6738 (epoch 6) | 0.6708 (epoch 5) | **0.6816 (epoch 7)** |
 | **Gap train-val en mejor epoch** | ~0.34 | ~0.11 | ~0.08 | ~0.07 | **~0.13** |
+
+\* El config pedía 0.3, pero no se aplicaba (ver la corrección del inicio).
 
 **Conclusiones v1 → v2:**
 - LLRD + warmup mejoraron Val F1 en +0.012 y aceleraron la convergencia (mejor epoch: 28 → 7)
