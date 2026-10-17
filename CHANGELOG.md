@@ -37,6 +37,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- `model.dropout` del config no llegaba al modelo: todos los entrenamientos usaban 0.1, también
+  los configs "v3" que pedían 0.3. Los resultados del TFG llevan una nota con la corrección.
 - El resumen de torchinfo (`--inspect model-summary`) y el análisis del benchmark asumían 3
   canales de entrada; ahora los leen del modelo.
 - Documentación para agentes estandarizada: `CLAUDE.md` mínimo que importa `AGENTS.md`; el

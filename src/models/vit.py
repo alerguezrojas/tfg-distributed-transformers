@@ -76,12 +76,14 @@ def build_model(
     num_classes: int = 19,
     pretrained: bool = True,
     in_chans: int = 3,
+    dropout: float = 0.1,
 ) -> TimmClassifier:
-    """Instantiate and return the model."""
+    """Instantiate and return the model (``dropout`` = rate before the head)."""
     return TimmClassifier(
         model_name=model_name,
         num_classes=num_classes,
         pretrained=pretrained,
+        dropout=dropout,
         in_chans=in_chans,
     )
 

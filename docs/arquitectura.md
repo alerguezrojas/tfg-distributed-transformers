@@ -40,9 +40,8 @@ procesos. El `ConfusionMatrixDecorator` recibe los nombres de clase de la ficha.
 - El forward devuelve logits crudos; la tarea decide cómo interpretarlos.
 - Modelo de referencia del TFG: `vit_base_patch16_224` preentrenado en ImageNet (85 813 267
   parámetros, embed_dim = 768).
-- ⚠ `model.dropout` del YAML **no se aplica**: el builder no lo pasa al modelo, así que la
-  cabeza usa siempre p=0.1, también en los configs "v3" que piden 0.3. Pendiente de
-  corregir (ver [roadmap](roadmap.md)).
+- `model.dropout` (por defecto 0.1) es la probabilidad del `Dropout` de la cabeza. Hasta el
+  17/10/2026 no se aplicaba (siempre 0.1); ver la nota en [resultados_tfg.md](resultados_tfg.md).
 
 ---
 

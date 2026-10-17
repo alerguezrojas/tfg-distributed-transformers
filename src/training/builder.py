@@ -174,6 +174,7 @@ class TrainingSessionBuilder:
 
         # ── Model ────────────────────────────────────────────────────────────
         model_name = self._model_name or cfg["model"]["name"]
+        dropout = cfg["model"].get("dropout", 0.1)
         if self._model_parallel is not None:
             from src.models.model_parallel import build_model_parallel_vit
             mp_devices, mp_split = self._model_parallel
@@ -184,6 +185,7 @@ class TrainingSessionBuilder:
                 devices=mp_devices,
                 split_block=mp_split,
                 in_chans=spec.in_channels,
+                dropout=dropout,
             )
         else:
             model = build_model(
@@ -191,6 +193,7 @@ class TrainingSessionBuilder:
                 num_classes=spec.num_classes,
                 pretrained=cfg["model"].get("pretrained", True),
                 in_chans=spec.in_channels,
+                dropout=dropout,
             )
 
         # ── Optimizer ────────────────────────────────────────────────────────
