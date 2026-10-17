@@ -5,6 +5,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- `docs/research/estado_del_arte_prediccion.md`: revisión del trabajo relacionado sobre predicción del
+  rendimiento del entrenamiento (Paleo, Habitat, Daydream, DS-Analyzer, NeuSight…) y posibles contribuciones.
 - `training.select_by: auc`: elige el checkpoint y el early stopping por el AUC de validación
   (sin umbral), útil cuando las clases son tan raras que el F1 a 0,5 se queda en cero. El AUC de
   validación se calcula en cada época y se escribe como `val_auc` en `epoch_metrics_*.csv`.
