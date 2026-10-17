@@ -132,11 +132,16 @@ INTERCONNECT_BW: dict[str, float] = {
 class ModelSpec:
     name: str
     params_m: float          # millions of parameters
-    gflops_fwd: float        # forward GFLOPs per 224×224 image
+    gflops_fwd: float        # forward GFLOPs per 224×224 image (multiply-add = 1, see below)
     act_gb_per_img: float    # training activation memory (GB) per image
+    calibrated: bool = True  # False = profiled automatically, activations by rule
 
 
 # Curated from timm / the literature (forward GFLOPs at 224²).
+# Unit: these are what timm reports as "GMACs" (a multiply-add counts as ONE
+# operation; vit_base = 17.6). torch's FlopCounterMode counts a multiply-add as TWO
+# (vit_base = 35.1), so src/model_profile.py halves its count to stay in this unit.
+# MFU was calibrated against these numbers, so it absorbs the factor 2.
 # act_gb_per_img: ViT family calibrated/scaled from the two measured points
 # (base 0.093 from 4.95 GB @ b32 on 3060 Ti; large 0.260 from 13.78 GB @ b32 on
 # T4), the others scaled by hidden_dim×layers; resnet/effnet are estimates.
@@ -174,6 +179,57 @@ def gpu_spec(name: str | None) -> GpuSpec | None:
 
 def model_spec(name: str | None) -> ModelSpec | None:
     return _fuzzy(MODEL_TABLE, name)
+
+
+# ── Models outside MODEL_TABLE: spec from an automatic profile ───────────────────
+# src/model_profile.py measures params and forward FLOPs of any timm model with
+# torch's FLOP counter; this pure part turns that profile into a ModelSpec. What a
+# FLOP count cannot give is the activation memory per image, so it is ESTIMATED by
+# a rule anchored to the two calibrated ViT points (MODEL_TABLE: vit_base 0.093 GB
+# @ 17.6 GFLOPs, vit_large 0.260 GB @ 61.6 GFLOPs):
+#   * above vit_base: the power law through both points (exponent ≈ 0.82);
+#   * below vit_base: exponent 0.5 — at fixed depth a ViT's activations grow with
+#     the width d while its FLOPs grow with d², which is the hidden_dim×layers
+#     scaling the table uses for vit_tiny/vit_small (the rule reproduces them
+#     within 3%). The flatter exponent errs on the side of MORE memory for small
+#     models (a straight per-FLOP rule would give vit_tiny 0.007 instead of 0.024);
+#   * convolutional backbones keep full-resolution feature maps (+ BatchNorm), so
+#     they carry far more activation per FLOP: × the factor that maps the rule onto
+#     the resnet50 entry (≈2.2). That entry over-predicts the measured resnet50
+#     peaks (logs/*/benchmark, ×1.2–1.5), so the factor is on the safe side.
+# Uncalibrated by construction: specs built here carry calibrated=False and
+# predict() adds a note saying so.
+_ACT_SMALL_MODEL_EXPONENT: float = 0.5
+_VIT_BASE = MODEL_TABLE["vit_base_patch16_224"]
+_VIT_LARGE = MODEL_TABLE["vit_large_patch16_224"]
+_ACT_LARGE_MODEL_EXPONENT: float = (
+    math.log(_VIT_LARGE.act_gb_per_img / _VIT_BASE.act_gb_per_img)
+    / math.log(_VIT_LARGE.gflops_fwd / _VIT_BASE.gflops_fwd))
+
+
+def _vit_act_rule(gflops_fwd: float) -> float:
+    exp = _ACT_SMALL_MODEL_EXPONENT if gflops_fwd <= _VIT_BASE.gflops_fwd else _ACT_LARGE_MODEL_EXPONENT
+    return _VIT_BASE.act_gb_per_img * (gflops_fwd / _VIT_BASE.gflops_fwd) ** exp
+
+
+CONV_ACTIVATION_FACTOR: float = (MODEL_TABLE["resnet50"].act_gb_per_img
+                                 / _vit_act_rule(MODEL_TABLE["resnet50"].gflops_fwd))
+
+
+def estimate_act_gb_per_img(gflops_fwd: float, convolutional: bool = False) -> float:
+    """Activation memory (GB/image) for a model NOT in MODEL_TABLE, by rule.
+
+    See the comment above: power law through the calibrated ViT points, flatter
+    (exponent 0.5) below vit_base, × CONV_ACTIVATION_FACTOR for CNN backbones."""
+    act = _vit_act_rule(max(gflops_fwd, 1e-6))
+    return act * (CONV_ACTIVATION_FACTOR if convolutional else 1.0)
+
+
+def spec_from_profile(name: str, params_m: float, gflops_fwd: float,
+                      convolutional: bool = False) -> ModelSpec:
+    """ModelSpec for a profiled model: measured params/FLOPs + estimated activations."""
+    return ModelSpec(name, params_m, gflops_fwd,
+                     estimate_act_gb_per_img(gflops_fwd, convolutional), calibrated=False)
 
 
 # ── Parameter estimators ─────────────────────────────────────────────────────────
@@ -409,15 +465,19 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
             epochs: int = 15, disk_type: str = "ssd", nfs: bool = False,
             rc_measured: float | None = None,
             rio_measured: float | None = None,
-            val_size: int | None = None) -> Prediction | None:
+            val_size: int | None = None,
+            model: ModelSpec | None = None) -> Prediction | None:
     """Closed-form prediction for any combination. Returns None for unknown specs.
 
     ``batch`` is the GLOBAL batch; it is split across the n GPUs for DDP.
     ``dataset_size`` is the train split; ``val_size`` is the val split used for the
     eval-epoch time/energy (defaults to ~0.51× the train split, the BigEarthNet ratio).
     Pass ``rc_measured`` / ``rio_measured`` to calibrate against a real benchmark.
+    ``model`` overrides the MODEL_TABLE lookup by name — e.g. a spec built from an
+    automatic profile (src/model_profile.py) for a model outside the table.
     """
-    model = model_spec(model_name)
+    if model is None:
+        model = model_spec(model_name)
     gpu = gpu_spec(gpu_name)
     if model is None or gpu is None:
         return None
@@ -464,6 +524,13 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         notes.append(f"OOM: needs ~{vram:.1f} GB but only ~{usable:.1f} GB of the "
                      f"{gpu.vram_gb:.0f} GB is usable (PyTorch reserves ~8%). "
                      f"Largest batch that fits: {rec_b}.")
+    if not model.calibrated:
+        notes.append(f"Model profiled automatically ({model.params_m:.1f}M params, "
+                     f"{model.gflops_fwd:.2f} GFLOPs measured); activation memory "
+                     f"estimated, not calibrated — treat VRAM/OOM as a rough estimate. "
+                     f"Compute throughput (MFU {MFU}) is calibrated on vit_base and not "
+                     f"on this architecture (known deviations: resnet50 -24%, vit_large "
+                     f"+18%), so time and energy are rough too.")
     if not gpu.power_calibrated:
         notes.append(f"Energy uses a TDP-fallback power for {gpu.name} (≈"
                      f"{gpu.train_power_w:.0f} W/GPU, not measured here) — treat it as "
@@ -554,14 +621,19 @@ class QualityPrediction:
     notes: list[str] = field(default_factory=list)
 
 
-def expected_best_f1(model_name: str, dataset_size: int = N_FULL_TRAIN) -> tuple[float, str, float]:
+def expected_best_f1(model_name: str, dataset_size: int = N_FULL_TRAIN,
+                     calibrated: bool = True) -> tuple[float, str, float]:
     """Empirical-prior best Val F1 for a model on N training images.
 
     Returns ``(f1, confidence, band)``. Uses the log-linear data-scaling law
     anchored to the documented full-dataset plateau of the model family.
-    """
+    ``calibrated=False`` (a model profiled automatically, outside MODEL_TABLE) forces
+    confidence "low": the family prior (falling back to vit_base) was never run for
+    that architecture."""
     fam = _quality_family(model_name)
     f_full, _, _, k, conf = _QUALITY_ANCHORS[fam]
+    if not calibrated:
+        conf = "low"
     n = max(1, int(dataset_size))
     drop = k * math.log10(max(1.0, N_FULL_TRAIN / n))
     f1 = max(0.0, min(f_full, f_full - drop))
@@ -590,17 +662,21 @@ def _learning_curve(f_inf: float, best_epoch: int, epochs: list[int]
 
 
 def predict_quality(model_name: str, dataset_size: int = N_FULL_TRAIN,
-                    epochs: int = 30) -> QualityPrediction | None:
+                    epochs: int = 30, calibrated: bool = True) -> QualityPrediction | None:
     """Empirical-prior quality estimate (best Val F1 + a learning curve).
 
     The honest planning counterpart to ``predict``: anchored to documented runs,
     extended to any dataset size by the data-scaling law. Not a measurement — for
     that, run the convergence study. Returns ``None`` for an unknown family only
     in the sense that it always falls back to the ViT-Base prior (so never None
-    here, but kept Optional for symmetry with ``predict``)."""
+    here, but kept Optional for symmetry with ``predict``).
+
+    Pass ``calibrated=model_spec.calibrated``: for a model profiled automatically the
+    prior is that of its nearest family (vit_base when none matches) and the
+    confidence is forced to "low" with a note saying so."""
     fam = _quality_family(model_name)
     f_full, best_ep, stop_ep, _k, _conf = _QUALITY_ANCHORS[fam]
-    f1, conf, band = expected_best_f1(model_name, dataset_size)
+    f1, conf, band = expected_best_f1(model_name, dataset_size, calibrated)
 
     n_show = max(best_ep + 2, min(int(epochs), 40))
     curve_epochs = list(range(1, n_show + 1))
@@ -614,6 +690,9 @@ def predict_quality(model_name: str, dataset_size: int = N_FULL_TRAIN,
         f"Dataset = {int(dataset_size):,} train images "
         f"({frac*100:.0f}% of the full {N_FULL_TRAIN:,}).",
     ]
+    if not calibrated:
+        notes.append(f"Model outside the curated table: the {fam} prior is the nearest "
+                     f"family, not a run of this architecture — confidence forced to low.")
     if frac < 0.9:
         notes.append(f"Smaller dataset lowers the expected F1 (full-set plateau ≈ {f_full:.2f}).")
     notes.append("This is a planning prior, not a measurement — run the convergence "
