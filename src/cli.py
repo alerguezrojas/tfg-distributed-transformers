@@ -226,30 +226,44 @@ def predict(
     dataset_size: Optional[int] = typer.Option(None, help="Custom train-image count (overrides --dataset)."),
     epochs: int = typer.Option(15, help="Number of epochs."),
     disk: str = typer.Option("ssd", help="ssd | nvme | hdd | nfs."),
+    in_chans: int = typer.Option(3, help="Input channels (≠3 profiles the model instead of using its table entry)."),
+    num_classes: int = typer.Option(19, help="Output classes (negligible effect on cost; head only)."),
+    img_size: int = typer.Option(224, help="Input resolution (≠224 profiles the model instead of using its table entry)."),
 ) -> None:
-    """Analytic estimate of time, memory, cost and quality for a config — no GPU, just formulas."""
+    """Analytic estimate of time, memory, cost and quality for a config — no GPU, just formulas.
+
+    Models outside the curated table are profiled automatically (params and FLOPs
+    measured with torch's FLOP counter on the meta device; no weights, no GPU)."""
     n = resolve_dataset_n(dataset, dataset_size)
-    _show_prediction(model, gpu, strategy, n_gpus, batch, precision, n, epochs, disk)
+    _show_prediction(model, gpu, strategy, n_gpus, batch, precision, n, epochs, disk,
+                     in_chans=in_chans, num_classes=num_classes, img_size=img_size)
 
 
 def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: int,
-                     precision: str, dataset_size: int, epochs: int, disk: str) -> None:
+                     precision: str, dataset_size: int, epochs: int, disk: str,
+                     in_chans: int = 3, num_classes: int = 19, img_size: int = 224) -> None:
     """Render the analytic prediction in full: a headline, the time and memory
     formulas with the values plugged in, expected quality, scaling and cloud cost.
     Shared by `predict` and `menu`."""
+    from src.model_profile import resolve_model_spec
     from src.performance_model import (
-        predict as _predict, predict_quality, model_spec, gpu_spec,
+        predict as _predict, predict_quality, gpu_spec,
         estimate_rc, estimate_rio, precision_factor,
         BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, EVAL_POWER_FRACTION)
     nfs = disk == "nfs"
     strat = strategy.replace("-", "_")
+    ms, gs = resolve_model_spec(model, in_chans, num_classes, img_size), gpu_spec(gpu)
+    if ms is None:
+        console.print(f"[red]Unknown model '{model}': not in the table and timm cannot build it.[/]")
+        return
     p = _predict(strat, model, gpu, n_gpus=n_gpus, dataset_size=dataset_size,
-                 batch=batch, precision=precision, epochs=epochs, disk_type=disk, nfs=nfs)
+                 batch=batch, precision=precision, epochs=epochs, disk_type=disk, nfs=nfs,
+                 model=ms)
     if p is None:
         console.print("[red]Unknown model or GPU spec.[/]")
         return
-    ms, gs = model_spec(model), gpu_spec(gpu)
-    q = predict_quality(model, dataset_size=dataset_size, epochs=epochs)
+    q = predict_quality(model, dataset_size=dataset_size, epochs=epochs,
+                        calibrated=ms.calibrated)
 
     # ── Headline ────────────────────────────────────────────────────────────────
     fit = "[green]fits[/]" if p.fits_in_memory else "[red]OOM[/]"
@@ -288,7 +302,8 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
         mt.add_row("Weights+grad+Adam", f"{wo:.2f} GB",
                    f"16 B × {ms.params_m:.0f}M" + (" + fp16 copy" if amp else ""))
         mt.add_row("Activations", f"{act:.2f} GB",
-                   f"{p.batch_per_gpu} × {ms.act_gb_per_img:.3f} GB/img" + (" × 0.6" if amp else ""))
+                   f"{p.batch_per_gpu} × {ms.act_gb_per_img:.3f} GB/img" + (" × 0.6" if amp else "")
+                   + ("" if ms.calibrated else " (estimated by rule)"))
         mt.add_row("CUDA overhead", f"{CUDA_OVERHEAD_GB:.2f} GB", "context + cudnn")
         mt.add_row("Total", f"{p.vram_per_gpu_gb:.1f} GB",
                    f"vs {gs.vram_gb:.0f} GB → {'fits' if p.fits_in_memory else 'OOM'} · "
@@ -320,7 +335,8 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
         qt.add_row("Expected Val F1", f"{q.expected_best_f1:.3f} ± {q.band:.3f}")
         qt.add_row("Best epoch ≈", str(q.best_epoch))
         qt.add_row("Early stop ≈", str(q.early_stop_epoch))
-        qt.add_row("Confidence", str(q.confidence))
+        qt.add_row("Confidence", str(q.confidence)
+                   + ("" if ms.calibrated else " (architecture outside the curated table)"))
         console.print(qt)
 
     # ── Scaling 1→8 GPUs (data-parallel) ─────────────────────────────────────────
@@ -330,7 +346,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
         sct.add_column("Efficiency", justify="right"); sct.add_column("Time/epoch", justify="right")
         for ng in (1, 2, 4, 8):
             pn = _predict(strat, model, gpu, n_gpus=ng, dataset_size=dataset_size, batch=batch,
-                          precision=precision, epochs=1, disk_type=disk, nfs=nfs)
+                          precision=precision, epochs=1, disk_type=disk, nfs=nfs, model=ms)
             if pn:
                 sct.add_row(str(ng), f"{pn.speedup:.2f}×", f"{pn.efficiency*100:.0f}%",
                             _fmt_secs(pn.time_per_epoch_train_s))

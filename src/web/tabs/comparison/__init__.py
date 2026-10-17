@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from src.web.ui.context import DashboardContext
-from src.web.ui.helpers import _load_df, _get_runs
+from src.web.ui.helpers import _load_df
 from src.web.tabs.comparison.summary import _summary_table
 from src.web.tabs.comparison.perclass import _perclass_heatmap_section
 from src.web.tabs.comparison.speedup import _speedup_section

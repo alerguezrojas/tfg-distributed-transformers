@@ -1,6 +1,5 @@
 """Tests de ConvergenceStudy — ajuste de curvas (puro) y mediciones (modelo tiny)."""
 
-import math
 
 import numpy as np
 import pytest

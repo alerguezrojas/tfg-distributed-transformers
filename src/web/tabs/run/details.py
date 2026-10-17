@@ -34,7 +34,7 @@ def _info(ctx: DashboardContext) -> None:
             "Trace mode": run.trace_mode,
             "Epochs": n_ep_i,
             "Best Val F1": f"{best_f1_i:.4f}" if not pd.isna(best_f1_i) else "—",
-            "Best epoch": int(best_ep_i_v) if best_ep_i_v is not None else "—",
+            "Best epoch": str(int(best_ep_i_v)) if best_ep_i_v is not None else "—",  # one dtype for Arrow
         }
         # Run config (only new / backfilled runs record it)
         if _cfg_run.get("batch"):

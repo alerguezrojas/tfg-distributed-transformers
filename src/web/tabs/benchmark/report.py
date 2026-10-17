@@ -4,7 +4,6 @@ Summary strip + the key visuals up front (throughput, VRAM, precision, time, cos
 distributed scaling); the verbose system/memory tables live in one expander."""
 from __future__ import annotations
 
-import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -76,7 +75,7 @@ def render_report(meta, bdf_feas, benchmark_csvs) -> object:
     if pc and pc.get("fp32_imgs_s"):
         tc_name = str(pc.get("tc_precision", "amp")).upper()
         fig_pc = go.Figure(go.Bar(
-            x=[f"FP32 (CUDA cores)", f"{tc_name} (Tensor cores)"],
+            x=["FP32 (CUDA cores)", f"{tc_name} (Tensor cores)"],
             y=[pc["fp32_imgs_s"], pc["tc_imgs_s"]],
             marker_color=[COLORS[5], COLORS[2]],
             text=[f"{pc['fp32_imgs_s']:.0f}", f"{pc['tc_imgs_s']:.0f}"], textposition="outside",
@@ -124,7 +123,7 @@ def render_report(meta, bdf_feas, benchmark_csvs) -> object:
                        f"{meta.get('gradient_mb','—')} MB · AdamW {meta.get('optimizer_mb','—')} MB · "
                        f"activations {meta.get('activation_mb_per_image','—')} MB/img")
         if not bdf_feas.empty:
-            st.dataframe(bdf_feas, use_container_width=True, height=240)
+            st.dataframe(bdf_feas, width="stretch", height=240)
             _dl_csv(bdf_feas, "benchmark_benchmark.csv", "Download full benchmark")
 
         # Cloud cost — uses the same epoch count as the estimate above

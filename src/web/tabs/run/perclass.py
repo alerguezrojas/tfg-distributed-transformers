@@ -98,7 +98,7 @@ def _per_class(ctx: DashboardContext) -> None:
             .style.map(_color_f1_cell, subset=["f1"])
             .format({"f1": "{:.3f}", "precision": "{:.3f}", "recall": "{:.3f}"})
         )
-        st.dataframe(styled, use_container_width=True, height=280)
+        st.dataframe(styled, width="stretch", height=280)
         _dl_csv(ep_df[cols], f"perclass_ep{selected_ep}.csv", "Download per-class table")
 
     st.markdown("#### Trend across epochs")

@@ -10,12 +10,23 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.performance_model import (
-    GPU_TABLE, MODEL_TABLE, predict, predict_quality, gpu_spec, model_spec,
+    GPU_TABLE, MODEL_TABLE, ModelSpec, predict, predict_quality, gpu_spec,
     estimate_rc, estimate_rio, precision_factor,
     BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, N_FULL_TRAIN, N_SUBSET_TRAIN,
     EVAL_POWER_FRACTION,
 )
 from src.web.ui.charts import COLORS, _show, _base_layout, _dl_csv
+
+
+_OTHER_MODEL = "Other timm model…"
+
+
+@st.cache_data(show_spinner="Profiling the model (params and FLOPs)…")
+def _profiled_spec(name: str, in_chans: int, num_classes: int, img_size: int) -> ModelSpec | None:
+    """Spec for any timm model: the curated table entry, or an automatic profile
+    (FLOP counter on the meta device — no weights, no GPU, no training)."""
+    from src.model_profile import resolve_model_spec
+    return resolve_model_spec(name, in_chans=in_chans, num_classes=num_classes, img_size=img_size)
 
 
 def _fmt_secs(s: float) -> str:
@@ -39,8 +50,10 @@ def _analytic_predictor() -> None:
 
     c1, c2, c3 = st.columns(3)
     with c1:
-        model_name = st.selectbox("Model", list(MODEL_TABLE.keys()),
-                                  index=list(MODEL_TABLE.keys()).index("vit_base_patch16_224"))
+        _models = [*MODEL_TABLE.keys(), _OTHER_MODEL]
+        model_name = st.selectbox("Model", _models, index=_models.index("vit_base_patch16_224"),
+                                  help="The curated, calibrated models — or any other timm "
+                                       "model, profiled automatically.")
         gpu_name = st.selectbox("GPU", list(GPU_TABLE.keys()),
                                 index=list(GPU_TABLE.keys()).index("Tesla T4"))
     with c2:
@@ -70,6 +83,24 @@ def _analytic_predictor() -> None:
         n_gpus = 1
     nfs = disk_type == "nfs"
 
+    ms = MODEL_TABLE[model_name] if model_name in MODEL_TABLE else None
+    if model_name == _OTHER_MODEL:
+        o1, o2, o3, o4 = st.columns([3, 1, 1, 1])
+        model_name = o1.text_input("timm model name", "convnext_tiny").strip()
+        in_chans = o2.number_input("Input channels", 1, 64, 3)
+        num_classes = o3.number_input("Classes", 1, 10000, 19)
+        img_size = o4.number_input("Image size", 32, 1024, 224, step=16)
+        ms = _profiled_spec(model_name, int(in_chans), int(num_classes), int(img_size))
+        if ms is None:
+            st.error(f"Unknown model `{model_name}`: timm cannot build it.")
+            return
+        if not ms.calibrated:
+            st.caption(f"Profiled automatically: {ms.params_m:.1f}M params, "
+                       f"{ms.gflops_fwd:.2f} GFLOPs/image (multiply-add = 1, as in the "
+                       f"curated table). Activation memory is estimated by rule and the compute "
+                       f"throughput (MFU) is calibrated on vit_base, not on this "
+                       f"architecture — time, energy and VRAM are rough, quality is low-confidence.")
+
     with st.expander("Calibrate with a measured throughput (optional)"):
         st.caption("Pure formulas assume a typical model-FLOPs utilization. Enter a real "
                    "single-GPU throughput (fp32, img/s, from a Measure-tab benchmark) to "
@@ -80,11 +111,12 @@ def _analytic_predictor() -> None:
 
     p = predict(strategy, model_name, gpu_name, n_gpus=int(n_gpus),
                 dataset_size=int(dataset_size), batch=int(batch), precision=precision,
-                epochs=int(epochs), disk_type=disk_type, nfs=nfs, rc_measured=rc_measured)
+                epochs=int(epochs), disk_type=disk_type, nfs=nfs, rc_measured=rc_measured,
+                model=ms)
     if p is None:
         st.error("Unknown model or GPU spec.")
         return
-    ms, gs = model_spec(model_name), gpu_spec(gpu_name)
+    gs = gpu_spec(gpu_name)
 
     # ── Headline strip ──────────────────────────────────────────────────────────
     if p.calibrated:
@@ -107,7 +139,7 @@ def _analytic_predictor() -> None:
         {"Term": "Time / epoch", "Value": _fmt_secs(p.time_per_epoch_train_s),
          "Formula": f"max({p.t_compute_s:.0f}, {p.t_io_s:.0f}) + {p.t_sync_s:.1f} → {p.bottleneck}-bound"},
     ])
-    st.dataframe(time_tbl, hide_index=True, use_container_width=True)
+    st.dataframe(time_tbl, hide_index=True, width="stretch")
 
     # ── VRAM formula ──────────────────────────────────────────────────────────────
     if ms and gs:
@@ -119,13 +151,14 @@ def _analytic_predictor() -> None:
             {"Term": "Weights+grad+Adam", "Value": f"{wo:.2f} GB",
              "Formula": f"16 B × {ms.params_m:.0f}M" + (" + fp16 copy" if amp else "")},
             {"Term": "Activations", "Value": f"{act:.2f} GB",
-             "Formula": f"{p.batch_per_gpu} × {ms.act_gb_per_img:.3f} GB/img" + (" × 0.6" if amp else "")},
+             "Formula": f"{p.batch_per_gpu} × {ms.act_gb_per_img:.3f} GB/img" + (" × 0.6" if amp else "")
+                        + ("" if ms.calibrated else " (estimated by rule)")},
             {"Term": "CUDA overhead", "Value": f"{CUDA_OVERHEAD_GB:.2f} GB", "Formula": "context + cudnn"},
             {"Term": "Total", "Value": f"{p.vram_per_gpu_gb:.1f} GB",
              "Formula": f"vs {gs.vram_gb:.0f} GB → {'fits' if p.fits_in_memory else 'OOM'} · "
                         f"max batch {p.recommended_batch}"},
         ])
-        st.dataframe(mem_tbl, hide_index=True, use_container_width=True)
+        st.dataframe(mem_tbl, hide_index=True, width="stretch")
         if not p.fits_in_memory:
             st.error(f"Out of memory: needs ~{p.vram_per_gpu_gb:.1f} GB, GPU has "
                      f"{gs.vram_gb:.0f} GB. Largest batch that fits: **{p.recommended_batch}**.")
@@ -147,7 +180,7 @@ def _analytic_predictor() -> None:
         {"Term": f"Energy total ({int(epochs)} ep)", "Value": f"{p.energy_total_wh:.1f} Wh",
          "Formula": "energy/epoch × epochs"},
     ])
-    st.dataframe(energy_tbl, hide_index=True, use_container_width=True)
+    st.dataframe(energy_tbl, hide_index=True, width="stretch")
     _energy_note = ""
     if strategy == "ddp" and int(n_gpus) > 1:
         if p.efficiency >= 0.85:
@@ -169,7 +202,8 @@ def _analytic_predictor() -> None:
                "unmeasured GPUs use a TDP fallback (flagged)." + _energy_note)
 
     # ── Expected quality (empirical prior) + curve ───────────────────────────────
-    q = predict_quality(model_name, dataset_size=int(dataset_size), epochs=int(epochs))
+    q = predict_quality(model_name, dataset_size=int(dataset_size), epochs=int(epochs),
+                        calibrated=ms.calibrated if ms else True)
     if q is not None:
         st.markdown("#### Expected quality (empirical prior — not a measurement)")
         qc1, qc2, qc3 = st.columns(3)
@@ -177,6 +211,9 @@ def _analytic_predictor() -> None:
                    delta=f"±{q.band:.3f}", delta_color="off")
         qc2.metric("Best epoch ≈", q.best_epoch)
         qc3.metric("Early stop ≈", q.early_stop_epoch, help="patience=10")
+        if ms is not None and not ms.calibrated:
+            st.caption("Low confidence: this architecture is outside the curated table, so "
+                       "the F1 prior is that of the nearest model family, not a run of it.")
         ep = q.curve_epochs
         fig_q = go.Figure()
         fig_q.add_trace(go.Scatter(
@@ -201,7 +238,8 @@ def _analytic_predictor() -> None:
         sp_vals = []
         for n in ns:
             pn = predict(strategy, model_name, gpu_name, n_gpus=n, dataset_size=int(dataset_size),
-                         batch=int(batch), precision=precision, epochs=1, disk_type=disk_type, nfs=nfs)
+                         batch=int(batch), precision=precision, epochs=1, disk_type=disk_type, nfs=nfs,
+                         model=ms)
             sp_vals.append(pn.speedup if pn else 0.0)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=ns, y=ns, name="Ideal (linear)",
@@ -223,7 +261,7 @@ def _analytic_predictor() -> None:
         st.markdown(f"#### Cloud cost · {total_h:.1f} GPU-hours")
         cdf = pd.DataFrame([{"Provider": r["provider"], "GPU": r["gpu"],
                              "$/h": r["usd_per_hour"], "Cost ($)": r["cost_usd"]} for r in rows])
-        st.dataframe(cdf, hide_index=True, use_container_width=True)
+        st.dataframe(cdf, hide_index=True, width="stretch")
         _dl_csv(cdf, "predicted_cost.csv", "Download cost table")
 
     # ── Assumptions ──────────────────────────────────────────────────────────────

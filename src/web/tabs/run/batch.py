@@ -152,7 +152,7 @@ def _batch(ctx: DashboardContext) -> None:
                     _dl_csv(sel_bdf, "batch_metrics_sel.csv", "Download selected data")
 
                     with st.expander("Raw data"):
-                        st.dataframe(sel_bdf, use_container_width=True)
+                        st.dataframe(sel_bdf, width="stretch")
 
             # ── View: whole training (x axis = global batch) ───────────────────
             elif view == "Whole training":

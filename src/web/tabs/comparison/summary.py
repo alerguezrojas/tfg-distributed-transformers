@@ -6,7 +6,8 @@ import streamlit as st
 
 from src.web.run_registry import RunInfo
 from src.web.ui.charts import (_dl_csv)
-from src.web.ui.helpers import (_dur_str, _run_config, _safe_max, _safe_val_at_best)
+from src.web.ui.helpers import (_best_metric, _dur_str, _run_config, _safe_max,
+                                 _safe_val_at_best)
 from src.web.tabs.comparison._common import (_prec)
 
 
@@ -15,6 +16,9 @@ def _summary_table(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.Dat
     AND results (F1, epochs, duration) side by side — the apples-to-apples at a
     glance, replacing the separate config table that showed the same fields."""
     summary_rows = []
+    # Best Val AUC only when some selected run logged it (newer epoch CSVs).
+    _auc = {lbl: _best_metric(df_by_label[lbl], "val_auc") for lbl, _ in sel}
+    _show_auc = any(v is not None for v in _auc.values())
     for lbl, r in sel:
         cdf = df_by_label[lbl]
         cfg = _run_config(str(r.log_path))
@@ -33,13 +37,15 @@ def _summary_table(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.Dat
             "Train/Val": f"{cfg.get('train', '?')}/{cfg.get('val', '?')}",
             "Epochs": len(cdf),
             "Best Val F1": f"{best_f1_c:.4f}" if not pd.isna(best_f1_c) else "—",
-            "Best epoch": int(best_ep_c_v) if best_ep_c_v is not None else "—",
+            "Best epoch": str(int(best_ep_c_v)) if best_ep_c_v is not None else "—",  # one dtype for Arrow
+            **({"Best Val AUC": f"{_auc[lbl][0]:.4f}" if _auc[lbl] else "—"}  # str, like F1
+               if _show_auc else {}),
             "Final F1": f"{_last.iloc[-1]:.4f}" if not _last.empty else "—",
             "Duration": _dur_str(total_s_c) if not pd.isna(total_s_c) else "—",
             "Environment": r.env,
         })
     sum_df = pd.DataFrame(summary_rows).set_index("Run")
     st.caption("Per-run hyperparameters and results in one table.")
-    st.dataframe(sum_df, use_container_width=True)
+    st.dataframe(sum_df, width="stretch")
     _dl_csv(sum_df.reset_index(), "runs_comparison.csv", "Download comparison")
 

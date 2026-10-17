@@ -8,8 +8,6 @@ import pytest
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
-from pathlib import Path
-import tempfile
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -148,13 +146,9 @@ class TestBatchMonitorDecorator:
     def test_no_loop_duplication(self, tmp_path):
         """BatchMonitorDecorator must not reimplement train_epoch (uses hooks instead)."""
         from src.training.decorators.batch_monitor import BatchMonitorDecorator
-        import inspect
-        if not hasattr(BatchMonitorDecorator, 'train_epoch'):
-            return  # no override = no duplication
-        method_src = inspect.getsource(BatchMonitorDecorator.train_epoch)
-        # Fixed implementation uses hook registration, not loop reimplementation
-        # Just verify the class is importable and has basic structure
-        assert callable(BatchMonitorDecorator.train_epoch)
+        # It must not override train_epoch: it observes batches through the
+        # Trainer's batch hooks and inherits the plain delegation.
+        assert "train_epoch" not in vars(BatchMonitorDecorator)
 
     def test_csv_row_format(self, tmp_path):
         from src.training.trainer import Trainer

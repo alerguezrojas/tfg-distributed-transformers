@@ -27,7 +27,6 @@ import math
 from typing import Iterator
 
 import torch
-import torch.distributed as dist
 from torch.utils.data import Dataset, Sampler
 
 

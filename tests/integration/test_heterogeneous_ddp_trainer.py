@@ -12,7 +12,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
 import torch
 import torch.distributed as dist
 import torch.nn as nn

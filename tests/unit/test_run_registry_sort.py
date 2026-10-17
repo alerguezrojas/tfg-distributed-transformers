@@ -6,7 +6,6 @@ normaliza a YYYYMMDD_HHMMSS para un orden correcto.
 """
 from pathlib import Path
 
-import pytest
 
 from src.web.run_registry import RunInfo
 

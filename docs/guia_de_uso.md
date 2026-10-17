@@ -93,6 +93,11 @@ escalado de 1 a 8 GPU y coste en proveedores de nube. Estrategias: `single`, `dd
 `model-parallel`, `heterogeneous`. La derivación completa del modelo está en
 [`docs/performance_model.md`](performance_model.md).
 
+`--model` acepta cualquier modelo de timm. Los seis de la tabla del predictor están calibrados;
+el resto se perfila automáticamente (parámetros y FLOPs medidos sin GPU) y su memoria de
+activaciones se estima por regla, sin calibrar, lo que se indica en la salida. Para esos modelos
+se pueden ajustar `--in-chans`, `--num-classes` e `--img-size`.
+
 ![Salida de paravit estimate](img/term_estimate.png)
 
 ### `benchmark` — medir la máquina real

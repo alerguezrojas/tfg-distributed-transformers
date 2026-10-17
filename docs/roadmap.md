@@ -4,6 +4,35 @@
 > prisa, una fase cada vez. Objetivo a medio plazo: una **publicación** sobre la predicción del
 > rendimiento del entrenamiento distribuido.
 
+## Estado actual
+
+> Actualizado el 17/10/2026. Se reescribe al cerrar cada bloque de trabajo (ver `CLAUDE.md`,
+> "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra al empezar.
+
+**Hecho:** fase 1 (higiene) y fase 2 (abstracción de dataset y tarea, verificada en GPU con las
+cuatro estrategias). De la fase 3: MedMNIST integrado (cuatro datasets médicos), AUC en
+validación y test, selección del checkpoint por AUC y umbral elegido en validación. Corregidos
+los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo con
+`pos_weight`.
+
+**En curso:**
+- Barrido de MedMNIST con 3 semillas por dataset (rama `feature/medmnist-seeds`) para dar media ±
+  desviación frente a las referencias oficiales.
+- PRs abiertos pendientes de revisión: AUC y filtro por dataset en la web (#152), estado del arte
+  sobre predicción del rendimiento (#153) y perfilado automático de modelos para `estimate`.
+- Arnés de trabajo con IA: agentes, hooks, skills, lint en CI y pre-commit.
+
+**Siguiente paso:** cerrar la tabla de MedMNIST con semillas e integrar los PRs. Después, fase 4
+(instrumentación y registro de medidas), orientada por la revisión del estado del arte: el
+ángulo más prometedor para el artículo es la predicción conjunta de tiempo y energía según el
+régimen (cómputo frente a I/O).
+
+**Decisiones pendientes del autor o del tutor:**
+- Integrar `develop` en `main`.
+- Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
+- Elegir el enfoque de la contribución entre los tres que propone `docs/research/` (#153).
+- Máquinas nuevas a las que dará acceso el tutor (aún sin concretar).
+
 ## Diagnóstico de partida (auditoría del 17/10/2026)
 
 La base de software es sólida: decoradores, cuatro estrategias, CLI, web y tests. Los dos puntos
@@ -33,7 +62,8 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 
 1. **Una sola MFU (0,17)**, calibrada con vit_base en T4 y aplicada a toda GPU y modelo (de ahí el
    −24 % en ResNet50 y el +18 % en vit_large).
-2. **Tabla cerrada de 6 modelos:** con cualquier otro, `predict()` devuelve `None`.
+2. **Tabla cerrada de 6 modelos:** con cualquier otro, `predict()` devuelve `None`. *(Resuelto en la
+   fase 5: perfilado automático; las activaciones siguen sin calibrar fuera de la tabla.)*
 3. **`r_io` en img/s de BigEarthNet:** mezcla disco, decodificación y transforms, y no modela
    `num_workers` ni la caché de RAM.
 4. **Sincronización simplificada:** `8P/β` por batch, sin solapamiento con el backward, sin factor
@@ -89,7 +119,9 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 - [ ] Entorno portable para HPC (contenedor Apptainer) y plantillas Slurm multinodo.
 
 ### Fase 5 — Predictor v2 (caja gris)
-- [ ] FLOPs y parámetros automáticos para cualquier modelo de timm (`torch.utils.flop_counter`).
+- [x] FLOPs y parámetros automáticos para cualquier modelo de timm (`torch.utils.flop_counter`):
+      `src/model_profile.py`; la memoria de activaciones de estos modelos se estima por regla
+      (sin calibrar). Detalle en [performance_model.md §7](performance_model.md).
 - [ ] Modelo de I/O separado: almacenamiento (bytes/s), decodificación en CPU × workers y caché.
 - [ ] Comunicación: ring all-reduce, latencia, solapamiento y multinodo.
 - [ ] Calibración por microbenchmarks en la máquina destino; intervalos de incertidumbre.

@@ -218,3 +218,6 @@ mlruns/
 mlflow.db
 mlartifacts/
 .scannerwork/
+
+# Copias de trabajo de los agentes de Claude Code (los agentes de .claude/agents/ sí se versionan)
+.claude/worktrees/

@@ -2,9 +2,7 @@
 
 import sys
 import tempfile
-import math
 from pathlib import Path
-from dataclasses import dataclass
 
 import pytest
 
@@ -183,7 +181,6 @@ def test_ddp_optimizer_compute_scenarios():
 
 
 def test_ddp_optimizer_single_gpu_efficiency_100():
-    from src.benchmark import DDPOptimizer
     optimizer = _make_ddp_optimizer()
     scenarios = optimizer.compute_scenarios(n_epochs=5)
     single = next(s for s in scenarios if s.n_gpus == 1)

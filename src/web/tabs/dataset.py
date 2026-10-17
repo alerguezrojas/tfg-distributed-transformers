@@ -13,7 +13,6 @@ import streamlit as st
 
 from src.web.dataset_stats import SPLIT_SIZES, class_distribution_approximate
 from src.web.tabs import data_models
-from src.web.ui import theme
 from src.web.ui.charts import _show
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import _run_config, _load_class_distribution, _class_gallery
@@ -84,7 +83,7 @@ def _dataset_story(runs) -> None:
         for i in range(0, len(gallery), ncols):
             cols = st.columns(ncols, gap="small")
             for col, (cls, cnt, pct, img, labels) in zip(cols, gallery[i:i + ncols]):
-                col.image(img, use_container_width=True)
+                col.image(img, width="stretch")
                 others = max(len(labels) - 1, 0)
                 extra = f" <span style='color:#64748b'>+{others}</span>" if others else ""
                 title = " · ".join(labels).replace("'", "")

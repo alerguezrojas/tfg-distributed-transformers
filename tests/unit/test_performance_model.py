@@ -12,10 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
 from src.performance_model import (
-    estimate_rc, estimate_rio, estimate_vram_gb, fits_in_memory, max_batch,
-    gpu_spec, model_spec, predict, predict_epoch,
-    expected_best_f1, predict_quality, N_FULL_TRAIN,
-    estimate_power, estimate_eval_time_s, power_working_gpus, EVAL_POWER_FRACTION,
+    estimate_rc, estimate_vram_gb, fits_in_memory, max_batch,
+    gpu_spec, model_spec, predict, expected_best_f1, predict_quality, N_FULL_TRAIN,
+    estimate_power, power_working_gpus, EVAL_POWER_FRACTION,
 )
 
 
