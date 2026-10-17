@@ -5,6 +5,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Perfilado automático de modelos (`src/model_profile.py`): `paravit estimate` y la pestaña
+  *Estimate* de la web funcionan con cualquier modelo de timm, no solo con los seis de la
+  tabla. Parámetros y FLOPs se miden con `torch.utils.flop_counter` en el dispositivo `meta`
+  (sin pesos ni GPU; con CPU como respaldo) y coinciden con la tabla a ≤3,6 %. La memoria de
+  activaciones se estima por regla y se marca como no calibrada. Nuevas opciones del CLI:
+  `--in-chans`, `--num-classes` e `--img-size`.
 - `training.select_by: auc`: elige el checkpoint y el early stopping por el AUC de validación
   (sin umbral), útil cuando las clases son tan raras que el F1 a 0,5 se queda en cero. El AUC de
   validación se calcula en cada época y se escribe como `val_auc` en `epoch_metrics_*.csv`.

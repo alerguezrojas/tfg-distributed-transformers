@@ -19,7 +19,7 @@ runs instantly. If a real measured throughput is available it can be passed in t
 | `N`    | train images per epoch | input |
 | `n`    | number of GPUs (ranks) | input |
 | `b`    | batch size per GPU | input (global batch ÷ n for DDP) |
-| `P`    | model parameters | `MODEL_TABLE` |
+| `P`    | model parameters | `MODEL_TABLE`, or an automatic profile (§7) |
 | `r_c`  | pure compute throughput (img/s, 1 GPU) | **estimated from specs** |
 | `r_io` | disk read throughput (img/s) | `DISK_RIO` table or a real probe |
 | `π`    | precision / Tensor-core speedup | `GPU_TABLE` (fp32 → 1) |
@@ -195,6 +195,82 @@ p = predict(strategy="ddp", model_name="vit_base_patch16_224",
 ```
 
 `strategy ∈ {single, ddp, model_parallel, heterogeneous}` (an unknown strategy returns
-`None`). Pass `rc_measured` / `rio_measured` to calibrate against a real benchmark.
+`None`). Pass `model=<ModelSpec>` to predict a model outside
+`MODEL_TABLE` (see §7). Pass `rc_measured` / `rio_measured` to calibrate against a real benchmark.
 Exposed in the web at **Estimate → Predict** and in the CLI as `paravit estimate`
 (predict for hardware you don't have in front of you).
+
+---
+
+## 7. Modelos fuera de la tabla: perfilado automático
+
+`MODEL_TABLE` solo recoge seis modelos. Para cualquier otro modelo de timm,
+`src/model_profile.py` mide del propio modelo lo que el predictor necesita, sin
+entrenar y sin GPU:
+
+* **Parámetros** (millones), con el `in_chans` y el `num_classes` indicados.
+* **FLOPs de la pasada hacia delante por imagen**, con
+  `torch.utils.flop_counter.FlopCounterMode`. El modelo se instancia en el dispositivo
+  `meta` (solo formas, sin reservar pesos: vit_large tarda ~0,3 s); si un modelo no se
+  puede construir o ejecutar ahí, se repite en CPU. La atención se fuerza por el kernel
+  SDPA `math` para que el contador vea sus multiplicaciones de matrices (el kernel
+  fusionado de CPU no se cuenta e infravalora los ViT un ~4 %).
+
+**Unidad.** `FlopCounterMode` cuenta una multiplicación-suma como 2 FLOPs (vit_base =
+35,1 G), pero la columna `gflops_fwd` de `MODEL_TABLE` —como las tablas de timm— la
+cuenta como 1 (vit_base = 17,6, es decir, GMACs). La MFU = 0,17 se calibró con esos
+números, así que el perfil divide su cuenta entre 2 para quedarse en la unidad de la
+tabla.
+
+**Comprobación contra la tabla** (cabeza de 1000 clases, como en timm):
+
+| Modelo | Parámetros (perfil / tabla) | GFLOPs (perfil / tabla) |
+|---|---|---|
+| vit_tiny_patch16_224 | 5,72 / 5,7 (+0,3 %) | 1,25 / 1,3 (−3,6 %) |
+| vit_small_patch16_224 | 22,05 / 22,0 (+0,2 %) | 4,60 / 4,6 (0,0 %) |
+| vit_base_patch16_224 | 86,57 / 85,8 (+0,9 %) | 17,56 / 17,6 (−0,2 %) |
+| vit_large_patch16_224 | 304,33 / 303,0 (+0,4 %) | 61,55 / 61,6 (−0,1 %) |
+| resnet50 | 25,56 / 25,6 (−0,2 %) | 4,09 / 4,1 (−0,3 %) |
+| efficientnet_b0 | 5,29 / 5,3 (−0,2 %) | 0,39 / 0,4 (−3,5 %) |
+
+(La tabla mezcla convenios de cabeza: vit_base y vit_large aparecen con la cabeza de 19
+clases de BigEarthNet —85,81 y 303,32 M en el perfil—; el resto, con la de 1000.)
+
+**Memoria de activaciones: estimada, no calibrada.** Un contador de FLOPs no da la
+memoria por imagen (`act_gb_per_img`), así que para estos modelos se estima con una
+regla anclada en los dos puntos ViT calibrados (vit_base 0,093 GB a 17,6 GFLOPs y
+vit_large 0,260 GB a 61,6 GFLOPs):
+
+```
+act(G) = 0,093 · (G / 17,6)^e        e = 0,82 si G > 17,6  (ley de potencia por base y large)
+                                     e = 0,5  si G ≤ 17,6
+act    = act(G) · 2,23               si la red es convolucional
+```
+
+* Por debajo de vit_base el exponente es 0,5: con la profundidad fija, las activaciones
+  de un ViT crecen con la anchura `d` y los FLOPs con `d²` (es el escalado por
+  hidden_dim × capas que ya usa la tabla para vit_tiny/vit_small; la regla los
+  reproduce a ±3 %). Es la opción prudente: una regla proporcional a los FLOPs daría a
+  vit_tiny 0,007 GB en vez de 0,024 y predeciría que cabe cuando no.
+* Las CNN guardan mapas de activación a resolución completa (y BatchNorm), con mucha más
+  memoria por FLOP. Se considera convolucional un modelo con convoluciones además de la
+  del *patch embedding*, y se multiplica por el factor que lleva la regla a la entrada de
+  resnet50 (2,23). Esa entrada ya sobrestima los picos medidos de resnet50 en
+  `logs/*/benchmark` (×1,2–1,5), así que el factor queda del lado seguro.
+* Limitación conocida: efficientnet_b0 sale con 0,031 GB frente a los 0,060 de la tabla
+  (que también es una estimación, sin medir). Las redes con convoluciones *depthwise*
+  y bloques SE pueden necesitar más de lo que da la regla.
+
+Estos modelos se marcan `calibrated=False`; `predict()` añade la nota *"Model profiled
+automatically …; activation memory estimated, not calibrated"*, que muestran el CLI y la
+web. Para los seis modelos de la tabla no cambia nada: se sigue usando su entrada
+(comprobado con 2 880 combinaciones idénticas a la versión anterior).
+
+```bash
+uv run paravit.py estimate --model convnext_tiny --gpu "Tesla T4"
+uv run paravit.py estimate --model deit_small_patch16_224 --in-chans 1 --num-classes 9
+```
+
+En la web, el desplegable *Model* de **Estimate** ofrece *Other timm model…*. Como
+cualquier capacidad nueva del predictor, la regla de activaciones necesita medidas reales
+de modelos fuera de la tabla para validarse (fase 4 del roadmap).
