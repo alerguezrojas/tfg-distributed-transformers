@@ -93,6 +93,11 @@ escalado de 1 a 8 GPU y coste en proveedores de nube. Estrategias: `single`, `dd
 `model-parallel`, `heterogeneous`. La derivación completa del modelo está en
 [`docs/performance_model.md`](performance_model.md).
 
+`--model` acepta cualquier modelo de timm. Los seis de la tabla del predictor están calibrados;
+el resto se perfila automáticamente (parámetros y FLOPs medidos sin GPU) y su memoria de
+activaciones se estima por regla, sin calibrar, lo que se indica en la salida. Para esos modelos
+se pueden ajustar `--in-chans`, `--num-classes` e `--img-size`.
+
 ![Salida de paravit estimate](img/term_estimate.png)
 
 ### `benchmark` — medir la máquina real
@@ -149,7 +154,12 @@ uv run paravit.py eval --checkpoint checkpoints/verode/checkpoint_epoch_007.pt -
 ```
 
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
-agregada) que el panel web muestra en la tarjeta «Held-out test set» del run.
+agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
+
+En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbral **elegido en
+validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
+que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce
+el comportamiento anterior (ajustarlo sobre el propio test), que da una cifra optimista.
 
 ## 4. Los ficheros de configuración
 

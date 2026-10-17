@@ -1,0 +1,10 @@
+class_idx,class_name,f1,precision,recall
+0,actinic keratoses and intraepithelial carcinoma,0.4462,0.4531,0.4394
+1,basal cell carcinoma,0.5859,0.6105,0.5631
+2,benign keratosis-like lesions,0.5398,0.6213,0.4773
+3,dermatofibroma,0.2069,0.5,0.1304
+4,melanoma,0.493,0.5172,0.4709
+5,melanocytic nevi,0.8986,0.868,0.9314
+6,vascular lesions,0.7931,0.7931,0.7931
+
+# aggregate,loss=0.638166,f1_t05=0.5662,accuracy=0.7840,precision=0.6233,recall=0.5437,auc=0.9337

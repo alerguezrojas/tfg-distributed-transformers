@@ -1,0 +1,736 @@
+epoch,true_class,pred_class,value
+1,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.030303
+1,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.030303
+1,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.242424
+1,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+1,actinic keratoses and intraepithelial carcinoma,melanoma,0.121212
+1,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.575758
+1,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+1,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.0
+1,basal cell carcinoma,basal cell carcinoma,0.038462
+1,basal cell carcinoma,benign keratosis-like lesions,0.173077
+1,basal cell carcinoma,dermatofibroma,0.0
+1,basal cell carcinoma,melanoma,0.096154
+1,basal cell carcinoma,melanocytic nevi,0.692308
+1,basal cell carcinoma,vascular lesions,0.0
+1,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.018182
+1,benign keratosis-like lesions,basal cell carcinoma,0.036364
+1,benign keratosis-like lesions,benign keratosis-like lesions,0.245455
+1,benign keratosis-like lesions,dermatofibroma,0.0
+1,benign keratosis-like lesions,melanoma,0.2
+1,benign keratosis-like lesions,melanocytic nevi,0.5
+1,benign keratosis-like lesions,vascular lesions,0.0
+1,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.0
+1,dermatofibroma,basal cell carcinoma,0.0
+1,dermatofibroma,benign keratosis-like lesions,0.0
+1,dermatofibroma,dermatofibroma,0.0
+1,dermatofibroma,melanoma,0.0
+1,dermatofibroma,melanocytic nevi,1.0
+1,dermatofibroma,vascular lesions,0.0
+1,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+1,melanoma,basal cell carcinoma,0.036036
+1,melanoma,benign keratosis-like lesions,0.081081
+1,melanoma,dermatofibroma,0.0
+1,melanoma,melanoma,0.198198
+1,melanoma,melanocytic nevi,0.675676
+1,melanoma,vascular lesions,0.0
+1,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.007452
+1,melanocytic nevi,basal cell carcinoma,0.00149
+1,melanocytic nevi,benign keratosis-like lesions,0.029806
+1,melanocytic nevi,dermatofibroma,0.0
+1,melanocytic nevi,melanoma,0.043219
+1,melanocytic nevi,melanocytic nevi,0.916542
+1,melanocytic nevi,vascular lesions,0.00149
+1,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+1,vascular lesions,basal cell carcinoma,0.0
+1,vascular lesions,benign keratosis-like lesions,0.0
+1,vascular lesions,dermatofibroma,0.0
+1,vascular lesions,melanoma,0.142857
+1,vascular lesions,melanocytic nevi,0.857143
+1,vascular lesions,vascular lesions,0.0
+2,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.363636
+2,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.181818
+2,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.181818
+2,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+2,actinic keratoses and intraepithelial carcinoma,melanoma,0.121212
+2,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.151515
+2,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+2,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.038462
+2,basal cell carcinoma,basal cell carcinoma,0.461538
+2,basal cell carcinoma,benign keratosis-like lesions,0.153846
+2,basal cell carcinoma,dermatofibroma,0.0
+2,basal cell carcinoma,melanoma,0.134615
+2,basal cell carcinoma,melanocytic nevi,0.211538
+2,basal cell carcinoma,vascular lesions,0.0
+2,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.045455
+2,benign keratosis-like lesions,basal cell carcinoma,0.127273
+2,benign keratosis-like lesions,benign keratosis-like lesions,0.390909
+2,benign keratosis-like lesions,dermatofibroma,0.0
+2,benign keratosis-like lesions,melanoma,0.181818
+2,benign keratosis-like lesions,melanocytic nevi,0.254545
+2,benign keratosis-like lesions,vascular lesions,0.0
+2,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.166667
+2,dermatofibroma,basal cell carcinoma,0.416667
+2,dermatofibroma,benign keratosis-like lesions,0.0
+2,dermatofibroma,dermatofibroma,0.0
+2,dermatofibroma,melanoma,0.0
+2,dermatofibroma,melanocytic nevi,0.416667
+2,dermatofibroma,vascular lesions,0.0
+2,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+2,melanoma,basal cell carcinoma,0.027027
+2,melanoma,benign keratosis-like lesions,0.027027
+2,melanoma,dermatofibroma,0.0
+2,melanoma,melanoma,0.513514
+2,melanoma,melanocytic nevi,0.423423
+2,melanoma,vascular lesions,0.0
+2,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.00149
+2,melanocytic nevi,basal cell carcinoma,0.007452
+2,melanocytic nevi,benign keratosis-like lesions,0.020864
+2,melanocytic nevi,dermatofibroma,0.0
+2,melanocytic nevi,melanoma,0.040238
+2,melanocytic nevi,melanocytic nevi,0.928465
+2,melanocytic nevi,vascular lesions,0.00149
+2,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+2,vascular lesions,basal cell carcinoma,0.071429
+2,vascular lesions,benign keratosis-like lesions,0.0
+2,vascular lesions,dermatofibroma,0.0
+2,vascular lesions,melanoma,0.142857
+2,vascular lesions,melanocytic nevi,0.357143
+2,vascular lesions,vascular lesions,0.428571
+3,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.212121
+3,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.30303
+3,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.090909
+3,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+3,actinic keratoses and intraepithelial carcinoma,melanoma,0.060606
+3,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.333333
+3,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+3,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.076923
+3,basal cell carcinoma,basal cell carcinoma,0.596154
+3,basal cell carcinoma,benign keratosis-like lesions,0.115385
+3,basal cell carcinoma,dermatofibroma,0.0
+3,basal cell carcinoma,melanoma,0.0
+3,basal cell carcinoma,melanocytic nevi,0.211538
+3,basal cell carcinoma,vascular lesions,0.0
+3,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.036364
+3,benign keratosis-like lesions,basal cell carcinoma,0.136364
+3,benign keratosis-like lesions,benign keratosis-like lesions,0.381818
+3,benign keratosis-like lesions,dermatofibroma,0.0
+3,benign keratosis-like lesions,melanoma,0.072727
+3,benign keratosis-like lesions,melanocytic nevi,0.372727
+3,benign keratosis-like lesions,vascular lesions,0.0
+3,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.083333
+3,dermatofibroma,basal cell carcinoma,0.5
+3,dermatofibroma,benign keratosis-like lesions,0.0
+3,dermatofibroma,dermatofibroma,0.083333
+3,dermatofibroma,melanoma,0.0
+3,dermatofibroma,melanocytic nevi,0.333333
+3,dermatofibroma,vascular lesions,0.0
+3,melanoma,actinic keratoses and intraepithelial carcinoma,0.0
+3,melanoma,basal cell carcinoma,0.027027
+3,melanoma,benign keratosis-like lesions,0.063063
+3,melanoma,dermatofibroma,0.0
+3,melanoma,melanoma,0.351351
+3,melanoma,melanocytic nevi,0.558559
+3,melanoma,vascular lesions,0.0
+3,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.00149
+3,melanocytic nevi,basal cell carcinoma,0.011923
+3,melanocytic nevi,benign keratosis-like lesions,0.010432
+3,melanocytic nevi,dermatofibroma,0.0
+3,melanocytic nevi,melanoma,0.008942
+3,melanocytic nevi,melanocytic nevi,0.967213
+3,melanocytic nevi,vascular lesions,0.0
+3,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+3,vascular lesions,basal cell carcinoma,0.142857
+3,vascular lesions,benign keratosis-like lesions,0.0
+3,vascular lesions,dermatofibroma,0.0
+3,vascular lesions,melanoma,0.071429
+3,vascular lesions,melanocytic nevi,0.357143
+3,vascular lesions,vascular lesions,0.428571
+4,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.242424
+4,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.424242
+4,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.121212
+4,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+4,actinic keratoses and intraepithelial carcinoma,melanoma,0.090909
+4,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.121212
+4,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+4,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.038462
+4,basal cell carcinoma,basal cell carcinoma,0.692308
+4,basal cell carcinoma,benign keratosis-like lesions,0.076923
+4,basal cell carcinoma,dermatofibroma,0.0
+4,basal cell carcinoma,melanoma,0.038462
+4,basal cell carcinoma,melanocytic nevi,0.153846
+4,basal cell carcinoma,vascular lesions,0.0
+4,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.045455
+4,benign keratosis-like lesions,basal cell carcinoma,0.145455
+4,benign keratosis-like lesions,benign keratosis-like lesions,0.363636
+4,benign keratosis-like lesions,dermatofibroma,0.0
+4,benign keratosis-like lesions,melanoma,0.181818
+4,benign keratosis-like lesions,melanocytic nevi,0.263636
+4,benign keratosis-like lesions,vascular lesions,0.0
+4,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.083333
+4,dermatofibroma,basal cell carcinoma,0.666667
+4,dermatofibroma,benign keratosis-like lesions,0.0
+4,dermatofibroma,dermatofibroma,0.083333
+4,dermatofibroma,melanoma,0.0
+4,dermatofibroma,melanocytic nevi,0.166667
+4,dermatofibroma,vascular lesions,0.0
+4,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+4,melanoma,basal cell carcinoma,0.036036
+4,melanoma,benign keratosis-like lesions,0.036036
+4,melanoma,dermatofibroma,0.0
+4,melanoma,melanoma,0.495495
+4,melanoma,melanocytic nevi,0.414414
+4,melanoma,vascular lesions,0.009009
+4,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.0
+4,melanocytic nevi,basal cell carcinoma,0.013413
+4,melanocytic nevi,benign keratosis-like lesions,0.019374
+4,melanocytic nevi,dermatofibroma,0.0
+4,melanocytic nevi,melanoma,0.031297
+4,melanocytic nevi,melanocytic nevi,0.934426
+4,melanocytic nevi,vascular lesions,0.00149
+4,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+4,vascular lesions,basal cell carcinoma,0.214286
+4,vascular lesions,benign keratosis-like lesions,0.0
+4,vascular lesions,dermatofibroma,0.0
+4,vascular lesions,melanoma,0.071429
+4,vascular lesions,melanocytic nevi,0.214286
+4,vascular lesions,vascular lesions,0.5
+5,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.424242
+5,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.181818
+5,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.151515
+5,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+5,actinic keratoses and intraepithelial carcinoma,melanoma,0.090909
+5,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.151515
+5,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+5,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.076923
+5,basal cell carcinoma,basal cell carcinoma,0.615385
+5,basal cell carcinoma,benign keratosis-like lesions,0.153846
+5,basal cell carcinoma,dermatofibroma,0.0
+5,basal cell carcinoma,melanoma,0.0
+5,basal cell carcinoma,melanocytic nevi,0.153846
+5,basal cell carcinoma,vascular lesions,0.0
+5,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.072727
+5,benign keratosis-like lesions,basal cell carcinoma,0.090909
+5,benign keratosis-like lesions,benign keratosis-like lesions,0.5
+5,benign keratosis-like lesions,dermatofibroma,0.0
+5,benign keratosis-like lesions,melanoma,0.136364
+5,benign keratosis-like lesions,melanocytic nevi,0.2
+5,benign keratosis-like lesions,vascular lesions,0.0
+5,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.166667
+5,dermatofibroma,basal cell carcinoma,0.333333
+5,dermatofibroma,benign keratosis-like lesions,0.0
+5,dermatofibroma,dermatofibroma,0.25
+5,dermatofibroma,melanoma,0.0
+5,dermatofibroma,melanocytic nevi,0.25
+5,dermatofibroma,vascular lesions,0.0
+5,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+5,melanoma,basal cell carcinoma,0.009009
+5,melanoma,benign keratosis-like lesions,0.081081
+5,melanoma,dermatofibroma,0.0
+5,melanoma,melanoma,0.513514
+5,melanoma,melanocytic nevi,0.387387
+5,melanoma,vascular lesions,0.0
+5,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.0
+5,melanocytic nevi,basal cell carcinoma,0.005961
+5,melanocytic nevi,benign keratosis-like lesions,0.032787
+5,melanocytic nevi,dermatofibroma,0.0
+5,melanocytic nevi,melanoma,0.031297
+5,melanocytic nevi,melanocytic nevi,0.928465
+5,melanocytic nevi,vascular lesions,0.00149
+5,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+5,vascular lesions,basal cell carcinoma,0.214286
+5,vascular lesions,benign keratosis-like lesions,0.0
+5,vascular lesions,dermatofibroma,0.0
+5,vascular lesions,melanoma,0.071429
+5,vascular lesions,melanocytic nevi,0.285714
+5,vascular lesions,vascular lesions,0.428571
+6,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.393939
+6,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.181818
+6,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.242424
+6,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+6,actinic keratoses and intraepithelial carcinoma,melanoma,0.090909
+6,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.090909
+6,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+6,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.115385
+6,basal cell carcinoma,basal cell carcinoma,0.557692
+6,basal cell carcinoma,benign keratosis-like lesions,0.173077
+6,basal cell carcinoma,dermatofibroma,0.038462
+6,basal cell carcinoma,melanoma,0.0
+6,basal cell carcinoma,melanocytic nevi,0.115385
+6,basal cell carcinoma,vascular lesions,0.0
+6,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.081818
+6,benign keratosis-like lesions,basal cell carcinoma,0.054545
+6,benign keratosis-like lesions,benign keratosis-like lesions,0.518182
+6,benign keratosis-like lesions,dermatofibroma,0.009091
+6,benign keratosis-like lesions,melanoma,0.154545
+6,benign keratosis-like lesions,melanocytic nevi,0.181818
+6,benign keratosis-like lesions,vascular lesions,0.0
+6,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.25
+6,dermatofibroma,basal cell carcinoma,0.166667
+6,dermatofibroma,benign keratosis-like lesions,0.0
+6,dermatofibroma,dermatofibroma,0.416667
+6,dermatofibroma,melanoma,0.0
+6,dermatofibroma,melanocytic nevi,0.166667
+6,dermatofibroma,vascular lesions,0.0
+6,melanoma,actinic keratoses and intraepithelial carcinoma,0.027027
+6,melanoma,basal cell carcinoma,0.009009
+6,melanoma,benign keratosis-like lesions,0.09009
+6,melanoma,dermatofibroma,0.0
+6,melanoma,melanoma,0.531532
+6,melanoma,melanocytic nevi,0.342342
+6,melanoma,vascular lesions,0.0
+6,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.0
+6,melanocytic nevi,basal cell carcinoma,0.007452
+6,melanocytic nevi,benign keratosis-like lesions,0.028316
+6,melanocytic nevi,dermatofibroma,0.00149
+6,melanocytic nevi,melanoma,0.050671
+6,melanocytic nevi,melanocytic nevi,0.910581
+6,melanocytic nevi,vascular lesions,0.00149
+6,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.071429
+6,vascular lesions,basal cell carcinoma,0.071429
+6,vascular lesions,benign keratosis-like lesions,0.0
+6,vascular lesions,dermatofibroma,0.0
+6,vascular lesions,melanoma,0.071429
+6,vascular lesions,melanocytic nevi,0.214286
+6,vascular lesions,vascular lesions,0.571429
+7,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.30303
+7,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.272727
+7,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.181818
+7,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+7,actinic keratoses and intraepithelial carcinoma,melanoma,0.121212
+7,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.121212
+7,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+7,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.057692
+7,basal cell carcinoma,basal cell carcinoma,0.634615
+7,basal cell carcinoma,benign keratosis-like lesions,0.153846
+7,basal cell carcinoma,dermatofibroma,0.0
+7,basal cell carcinoma,melanoma,0.019231
+7,basal cell carcinoma,melanocytic nevi,0.134615
+7,basal cell carcinoma,vascular lesions,0.0
+7,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.036364
+7,benign keratosis-like lesions,basal cell carcinoma,0.1
+7,benign keratosis-like lesions,benign keratosis-like lesions,0.518182
+7,benign keratosis-like lesions,dermatofibroma,0.0
+7,benign keratosis-like lesions,melanoma,0.190909
+7,benign keratosis-like lesions,melanocytic nevi,0.154545
+7,benign keratosis-like lesions,vascular lesions,0.0
+7,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.083333
+7,dermatofibroma,basal cell carcinoma,0.5
+7,dermatofibroma,benign keratosis-like lesions,0.0
+7,dermatofibroma,dermatofibroma,0.333333
+7,dermatofibroma,melanoma,0.0
+7,dermatofibroma,melanocytic nevi,0.083333
+7,dermatofibroma,vascular lesions,0.0
+7,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+7,melanoma,basal cell carcinoma,0.009009
+7,melanoma,benign keratosis-like lesions,0.054054
+7,melanoma,dermatofibroma,0.0
+7,melanoma,melanoma,0.54955
+7,melanoma,melanocytic nevi,0.378378
+7,melanoma,vascular lesions,0.0
+7,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.0
+7,melanocytic nevi,basal cell carcinoma,0.008942
+7,melanocytic nevi,benign keratosis-like lesions,0.035768
+7,melanocytic nevi,dermatofibroma,0.00149
+7,melanocytic nevi,melanoma,0.043219
+7,melanocytic nevi,melanocytic nevi,0.907601
+7,melanocytic nevi,vascular lesions,0.002981
+7,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+7,vascular lesions,basal cell carcinoma,0.142857
+7,vascular lesions,benign keratosis-like lesions,0.0
+7,vascular lesions,dermatofibroma,0.0
+7,vascular lesions,melanoma,0.071429
+7,vascular lesions,melanocytic nevi,0.214286
+7,vascular lesions,vascular lesions,0.571429
+8,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.393939
+8,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.181818
+8,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.151515
+8,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+8,actinic keratoses and intraepithelial carcinoma,melanoma,0.121212
+8,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.151515
+8,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+8,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.076923
+8,basal cell carcinoma,basal cell carcinoma,0.615385
+8,basal cell carcinoma,benign keratosis-like lesions,0.115385
+8,basal cell carcinoma,dermatofibroma,0.038462
+8,basal cell carcinoma,melanoma,0.038462
+8,basal cell carcinoma,melanocytic nevi,0.115385
+8,basal cell carcinoma,vascular lesions,0.0
+8,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.063636
+8,benign keratosis-like lesions,basal cell carcinoma,0.072727
+8,benign keratosis-like lesions,benign keratosis-like lesions,0.481818
+8,benign keratosis-like lesions,dermatofibroma,0.009091
+8,benign keratosis-like lesions,melanoma,0.163636
+8,benign keratosis-like lesions,melanocytic nevi,0.209091
+8,benign keratosis-like lesions,vascular lesions,0.0
+8,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.25
+8,dermatofibroma,basal cell carcinoma,0.25
+8,dermatofibroma,benign keratosis-like lesions,0.0
+8,dermatofibroma,dermatofibroma,0.416667
+8,dermatofibroma,melanoma,0.0
+8,dermatofibroma,melanocytic nevi,0.083333
+8,dermatofibroma,vascular lesions,0.0
+8,melanoma,actinic keratoses and intraepithelial carcinoma,0.018018
+8,melanoma,basal cell carcinoma,0.009009
+8,melanoma,benign keratosis-like lesions,0.036036
+8,melanoma,dermatofibroma,0.0
+8,melanoma,melanoma,0.531532
+8,melanoma,melanocytic nevi,0.405405
+8,melanoma,vascular lesions,0.0
+8,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.0
+8,melanocytic nevi,basal cell carcinoma,0.008942
+8,melanocytic nevi,benign keratosis-like lesions,0.028316
+8,melanocytic nevi,dermatofibroma,0.00149
+8,melanocytic nevi,melanoma,0.037258
+8,melanocytic nevi,melanocytic nevi,0.919523
+8,melanocytic nevi,vascular lesions,0.004471
+8,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.071429
+8,vascular lesions,basal cell carcinoma,0.071429
+8,vascular lesions,benign keratosis-like lesions,0.0
+8,vascular lesions,dermatofibroma,0.0
+8,vascular lesions,melanoma,0.071429
+8,vascular lesions,melanocytic nevi,0.214286
+8,vascular lesions,vascular lesions,0.571429
+9,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.515152
+9,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.151515
+9,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.090909
+9,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+9,actinic keratoses and intraepithelial carcinoma,melanoma,0.121212
+9,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.121212
+9,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+9,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.115385
+9,basal cell carcinoma,basal cell carcinoma,0.615385
+9,basal cell carcinoma,benign keratosis-like lesions,0.096154
+9,basal cell carcinoma,dermatofibroma,0.038462
+9,basal cell carcinoma,melanoma,0.019231
+9,basal cell carcinoma,melanocytic nevi,0.115385
+9,basal cell carcinoma,vascular lesions,0.0
+9,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.081818
+9,benign keratosis-like lesions,basal cell carcinoma,0.063636
+9,benign keratosis-like lesions,benign keratosis-like lesions,0.454545
+9,benign keratosis-like lesions,dermatofibroma,0.009091
+9,benign keratosis-like lesions,melanoma,0.181818
+9,benign keratosis-like lesions,melanocytic nevi,0.209091
+9,benign keratosis-like lesions,vascular lesions,0.0
+9,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.25
+9,dermatofibroma,basal cell carcinoma,0.166667
+9,dermatofibroma,benign keratosis-like lesions,0.0
+9,dermatofibroma,dermatofibroma,0.416667
+9,dermatofibroma,melanoma,0.0
+9,dermatofibroma,melanocytic nevi,0.166667
+9,dermatofibroma,vascular lesions,0.0
+9,melanoma,actinic keratoses and intraepithelial carcinoma,0.027027
+9,melanoma,basal cell carcinoma,0.018018
+9,melanoma,benign keratosis-like lesions,0.027027
+9,melanoma,dermatofibroma,0.0
+9,melanoma,melanoma,0.585586
+9,melanoma,melanocytic nevi,0.342342
+9,melanoma,vascular lesions,0.0
+9,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.00149
+9,melanocytic nevi,basal cell carcinoma,0.005961
+9,melanocytic nevi,benign keratosis-like lesions,0.023845
+9,melanocytic nevi,dermatofibroma,0.00149
+9,melanocytic nevi,melanoma,0.052161
+9,melanocytic nevi,melanocytic nevi,0.909091
+9,melanocytic nevi,vascular lesions,0.005961
+9,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.071429
+9,vascular lesions,basal cell carcinoma,0.071429
+9,vascular lesions,benign keratosis-like lesions,0.0
+9,vascular lesions,dermatofibroma,0.0
+9,vascular lesions,melanoma,0.071429
+9,vascular lesions,melanocytic nevi,0.214286
+9,vascular lesions,vascular lesions,0.571429
+10,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.424242
+10,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.212121
+10,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.181818
+10,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+10,actinic keratoses and intraepithelial carcinoma,melanoma,0.060606
+10,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.121212
+10,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+10,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.076923
+10,basal cell carcinoma,basal cell carcinoma,0.596154
+10,basal cell carcinoma,benign keratosis-like lesions,0.192308
+10,basal cell carcinoma,dermatofibroma,0.038462
+10,basal cell carcinoma,melanoma,0.019231
+10,basal cell carcinoma,melanocytic nevi,0.076923
+10,basal cell carcinoma,vascular lesions,0.0
+10,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.036364
+10,benign keratosis-like lesions,basal cell carcinoma,0.081818
+10,benign keratosis-like lesions,benign keratosis-like lesions,0.536364
+10,benign keratosis-like lesions,dermatofibroma,0.009091
+10,benign keratosis-like lesions,melanoma,0.154545
+10,benign keratosis-like lesions,melanocytic nevi,0.181818
+10,benign keratosis-like lesions,vascular lesions,0.0
+10,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.166667
+10,dermatofibroma,basal cell carcinoma,0.333333
+10,dermatofibroma,benign keratosis-like lesions,0.0
+10,dermatofibroma,dermatofibroma,0.416667
+10,dermatofibroma,melanoma,0.0
+10,dermatofibroma,melanocytic nevi,0.083333
+10,dermatofibroma,vascular lesions,0.0
+10,melanoma,actinic keratoses and intraepithelial carcinoma,0.027027
+10,melanoma,basal cell carcinoma,0.027027
+10,melanoma,benign keratosis-like lesions,0.072072
+10,melanoma,dermatofibroma,0.0
+10,melanoma,melanoma,0.567568
+10,melanoma,melanocytic nevi,0.306306
+10,melanoma,vascular lesions,0.0
+10,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.0
+10,melanocytic nevi,basal cell carcinoma,0.010432
+10,melanocytic nevi,benign keratosis-like lesions,0.034277
+10,melanocytic nevi,dermatofibroma,0.00149
+10,melanocytic nevi,melanoma,0.050671
+10,melanocytic nevi,melanocytic nevi,0.898659
+10,melanocytic nevi,vascular lesions,0.004471
+10,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+10,vascular lesions,basal cell carcinoma,0.142857
+10,vascular lesions,benign keratosis-like lesions,0.0
+10,vascular lesions,dermatofibroma,0.0
+10,vascular lesions,melanoma,0.071429
+10,vascular lesions,melanocytic nevi,0.214286
+10,vascular lesions,vascular lesions,0.571429
+11,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.393939
+11,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.212121
+11,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.212121
+11,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+11,actinic keratoses and intraepithelial carcinoma,melanoma,0.060606
+11,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.121212
+11,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+11,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.076923
+11,basal cell carcinoma,basal cell carcinoma,0.634615
+11,basal cell carcinoma,benign keratosis-like lesions,0.115385
+11,basal cell carcinoma,dermatofibroma,0.019231
+11,basal cell carcinoma,melanoma,0.019231
+11,basal cell carcinoma,melanocytic nevi,0.134615
+11,basal cell carcinoma,vascular lesions,0.0
+11,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.054545
+11,benign keratosis-like lesions,basal cell carcinoma,0.081818
+11,benign keratosis-like lesions,benign keratosis-like lesions,0.5
+11,benign keratosis-like lesions,dermatofibroma,0.009091
+11,benign keratosis-like lesions,melanoma,0.136364
+11,benign keratosis-like lesions,melanocytic nevi,0.218182
+11,benign keratosis-like lesions,vascular lesions,0.0
+11,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.166667
+11,dermatofibroma,basal cell carcinoma,0.333333
+11,dermatofibroma,benign keratosis-like lesions,0.0
+11,dermatofibroma,dermatofibroma,0.416667
+11,dermatofibroma,melanoma,0.0
+11,dermatofibroma,melanocytic nevi,0.083333
+11,dermatofibroma,vascular lesions,0.0
+11,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+11,melanoma,basal cell carcinoma,0.009009
+11,melanoma,benign keratosis-like lesions,0.054054
+11,melanoma,dermatofibroma,0.0
+11,melanoma,melanoma,0.531532
+11,melanoma,melanocytic nevi,0.396396
+11,melanoma,vascular lesions,0.0
+11,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.0
+11,melanocytic nevi,basal cell carcinoma,0.008942
+11,melanocytic nevi,benign keratosis-like lesions,0.029806
+11,melanocytic nevi,dermatofibroma,0.00149
+11,melanocytic nevi,melanoma,0.040238
+11,melanocytic nevi,melanocytic nevi,0.915052
+11,melanocytic nevi,vascular lesions,0.004471
+11,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+11,vascular lesions,basal cell carcinoma,0.142857
+11,vascular lesions,benign keratosis-like lesions,0.0
+11,vascular lesions,dermatofibroma,0.0
+11,vascular lesions,melanoma,0.071429
+11,vascular lesions,melanocytic nevi,0.214286
+11,vascular lesions,vascular lesions,0.571429
+12,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.393939
+12,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.242424
+12,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.151515
+12,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+12,actinic keratoses and intraepithelial carcinoma,melanoma,0.060606
+12,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.151515
+12,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+12,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.115385
+12,basal cell carcinoma,basal cell carcinoma,0.615385
+12,basal cell carcinoma,benign keratosis-like lesions,0.115385
+12,basal cell carcinoma,dermatofibroma,0.038462
+12,basal cell carcinoma,melanoma,0.0
+12,basal cell carcinoma,melanocytic nevi,0.115385
+12,basal cell carcinoma,vascular lesions,0.0
+12,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.072727
+12,benign keratosis-like lesions,basal cell carcinoma,0.072727
+12,benign keratosis-like lesions,benign keratosis-like lesions,0.490909
+12,benign keratosis-like lesions,dermatofibroma,0.009091
+12,benign keratosis-like lesions,melanoma,0.136364
+12,benign keratosis-like lesions,melanocytic nevi,0.218182
+12,benign keratosis-like lesions,vascular lesions,0.0
+12,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.083333
+12,dermatofibroma,basal cell carcinoma,0.333333
+12,dermatofibroma,benign keratosis-like lesions,0.0
+12,dermatofibroma,dermatofibroma,0.5
+12,dermatofibroma,melanoma,0.0
+12,dermatofibroma,melanocytic nevi,0.083333
+12,dermatofibroma,vascular lesions,0.0
+12,melanoma,actinic keratoses and intraepithelial carcinoma,0.018018
+12,melanoma,basal cell carcinoma,0.027027
+12,melanoma,benign keratosis-like lesions,0.054054
+12,melanoma,dermatofibroma,0.0
+12,melanoma,melanoma,0.558559
+12,melanoma,melanocytic nevi,0.342342
+12,melanoma,vascular lesions,0.0
+12,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.00149
+12,melanocytic nevi,basal cell carcinoma,0.013413
+12,melanocytic nevi,benign keratosis-like lesions,0.029806
+12,melanocytic nevi,dermatofibroma,0.00149
+12,melanocytic nevi,melanoma,0.041729
+12,melanocytic nevi,melanocytic nevi,0.90611
+12,melanocytic nevi,vascular lesions,0.005961
+12,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+12,vascular lesions,basal cell carcinoma,0.142857
+12,vascular lesions,benign keratosis-like lesions,0.0
+12,vascular lesions,dermatofibroma,0.0
+12,vascular lesions,melanoma,0.071429
+12,vascular lesions,melanocytic nevi,0.214286
+12,vascular lesions,vascular lesions,0.571429
+13,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.363636
+13,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.242424
+13,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.181818
+13,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+13,actinic keratoses and intraepithelial carcinoma,melanoma,0.090909
+13,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.121212
+13,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+13,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.115385
+13,basal cell carcinoma,basal cell carcinoma,0.596154
+13,basal cell carcinoma,benign keratosis-like lesions,0.057692
+13,basal cell carcinoma,dermatofibroma,0.038462
+13,basal cell carcinoma,melanoma,0.057692
+13,basal cell carcinoma,melanocytic nevi,0.134615
+13,basal cell carcinoma,vascular lesions,0.0
+13,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.072727
+13,benign keratosis-like lesions,basal cell carcinoma,0.072727
+13,benign keratosis-like lesions,benign keratosis-like lesions,0.481818
+13,benign keratosis-like lesions,dermatofibroma,0.009091
+13,benign keratosis-like lesions,melanoma,0.163636
+13,benign keratosis-like lesions,melanocytic nevi,0.2
+13,benign keratosis-like lesions,vascular lesions,0.0
+13,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.166667
+13,dermatofibroma,basal cell carcinoma,0.25
+13,dermatofibroma,benign keratosis-like lesions,0.0
+13,dermatofibroma,dermatofibroma,0.5
+13,dermatofibroma,melanoma,0.0
+13,dermatofibroma,melanocytic nevi,0.083333
+13,dermatofibroma,vascular lesions,0.0
+13,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+13,melanoma,basal cell carcinoma,0.027027
+13,melanoma,benign keratosis-like lesions,0.036036
+13,melanoma,dermatofibroma,0.0
+13,melanoma,melanoma,0.585586
+13,melanoma,melanocytic nevi,0.342342
+13,melanoma,vascular lesions,0.0
+13,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.0
+13,melanocytic nevi,basal cell carcinoma,0.013413
+13,melanocytic nevi,benign keratosis-like lesions,0.031297
+13,melanocytic nevi,dermatofibroma,0.00149
+13,melanocytic nevi,melanoma,0.050671
+13,melanocytic nevi,melanocytic nevi,0.898659
+13,melanocytic nevi,vascular lesions,0.004471
+13,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+13,vascular lesions,basal cell carcinoma,0.071429
+13,vascular lesions,benign keratosis-like lesions,0.0
+13,vascular lesions,dermatofibroma,0.0
+13,vascular lesions,melanoma,0.071429
+13,vascular lesions,melanocytic nevi,0.214286
+13,vascular lesions,vascular lesions,0.642857
+14,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.393939
+14,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.242424
+14,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.151515
+14,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+14,actinic keratoses and intraepithelial carcinoma,melanoma,0.090909
+14,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.121212
+14,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+14,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.096154
+14,basal cell carcinoma,basal cell carcinoma,0.596154
+14,basal cell carcinoma,benign keratosis-like lesions,0.096154
+14,basal cell carcinoma,dermatofibroma,0.038462
+14,basal cell carcinoma,melanoma,0.057692
+14,basal cell carcinoma,melanocytic nevi,0.115385
+14,basal cell carcinoma,vascular lesions,0.0
+14,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.081818
+14,benign keratosis-like lesions,basal cell carcinoma,0.063636
+14,benign keratosis-like lesions,benign keratosis-like lesions,0.490909
+14,benign keratosis-like lesions,dermatofibroma,0.009091
+14,benign keratosis-like lesions,melanoma,0.145455
+14,benign keratosis-like lesions,melanocytic nevi,0.209091
+14,benign keratosis-like lesions,vascular lesions,0.0
+14,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.166667
+14,dermatofibroma,basal cell carcinoma,0.25
+14,dermatofibroma,benign keratosis-like lesions,0.0
+14,dermatofibroma,dermatofibroma,0.5
+14,dermatofibroma,melanoma,0.0
+14,dermatofibroma,melanocytic nevi,0.083333
+14,dermatofibroma,vascular lesions,0.0
+14,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+14,melanoma,basal cell carcinoma,0.027027
+14,melanoma,benign keratosis-like lesions,0.036036
+14,melanoma,dermatofibroma,0.0
+14,melanoma,melanoma,0.585586
+14,melanoma,melanocytic nevi,0.342342
+14,melanoma,vascular lesions,0.0
+14,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.00149
+14,melanocytic nevi,basal cell carcinoma,0.011923
+14,melanocytic nevi,benign keratosis-like lesions,0.028316
+14,melanocytic nevi,dermatofibroma,0.00149
+14,melanocytic nevi,melanoma,0.050671
+14,melanocytic nevi,melanocytic nevi,0.901639
+14,melanocytic nevi,vascular lesions,0.004471
+14,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+14,vascular lesions,basal cell carcinoma,0.071429
+14,vascular lesions,benign keratosis-like lesions,0.0
+14,vascular lesions,dermatofibroma,0.0
+14,vascular lesions,melanoma,0.071429
+14,vascular lesions,melanocytic nevi,0.214286
+14,vascular lesions,vascular lesions,0.642857
+15,actinic keratoses and intraepithelial carcinoma,actinic keratoses and intraepithelial carcinoma,0.424242
+15,actinic keratoses and intraepithelial carcinoma,basal cell carcinoma,0.212121
+15,actinic keratoses and intraepithelial carcinoma,benign keratosis-like lesions,0.151515
+15,actinic keratoses and intraepithelial carcinoma,dermatofibroma,0.0
+15,actinic keratoses and intraepithelial carcinoma,melanoma,0.090909
+15,actinic keratoses and intraepithelial carcinoma,melanocytic nevi,0.121212
+15,actinic keratoses and intraepithelial carcinoma,vascular lesions,0.0
+15,basal cell carcinoma,actinic keratoses and intraepithelial carcinoma,0.096154
+15,basal cell carcinoma,basal cell carcinoma,0.596154
+15,basal cell carcinoma,benign keratosis-like lesions,0.076923
+15,basal cell carcinoma,dermatofibroma,0.038462
+15,basal cell carcinoma,melanoma,0.057692
+15,basal cell carcinoma,melanocytic nevi,0.134615
+15,basal cell carcinoma,vascular lesions,0.0
+15,benign keratosis-like lesions,actinic keratoses and intraepithelial carcinoma,0.081818
+15,benign keratosis-like lesions,basal cell carcinoma,0.054545
+15,benign keratosis-like lesions,benign keratosis-like lesions,0.481818
+15,benign keratosis-like lesions,dermatofibroma,0.009091
+15,benign keratosis-like lesions,melanoma,0.145455
+15,benign keratosis-like lesions,melanocytic nevi,0.227273
+15,benign keratosis-like lesions,vascular lesions,0.0
+15,dermatofibroma,actinic keratoses and intraepithelial carcinoma,0.166667
+15,dermatofibroma,basal cell carcinoma,0.25
+15,dermatofibroma,benign keratosis-like lesions,0.0
+15,dermatofibroma,dermatofibroma,0.5
+15,dermatofibroma,melanoma,0.0
+15,dermatofibroma,melanocytic nevi,0.083333
+15,dermatofibroma,vascular lesions,0.0
+15,melanoma,actinic keratoses and intraepithelial carcinoma,0.009009
+15,melanoma,basal cell carcinoma,0.018018
+15,melanoma,benign keratosis-like lesions,0.036036
+15,melanoma,dermatofibroma,0.0
+15,melanoma,melanoma,0.585586
+15,melanoma,melanocytic nevi,0.351351
+15,melanoma,vascular lesions,0.0
+15,melanocytic nevi,actinic keratoses and intraepithelial carcinoma,0.00149
+15,melanocytic nevi,basal cell carcinoma,0.010432
+15,melanocytic nevi,benign keratosis-like lesions,0.029806
+15,melanocytic nevi,dermatofibroma,0.0
+15,melanocytic nevi,melanoma,0.041729
+15,melanocytic nevi,melanocytic nevi,0.912072
+15,melanocytic nevi,vascular lesions,0.004471
+15,vascular lesions,actinic keratoses and intraepithelial carcinoma,0.0
+15,vascular lesions,basal cell carcinoma,0.071429
+15,vascular lesions,benign keratosis-like lesions,0.0
+15,vascular lesions,dermatofibroma,0.0
+15,vascular lesions,melanoma,0.071429
+15,vascular lesions,melanocytic nevi,0.214286
+15,vascular lesions,vascular lesions,0.642857

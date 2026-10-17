@@ -1,5 +1,4 @@
 """Unit tests for src/training/augmentations.py"""
-import pytest
 import torch
 from src.training.augmentations import mixup_batch
 

@@ -5,6 +5,40 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- MedMNIST con 3 semillas: media ± desviación en test (`docs/datasets/medmnist.md`). `--seed` en
+  `train_single_gpu.py` (se escribe en el log) y `scripts/summarize_runs.py` para agregar los
+  resultados de test de runs repetidos.
+- Perfilado automático de modelos (`src/model_profile.py`): `paravit estimate` y la pestaña
+  *Estimate* de la web funcionan con cualquier modelo de timm, no solo con los seis de la
+  tabla. Parámetros y FLOPs se miden con `torch.utils.flop_counter` en el dispositivo `meta`
+  (sin pesos ni GPU; con CPU como respaldo) y coinciden con la tabla a ≤3,6 %. La memoria de
+  activaciones se estima por regla y se marca como no calibrada. Nuevas opciones del CLI:
+  `--in-chans`, `--num-classes` e `--img-size`.
+  La búsqueda en la tabla es exacta (`wide_resnet50_2` ya no se confunde con `resnet50`), un
+  modelo de la tabla con otro `in_chans`/`img_size` se perfila, y los modelos perfilados avisan
+  de que la MFU (tiempo y energía) no está calibrada para su arquitectura y de que la confianza
+  de la calidad esperada es baja.
+- `docs/research/estado_del_arte_prediccion.md`: revisión del trabajo relacionado sobre predicción del
+  rendimiento del entrenamiento (Paleo, Habitat, Daydream, DS-Analyzer, NeuSight…) y posibles contribuciones.
+- Web: curva de AUC de validación en *Run results → Curves* (con la mejor época marcada) y
+  *Best Val AUC* en las métricas y en el veredicto, solo para runs cuyo `epoch_metrics_*.csv`
+  trae `val_auc`; los runs anteriores se ven igual que antes. En *Compare*, `val_auc` se puede
+  superponer y la tabla resumen muestra *Best Val AUC* si algún run seleccionado lo tiene.
+- Web: filtro por dataset en el selector de runs de la barra lateral (solo aparece cuando hay
+  runs de más de un dataset).
+- Test de humo de la web con `streamlit.testing` (AppTest): renderiza las cinco secciones con un
+  run de BigEarthNet y otro de MedMNIST como run activo.
+- Arnés de trabajo con IA versionado (`docs/flujo_ia.md`): agentes de proyecto con modelo por
+  rol (`.claude/agents/`), skills (`/estado`, `/cerrar-bloque`, `/revisar-pr`, `/nuevo-dataset`),
+  hooks (estado del proyecto al abrir sesión, ruff al editar Python, bloqueo de commits con
+  atribución de IA) y permisos de proyecto (`.claude/settings.json`).
+- Sección "Estado actual" en `docs/roadmap.md` para retomar el proyecto desde cualquier sitio.
+- ruff como dependencia de desarrollo (`[tool.ruff]`: solo errores reales), lint en CI,
+  `.pre-commit-config.yaml` y plantilla de PR con checklist.
+- `training.select_by: auc`: elige el checkpoint y el early stopping por el AUC de validación
+  (sin umbral), útil cuando las clases son tan raras que el F1 a 0,5 se queda en cero. El AUC de
+  validación se calcula en cada época y se escribe como `val_auc` en `epoch_metrics_*.csv`.
+- El checkpoint guarda el umbral óptimo elegido en validación (`metrics.optimal_threshold`).
 - MedMNIST: cuatro datasets médicos (`medmnist_breast`, `medmnist_derma`, `medmnist_path`,
   `medmnist_chest`) que cubren las tareas binaria, multiclase y multi-etiqueta, con 1 o 3
   canales. Incluye script de descarga con verificación MD5 y configs locales.
@@ -22,6 +56,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- `eval.py` aplica a test el umbral elegido en **validación** (el del checkpoint, o ajustado sobre
+  val en checkpoints antiguos); antes lo ajustaba sobre el propio test, lo que inflaba el "F1 con
+  umbral óptimo". `--threshold-from test` mantiene el comportamiento anterior. El CSV de test
+  indica `threshold_source` y la web lo muestra.
+- AUC por rangos vectorizado (de ~32 s a ~0,2 s a escala de BigEarthNet).
 - Trainers (single, DDP, heterogéneo, model-parallel), deep tracing, `eval.py`, benchmark y
   estudio de convergencia dejan de asumir BigEarthNet. Para BigEarthNet los resultados son
   idénticos: verificado en GPU (vit_tiny, subset, semilla fija) con single, DDP, paralelismo de
@@ -43,6 +82,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- El hook guardián de commits solo examina el mensaje del `git commit`: antes bloqueaba
+  comandos que mencionaban "Co-Authored-By" en otro sitio (por ejemplo, el cuerpo de un PR).
+- Web: `use_container_width` (obsoleto en Streamlit) pasa a `width="stretch"`; la columna
+  "Best epoch" usa un solo tipo y ya no provoca trazas de Arrow en Compare y Details.
+- Imports sin usar eliminados en `src/` y `tests/` (ruff F401/F541).
 - El builder no pasaba la pérdida configurada al trainer heterogéneo, así que `pos_weight` se
   ignoraba en esa estrategia. Ningún run usó `pos_weight` en heterogéneo.
 - `model.dropout` del config no llegaba al modelo: todos los entrenamientos usaban 0.1, también

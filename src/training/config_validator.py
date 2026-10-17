@@ -163,8 +163,9 @@ def _check_model_selection(train: dict, spec: DatasetSpec | None, errors: list) 
     if "select_by" not in train:
         return
     sb = str(train["select_by"]).lower()
-    if sb not in ("f1", "f1_optimal"):
-        errors.append(f"training.select_by must be 'f1' or 'f1_optimal', got {train['select_by']!r}")
+    if sb not in ("f1", "f1_optimal", "auc"):
+        errors.append(f"training.select_by must be 'f1', 'f1_optimal' or 'auc', "
+                      f"got {train['select_by']!r}")
     elif sb == "f1_optimal" and spec is not None and not spec.make_task().searches_threshold:
         errors.append(f"training.select_by: f1_optimal needs a tunable threshold, which "
                       f"the {spec.task} task of {spec.name!r} does not have; use 'f1'")

@@ -4,6 +4,42 @@
 > prisa, una fase cada vez. Objetivo a medio plazo: una **publicación** sobre la predicción del
 > rendimiento del entrenamiento distribuido.
 
+## Estado actual
+
+> Actualizado el 17/10/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
+> `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
+
+**Hecho:**
+- Fases 1 (higiene) y 2 (abstracción de dataset y tarea, verificada en GPU con las cuatro
+  estrategias).
+- Fase 3, primer bloque: MedMNIST (cuatro datasets médicos) con **3 semillas**. DermaMNIST y
+  PathMNIST superan a todas las referencias oficiales; BreastMNIST y ChestMNIST, dentro del rango.
+  AUC en validación y test, selección por AUC, umbral elegido en validación, `--seed` y
+  `scripts/summarize_runs.py`.
+- Predictor: perfilado automático de cualquier modelo de timm (fase 5, primer punto), revisado
+  por el agente revisor y corregido.
+- Web: AUC de validación y filtro por dataset. Estado del arte sobre predicción del rendimiento
+  (`docs/research/`).
+- Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
+- Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
+  con `pos_weight`.
+
+**En curso:** nada. Todo está integrado en `develop`.
+
+**Siguiente paso recomendado:** fase 4, instrumentación y registro de medidas. Su objetivo es
+medir el tiempo de espera del DataLoader y la potencia por GPU, en un esquema estándar, para
+validar el ángulo más prometedor del artículo: tiempo y energía según el régimen (cómputo o I/O).
+Los cuatro MedMNIST, BigEarthNet y su subset ya dan perfiles de I/O muy distintos para probarlo.
+
+**Decisiones pendientes del autor o del tutor:**
+- Integrar `develop` en `main` (contiene todo lo anterior).
+- Elegir el enfoque de la contribución entre los tres de
+  [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
+- Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
+- Máquinas nuevas a las que dará acceso el tutor (aún sin concretar).
+- Instalar el pre-commit una vez por clon:
+  `uvx pre-commit install --hook-type pre-commit --hook-type commit-msg`.
+
 ## Diagnóstico de partida (auditoría del 17/10/2026)
 
 La base de software es sólida: decoradores, cuatro estrategias, CLI, web y tests. Los dos puntos
@@ -33,7 +69,8 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 
 1. **Una sola MFU (0,17)**, calibrada con vit_base en T4 y aplicada a toda GPU y modelo (de ahí el
    −24 % en ResNet50 y el +18 % en vit_large).
-2. **Tabla cerrada de 6 modelos:** con cualquier otro, `predict()` devuelve `None`.
+2. **Tabla cerrada de 6 modelos:** con cualquier otro, `predict()` devuelve `None`. *(Resuelto en la
+   fase 5: perfilado automático; las activaciones siguen sin calibrar fuera de la tabla.)*
 3. **`r_io` en img/s de BigEarthNet:** mezcla disco, decodificación y transforms, y no modela
    `num_workers` ni la caché de RAM.
 4. **Sincronización simplificada:** `8P/β` por batch, sin solapamiento con el backward, sin factor
@@ -71,11 +108,13 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
       PathMNIST (multiclase, cáncer colorrectal) y ChestMNIST (multi-etiqueta); descarga con MD5,
       configs y comparación con las referencias oficiales ([ficha](datasets/medmnist.md)).
 - [x] AUC macro en la evaluación de test (métrica principal en imagen médica).
-- [ ] Elegir el umbral óptimo en **validación** y aplicarlo a test: hoy `eval.py` lo busca sobre
-      el propio test, lo que infla algo el "F1 con umbral óptimo" (también el 0,631 del TFG).
-- [ ] Seleccionar el checkpoint por **AUC** (`select_by: auc`): con clases muy raras (ChestMNIST)
-      el F1 a 0,5 es casi nulo y no sirve para elegir la mejor época.
-- [ ] Repeticiones (≥3 semillas) y AUC también en validación para los runs de MedMNIST.
+- [x] El umbral óptimo se elige en **validación** (se guarda en el checkpoint) y `eval.py` lo
+      aplica a test; antes lo buscaba sobre el propio test (el 0,631 del TFG está aclarado en el
+      README; reevaluar el checkpoint v4 en Verode con el umbral de validación, que fue 0,40).
+- [x] `select_by: auc` y AUC de validación en cada época (`val_auc` en el CSV); los configs de
+      MedMNIST lo usan.
+- [x] Repeticiones (3 semillas) y AUC en validación para MedMNIST: Derma y Path superan a todas las
+      referencias oficiales; Breast y Chest, dentro del rango ([ficha](datasets/medmnist.md)).
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
@@ -88,7 +127,9 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 - [ ] Entorno portable para HPC (contenedor Apptainer) y plantillas Slurm multinodo.
 
 ### Fase 5 — Predictor v2 (caja gris)
-- [ ] FLOPs y parámetros automáticos para cualquier modelo de timm (`torch.utils.flop_counter`).
+- [x] FLOPs y parámetros automáticos para cualquier modelo de timm (`torch.utils.flop_counter`):
+      `src/model_profile.py`; la memoria de activaciones de estos modelos se estima por regla
+      (sin calibrar). Detalle en [performance_model.md §7](performance_model.md).
 - [ ] Modelo de I/O separado: almacenamiento (bytes/s), decodificación en CPU × workers y caché.
 - [ ] Comunicación: ring all-reduce, latencia, solapamiento y multinodo.
 - [ ] Calibración por microbenchmarks en la máquina destino; intervalos de incertidumbre.

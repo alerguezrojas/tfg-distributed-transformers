@@ -7,8 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.benchmark import (
-    BenchmarkResult, ModelInfo, HardwareInfo, BenchmarkReport,
-    TimeEstimator,
+    BenchmarkResult, ModelInfo, TimeEstimator,
 )
 
 

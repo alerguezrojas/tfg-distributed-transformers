@@ -504,7 +504,7 @@ uv run streamlit run src/web/app.py
 
 ### Estructura (v9 — menú de iconos, 5 secciones, selección de run por tabla)
 
-**Navegación:** menú lateral con iconos (`streamlit-option-menu`) — **5 secciones**. **Regla de diseño: nunca más de un nivel de pestañas dentro de una sección.** El **run activo** es estado compartido (`session_state["run_label"]`): se elige clicando una fila de la tabla del Overview (`st.dataframe(on_select)`) o con el selector compacto de la sidebar (filtro de entorno + etiquetas cortas, sin desbordamiento). System se eliminó (el monitor de hardware no servía con el flujo Kaggle) y "Import runs" vive en su propia sección.
+**Navegación:** menú lateral con iconos (`streamlit-option-menu`) — **5 secciones**. **Regla de diseño: nunca más de un nivel de pestañas dentro de una sección.** El **run activo** es estado compartido (`session_state["run_label"]`): se elige clicando una fila de la tabla del Overview (`st.dataframe(on_select)`) o con el selector compacto de la sidebar (filtro de entorno, filtro de dataset cuando hay más de uno + etiquetas cortas, sin desbordamiento). System se eliminó (el monitor de hardware no servía con el flujo Kaggle) y "Import runs" vive en su propia sección.
 
 | Sección (menú) | Contenido |
 |---|---|

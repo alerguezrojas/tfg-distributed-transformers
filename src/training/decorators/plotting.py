@@ -6,7 +6,6 @@ resultados de train cuando gestiona el bucle directamente.
 """
 
 from collections import defaultdict
-from pathlib import Path
 
 from torch.utils.data import DataLoader
 

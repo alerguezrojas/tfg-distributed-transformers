@@ -64,12 +64,21 @@ class EpochController(TrainerDecorator):
         # The latter is the FAIR criterion when the loss shifts the probability
         # scale (e.g. focal loss pushes probabilities down, so 0.5-F1 understates
         # it). Applied identically to every arm, the comparison stays clean.
+        #   "auc"        → Val macro ROC AUC: threshold-free, the right choice when
+        #                  classes are so rare that F1@0.5 stays near zero.
         self._select_metric = select_metric
+
+    @property
+    def _best_label(self) -> str:
+        """Name of the selection metric in log messages (F1 keeps the old wording)."""
+        return "AUC" if self._select_metric == "auc" else "F1"
 
     def _selection_value(self, val_m: dict) -> float:
         """Value used to decide 'is this the best epoch so far?'."""
         if self._select_metric == "f1_optimal":
             return val_m.get("_f1_at_optimal_threshold", val_m["f1"])
+        if self._select_metric == "auc":
+            return val_m["auc"]
         return val_m["f1"]
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
@@ -93,6 +102,10 @@ class EpochController(TrainerDecorator):
                 best_f1 = self._selection_value(val_m)
                 epochs_no_improve = 0
                 metrics_clean = {k: v for k, v in val_m.items() if not k.startswith("_")}
+                # Keep the threshold tuned on VALIDATION with the checkpoint, so the
+                # test evaluation applies it instead of tuning on the test set itself.
+                if val_m.get("_optimal_threshold") is not None:
+                    metrics_clean["optimal_threshold"] = val_m["_optimal_threshold"]
                 self.save_checkpoint(epoch, metrics_clean)
             else:
                 epochs_no_improve += 1

@@ -18,6 +18,7 @@ from streamlit_option_menu import option_menu
 
 from src.web.ui import theme
 from src.web.ui.context import DashboardContext
+from src.web.run_registry import filter_runs
 from src.web.ui.helpers import _get_runs
 from src.web.tabs import (
     home,
@@ -114,10 +115,20 @@ with st.sidebar:
         st.caption("**Active run**")
         st.markdown(f"<div class='active-run'>{_active}</div>", unsafe_allow_html=True)
 
-        # Environment filter to narrow the list below.
+        # Environment (and dataset, when there is more than one) filters to
+        # narrow the list below. They only filter the list: the active run stays.
         _envs = ["all environments"] + sorted({r.env for r in runs})
+        _datasets = sorted({r.dataset for r in runs})
         _env = st.selectbox("Filter by environment", _envs, index=0, key="run_env_filter")
-        _opts = [r.label for r in runs if _env == "all environments" or r.env == _env]
+        _ds = "All"
+        if len(_datasets) > 1:
+            _ds = st.selectbox("Filter by dataset", ["All"] + _datasets, index=0,
+                               key="run_dataset_filter")
+        _opts = [r.label for r in filter_runs(
+            runs,
+            env=None if _env == "all environments" else _env,
+            dataset=None if _ds == "All" else _ds,
+        )]
         if _active not in _opts:
             _opts = [_active] + _opts
 

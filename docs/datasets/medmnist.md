@@ -70,34 +70,42 @@ el área bajo la curva ROC (media macro).
 
 ## Resultados propios
 
-Primer baseline, 17/10/2026: **vit_tiny_patch16_224** preentrenado en ImageNet, imágenes de 28 px
-reescaladas a 224, sin augmentation, AdamW con LLRD 0.75, lr 1e-4, batch 128, semilla 42,
-early stopping con paciencia 5. RTX 3060 Ti, un solo entrenamiento por dataset. Se evalúa una
-vez en **test** el checkpoint con mejor F1 de validación.
+**vit_tiny_patch16_224** preentrenado en ImageNet, imágenes de 28 px reescaladas a 224, sin
+augmentation, AdamW con LLRD 0.75, lr 1e-4, batch 128, early stopping con paciencia 5,
+**checkpoint elegido por AUC de validación** (`select_by: auc`) y umbral de decisión elegido en
+validación. RTX 3060 Ti. **3 semillas (42, 43, 44)**; cada run se evalúa una sola vez en test.
+Media ± desviación típica muestral, calculada con `scripts/summarize_runs.py` (17/10/2026):
 
-| Dataset | Épocas (mejor) | Test AUC | Test ACC | Rango oficial AUC / ACC | Tiempo/época | Energía total |
-|---|---|---|---|---|---|---|
-| BreastMNIST | 22 (17) | **0.889** | **0.840** | 0.857–0.919 / 0.812–0.863 | 1,4 s | 1,4 Wh |
-| DermaMNIST | 15 (15) | **0.931** | **0.765** | 0.912–0.920 / 0.731–0.768 | 15 s | 11,5 Wh |
-| PathMNIST | 5 (5) | **0.993** | **0.925** | 0.944–0.990 / 0.728–0.911 | 164 s | 44,4 Wh |
-| ChestMNIST | 5 (5) | **0.772** | **0.948** | 0.768–0.778 / 0.947–0.948 | 142 s | 38,6 Wh |
+| Dataset | Test AUC | Test ACC | F1 macro @0,5 | Rango oficial AUC / ACC |
+|---|---|---|---|---|
+| BreastMNIST | **0.901 ± 0.006** | **0.861 ± 0.013** | 0.728 ± 0.026 | 0.857–0.919 / 0.812–0.863 |
+| DermaMNIST | **0.933 ± 0.002** | **0.776 ± 0.010** | 0.561 ± 0.020 | 0.912–0.920 / 0.731–0.768 |
+| PathMNIST | **0.993 ± 0.001** | **0.925 ± 0.004** | 0.902 ± 0.005 | 0.944–0.990 / 0.728–0.911 |
+| ChestMNIST | **0.770 ± 0.003** | **0.948 ± 0.000** | 0.042 ± 0.008 | 0.768–0.778 / 0.947–0.948 |
 
 Los rangos oficiales son el mínimo y el máximo de los métodos de la tabla anterior.
 
 Lectura:
-- **Los cuatro quedan dentro o por encima del rango oficial.** DermaMNIST y PathMNIST superan a
-  todas las ResNet de referencia en AUC; BreastMNIST y ChestMNIST quedan dentro del rango.
-- **No es una comparación rigurosa todavía:** un único run por dataset (sin repeticiones ni
-  desviación) y otro modelo y protocolo de entrenamiento (ViT preentrenado en ImageNet frente a
-  las ResNet y AutoML de la tabla oficial).
-- **PathMNIST** baja de 0,987 de accuracy en validación a 0,925 en test: su test procede de otro
+- **DermaMNIST y PathMNIST superan a todos los métodos de referencia** en AUC y en accuracy, con
+  una desviación entre semillas muy por debajo de la diferencia. **BreastMNIST y ChestMNIST
+  quedan dentro del rango** (BreastMNIST en su parte alta).
+- La comparación es entre configuraciones distintas: un ViT preentrenado en ImageNet frente a
+  las ResNet y AutoML del artículo de MedMNIST, con su propio protocolo. No es un "mismo modelo,
+  mejor resultado", sino una comprobación de que el pipeline del proyecto da resultados
+  competitivos en datos médicos.
+- **PathMNIST** baja de ~0,98 de accuracy en validación a 0,925 en test: su test procede de otro
   centro clínico (desplazamiento de distribución conocido del dataset).
-- **ChestMNIST** tiene un F1 a umbral 0,5 casi nulo (0,04): las 14 patologías son raras y el
-  modelo casi nunca supera 0,5, así que la accuracy alta sale sobre todo de los negativos. Por eso
-  la métrica de referencia es el AUC, y por eso elegir el checkpoint por F1@0,5 no es adecuado
-  aquí (ver el roadmap).
+- **ChestMNIST**: el F1 a 0,5 es casi nulo porque las 14 patologías son raras; la accuracy alta
+  sale de los negativos. Por eso se elige el checkpoint por AUC, la métrica de referencia.
+- **Umbral ajustado en validación**: en BreastMNIST (78 imágenes de validación) el F1 con ese
+  umbral (0,727 ± 0,034) no mejora al de 0,5; en ChestMNIST sí (0,196 frente a 0,042). Ajustarlo
+  sobre el propio test, como se hacía antes, siempre parecía mejorar.
 - La **potencia media** medida (165–195 W) coincide con los 180 W calibrados para la RTX 3060 Ti
-  con BigEarthNet: una validación independiente de esa constante del predictor.
+  con BigEarthNet: una validación independiente de esa constante del predictor. Los tiempos por
+  época de este barrido no se usan como medida de rendimiento (había otros procesos en la CPU).
+
+El primer baseline del 17/10/2026 (un run por dataset, checkpoint elegido por F1@0,5) dio
+valores coherentes con esta tabla: AUC 0.889 / 0.931 / 0.993 / 0.772.
 
 Artefactos: `logs/local/medmnist_{breast,derma,path,chest}/single/vit_tiny_patch16_224/` (log,
-CSVs por época, clase, batch y matriz de confusión, y `test_*.csv`).
+CSVs por época, clase, batch y matriz de confusión y `test_<timestamp>.csv` de cada run).
