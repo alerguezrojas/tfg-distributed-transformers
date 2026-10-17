@@ -33,13 +33,13 @@ def _summary_table(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.Dat
             "Train/Val": f"{cfg.get('train', '?')}/{cfg.get('val', '?')}",
             "Epochs": len(cdf),
             "Best Val F1": f"{best_f1_c:.4f}" if not pd.isna(best_f1_c) else "—",
-            "Best epoch": int(best_ep_c_v) if best_ep_c_v is not None else "—",
+            "Best epoch": str(int(best_ep_c_v)) if best_ep_c_v is not None else "—",  # one dtype for Arrow
             "Final F1": f"{_last.iloc[-1]:.4f}" if not _last.empty else "—",
             "Duration": _dur_str(total_s_c) if not pd.isna(total_s_c) else "—",
             "Environment": r.env,
         })
     sum_df = pd.DataFrame(summary_rows).set_index("Run")
     st.caption("Per-run hyperparameters and results in one table.")
-    st.dataframe(sum_df, use_container_width=True)
+    st.dataframe(sum_df, width="stretch")
     _dl_csv(sum_df.reset_index(), "runs_comparison.csv", "Download comparison")
 

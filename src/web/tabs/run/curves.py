@@ -61,7 +61,7 @@ def _test_callout(ctx: DashboardContext) -> None:
                     st.caption(f"Classes with F1=0 on test ({len(zeros)}): "
                                + ", ".join(zeros[:6]) + ("…" if len(zeros) > 6 else ""))
                 with st.expander("Per-class test metrics"):
-                    st.dataframe(pcdf, use_container_width=True, hide_index=True)
+                    st.dataframe(pcdf, width="stretch", hide_index=True)
                     _dl_csv(pcdf, f"{p.stem}.csv", "Download")
 
 
@@ -196,7 +196,7 @@ def _curves(ctx: DashboardContext) -> None:
             _dl_csv(df, "epoch_metrics.csv", "Download epoch_metrics.csv")
 
             with st.expander("Full epochs table"):
-                st.dataframe(df.set_index("epoch"), use_container_width=True)
+                st.dataframe(df.set_index("epoch"), width="stretch")
 
 
 

@@ -44,7 +44,7 @@ def check(name, fn):
         print(f"  FAIL {name}: {e}")
 
 # ── Load all runs ─────────────────────────────────────────────────────────────
-from src.web.run_registry import RunInfo, discover_runs, discover_benchmark_csvs
+from src.web.run_registry import discover_runs, discover_benchmark_csvs
 from src.web.log_parser import parse_log
 from src.web.perclass_parser import parse_perclass_csv
 from src.web.batch_parser import parse_batch_csv
@@ -132,8 +132,7 @@ check("system_snapshot_values", test_system_snapshot)
 # ── TAB: Dataset ──────────────────────────────────────────────────────────────
 print("\n=== Dataset tab ===")
 from src.web.dataset_stats import (
-    CLASS_NAMES, SPLIT_SIZES, class_distribution_approximate,
-    cooccurrence_from_perclass, get_country_distribution,
+    SPLIT_SIZES, class_distribution_approximate,
 )
 
 def test_dataset_class_dist():
@@ -188,7 +187,7 @@ check("dataset_split_pie", test_dataset_split_pie)
 
 # ── TAB: Model Explorer ───────────────────────────────────────────────────────
 print("\n=== Model Explorer tab ===")
-from src.web.model_explorer import compare_models, get_model_stats, CURATED_MODELS, ALL_FAMILIES
+from src.web.model_explorer import compare_models, get_model_stats
 
 def test_model_stats_tiny():
     s = get_model_stats("vit_tiny_patch16_224", num_classes=19)
@@ -564,7 +563,6 @@ def test_info_all_runs():
         best_ep_v = _safe_val_at_best(df_info, "val_f1", "epoch")
         best_ep_i = int(best_ep_v) if best_ep_v is not None else "—"
         # Anomaly detection
-        import re
         lines = r.log_path.read_text(errors="replace").splitlines()
         anomalies = [
             l for l in lines

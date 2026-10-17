@@ -15,16 +15,13 @@ _BEST_VAL_F1 = "Best Val F1"
 _VAL_F1_CURVE = "Val F1 curve"
 
 from src.web.ui.charts import (
-    COLORS, _show, _dl_csv, _base_layout, _metric_fig, _overlay_fig,
-    _CLASS_GROUPS, _CLASS_GROUP_COLOR,
+    COLORS, _show, _dl_csv, _base_layout, _CLASS_GROUPS,
 )
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (
-    ROOT, _load_df, _load_batch, _load_perclass, _get_runs, _get_benchmark_csvs,
-    _bench_label, _run_config, _load_class_distribution, _load_example_images, _class_gallery,
-    _safe_max, _safe_idxmax, _safe_val_at_best, _throughput_col, _dur_str,
-    _get_configs, _detect_anomalies, _read_log_tail, _parse_log_progress,
-    _gpu_usage, _color_f1_cell,
+    _load_df, _get_benchmark_csvs,
+    _load_class_distribution, _class_gallery,
+    _safe_max, _safe_val_at_best, _dur_str,
 )
 
 # Where the BigEarthNet-S2 metadata / patches live (local SSD or Verode NFS). If
@@ -258,7 +255,7 @@ def _photo_strip(meta, root) -> None:
 
     cols = st.columns(per_page, gap="small")   # fixed 5 columns → stable layout
     for col, (cls, cnt, pct, img, labels) in zip(cols, gallery[lo:hi]):
-        col.image(img, use_container_width=True)
+        col.image(img, width="stretch")
         title = " · ".join(labels).replace("'", "")
         col.markdown(
             f"<div title='{title}' style='font-size:0.6rem;line-height:1.05;"
@@ -369,7 +366,7 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
     _table_h = min(34 + 30 * len(ov_df), 160)
     event = st.dataframe(
         ov_df,
-        use_container_width=True, hide_index=True, height=_table_h,
+        width="stretch", hide_index=True, height=_table_h,
         on_select="rerun", selection_mode="single-row", key="runs_table",
         column_config={
             _VAL_F1_CURVE: st.column_config.LineChartColumn(

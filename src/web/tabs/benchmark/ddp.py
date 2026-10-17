@@ -37,7 +37,7 @@ def render_ddp_analysis(meta, benchmark_csvs) -> None:
         styled = styled.background_gradient(
             subset=["speedup"], cmap="Greens",
             vmin=1.0, vmax=float(ddp_df["n_gpus"].max() or 8))
-    st.dataframe(styled, use_container_width=True, hide_index=True)
+    st.dataframe(styled, width="stretch", hide_index=True)
     _dl_csv(ddp_df, "ddp_scenarios.csv", "Download DDP scenarios")
 
     # ── Two compact charts: speedup vs GPUs + total time ────────────────────────

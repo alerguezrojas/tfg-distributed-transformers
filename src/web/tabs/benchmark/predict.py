@@ -107,7 +107,7 @@ def _analytic_predictor() -> None:
         {"Term": "Time / epoch", "Value": _fmt_secs(p.time_per_epoch_train_s),
          "Formula": f"max({p.t_compute_s:.0f}, {p.t_io_s:.0f}) + {p.t_sync_s:.1f} → {p.bottleneck}-bound"},
     ])
-    st.dataframe(time_tbl, hide_index=True, use_container_width=True)
+    st.dataframe(time_tbl, hide_index=True, width="stretch")
 
     # ── VRAM formula ──────────────────────────────────────────────────────────────
     if ms and gs:
@@ -125,7 +125,7 @@ def _analytic_predictor() -> None:
              "Formula": f"vs {gs.vram_gb:.0f} GB → {'fits' if p.fits_in_memory else 'OOM'} · "
                         f"max batch {p.recommended_batch}"},
         ])
-        st.dataframe(mem_tbl, hide_index=True, use_container_width=True)
+        st.dataframe(mem_tbl, hide_index=True, width="stretch")
         if not p.fits_in_memory:
             st.error(f"Out of memory: needs ~{p.vram_per_gpu_gb:.1f} GB, GPU has "
                      f"{gs.vram_gb:.0f} GB. Largest batch that fits: **{p.recommended_batch}**.")
@@ -147,7 +147,7 @@ def _analytic_predictor() -> None:
         {"Term": f"Energy total ({int(epochs)} ep)", "Value": f"{p.energy_total_wh:.1f} Wh",
          "Formula": "energy/epoch × epochs"},
     ])
-    st.dataframe(energy_tbl, hide_index=True, use_container_width=True)
+    st.dataframe(energy_tbl, hide_index=True, width="stretch")
     _energy_note = ""
     if strategy == "ddp" and int(n_gpus) > 1:
         if p.efficiency >= 0.85:
@@ -223,7 +223,7 @@ def _analytic_predictor() -> None:
         st.markdown(f"#### Cloud cost · {total_h:.1f} GPU-hours")
         cdf = pd.DataFrame([{"Provider": r["provider"], "GPU": r["gpu"],
                              "$/h": r["usd_per_hour"], "Cost ($)": r["cost_usd"]} for r in rows])
-        st.dataframe(cdf, hide_index=True, use_container_width=True)
+        st.dataframe(cdf, hide_index=True, width="stretch")
         _dl_csv(cdf, "predicted_cost.csv", "Download cost table")
 
     # ── Assumptions ──────────────────────────────────────────────────────────────

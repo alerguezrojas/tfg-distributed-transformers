@@ -4,7 +4,6 @@ import tempfile
 from pathlib import Path
 
 import pandas as pd
-import pytest
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
