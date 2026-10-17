@@ -96,94 +96,101 @@ def _check_training(train: dict, spec: DatasetSpec | None, errors: list) -> None
     for key in _TRAIN_REQUIRED:
         if key not in train:
             errors.append(f"training.{key} is required")
+    _check_numeric_fields(train, errors)
+    _check_ranges(train, errors)
+    _check_model_selection(train, spec, errors)
+    _check_loss(train, spec, errors)
 
+
+def _check_numeric_fields(train: dict, errors: list) -> None:
     for key in _TRAIN_POSITIVE_INT:
-        if key in train:
-            v = train[key]
-            if not isinstance(v, int) or v <= 0:
-                errors.append(
-                    f"training.{key} must be a positive integer, got {v!r}. "
-                    f"(Hint: YAML parses '1e-4' as a string — use '0.0001' instead)"
-                )
-
-    for key in _TRAIN_POSITIVE_FLOAT:
-        if key not in train:
-            continue
-        v = train[key]
-        if isinstance(v, str):
+        v = train.get(key)
+        if key in train and (not isinstance(v, int) or v <= 0):
             errors.append(
-                f"training.{key}={v!r} is a string, not a number. "
-                f"YAML parses scientific notation as strings — write '0.0001' not '1e-4'"
+                f"training.{key} must be a positive integer, got {v!r}. "
+                f"(Hint: YAML parses '1e-4' as a string — use '0.0001' instead)"
             )
-            continue
-        if not isinstance(v, (int, float)):
-            errors.append(f"training.{key} must be numeric, got {type(v).__name__}: {v!r}")
-            continue
-        fv = float(v)
-        if key not in _TRAIN_NON_NEGATIVE and fv <= 0:
-            errors.append(f"training.{key} must be positive, got {fv}")
-        elif key in _TRAIN_NON_NEGATIVE and fv < 0:
+    for key in _TRAIN_POSITIVE_FLOAT:
+        if key in train:
+            _check_float(key, train[key], errors)
+
+
+def _check_float(key: str, v, errors: list) -> None:
+    if isinstance(v, str):
+        errors.append(
+            f"training.{key}={v!r} is a string, not a number. "
+            f"YAML parses scientific notation as strings — write '0.0001' not '1e-4'"
+        )
+        return
+    if not isinstance(v, (int, float)):
+        errors.append(f"training.{key} must be numeric, got {type(v).__name__}: {v!r}")
+        return
+    fv = float(v)
+    if key in _TRAIN_NON_NEGATIVE:
+        if fv < 0:
             errors.append(f"training.{key} must be >= 0, got {fv}")
+    elif fv <= 0:
+        errors.append(f"training.{key} must be positive, got {fv}")
 
-    # Specific range checks
-    if "label_smoothing" in train:
-        ls = train["label_smoothing"]
-        if isinstance(ls, (int, float)) and not (0.0 <= float(ls) <= 0.5):
-            errors.append(f"training.label_smoothing should be in [0, 0.5], got {ls}")
 
-    if (spec is not None and str(train.get("select_by", "f1")).lower() == "f1_optimal"
-            and not spec.make_task().searches_threshold):
-        errors.append(f"training.select_by: f1_optimal needs a tunable threshold, which "
-                      f"the {spec.task} task of {spec.name!r} does not have; use 'f1'")
+def _check_ranges(train: dict, errors: list) -> None:
+    ls = train.get("label_smoothing")
+    if isinstance(ls, (int, float)) and not (0.0 <= float(ls) <= 0.5):
+        errors.append(f"training.label_smoothing should be in [0, 0.5], got {ls}")
 
-    if spec is not None and train.get("loss") is not None:
-        try:   # the task is the single source of truth for which losses are valid
-            spec.make_task().build_criterion(str(train["loss"]))
-        except ValueError as exc:
-            errors.append(f"training.loss: {exc}")
-
-    if "seed" in train and train["seed"] is not None:
-        s = train["seed"]
-        if not isinstance(s, int) or s < 0:
-            errors.append(f"training.seed must be a non-negative integer or null, got {s!r}")
-
-    if "select_by" in train:
-        sb = str(train["select_by"]).lower()
-        if sb not in ("f1", "f1_optimal"):
-            errors.append(f"training.select_by must be 'f1' or 'f1_optimal', got {train['select_by']!r}")
+    s = train.get("seed")
+    if s is not None and (not isinstance(s, int) or s < 0):
+        errors.append(f"training.seed must be a non-negative integer or null, got {s!r}")
 
     if "focal_gamma" in train:
         g = train["focal_gamma"]
         if not isinstance(g, (int, float)) or float(g) < 0:
             errors.append(f"training.focal_gamma must be a number >= 0, got {g!r}")
 
-    if "pos_weight" in train:
-        pw = train["pos_weight"]
-        ok = (isinstance(pw, str) and pw.lower() == "auto") or (
-            isinstance(pw, (list, tuple))
-            and all(isinstance(x, (int, float)) and x > 0 for x in pw)
+    p = train.get("early_stopping_patience")
+    if p is not None and (not isinstance(p, int) or p <= 0):
+        errors.append(f"training.early_stopping_patience must be a positive int or null, got {p!r}")
+
+    we, ep = train.get("warmup_epochs"), train.get("epochs")
+    if isinstance(we, int) and isinstance(ep, int) and we >= ep:
+        errors.append(
+            f"training.warmup_epochs ({we}) >= training.epochs ({ep}). "
+            "The cosine phase would have 0 epochs. Reduce warmup_epochs or increase epochs."
         )
-        if not ok:
-            errors.append(
-                "training.pos_weight must be 'auto' or a list of positive numbers, "
-                f"got {pw!r}"
-            )
-        elif spec is not None:
-            _check_pos_weight_against(spec, pw, errors)
 
-    if "early_stopping_patience" in train:
-        p = train["early_stopping_patience"]
-        if p is not None and (not isinstance(p, int) or p <= 0):
-            errors.append(f"training.early_stopping_patience must be a positive int or null, got {p!r}")
 
-    if "warmup_epochs" in train and "epochs" in train:
-        we = train["warmup_epochs"]
-        ep = train["epochs"]
-        if isinstance(we, int) and isinstance(ep, int) and we >= ep:
-            errors.append(
-                f"training.warmup_epochs ({we}) >= training.epochs ({ep}). "
-                "The cosine phase would have 0 epochs. Reduce warmup_epochs or increase epochs."
-            )
+def _check_model_selection(train: dict, spec: DatasetSpec | None, errors: list) -> None:
+    if "select_by" not in train:
+        return
+    sb = str(train["select_by"]).lower()
+    if sb not in ("f1", "f1_optimal"):
+        errors.append(f"training.select_by must be 'f1' or 'f1_optimal', got {train['select_by']!r}")
+    elif sb == "f1_optimal" and spec is not None and not spec.make_task().searches_threshold:
+        errors.append(f"training.select_by: f1_optimal needs a tunable threshold, which "
+                      f"the {spec.task} task of {spec.name!r} does not have; use 'f1'")
+
+
+def _check_loss(train: dict, spec: DatasetSpec | None, errors: list) -> None:
+    if spec is not None and train.get("loss") is not None:
+        try:   # the task is the single source of truth for which losses are valid
+            spec.make_task().build_criterion(str(train["loss"]))
+        except ValueError as exc:
+            errors.append(f"training.loss: {exc}")
+
+    if "pos_weight" not in train:
+        return
+    pw = train["pos_weight"]
+    ok = (isinstance(pw, str) and pw.lower() == "auto") or (
+        isinstance(pw, (list, tuple))
+        and all(isinstance(x, (int, float)) and x > 0 for x in pw)
+    )
+    if not ok:
+        errors.append(
+            "training.pos_weight must be 'auto' or a list of positive numbers, "
+            f"got {pw!r}"
+        )
+    elif spec is not None:
+        _check_pos_weight_against(spec, pw, errors)
 
 
 def _check_pos_weight_against(spec: DatasetSpec, pw, errors: list) -> None:

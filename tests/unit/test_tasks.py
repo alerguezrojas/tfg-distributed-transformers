@@ -24,7 +24,8 @@ class TestMultiLabel:
 
     def test_default_loss_is_plain_bce(self):
         crit = self.task.build_criterion()
-        assert isinstance(crit, nn.BCEWithLogitsLoss) and crit.pos_weight is None
+        assert isinstance(crit, nn.BCEWithLogitsLoss)
+        assert crit.pos_weight is None
 
     def test_focal_and_pos_weight(self):
         assert isinstance(self.task.build_criterion("focal"), FocalLoss)
@@ -52,7 +53,8 @@ class TestMultiLabel:
         probs = torch.tensor([[0.3, 0.1], [0.1, 0.3]])
         hard = torch.tensor([[1, 0], [0, 1]])
         t, f1 = self.task.search_threshold(probs, hard)
-        assert t < 0.3 and f1 == pytest.approx(1.0, abs=1e-6)
+        assert t < 0.3
+        assert f1 == pytest.approx(1.0, abs=1e-6)
 
     def test_threshold_search_keeps_half_on_ties(self):
         probs = torch.tensor([[0.9, 0.1], [0.1, 0.9]])   # perfect at 0.5 already
@@ -63,7 +65,8 @@ class TestMultiLabel:
 class TestBinary:
     def test_is_single_column_multilabel(self):
         task = BinaryTask()
-        assert task.sigmoid_outputs and task.searches_threshold
+        assert task.sigmoid_outputs
+        assert task.searches_threshold
         probs = task.probabilities(torch.tensor([[3.0], [-3.0]]))
         assert task.predict(probs).tolist() == [[1], [0]]
         m = task.metrics(task.predict(probs), torch.tensor([[1], [0]]))
@@ -83,8 +86,9 @@ class TestMultiClass:
             self.task.build_criterion(loss)
 
     def test_rejects_pos_weight(self):
+        pw = torch.ones(3)
         with pytest.raises(ValueError, match="pos_weight"):
-            self.task.build_criterion(pos_weight=torch.ones(3))
+            self.task.build_criterion(pos_weight=pw)
 
     def test_cross_entropy_accepts_soft_targets(self):
         crit = self.task.build_criterion()
@@ -118,7 +122,8 @@ class TestMultiClass:
 @pytest.mark.parametrize("task, row_sum", [(MultiLabelTask(), None), (MultiClassTask(), 1.0)])
 def test_random_targets_have_the_task_format(task, row_sum):
     y = task.random_targets(16, 5)
-    assert y.shape == (16, 5) and y.dtype == torch.float32
+    assert y.shape == (16, 5)
+    assert y.dtype == torch.float32
     assert set(y.unique().tolist()) <= {0.0, 1.0}
     if row_sum is not None:
         assert (y.sum(dim=1) == row_sum).all()

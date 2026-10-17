@@ -110,7 +110,7 @@ def get_transforms(split: str) -> transforms.Compose:
             # Discrete 90° rotation: Sentinel-2 has no preferred orbital orientation
             transforms.Lambda(
                 lambda img: transforms.functional.rotate(
-                    img, angle=random.choice([0, 90, 180, 270])
+                    img, angle=random.choice([0, 90, 180, 270])  # NOSONAR: augmentation, not security
                 )
             ),
             # Scale invariance: randomly crop then resize back to 224

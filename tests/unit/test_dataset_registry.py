@@ -37,7 +37,8 @@ class TestBigEarthNetSpec:
     def test_properties(self):
         spec = get_dataset_spec("bigearthnet")
         assert spec.num_classes == 19
-        assert spec.task == "multilabel" and spec.in_channels == 3
+        assert spec.task == "multilabel"
+        assert spec.in_channels == 3
         assert spec.required_keys == ("root", "metadata")
         assert spec.class_counts is not None
 
@@ -55,8 +56,9 @@ class TestRegistry:
         assert dataset_spec_from_config({"data": {"name": "TOY_REGISTRY_TEST"}}) is toy_dataset
 
     def test_duplicate_name_rejected(self, toy_dataset):
+        clash = _spec(name=toy_dataset.name)
         with pytest.raises(ValueError, match="already registered"):
-            register_dataset(_spec(name=toy_dataset.name))
+            register_dataset(clash)
 
     def test_reregistering_same_object_is_idempotent(self, toy_dataset):
         assert register_dataset(toy_dataset) is toy_dataset
@@ -100,17 +102,20 @@ class TestValidatorAgainstSpec:
         validate_config(_cfg())
 
     def test_num_classes_must_match_dataset(self):
+        cfg = _cfg(model={"num_classes": 10})
         with pytest.raises(ConfigError, match="does not match dataset"):
-            validate_config(_cfg(model={"num_classes": 10}))
+            validate_config(cfg)
 
     def test_unknown_dataset_name(self):
+        cfg = _cfg(data={"name": "nope"})
         with pytest.raises(ConfigError, match="not a registered dataset"):
-            validate_config(_cfg(data={"name": "nope"}))
+            validate_config(cfg)
 
     def test_required_keys_come_from_the_spec(self, toy_dataset):
         validate_config({**_cfg(), "data": {"name": toy_dataset.name}})
+        cfg = {**_cfg(), "data": {"root": "/r"}}
         with pytest.raises(ConfigError, match="data.metadata is required"):
-            validate_config({**_cfg(), "data": {"root": "/r"}})
+            validate_config(cfg)
 
     def test_loss_must_fit_the_task(self, toy_dataset):
         cfg = _cfg(training={"loss": "focal"})
@@ -120,8 +125,9 @@ class TestValidatorAgainstSpec:
             validate_config(cfg)                              # multiclass: not valid
 
     def test_pos_weight_length(self):
+        cfg = _cfg(training={"pos_weight": [1.0, 2.0]})
         with pytest.raises(ConfigError, match="19 classes"):
-            validate_config(_cfg(training={"pos_weight": [1.0, 2.0]}))
+            validate_config(cfg)
         validate_config(_cfg(training={"pos_weight": [1.0] * 19}))
 
     def test_pos_weight_rejected_for_multiclass(self, toy_dataset):
@@ -140,8 +146,9 @@ class TestConfusionClassNames:
         assert self._dec(tmp_path, None)._names(3) == ["class_0", "class_1", "class_2"]
 
     def test_mismatch_raises(self, tmp_path):
+        dec = self._dec(tmp_path, ["a", "b"])
         with pytest.raises(ValueError, match="2 class names for 3"):
-            self._dec(tmp_path, ["a", "b"])._names(3)
+            dec._names(3)
 
 
 def test_model_accepts_input_channels():
