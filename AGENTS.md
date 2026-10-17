@@ -88,6 +88,15 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 - NCCL no admite dos ranks en la misma GPU; gloo no admite `ReduceOp.AVG`.
 - Los tests y la CI usan torch CPU; no asumir CUDA en tests.
 
+## Continuidad
+
+El estado del proyecto vive en el repositorio, no en ningún chat. Al terminar un bloque de trabajo,
+cualquier agente actualiza la sección **"Estado actual"** de [`docs/roadmap.md`](docs/roadmap.md),
+las casillas del roadmap y `CHANGELOG.md`. Quien retome el proyecto empieza por ahí.
+
+Los agentes especializados del proyecto están en `.claude/agents/` (revisor, implementador,
+documentador, investigador, explorador); `CLAUDE.md` explica cuándo usar cada uno.
+
 ## Documentación
 
 Índice completo en [`docs/README.md`](docs/README.md). Lo más consultado:
