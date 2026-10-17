@@ -108,9 +108,10 @@ def get_transforms(split: str) -> transforms.Compose:
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
             # Discrete 90° rotation: Sentinel-2 has no preferred orbital orientation
+            # Python's RNG is right here: data augmentation, not security (Sonar S2245).
             transforms.Lambda(
                 lambda img: transforms.functional.rotate(
-                    img, angle=random.choice([0, 90, 180, 270])  # NOSONAR: augmentation, not security
+                    img, angle=random.choice([0, 90, 180, 270])  # NOSONAR
                 )
             ),
             # Scale invariance: randomly crop then resize back to 224
