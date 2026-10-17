@@ -82,6 +82,10 @@ class Task(ABC):
             "recall": m.recall(preds, hard),
         }
 
+    def random_targets(self, n: int, num_classes: int) -> torch.Tensor:
+        """Synthetic float targets (n, C) in this task's format (for benchmarks)."""
+        return torch.randint(0, 2, (n, num_classes)).float()
+
     def search_threshold(self, probs: torch.Tensor,
                          hard: torch.Tensor) -> tuple[float, float] | None:
         """(best threshold, macro F1 at it) over ``metrics.THRESHOLD_GRID``, or
@@ -183,6 +187,9 @@ class MultiClassTask(Task):
 
     def accuracy(self, preds, hard):
         return (preds.argmax(dim=1) == hard.argmax(dim=1)).float().mean().item()
+
+    def random_targets(self, n, num_classes):
+        return F.one_hot(torch.randint(0, num_classes, (n,)), num_classes).float()
 
 
 TASKS: dict[str, type[Task]] = {

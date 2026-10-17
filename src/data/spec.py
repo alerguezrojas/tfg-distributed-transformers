@@ -37,6 +37,9 @@ class DatasetSpec:
     class_counts: ClassCounter | None = None   # enables training.pos_weight: auto
 
     def __post_init__(self):
+        if not self.name or self.name != self.name.lower():
+            raise ValueError(f"dataset name {self.name!r} must be lowercase "
+                             f"(configs are matched case-insensitively)")
         if self.task not in TASKS:
             raise ValueError(f"{self.name}: unknown task {self.task!r}; "
                              f"available: {sorted(TASKS)}")

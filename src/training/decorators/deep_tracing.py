@@ -42,6 +42,7 @@ from torch.utils.data import DataLoader
 from src.training.base_trainer import BaseTrainer
 from src.training.metrics import f1_score, eta_str
 from src.training.tasks import MultiLabelTask
+from src.models.vit import input_channels
 from src.training.augmentations import mixup_batch
 from src.training.decorators.tracing import TracingDecorator
 
@@ -342,13 +343,18 @@ class DeepTracingDecorator(TracingDecorator):
     def _show_model_summary(self):
         try:
             from torchinfo import summary
+        except ImportError:
+            self._emit("torchinfo no disponible — omitiendo resumen")
+            return
+        model = self._trainer.model
+        try:
             self._emit("=== Arquitectura del modelo (torchinfo) ===")
-            stats = summary(self._trainer.model, input_size=(1, 3, 224, 224),
+            stats = summary(model, input_size=(1, input_channels(model), 224, 224),
                             verbose=0, device=self._trainer.device)
             for line in str(stats).splitlines():
                 self._emit(line)
-        except ImportError:
-            self._emit("torchinfo no disponible — omitiendo resumen")
+        except Exception as exc:   # the summary is informative; never abort a run for it
+            self._emit(f"[aviso] resumen torchinfo omitido: {exc}")
 
     def _gpu_str(self) -> str:
         if not torch.cuda.is_available():

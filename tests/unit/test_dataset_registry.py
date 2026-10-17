@@ -148,3 +148,36 @@ def test_model_accepts_input_channels():
     from src.models.vit import build_model
     model = build_model("resnet18", num_classes=4, pretrained=False, in_chans=1)
     assert model(torch.zeros(2, 1, 32, 32)).shape == (2, 4)
+
+
+def test_dataset_names_must_be_lowercase():
+    with pytest.raises(ValueError, match="lowercase"):
+        _spec(name="ISIC")
+
+
+def test_select_by_optimal_threshold_rejected_without_threshold(toy_dataset):
+    cfg = _cfg(data={"name": toy_dataset.name}, training={"select_by": "f1_optimal"})
+    with pytest.raises(ConfigError, match="f1_optimal"):
+        validate_config(cfg)
+    validate_config(_cfg(training={"select_by": "f1_optimal"}))   # multi-label: fine
+
+
+def test_input_channels_seen_through_wrappers():
+    from src.models.vit import build_model, input_channels
+    model = build_model("resnet18", num_classes=2, pretrained=False, in_chans=1)
+    assert input_channels(model) == 1
+    assert input_channels(torch.nn.Module()) == 3      # unknown model → RGB default
+
+    class _Wrapped(torch.nn.Module):                    # DDP-style .module
+        def __init__(self, m):
+            super().__init__()
+            self.module = m
+    assert input_channels(_Wrapped(model)) == 1
+
+
+def test_model_analyzer_handles_single_channel_models():
+    from src.benchmark.model_analyzer import ModelAnalyzer
+    from src.models.vit import build_model
+    model = build_model("resnet18", num_classes=2, pretrained=False, in_chans=1)
+    info = ModelAnalyzer(model, "resnet18", torch.device("cpu")).analyze()
+    assert info.flops_per_image_mflops > 0

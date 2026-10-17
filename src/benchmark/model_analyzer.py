@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 
 from src.benchmark.value_objects import ModelInfo
+from src.models.vit import input_channels
 
 
 class ModelAnalyzer:
@@ -34,7 +35,8 @@ class ModelAnalyzer:
     def _run_summary(self) -> tuple[float, float]:
         try:
             from torchinfo import summary
-            stats = summary(self._model, input_size=(1, 3, 224, 224),
+            stats = summary(self._model,
+                            input_size=(1, input_channels(self._model), 224, 224),
                             verbose=0, device=torch.device("cpu"))
             return stats.total_mult_adds / 1e6, getattr(stats, "total_output_bytes", 0) / 1e6
         except Exception:

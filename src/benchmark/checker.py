@@ -209,7 +209,7 @@ class BenchmarkChecker:
         from torch.utils.data import DataLoader, TensorDataset
         n = batch_size * (self._study_steps + 25)
         x = torch.randn(n, self._spec.in_channels, 224, 224)
-        y = torch.randint(0, 2, (n, self._spec.num_classes)).float()
+        y = self._task.random_targets(n, self._spec.num_classes)
         return DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
 
     def _run_convergence_study(self, model):

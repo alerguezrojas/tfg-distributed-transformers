@@ -20,6 +20,7 @@ class Benchmarker:
         self._device = device
         self._num_classes = num_classes
         self._in_chans = in_chans
+        self._task = task
         # Synthetic batches only measure speed: the loss cost is negligible next to
         # the forward/backward, but use the task's loss so the graph is the real one.
         self._criterion = task.build_criterion() if task is not None else nn.BCEWithLogitsLoss()
@@ -69,10 +70,14 @@ class Benchmarker:
     def _make_batches(self, batch_size: int):
         n = self.N_WARMUP + self.N_MEASURE
         return [
-            (torch.randn(batch_size, self._in_chans, 224, 224),
-             torch.randint(0, 2, (batch_size, self._num_classes)).float())
+            (torch.randn(batch_size, self._in_chans, 224, 224), self._targets(batch_size))
             for _ in range(n)
         ]
+
+    def _targets(self, n: int) -> torch.Tensor:
+        if self._task is not None:
+            return self._task.random_targets(n, self._num_classes)
+        return torch.randint(0, 2, (n, self._num_classes)).float()
 
     def _benchmark(self, batches, trace_mode) -> tuple[float, float, float, float]:
         hooks = self._register_deep_hooks() if trace_mode == "deep" else []

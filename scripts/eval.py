@@ -187,8 +187,11 @@ def main():
     print(f"  Accuracy (t=0.50) : {acc_05:.4f}")
     print(f"  Precision(t=0.50) : {prec_05:.4f}")
     print(f"  Recall   (t=0.50) : {rec_05:.4f}")
-    print(f"  Optimal threshold : {best_t:.2f}")
-    print(f"  F1  (t={best_t:.2f})     : {best_f1:.4f}")
+    if task.searches_threshold:
+        print(f"  Optimal threshold : {best_t:.2f}")
+        print(f"  F1  (t={best_t:.2f})     : {best_f1:.4f}")
+    else:
+        print(f"  Optimal threshold : n/a ({task.name})")
 
     pc = per_class_metrics(probs, labels, best_t, spec.classes, task)
     pc_sorted = sorted(pc, key=lambda r: r["f1"], reverse=True)
@@ -208,8 +211,9 @@ def main():
             writer.writerows(pc)
         # Append aggregate row
         with open(out_path, "a") as f:
-            f.write(f"\n# aggregate,loss={avg_loss:.6f},f1_t05={f1_05:.4f},"
-                    f"f1_opt={best_f1:.4f},threshold={best_t:.2f},"
+            thresh = (f"f1_opt={best_f1:.4f},threshold={best_t:.2f},"
+                      if task.searches_threshold else "")
+            f.write(f"\n# aggregate,loss={avg_loss:.6f},f1_t05={f1_05:.4f},{thresh}"
                     f"accuracy={acc_05:.4f},precision={prec_05:.4f},recall={rec_05:.4f}\n")
         print(f"\nResultados guardados en: {out_path}")
 

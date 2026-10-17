@@ -45,7 +45,7 @@ def registered():
         registry._REGISTRY.pop(name, None)
 
 
-def _train(tmp_path, monkeypatch, spec, epochs=2):
+def _train(tmp_path, monkeypatch, spec, epochs=2, inspect=()):
     monkeypatch.chdir(tmp_path)              # the builder writes logs/ under cwd
     cfg = {
         "data": {"name": spec.name, "num_workers": 0},
@@ -55,12 +55,23 @@ def _train(tmp_path, monkeypatch, spec, epochs=2):
         "checkpoint": {"dir": str(tmp_path / "ckpt")},
         "output": {"env": "test"},
     }
-    trainer = (TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t")
-               .with_trace("simple").with_layers("confusion").build())
+    builder = (TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t")
+               .with_trace("simple").with_layers("confusion"))
+    if inspect:
+        builder = builder.with_inspect(*inspect)
+    trainer = builder.build()
     train_dl = DataLoader(spec.dataset(cfg["data"], "train"), batch_size=8)
     val_dl = DataLoader(spec.dataset(cfg["data"], "val"), batch_size=8)
     trainer.fit(train_dl, val_dl, epochs=epochs)
     return trainer, tmp_path / "logs" / "test" / "single" / "resnet18"
+
+
+def test_model_summary_works_with_single_channel_inputs(tmp_path, monkeypatch, registered):
+    spec = registered("toy_xray", ("normal", "abnormal"), "multiclass", channels=1)
+    _, log_dir = _train(tmp_path, monkeypatch, spec, epochs=1, inspect=("model-summary",))
+    log = (log_dir / "train_deep_t.log").read_text()
+    assert "Total params" in log
+    assert "resumen torchinfo omitido" not in log
 
 
 def test_multiclass_single_channel_dataset_trains(tmp_path, monkeypatch, registered):
@@ -89,3 +100,50 @@ def test_binary_dataset_trains_with_threshold_search(tmp_path, monkeypatch, regi
     assert isinstance(trainer.criterion, torch.nn.BCEWithLogitsLoss)
     per = pd.read_csv(log_dir / "perclass_metrics_t.csv")
     assert list(per["class_name"]) == ["tumour"]
+
+
+# ── Every strategy must be buildable through the builder with a task ───────────
+
+@pytest.fixture
+def gloo():
+    import os
+    import torch.distributed as dist
+    if not dist.is_initialized():
+        os.environ.setdefault("MASTER_ADDR", "localhost")
+        os.environ.setdefault("MASTER_PORT", "29495")
+        dist.init_process_group(backend="gloo", rank=0, world_size=1)
+    yield
+    if dist.is_initialized():
+        dist.destroy_process_group()
+
+
+def _innermost(trainer):
+    while hasattr(trainer, "_trainer"):
+        trainer = trainer._trainer
+    return trainer
+
+
+@pytest.mark.parametrize("hetero", [False, True], ids=["ddp", "heterogeneous"])
+def test_distributed_strategies_build_with_the_dataset_task(tmp_path, monkeypatch,
+                                                            registered, gloo, hetero):
+    from src.training.ddp_trainer import DDPTrainer
+    from src.training.heterogeneous_ddp_trainer import HeterogeneousDDPTrainer
+    spec = registered("toy_multilabel", ("a", "b", "c"), "multilabel", channels=3)
+    monkeypatch.chdir(tmp_path)
+    cfg = {
+        "data": {"name": spec.name},
+        "model": {"name": "resnet18", "pretrained": False},
+        "training": {"epochs": 1, "batch_size": 8, "lr": 0.001},
+        "checkpoint": {"dir": str(tmp_path / "ckpt")},
+    }
+    builder = TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t",
+                                     distributed=True).with_trace("off")
+    if hetero:
+        builder = builder.with_heterogeneous_ddp(8)
+    trainer = builder.build()
+
+    base = _innermost(trainer)
+    assert type(base) is (HeterogeneousDDPTrainer if hetero else DDPTrainer)
+    assert base.task.name == "multilabel"
+    val = trainer.eval_epoch(DataLoader(spec.dataset(cfg["data"], "val"), batch_size=8))
+    assert val["_preds"].shape[1] == 3

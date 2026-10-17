@@ -113,3 +113,12 @@ class TestMultiClass:
 
     def test_no_threshold_search(self):
         assert self.task.search_threshold(torch.rand(4, 3), torch.eye(3)[[0, 1, 2, 0]]) is None
+
+
+@pytest.mark.parametrize("task, row_sum", [(MultiLabelTask(), None), (MultiClassTask(), 1.0)])
+def test_random_targets_have_the_task_format(task, row_sum):
+    y = task.random_targets(16, 5)
+    assert y.shape == (16, 5) and y.dtype == torch.float32
+    assert set(y.unique().tolist()) <= {0.0, 1.0}
+    if row_sum is not None:
+        assert (y.sum(dim=1) == row_sum).all()

@@ -45,12 +45,13 @@ class DDPTrainer(Trainer):
         label_smoothing: float = 0.0,
         mixup_alpha: float = 0.0,
         precision: str = "fp32",
+        task=None,
         rank: int = 0,
         world_size: int = 1,
     ):
         super().__init__(model, optimizer, scheduler, device, checkpoint_dir,
                          criterion, grad_clip, label_smoothing, mixup_alpha,
-                         precision=precision)
+                         precision=precision, task=task)
         self.rank = rank
         self.world_size = world_size
         self._epoch = 0

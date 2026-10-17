@@ -4,13 +4,45 @@
 > distribuidas, benchmark, artefactos, configuraciones y panel web. El diagrama de clases
 > completo está en [`class_diagram.svg`](class_diagram.svg).
 
+## Datasets y tareas
+
+El núcleo de entrenamiento no asume ningún dataset. Dos piezas concentran todo lo que
+depende de los datos (detalle y guía para añadir uno nuevo en [`datasets/`](datasets/)):
+
+- **`DatasetSpec`** (`src/data/spec.py`): la ficha de un dataset. Incluye las clases, los
+  canales de entrada, el tipo de tarea, las claves obligatorias de `data:`, el lector de
+  cada split y sus transformaciones, y opcionalmente el recuento por clase. Se registra con
+  un nombre en `src/data/registry.py` y el config la elige con `data.name` (por defecto
+  `bigearthnet`).
+- **`Task`** (`src/training/tasks.py`, patrón Strategy): `MultiLabelTask`, `BinaryTask` y
+  `MultiClassTask`. Decide la pérdida, el suavizado de etiquetas, el paso de logits a
+  predicciones, las métricas y si se busca un umbral óptimo.
+
+```
+config (data.name) ──► registry ──► DatasetSpec ──► Task
+                                        │              │
+               scripts / eval / benchmark (datos)      Trainer, DDPTrainer, Heterogeneous,
+               builder (num_classes, in_chans)         DeepTracing, eval, benchmark
+```
+
+El `TrainingSessionBuilder` lee la ficha, crea la tarea y se la pasa al trainer de
+cualquier estrategia. Las métricas de validación se calculan en un único sitio,
+`Trainer._evaluate`, que DDP reutiliza sobre las probabilidades reunidas de todos los
+procesos. El `ConfusionMatrixDecorator` recibe los nombres de clase de la ficha.
+
 ## Modelo
 
-- `vit_base_patch16_224` de **timm**, pretrained ImageNet
-- 85 813 267 parámetros, embed_dim = 768
-- Cabeza personalizada: `Dropout(p) → Linear(768, 19)` — p=0.1 (configs v1/v2), p=0.3 (config v3)
-- Forward devuelve logits crudos (sin sigmoid)
-- Fichero: `src/models/vit.py` — clase `BigEarthModel` (alias retrocompat `BigEarthViT`), función `build_model()`
+- `TimmClassifier` (`src/models/vit.py`; alias retrocompatibles `BigEarthModel` y
+  `BigEarthViT`) con `build_model()`: cualquier backbone de **timm** más la cabeza
+  `Dropout(p) → Linear(embed_dim, num_classes)`.
+- `num_classes` e `in_chans` vienen de la ficha del dataset. Con `in_chans != 3`, timm adapta
+  la primera capa de los pesos preentrenados.
+- El forward devuelve logits crudos; la tarea decide cómo interpretarlos.
+- Modelo de referencia del TFG: `vit_base_patch16_224` preentrenado en ImageNet (85 813 267
+  parámetros, embed_dim = 768).
+- ⚠ `model.dropout` del YAML **no se aplica**: el builder no lo pasa al modelo, así que la
+  cabeza usa siempre p=0.1, también en los configs "v3" que piden 0.3. Pendiente de
+  corregir (ver [roadmap](roadmap.md)).
 
 ---
 

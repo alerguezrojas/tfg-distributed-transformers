@@ -38,7 +38,8 @@ package "src.training" #FDFEFE {
     - optimizer: Optimizer
     - scheduler: LRScheduler | None
     - device: torch.device
-    - criterion: BCEWithLogitsLoss
+    - task: Task
+    - criterion: nn.Module  ' por defecto task.build_criterion()
     - grad_clip: float | None
     - label_smoothing: float
     - mixup_alpha: float
@@ -51,6 +52,7 @@ package "src.training" #FDFEFE {
     - _place_model(model, device): nn.Module  ' hook: por defecto model.to(device)
     + train_epoch(loader): dict
     + eval_epoch(loader): dict
+    - _evaluate(probs, labels): dict  ' métricas + umbral, compartido con DDP
     + save_checkpoint(epoch, metrics)
     + load_checkpoint(path): dict
     + fit(train_loader, val_loader, epochs)
@@ -71,6 +73,7 @@ package "src.training" #FDFEFE {
     - _criterion_sum: BCEWithLogitsLoss
     + train_epoch(loader): dict
     .. normaliza grad por batch global ..
+    .. solo tareas sigmoide ..
   }
 
   class ModelParallelTrainer {
@@ -134,8 +137,8 @@ package "src.training" #FDFEFE {
 
   note as losses_note
     **losses.py**
-    build_criterion → BCEWithLogitsLoss(+pos_weight) | FocalLoss
-    pos_weight_from_metadata('auto')
+    build_criterion(train_cfg, pos_weight, task) → delega en la Task
+    pos_weight_from_counts (counts de DatasetSpec.class_counts)
     Palanca contra las clases raras.
   end note
 
@@ -162,7 +165,7 @@ package "src.training.convergence_study" #FDFEFE {
   class ConvergenceStudy {
     - _device: torch.device
     - _family: str
-    - _criterion: BCEWithLogitsLoss
+    - _task: Task
     + lr_range_test(model, loader): LRRangeResult
     + convergence_test(model, loader, lr, n_steps): ConvergenceResult
     + gradient_noise_scale(model, loader): GradientNoiseResult
@@ -360,14 +363,14 @@ package "src.training.fn_decorators" #FDFEFE {
 ' PACKAGE: src.models / src.data
 ' ════════════════════════════════════════════════════════════════
 package "src.models" #FDFEFE {
-  class BigEarthModel {
-    ' alias retrocompat: BigEarthViT = BigEarthModel
+  class TimmClassifier {
+    ' alias retrocompat: BigEarthModel, BigEarthViT
     - model_name: str
     - backbone: VisionTransformer
     - head: nn.Sequential
     + is_vit: bool
     + forward(x: Tensor): Tensor
-    + build_model(name, num_classes, pretrained)
+    + build_model(name, num_classes, pretrained, in_chans)
     + build_llrd_optimizer(model, lr, wd, decay)
   }
 
@@ -461,6 +464,26 @@ package "src.support" as support #FDFEFE {
 }
 
 package "src.data" #FDFEFE {
+  class DatasetSpec <<dataclass>> {
+    + name: str
+    + classes: tuple[str]
+    + task: str  ' multilabel | binary | multiclass
+    + in_channels: int
+    + required_keys: tuple[str]
+    + build(data_cfg, split, transform): Dataset
+    + transforms(split)
+    + class_counts(data_cfg, split)  ' opcional
+    + num_classes: int
+    + make_task(): Task
+    + dataset(data_cfg, split): Dataset
+  }
+
+  note as registry_note
+    **registry.py**
+    register_dataset(spec) · get_dataset_spec(name)
+    dataset_spec_from_config(cfg)  ' data.name, por defecto bigearthnet
+  end note
+
   class BigEarthNetDataset {
     - root: Path
     - patch_ids: list[str]
@@ -471,6 +494,35 @@ package "src.data" #FDFEFE {
     - _load_image(patch_dir): ndarray
     - _load_labels(idx): Tensor
     + get_transforms(split): Compose
+  }
+  note bottom of BigEarthNetDataset
+    BIGEARTHNET = register_dataset(DatasetSpec(...))
+    19 clases CORINE · multilabel · 3 canales
+  end note
+}
+
+package "src.training.tasks" #FDFEFE {
+  abstract class Task <<Strategy>> {
+    + name: str
+    + sigmoid_outputs: bool
+    + searches_threshold: bool
+    {abstract} + build_criterion(loss, pos_weight, ...): nn.Module
+    {abstract} + smooth_targets(targets, eps): Tensor
+    {abstract} + probabilities(logits): Tensor
+    {abstract} + predict(probs, threshold): Tensor
+    {abstract} + hard_targets(targets): Tensor
+    {abstract} + accuracy(preds, hard): float
+    + metrics(preds, hard): dict
+    + search_threshold(probs, hard): (float, float) | None
+  }
+  class MultiLabelTask {
+    ' sigmoide · BCE | focal · umbral óptimo
+  }
+  class BinaryTask {
+    ' una sola sigmoide
+  }
+  class MultiClassTask {
+    ' softmax · CrossEntropy · acierto exacto
   }
 }
 
@@ -781,6 +833,15 @@ _TrainValReporter <|-- AccuracyReporter
 ' ════════════════════════════════════════════════════════════════
 
 TrainerDecorator o-- BaseTrainer : wraps >
+
+Task <|-- MultiLabelTask
+MultiLabelTask <|-- BinaryTask
+Task <|-- MultiClassTask
+Trainer o-- Task : delega pérdida/métricas >
+DatasetSpec ..> Task : make_task >
+DatasetSpec ..> BigEarthNetDataset : build >
+DatasetSpec .. registry_note
+TrainingSessionBuilder ..> DatasetSpec : lee data.name >
 
 TrainingSessionBuilder ..> BaseTrainer : builds >
 TrainingSessionBuilder ..> Trainer : creates >

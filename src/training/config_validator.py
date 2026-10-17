@@ -131,6 +131,11 @@ def _check_training(train: dict, spec: DatasetSpec | None, errors: list) -> None
         if isinstance(ls, (int, float)) and not (0.0 <= float(ls) <= 0.5):
             errors.append(f"training.label_smoothing should be in [0, 0.5], got {ls}")
 
+    if (spec is not None and str(train.get("select_by", "f1")).lower() == "f1_optimal"
+            and not spec.make_task().searches_threshold):
+        errors.append(f"training.select_by: f1_optimal needs a tunable threshold, which "
+                      f"the {spec.task} task of {spec.name!r} does not have; use 'f1'")
+
     if spec is not None and train.get("loss") is not None:
         try:   # the task is the single source of truth for which losses are valid
             spec.make_task().build_criterion(str(train["loss"]))

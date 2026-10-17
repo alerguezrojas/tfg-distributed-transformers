@@ -26,6 +26,7 @@ class TimmClassifier(nn.Module):
     ):
         super().__init__()
         self.model_name = model_name
+        self.in_chans = in_chans
 
         self.backbone = timm.create_model(
             model_name,
@@ -56,6 +57,13 @@ class TimmClassifier(nn.Module):
         """
         features = self.backbone(x)
         return self.head(features)
+
+
+def input_channels(model: nn.Module, default: int = 3) -> int:
+    """Input channels of a (possibly DDP- or pipeline-wrapped) TimmClassifier."""
+    for attr in ("module", "base"):          # DistributedDataParallel / ModelParallelViT
+        model = getattr(model, attr, model)
+    return getattr(model, "in_chans", default)
 
 
 # Backward-compatible aliases (names used before multi-dataset support)
