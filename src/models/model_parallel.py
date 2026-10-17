@@ -112,12 +112,14 @@ def build_model_parallel_vit(
     devices: list[str] | None = None,
     split_block: int | None = None,
     in_chans: int = 3,
+    dropout: float = 0.1,
 ) -> ModelParallelViT:
     """Build a ViT and wrap it for model parallelism across ``devices``."""
     base = TimmClassifier(
         model_name=model_name,
         num_classes=num_classes,
         pretrained=pretrained,
+        dropout=dropout,
         in_chans=in_chans,
     )
     return ModelParallelViT(base, devices=devices, split_block=split_block)

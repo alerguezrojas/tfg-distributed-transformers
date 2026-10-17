@@ -201,7 +201,8 @@ def main():
             f"Configuración: modelo={model_name} | batch={_bs}/GPU "
             f"(global={_bs * world_size}, {world_size} GPUs) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-            f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)}"
+            f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)} | "
+            f"dataset={spec.name}"
         )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

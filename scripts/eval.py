@@ -178,6 +178,7 @@ def main():
     agg = task.metrics(task.predict(probs), hard)
     f1_05, acc_05 = agg["f1"], agg["accuracy"]
     prec_05, rec_05 = agg["precision"], agg["recall"]
+    auc = m.roc_auc_macro(probs, hard)       # threshold-free; MedMNIST's main metric
 
     best_t, best_f1 = threshold_search(probs, labels, task)
 
@@ -187,6 +188,7 @@ def main():
     print(f"  Accuracy (t=0.50) : {acc_05:.4f}")
     print(f"  Precision(t=0.50) : {prec_05:.4f}")
     print(f"  Recall   (t=0.50) : {rec_05:.4f}")
+    print(f"  AUC (macro)       : {auc:.4f}")
     if task.searches_threshold:
         print(f"  Optimal threshold : {best_t:.2f}")
         print(f"  F1  (t={best_t:.2f})     : {best_f1:.4f}")
@@ -214,7 +216,8 @@ def main():
             thresh = (f"f1_opt={best_f1:.4f},threshold={best_t:.2f},"
                       if task.searches_threshold else "")
             f.write(f"\n# aggregate,loss={avg_loss:.6f},f1_t05={f1_05:.4f},{thresh}"
-                    f"accuracy={acc_05:.4f},precision={prec_05:.4f},recall={rec_05:.4f}\n")
+                    f"accuracy={acc_05:.4f},precision={prec_05:.4f},recall={rec_05:.4f},"
+                    f"auc={auc:.4f}\n")
         print(f"\nResultados guardados en: {out_path}")
 
 

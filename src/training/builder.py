@@ -42,7 +42,7 @@ from src.training.decorators import (
     PrecisionRecallReporter,
 )
 from src.models.vit import build_model, build_llrd_optimizer
-from src.data.registry import dataset_spec_from_config
+from src.data.registry import DEFAULT_DATASET, dataset_spec_from_config
 from src.data.spec import DatasetSpec
 
 
@@ -174,6 +174,7 @@ class TrainingSessionBuilder:
 
         # ── Model ────────────────────────────────────────────────────────────
         model_name = self._model_name or cfg["model"]["name"]
+        dropout = cfg["model"].get("dropout", 0.1)
         if self._model_parallel is not None:
             from src.models.model_parallel import build_model_parallel_vit
             mp_devices, mp_split = self._model_parallel
@@ -184,6 +185,7 @@ class TrainingSessionBuilder:
                 devices=mp_devices,
                 split_block=mp_split,
                 in_chans=spec.in_channels,
+                dropout=dropout,
             )
         else:
             model = build_model(
@@ -191,6 +193,7 @@ class TrainingSessionBuilder:
                 num_classes=spec.num_classes,
                 pretrained=cfg["model"].get("pretrained", True),
                 in_chans=spec.in_channels,
+                dropout=dropout,
             )
 
         # ── Optimizer ────────────────────────────────────────────────────────
@@ -232,19 +235,19 @@ class TrainingSessionBuilder:
                 optimizer, T_max=epochs, eta_min=lr_min,
             )
 
-        # ── Output paths (env/mode/model — needed for checkpoint_dir) ─────────
+        # ── Output paths (env/[dataset/]mode/model — needed for checkpoint_dir) ─
         env = cfg.get("output", {}).get("env", "local")
         mode = self._output_mode or (
             "model_parallel" if self._model_parallel is not None
             else "ddp" if self._distributed else "single")
-        model_slug = model_name.replace("/", "_")
+        run_subdir = self.run_subdir(spec, mode, model_name)
 
         # ── Base Trainer ──────────────────────────────────────────────────────
         grad_clip = cfg["training"].get("grad_clip", None)
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         precision = cfg["training"].get("precision", "fp32")
-        checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / mode / model_slug)
+        checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / run_subdir)
 
         # ── Loss / criterion (lever against the rare-class macro-F1 ceiling) ───
         # training.loss: task default ('bce' multi-label, 'ce' multi-class) | 'focal';
@@ -274,6 +277,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                criterion=criterion,      # its pos_weight carries into the summed loss
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
@@ -331,8 +335,8 @@ class TrainingSessionBuilder:
             base.eval_epoch = timed(base.eval_epoch)
 
         # ── Output directories ────────────────────────────────────────────────
-        log_dir = Path(f"logs/{env}/{mode}/{model_slug}")
-        plot_dir = Path(f"plots/{env}/{mode}/{model_slug}")
+        log_dir = Path("logs") / env / run_subdir
+        plot_dir = Path("plots") / env / run_subdir
         log_dir.mkdir(parents=True, exist_ok=True)
         plot_dir.mkdir(parents=True, exist_ok=True)
 
@@ -410,6 +414,18 @@ class TrainingSessionBuilder:
                                        epoch_csv=epoch_csv, select_metric=select_metric)
 
         return trainer
+
+    # ── Output layout ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def run_subdir(spec: DatasetSpec, mode: str, model_name: str) -> Path:
+        """``mode/model`` for BigEarthNet (the historical layout every existing run
+        uses) and ``dataset/mode/model`` for any other dataset, so runs of different
+        datasets never share a folder."""
+        model_slug = model_name.replace("/", "_")
+        if spec.name == DEFAULT_DATASET:
+            return Path(mode) / model_slug
+        return Path(spec.name) / mode / model_slug
 
     # ── Criterion ──────────────────────────────────────────────────────────────
 

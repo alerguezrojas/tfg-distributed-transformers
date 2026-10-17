@@ -146,7 +146,7 @@ def main():
         f"devices={'+'.join(devices)} | split_block={args.split_block or 'auto'} | "
         f"batch={bs} (global) | epochs={cfg['training']['epochs']} | "
         f"lr={cfg['training']['lr']} | precision={_prec} | loss={_loss} | "
-        f"train={len(train_ds)} | val={len(val_ds)}"
+        f"train={len(train_ds)} | val={len(val_ds)} | dataset={spec.name}"
     )
 
     trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])
