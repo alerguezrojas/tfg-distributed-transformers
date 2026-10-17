@@ -82,6 +82,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- El hook guardián de commits solo examina el mensaje del `git commit`: antes bloqueaba
+  comandos que mencionaban "Co-Authored-By" en otro sitio (por ejemplo, el cuerpo de un PR).
 - Web: `use_container_width` (obsoleto en Streamlit) pasa a `width="stretch"`; la columna
   "Best epoch" usa un solo tipo y ya no provoca trazas de Arrow en Compare y Details.
 - Imports sin usar eliminados en `src/` y `tests/` (ruff F401/F541).
