@@ -13,6 +13,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   runs de más de un dataset).
 - Test de humo de la web con `streamlit.testing` (AppTest): renderiza las cinco secciones con un
   run de BigEarthNet y otro de MedMNIST como run activo.
+- Arnés de trabajo con IA versionado (`docs/flujo_ia.md`): agentes de proyecto con modelo por
+  rol (`.claude/agents/`), skills (`/estado`, `/cerrar-bloque`, `/revisar-pr`, `/nuevo-dataset`),
+  hooks (estado del proyecto al abrir sesión, ruff al editar Python, bloqueo de commits con
+  atribución de IA) y permisos de proyecto (`.claude/settings.json`).
+- Sección "Estado actual" en `docs/roadmap.md` para retomar el proyecto desde cualquier sitio.
+- ruff como dependencia de desarrollo (`[tool.ruff]`: solo errores reales), lint en CI,
+  `.pre-commit-config.yaml` y plantilla de PR con checklist.
 - `training.select_by: auc`: elige el checkpoint y el early stopping por el AUC de validación
   (sin umbral), útil cuando las clases son tan raras que el F1 a 0,5 se queda en cero. El AUC de
   validación se calcula en cada época y se escribe como `val_auc` en `epoch_metrics_*.csv`.
