@@ -24,7 +24,7 @@
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
 
-**En curso:** nada. Todo está integrado en `develop`.
+**En curso:** nada. Todo está integrado en `develop` y en `main` (PR #158, 17/10/2026).
 
 **Siguiente paso recomendado:** fase 4, instrumentación y registro de medidas. Su objetivo es
 medir el tiempo de espera del DataLoader y la potencia por GPU, en un esquema estándar, para
@@ -32,12 +32,11 @@ validar el ángulo más prometedor del artículo: tiempo y energía según el r�
 Los cuatro MedMNIST, BigEarthNet y su subset ya dan perfiles de I/O muy distintos para probarlo.
 
 **Decisiones pendientes del autor o del tutor:**
-- Integrar `develop` en `main` (contiene todo lo anterior).
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
 - Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
 - Máquinas nuevas a las que dará acceso el tutor (aún sin concretar).
-- Instalar el pre-commit una vez por clon:
+- En cada clon nuevo, instalar el pre-commit una vez (ya instalado en el equipo local):
   `uvx pre-commit install --hook-type pre-commit --hook-type commit-msg`.
 
 ## Diagnóstico de partida (auditoría del 17/10/2026)
