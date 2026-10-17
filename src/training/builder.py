@@ -23,7 +23,6 @@ from datetime import datetime
 from pathlib import Path
 
 import torch
-import torch.nn as nn
 
 from src.training.base_trainer import BaseTrainer
 from src.training.trainer import Trainer
@@ -43,6 +42,8 @@ from src.training.decorators import (
     PrecisionRecallReporter,
 )
 from src.models.vit import build_model, build_llrd_optimizer
+from src.data.registry import dataset_spec_from_config
+from src.data.spec import DatasetSpec
 
 
 class TrainingSessionBuilder:
@@ -165,6 +166,12 @@ class TrainingSessionBuilder:
 
         cfg = self._cfg
 
+        # ── Dataset & task ───────────────────────────────────────────────────
+        # The dataset spec fixes the classes, input channels and problem type;
+        # the task decides loss, predictions and metrics for every trainer.
+        spec = dataset_spec_from_config(cfg)
+        task = spec.make_task()
+
         # ── Model ────────────────────────────────────────────────────────────
         model_name = self._model_name or cfg["model"]["name"]
         if self._model_parallel is not None:
@@ -172,16 +179,18 @@ class TrainingSessionBuilder:
             mp_devices, mp_split = self._model_parallel
             model = build_model_parallel_vit(
                 model_name=model_name,
-                num_classes=cfg["model"].get("num_classes", 19),
+                num_classes=spec.num_classes,
                 pretrained=cfg["model"].get("pretrained", True),
                 devices=mp_devices,
                 split_block=mp_split,
+                in_chans=spec.in_channels,
             )
         else:
             model = build_model(
                 model_name=model_name,
-                num_classes=cfg["model"].get("num_classes", 19),
+                num_classes=spec.num_classes,
                 pretrained=cfg["model"].get("pretrained", True),
+                in_chans=spec.in_channels,
             )
 
         # ── Optimizer ────────────────────────────────────────────────────────
@@ -238,8 +247,9 @@ class TrainingSessionBuilder:
         checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / mode / model_slug)
 
         # ── Loss / criterion (lever against the rare-class macro-F1 ceiling) ───
-        # training.loss: 'bce' (default) | 'focal'; training.pos_weight: list | 'auto'
-        criterion = self._build_criterion(cfg, model_name)
+        # training.loss: task default ('bce' multi-label, 'ce' multi-class) | 'focal';
+        # training.pos_weight: list | 'auto' (sigmoid tasks)
+        criterion = self._build_criterion(cfg, spec)
 
         if self._model_parallel is not None:
             from src.training.model_parallel_trainer import ModelParallelTrainer
@@ -254,6 +264,7 @@ class TrainingSessionBuilder:
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
+                task=task,
             )
         elif self._distributed and self._hetero_local_batch_size is not None:
             from src.training.heterogeneous_ddp_trainer import HeterogeneousDDPTrainer
@@ -267,6 +278,7 @@ class TrainingSessionBuilder:
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
+                task=task,
                 rank=self._rank,
                 world_size=self._world_size,
                 local_batch_size=self._hetero_local_batch_size,
@@ -284,6 +296,7 @@ class TrainingSessionBuilder:
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
+                task=task,
                 rank=self._rank,
                 world_size=self._world_size,
             )
@@ -299,6 +312,7 @@ class TrainingSessionBuilder:
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
+                task=task,
             )
 
         # ── 1. @ function decorators on Trainer methods ───────────────────────
@@ -345,7 +359,7 @@ class TrainingSessionBuilder:
         if "confusion" in self._layers:
             inner = ConfusionMatrixDecorator(
                 inner, output_dir=str(plot_dir), timestamp=self._timestamp,
-                csv_dir=str(log_dir),
+                csv_dir=str(log_dir), class_names=spec.classes,
             )
 
         # ── 3. Logger ─────────────────────────────────────────────────────────
@@ -399,40 +413,40 @@ class TrainingSessionBuilder:
 
     # ── Criterion ──────────────────────────────────────────────────────────────
 
-    def _build_criterion(self, cfg: dict, _model_name: str):
-        """Build the loss from config: 'bce' (+ optional pos_weight) or 'focal'.
+    def _build_criterion(self, cfg: dict, spec: DatasetSpec):
+        """Loss for the dataset's task from ``training.loss`` (+ ``pos_weight``).
 
-        Returns None to keep the Trainer's default BCEWithLogitsLoss when the
-        config asks for plain BCE with no pos_weight (preserves prior behaviour).
+        ``pos_weight: auto`` derives the weights from the class frequencies of the
+        training split, which the dataset spec provides.
         """
-        from src.training.losses import build_criterion, pos_weight_from_metadata
+        from src.training.losses import build_criterion, pos_weight_from_counts
 
         train_cfg = cfg["training"]
-        loss_kind = str(train_cfg.get("loss", "bce")).lower()
+        loss_kind = str(train_cfg.get("loss") or "").lower()
         pos_weight_cfg = train_cfg.get("pos_weight")
 
         if self._hetero_local_batch_size is not None and loss_kind == "focal":
             print("  [aviso] loss=focal no soportado en el trainer heterogéneo; "
                   "se usará BCE en ese path.")
-            return None
-
-        if loss_kind == "bce" and pos_weight_cfg is None:
-            return None  # default path — Trainer creates plain BCEWithLogitsLoss
+            train_cfg = {**train_cfg, "loss": None}
 
         pos_weight = None
-        if loss_kind == "bce" and pos_weight_cfg is not None:
+        if pos_weight_cfg is not None and loss_kind != "focal":
             if isinstance(pos_weight_cfg, str) and pos_weight_cfg.lower() == "auto":
-                pos_weight = pos_weight_from_metadata(
-                    cfg["data"]["metadata"], split="train"
+                if spec.class_counts is None:
+                    raise ValueError(f"pos_weight: auto is not available for dataset "
+                                     f"{spec.name!r} (it exposes no class counts)")
+                pos_weight = pos_weight_from_counts(
+                    *spec.class_counts(cfg["data"], "train")
                 ).to(self._device)
-                print(f"  [loss] pos_weight='auto' computado del metadata "
+                print(f"  [loss] pos_weight='auto' computado del dataset "
                       f"(min={pos_weight.min():.2f}, max={pos_weight.max():.2f})")
             else:
                 pos_weight = torch.tensor(
                     pos_weight_cfg, dtype=torch.float32, device=self._device
                 )
-        criterion = build_criterion(train_cfg, pos_weight=pos_weight)
-        if loss_kind == "focal":
+        criterion = build_criterion(train_cfg, pos_weight=pos_weight, task=spec.task)
+        if loss_kind == "focal" and self._hetero_local_batch_size is None:
             print(f"  [loss] focal (gamma={train_cfg.get('focal_gamma', 2.0)}, "
                   f"alpha={train_cfg.get('focal_alpha', -1.0)})")
         return criterion

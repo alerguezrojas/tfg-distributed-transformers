@@ -1,3 +1,9 @@
+"""BigEarthNet-S2 v2.0 — Sentinel-2 patches, 19 CORINE classes, multi-label.
+
+Reads the RGB proxy bands (B04/B03/B02) of each patch and the labels/splits from
+``metadata.parquet``. Registered in the dataset registry as ``bigearthnet`` (the
+default when a config has no ``data.name``). Details: docs/datasets/bigearthnet.md.
+"""
 import random
 from pathlib import Path
 
@@ -8,40 +14,10 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 
-# BigEarthNet-S2 v2.0 land use classes (19 classes)
-CLASSES = [
-    "Urban fabric",
-    "Industrial or commercial units",
-    "Arable land",
-    "Permanent crops",
-    "Pastures",
-    "Complex cultivation patterns",
-    "Land principally occupied by agriculture",
-    "Agro-forestry areas",
-    "Broad-leaved forest",
-    "Coniferous forest",
-    "Mixed forest",
-    "Natural grassland and sparsely vegetated areas",
-    "Moors, heathland and sclerophyllous vegetation",
-    "Transitional woodland, shrub",
-    "Beaches, dunes, sands",
-    "Inland wetlands",
-    "Coastal wetlands",
-    "Inland waters",
-    "Marine waters",
-]
+from src.data.registry import register_dataset
+from src.data.spec import DatasetSpec
 
-CLASS_TO_IDX = {cls: idx for idx, cls in enumerate(CLASSES)}
-
-# Sentinel-2 bands used as RGB proxy
-RGB_BANDS = ["B04", "B03", "B02"]
-
-# Map our split names to the parquet split names
-SPLIT_MAP = {
-    "train": "train",
-    "val": "validation",
-    "test": "test",
-}
+from src.data.bigearthnet_classes import CLASS_TO_IDX, CLASSES, RGB_BANDS, SPLIT_MAP
 
 
 class BigEarthNetDataset(Dataset):
@@ -132,9 +108,10 @@ def get_transforms(split: str) -> transforms.Compose:
             transforms.RandomHorizontalFlip(),
             transforms.RandomVerticalFlip(),
             # Discrete 90° rotation: Sentinel-2 has no preferred orbital orientation
+            # Python's RNG is right here: data augmentation, not security (Sonar S2245).
             transforms.Lambda(
                 lambda img: transforms.functional.rotate(
-                    img, angle=random.choice([0, 90, 180, 270])
+                    img, angle=random.choice([0, 90, 180, 270])  # NOSONAR
                 )
             ),
             # Scale invariance: randomly crop then resize back to 224
@@ -149,3 +126,37 @@ def get_transforms(split: str) -> transforms.Compose:
             transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225]),
         ])
+
+
+def class_counts(data_cfg: dict, split: str = "train") -> tuple[torch.Tensor, int]:
+    """Positives per class (in ``CLASSES`` order) and number of patches of a split.
+
+    Reads only ``metadata.parquet`` — no image is opened.
+    """
+    df = pd.read_parquet(data_cfg["metadata"])
+    df = df[df["split"] == SPLIT_MAP.get(split, split)]
+    pos = torch.zeros(len(CLASSES))
+    for labels in df["labels"]:
+        for lab in labels:
+            idx = CLASS_TO_IDX.get(lab)
+            if idx is not None:
+                pos[idx] += 1
+    return pos, len(df)
+
+
+def _build(data_cfg: dict, split: str, transform) -> BigEarthNetDataset:
+    return BigEarthNetDataset(data_cfg["root"], data_cfg["metadata"], split=split,
+                              transform=transform)
+
+
+BIGEARTHNET = register_dataset(DatasetSpec(
+    name="bigearthnet",
+    description="BigEarthNet-S2 v2.0 — Sentinel-2 RGB proxy, 19 CORINE classes",
+    classes=tuple(CLASSES),
+    task="multilabel",
+    in_channels=len(RGB_BANDS),
+    required_keys=("root", "metadata"),
+    build=_build,
+    transforms=get_transforms,
+    class_counts=class_counts,
+))

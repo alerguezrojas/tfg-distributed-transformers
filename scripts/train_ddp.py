@@ -1,4 +1,4 @@
-"""Distributed training script for BigEarthNet-S2 (multi-GPU, multi-node DDP).
+"""Distributed training script (multi-GPU, multi-node DDP); dataset from data.name.
 
 Launch with torchrun:
     # Single node, 2 GPUs:
@@ -39,13 +39,13 @@ from torch.utils.data import DataLoader, DistributedSampler
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.dataset import BigEarthNetDataset, get_transforms
+from src.data.registry import dataset_spec_from_config
 from src.training.builder import TrainingSessionBuilder
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Distributed training — BigEarthNet-S2")
+    parser = argparse.ArgumentParser(description="Distributed training (DDP)")
     parser.add_argument("--config", type=str, default="configs/train_cluster.yaml")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
     parser.add_argument("--model", type=str, help="Override model name (any timm ID)")
@@ -127,14 +127,9 @@ def main():
     timestamp = ts_list[0]
 
     # ── Dataset ──────────────────────────────────────────────────────────────
-    train_ds = BigEarthNetDataset(
-        cfg["data"]["root"], cfg["data"]["metadata"], split="train",
-        transform=get_transforms("train"),
-    )
-    val_ds = BigEarthNetDataset(
-        cfg["data"]["root"], cfg["data"]["metadata"], split="val",
-        transform=get_transforms("val"),
-    )
+    spec = dataset_spec_from_config(cfg)
+    train_ds = spec.dataset(cfg["data"], "train")
+    val_ds = spec.dataset(cfg["data"], "val")
 
     if rank == 0:
         print(f"Train: {len(train_ds)} patches | Val: {len(val_ds)} patches")

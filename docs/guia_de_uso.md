@@ -157,13 +157,14 @@ Estructura de un config (YAML):
 
 ```yaml
 data:
+  name: bigearthnet                     # dataset registrado (opcional; por defecto bigearthnet)
   root: "/ruta/al/BigEarthNet-S2"      # directorio del dataset
   metadata: "/ruta/al/metadata.parquet"
   num_workers: 4
 model:
   name: "vit_base_patch16_224"          # cualquier id de timm
   pretrained: true
-  num_classes: 19
+  num_classes: 19                       # opcional: sale del dataset (si se pone, debe coincidir)
   dropout: 0.3
 training:
   epochs: 30
@@ -186,6 +187,9 @@ Configs incluidos: `train.yaml` / `train_v3.yaml` (local), `train_cluster*.yaml`
 `train_demo_single.yaml` / `train_demo_ddp.yaml` (estudio comparable sobre el subconjunto),
 `train_model_parallel_kaggle.yaml`, `train_heterogeneous_ddp*.yaml` y la pareja
 `train_cluster_focal.yaml` / `train_cluster_bce.yaml` (pérdidas para clases raras).
+
+Las claves de `data:` dependen del dataset elegido con `data.name`. Los datasets disponibles y
+cómo añadir uno nuevo están en [`datasets/README.md`](datasets/README.md).
 
 ## 5. Las cuatro estrategias de entrenamiento
 

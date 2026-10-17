@@ -40,7 +40,9 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
-from src.training.metrics import f1_score, accuracy, eta_str
+from src.training.metrics import f1_score, eta_str
+from src.training.tasks import MultiLabelTask
+from src.models.vit import input_channels
 from src.training.augmentations import mixup_batch
 from src.training.decorators.tracing import TracingDecorator
 
@@ -265,6 +267,7 @@ class DeepTracingDecorator(TracingDecorator):
         optimizer = self._trainer.optimizer
         criterion = self._trainer.criterion
         device = self._trainer.device
+        task = getattr(self._trainer, "task", None) or MultiLabelTask()
 
         model.train()
         total_loss = 0.0
@@ -286,7 +289,7 @@ class DeepTracingDecorator(TracingDecorator):
             if mixed:
                 train_images, train_labels = mixup_batch(images, labels, mixup_alpha)
             if label_smoothing > 0.0:
-                train_labels = train_labels * (1.0 - label_smoothing) + 0.5 * label_smoothing
+                train_labels = task.smooth_targets(train_labels, label_smoothing)
 
             optimizer.zero_grad()
             logits = model(train_images)
@@ -299,8 +302,8 @@ class DeepTracingDecorator(TracingDecorator):
 
             total_loss += loss.item()
             with torch.no_grad():
-                hard_labels = (labels > 0.5).long()      # ORIGINAL targets
-                preds = (torch.sigmoid(logits) > 0.5).long()
+                hard_labels = task.hard_targets(labels)  # ORIGINAL targets
+                preds = task.predict(task.probabilities(logits))
                 if not mixed:                            # skip blended batches
                     all_preds.append(preds.cpu())
                     all_labels.append(hard_labels.cpu())
@@ -321,7 +324,7 @@ class DeepTracingDecorator(TracingDecorator):
         result = {
             "loss": total_loss / len(loader),
             "f1": f1_score(all_preds_t, all_labels_t),
-            "accuracy": accuracy(all_preds_t, all_labels_t),
+            "accuracy": task.accuracy(all_preds_t, all_labels_t),
             "time": time.time() - start,
         }
         self._propagate_train_result(result)
@@ -340,13 +343,18 @@ class DeepTracingDecorator(TracingDecorator):
     def _show_model_summary(self):
         try:
             from torchinfo import summary
+        except ImportError:
+            self._emit("torchinfo no disponible — omitiendo resumen")
+            return
+        model = self._trainer.model
+        try:
             self._emit("=== Arquitectura del modelo (torchinfo) ===")
-            stats = summary(self._trainer.model, input_size=(1, 3, 224, 224),
+            stats = summary(model, input_size=(1, input_channels(model), 224, 224),
                             verbose=0, device=self._trainer.device)
             for line in str(stats).splitlines():
                 self._emit(line)
-        except ImportError:
-            self._emit("torchinfo no disponible — omitiendo resumen")
+        except Exception as exc:   # the summary is informative; never abort a run for it
+            self._emit(f"[aviso] resumen torchinfo omitido: {exc}")
 
     def _gpu_str(self) -> str:
         if not torch.cuda.is_available():

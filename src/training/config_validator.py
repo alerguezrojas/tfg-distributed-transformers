@@ -10,6 +10,9 @@ Usage (called automatically by TrainingSessionBuilder.build()):
 
 from __future__ import annotations
 
+from src.data.registry import available_datasets, dataset_name_from_config, get_dataset_spec
+from src.data.spec import DatasetSpec
+
 
 class ConfigError(ValueError):
     """Raised when a training config is invalid."""
@@ -19,8 +22,9 @@ class ConfigError(ValueError):
 
 _REQUIRED_SECTIONS = ["data", "model", "training"]
 
-_DATA_REQUIRED   = ["root", "metadata"]
-_MODEL_REQUIRED  = ["name", "num_classes"]
+# data.* required keys depend on the dataset (DatasetSpec.required_keys); the
+# number of classes comes from the dataset too (model.num_classes is optional).
+_MODEL_REQUIRED  = ["name"]
 _TRAIN_REQUIRED  = ["epochs", "batch_size", "lr"]
 
 _TRAIN_POSITIVE_INT  = ["epochs", "batch_size"]
@@ -42,26 +46,36 @@ def validate_config(cfg: dict) -> None:
     if errors:
         _raise(errors)
 
-    _check_data(cfg["data"], errors)
-    _check_model(cfg["model"], errors)
-    _check_training(cfg["training"], errors)
+    spec = _check_data(cfg, errors)
+    _check_model(cfg["model"], spec, errors)
+    _check_training(cfg["training"], spec, errors)
     _check_distributed(cfg.get("distributed", {}), errors)
 
     if errors:
         _raise(errors)
 
 
-def _check_data(data: dict, errors: list) -> None:
-    for key in _DATA_REQUIRED:
-        if key not in data:
-            errors.append(f"data.{key} is required")
+def _check_data(cfg: dict, errors: list) -> DatasetSpec | None:
+    """Check the data section against its dataset spec; return the spec if known."""
+    data = cfg["data"]
+    name = dataset_name_from_config(cfg)
+    if name not in available_datasets():
+        errors.append(f"data.name {name!r} is not a registered dataset; "
+                      f"available: {available_datasets()}")
+        spec = None
+    else:
+        spec = get_dataset_spec(name)
+        for key in spec.required_keys:
+            if key not in data:
+                errors.append(f"data.{key} is required for dataset {name!r}")
     if "num_workers" in data:
         nw = data["num_workers"]
         if not isinstance(nw, int) or nw < 0:
             errors.append(f"data.num_workers must be a non-negative integer, got {nw!r}")
+    return spec
 
 
-def _check_model(model: dict, errors: list) -> None:
+def _check_model(model: dict, spec: DatasetSpec | None, errors: list) -> None:
     for key in _MODEL_REQUIRED:
         if key not in model:
             errors.append(f"model.{key} is required")
@@ -69,96 +83,126 @@ def _check_model(model: dict, errors: list) -> None:
         nc = model["num_classes"]
         if not isinstance(nc, int) or nc <= 0:
             errors.append(f"model.num_classes must be a positive integer, got {nc!r}")
+        elif spec is not None and nc != spec.num_classes:
+            errors.append(f"model.num_classes={nc} does not match dataset {spec.name!r} "
+                          f"({spec.num_classes} classes); omit it to use the dataset's")
     if "dropout" in model:
         d = model["dropout"]
         if not isinstance(d, (int, float)) or not (0.0 <= float(d) < 1.0):
             errors.append(f"model.dropout must be in [0, 1), got {d!r}")
 
 
-def _check_training(train: dict, errors: list) -> None:
+def _check_training(train: dict, spec: DatasetSpec | None, errors: list) -> None:
     for key in _TRAIN_REQUIRED:
         if key not in train:
             errors.append(f"training.{key} is required")
+    _check_numeric_fields(train, errors)
+    _check_ranges(train, errors)
+    _check_model_selection(train, spec, errors)
+    _check_loss(train, spec, errors)
 
+
+def _check_numeric_fields(train: dict, errors: list) -> None:
     for key in _TRAIN_POSITIVE_INT:
-        if key in train:
-            v = train[key]
-            if not isinstance(v, int) or v <= 0:
-                errors.append(
-                    f"training.{key} must be a positive integer, got {v!r}. "
-                    f"(Hint: YAML parses '1e-4' as a string — use '0.0001' instead)"
-                )
-
-    for key in _TRAIN_POSITIVE_FLOAT:
-        if key not in train:
-            continue
-        v = train[key]
-        if isinstance(v, str):
+        v = train.get(key)
+        if key in train and (not isinstance(v, int) or v <= 0):
             errors.append(
-                f"training.{key}={v!r} is a string, not a number. "
-                f"YAML parses scientific notation as strings — write '0.0001' not '1e-4'"
+                f"training.{key} must be a positive integer, got {v!r}. "
+                f"(Hint: YAML parses '1e-4' as a string — use '0.0001' instead)"
             )
-            continue
-        if not isinstance(v, (int, float)):
-            errors.append(f"training.{key} must be numeric, got {type(v).__name__}: {v!r}")
-            continue
-        fv = float(v)
-        if key not in _TRAIN_NON_NEGATIVE and fv <= 0:
-            errors.append(f"training.{key} must be positive, got {fv}")
-        elif key in _TRAIN_NON_NEGATIVE and fv < 0:
+    for key in _TRAIN_POSITIVE_FLOAT:
+        if key in train:
+            _check_float(key, train[key], errors)
+
+
+def _check_float(key: str, v, errors: list) -> None:
+    if isinstance(v, str):
+        errors.append(
+            f"training.{key}={v!r} is a string, not a number. "
+            f"YAML parses scientific notation as strings — write '0.0001' not '1e-4'"
+        )
+        return
+    if not isinstance(v, (int, float)):
+        errors.append(f"training.{key} must be numeric, got {type(v).__name__}: {v!r}")
+        return
+    fv = float(v)
+    if key in _TRAIN_NON_NEGATIVE:
+        if fv < 0:
             errors.append(f"training.{key} must be >= 0, got {fv}")
+    elif fv <= 0:
+        errors.append(f"training.{key} must be positive, got {fv}")
 
-    # Specific range checks
-    if "label_smoothing" in train:
-        ls = train["label_smoothing"]
-        if isinstance(ls, (int, float)) and not (0.0 <= float(ls) <= 0.5):
-            errors.append(f"training.label_smoothing should be in [0, 0.5], got {ls}")
 
-    if "loss" in train:
-        lk = str(train["loss"]).lower()
-        if lk not in ("bce", "bcewithlogits", "bce_with_logits", "focal"):
-            errors.append(f"training.loss must be 'bce' or 'focal', got {train['loss']!r}")
+def _check_ranges(train: dict, errors: list) -> None:
+    ls = train.get("label_smoothing")
+    if isinstance(ls, (int, float)) and not (0.0 <= float(ls) <= 0.5):
+        errors.append(f"training.label_smoothing should be in [0, 0.5], got {ls}")
 
-    if "seed" in train and train["seed"] is not None:
-        s = train["seed"]
-        if not isinstance(s, int) or s < 0:
-            errors.append(f"training.seed must be a non-negative integer or null, got {s!r}")
-
-    if "select_by" in train:
-        sb = str(train["select_by"]).lower()
-        if sb not in ("f1", "f1_optimal"):
-            errors.append(f"training.select_by must be 'f1' or 'f1_optimal', got {train['select_by']!r}")
+    s = train.get("seed")
+    if s is not None and (not isinstance(s, int) or s < 0):
+        errors.append(f"training.seed must be a non-negative integer or null, got {s!r}")
 
     if "focal_gamma" in train:
         g = train["focal_gamma"]
         if not isinstance(g, (int, float)) or float(g) < 0:
             errors.append(f"training.focal_gamma must be a number >= 0, got {g!r}")
 
-    if "pos_weight" in train:
-        pw = train["pos_weight"]
-        ok = (isinstance(pw, str) and pw.lower() == "auto") or (
-            isinstance(pw, (list, tuple))
-            and all(isinstance(x, (int, float)) and x > 0 for x in pw)
+    p = train.get("early_stopping_patience")
+    if p is not None and (not isinstance(p, int) or p <= 0):
+        errors.append(f"training.early_stopping_patience must be a positive int or null, got {p!r}")
+
+    we, ep = train.get("warmup_epochs"), train.get("epochs")
+    if isinstance(we, int) and isinstance(ep, int) and we >= ep:
+        errors.append(
+            f"training.warmup_epochs ({we}) >= training.epochs ({ep}). "
+            "The cosine phase would have 0 epochs. Reduce warmup_epochs or increase epochs."
         )
-        if not ok:
-            errors.append(
-                "training.pos_weight must be 'auto' or a list of positive numbers, "
-                f"got {pw!r}"
-            )
 
-    if "early_stopping_patience" in train:
-        p = train["early_stopping_patience"]
-        if p is not None and (not isinstance(p, int) or p <= 0):
-            errors.append(f"training.early_stopping_patience must be a positive int or null, got {p!r}")
 
-    if "warmup_epochs" in train and "epochs" in train:
-        we = train["warmup_epochs"]
-        ep = train["epochs"]
-        if isinstance(we, int) and isinstance(ep, int) and we >= ep:
-            errors.append(
-                f"training.warmup_epochs ({we}) >= training.epochs ({ep}). "
-                "The cosine phase would have 0 epochs. Reduce warmup_epochs or increase epochs."
-            )
+def _check_model_selection(train: dict, spec: DatasetSpec | None, errors: list) -> None:
+    if "select_by" not in train:
+        return
+    sb = str(train["select_by"]).lower()
+    if sb not in ("f1", "f1_optimal"):
+        errors.append(f"training.select_by must be 'f1' or 'f1_optimal', got {train['select_by']!r}")
+    elif sb == "f1_optimal" and spec is not None and not spec.make_task().searches_threshold:
+        errors.append(f"training.select_by: f1_optimal needs a tunable threshold, which "
+                      f"the {spec.task} task of {spec.name!r} does not have; use 'f1'")
+
+
+def _check_loss(train: dict, spec: DatasetSpec | None, errors: list) -> None:
+    if spec is not None and train.get("loss") is not None:
+        try:   # the task is the single source of truth for which losses are valid
+            spec.make_task().build_criterion(str(train["loss"]))
+        except ValueError as exc:
+            errors.append(f"training.loss: {exc}")
+
+    if "pos_weight" not in train:
+        return
+    pw = train["pos_weight"]
+    ok = (isinstance(pw, str) and pw.lower() == "auto") or (
+        isinstance(pw, (list, tuple))
+        and all(isinstance(x, (int, float)) and x > 0 for x in pw)
+    )
+    if not ok:
+        errors.append(
+            "training.pos_weight must be 'auto' or a list of positive numbers, "
+            f"got {pw!r}"
+        )
+    elif spec is not None:
+        _check_pos_weight_against(spec, pw, errors)
+
+
+def _check_pos_weight_against(spec: DatasetSpec, pw, errors: list) -> None:
+    if not spec.make_task().sigmoid_outputs:
+        errors.append(f"training.pos_weight only applies to multi-label/binary tasks; "
+                      f"dataset {spec.name!r} is {spec.task}")
+    elif isinstance(pw, str) and spec.class_counts is None:
+        errors.append(f"training.pos_weight: auto is not available for dataset "
+                      f"{spec.name!r} (it exposes no class counts)")
+    elif isinstance(pw, (list, tuple)) and len(pw) != spec.num_classes:
+        errors.append(f"training.pos_weight has {len(pw)} values but dataset "
+                      f"{spec.name!r} has {spec.num_classes} classes")
 
 
 def _check_distributed(dist: dict, errors: list) -> None:

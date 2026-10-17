@@ -11,14 +11,17 @@ operate element-wise on targets in [0, 1]:
     examples via ``(1-p_t)^gamma`` so the loss focuses on the hard, rare ones.
 
 ``build_criterion`` is a pure factory selected by ``training.loss`` in the config;
-the metadata-based ``pos_weight`` computation lives in ``pos_weight_from_metadata``
-(kept separate so the factory stays unit-testable without any file I/O).
+which losses are valid depends on the task (see :mod:`src.training.tasks`). The
+class frequencies behind ``pos_weight: auto`` come from the dataset spec
+(``DatasetSpec.class_counts``), so this module stays free of any file I/O.
 """
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from src.training.tasks import get_task
 
 
 class FocalLoss(nn.Module):
@@ -70,39 +73,16 @@ def pos_weight_from_counts(pos_counts: torch.Tensor, n_samples: int,
     return weight.clamp(max=clamp_max)
 
 
-def pos_weight_from_metadata(metadata_path: str, split: str = "train",
-                             clamp_max: float = 100.0) -> torch.Tensor:
-    """Compute BCE ``pos_weight`` from the training-split class frequencies.
+def build_criterion(train_cfg: dict, pos_weight: torch.Tensor | None = None,
+                    task: str = "multilabel") -> nn.Module:
+    """Factory: pick the loss from ``training.loss`` for the given task.
 
-    Reads ``metadata.parquet`` and counts, per CORINE class (in dataset order),
-    how many patches carry it. Returns a tensor of shape (num_classes,).
+    Multi-label / binary: 'bce' (default, optionally with ``pos_weight``) | 'focal'.
+    Multi-class: 'ce' (default).
     """
-    import pandas as pd
-    from src.data.dataset import CLASSES, CLASS_TO_IDX, SPLIT_MAP
-
-    df = pd.read_parquet(metadata_path)
-    df = df[df["split"] == SPLIT_MAP.get(split, split)]
-    pos = torch.zeros(len(CLASSES))
-    for labels in df["labels"]:
-        for lab in labels:
-            idx = CLASS_TO_IDX.get(lab)
-            if idx is not None:
-                pos[idx] += 1
-    return pos_weight_from_counts(pos, len(df), clamp_max=clamp_max)
-
-
-def build_criterion(train_cfg: dict, pos_weight: torch.Tensor | None = None) -> nn.Module:
-    """Factory: pick the loss from ``training.loss`` ('bce' | 'focal').
-
-    'bce'   → BCEWithLogitsLoss (optionally with ``pos_weight``)
-    'focal' → FocalLoss(gamma=training.focal_gamma, alpha=training.focal_alpha)
-    """
-    loss_kind = str(train_cfg.get("loss", "bce")).lower()
-    if loss_kind == "focal":
-        return FocalLoss(
-            gamma=train_cfg.get("focal_gamma", 2.0),
-            alpha=train_cfg.get("focal_alpha", -1.0),
-        )
-    if loss_kind in ("bce", "bcewithlogits", "bce_with_logits"):
-        return nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    raise ValueError(f"training.loss must be 'bce' or 'focal', got {loss_kind!r}")
+    return get_task(task).build_criterion(
+        train_cfg.get("loss"),
+        pos_weight=pos_weight,
+        focal_gamma=train_cfg.get("focal_gamma", 2.0),
+        focal_alpha=train_cfg.get("focal_alpha", -1.0),
+    )
