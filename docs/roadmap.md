@@ -4,6 +4,35 @@
 > prisa, una fase cada vez. Objetivo a medio plazo: una **publicación** sobre la predicción del
 > rendimiento del entrenamiento distribuido.
 
+## Estado actual
+
+> Actualizado el 17/10/2026. Se reescribe al cerrar cada bloque de trabajo (ver `CLAUDE.md`,
+> "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra al empezar.
+
+**Hecho:** fase 1 (higiene) y fase 2 (abstracción de dataset y tarea, verificada en GPU con las
+cuatro estrategias). De la fase 3: MedMNIST integrado (cuatro datasets médicos), AUC en
+validación y test, selección del checkpoint por AUC y umbral elegido en validación. Corregidos
+los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo con
+`pos_weight`.
+
+**En curso:**
+- Barrido de MedMNIST con 3 semillas por dataset (rama `feature/medmnist-seeds`) para dar media ±
+  desviación frente a las referencias oficiales.
+- PRs abiertos pendientes de revisión: AUC y filtro por dataset en la web (#152), estado del arte
+  sobre predicción del rendimiento (#153) y perfilado automático de modelos para `estimate`.
+- Arnés de trabajo con IA: agentes, hooks, skills, lint en CI y pre-commit.
+
+**Siguiente paso:** cerrar la tabla de MedMNIST con semillas e integrar los PRs. Después, fase 4
+(instrumentación y registro de medidas), orientada por la revisión del estado del arte: el
+ángulo más prometedor para el artículo es la predicción conjunta de tiempo y energía según el
+régimen (cómputo frente a I/O).
+
+**Decisiones pendientes del autor o del tutor:**
+- Integrar `develop` en `main`.
+- Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
+- Elegir el enfoque de la contribución entre los tres que propone `docs/research/` (#153).
+- Máquinas nuevas a las que dará acceso el tutor (aún sin concretar).
+
 ## Diagnóstico de partida (auditoría del 17/10/2026)
 
 La base de software es sólida: decoradores, cuatro estrategias, CLI, web y tests. Los dos puntos
