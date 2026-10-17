@@ -31,7 +31,7 @@ class TracingDecorator(EpochController):
     _CSV_COLS = [
         "epoch", "train_loss", "val_loss", "train_f1", "val_f1",
         "train_acc", "val_acc", "val_prec", "val_rec",
-        "epoch_time_s",
+        "epoch_time_s", "val_auc",
     ]
 
     def __init__(
@@ -81,7 +81,7 @@ class TracingDecorator(EpochController):
             thresh_note = f"  (threshold óptimo={opt_t:.2f}, F1={opt_f1:.4f})"
         self._emit(
             f"  ETA: {eta_str(epoch_times, epoch, epochs)}  "
-            f"({train_m['time']:.0f}s/epoch, best_f1={best_f1:.4f})"
+            f"({train_m['time']:.0f}s/epoch, best_{self._best_label.lower()}={best_f1:.4f})"
             + thresh_note
         )
         if self._epoch_csv is not None:
@@ -96,17 +96,18 @@ class TracingDecorator(EpochController):
                 "val_prec": round(val_m.get("precision", float("nan")), 6),
                 "val_rec": round(val_m.get("recall", float("nan")), 6),
                 "epoch_time_s": round(epoch_times[-1], 2) if epoch_times else float("nan"),
+                "val_auc": round(val_m.get("auc", float("nan")), 6),
             }
             with open(self._epoch_csv, "a", newline="") as f:
                 csv.DictWriter(f, fieldnames=self._CSV_COLS).writerow(row)
 
     def _on_fit_end(self, best_f1: float):
-        self._emit(f"Entrenamiento completado — mejor Val F1: {best_f1:.4f}")
+        self._emit(f"Entrenamiento completado — mejor Val {self._best_label}: {best_f1:.4f}")
 
     def _on_early_stop(self, epoch: int, best_f1: float):
         self._emit(
             f"[Early stopping] Sin mejora en {self._patience} epochs consecutivos. "
-            f"Parado en epoch {epoch}. Mejor Val F1: {best_f1:.4f}"
+            f"Parado en epoch {epoch}. Mejor Val {self._best_label}: {best_f1:.4f}"
         )
 
     def save_checkpoint(self, epoch: int, metrics: dict):

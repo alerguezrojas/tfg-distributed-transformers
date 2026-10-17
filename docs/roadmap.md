@@ -71,10 +71,11 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
       PathMNIST (multiclase, cáncer colorrectal) y ChestMNIST (multi-etiqueta); descarga con MD5,
       configs y comparación con las referencias oficiales ([ficha](datasets/medmnist.md)).
 - [x] AUC macro en la evaluación de test (métrica principal en imagen médica).
-- [ ] Elegir el umbral óptimo en **validación** y aplicarlo a test: hoy `eval.py` lo busca sobre
-      el propio test, lo que infla algo el "F1 con umbral óptimo" (también el 0,631 del TFG).
-- [ ] Seleccionar el checkpoint por **AUC** (`select_by: auc`): con clases muy raras (ChestMNIST)
-      el F1 a 0,5 es casi nulo y no sirve para elegir la mejor época.
+- [x] El umbral óptimo se elige en **validación** (se guarda en el checkpoint) y `eval.py` lo
+      aplica a test; antes lo buscaba sobre el propio test (el 0,631 del TFG está aclarado en el
+      README; reevaluar el checkpoint v4 en Verode con el umbral de validación, que fue 0,40).
+- [x] `select_by: auc` y AUC de validación en cada época (`val_auc` en el CSV); los configs de
+      MedMNIST lo usan.
 - [ ] Repeticiones (≥3 semillas) y AUC también en validación para los runs de MedMNIST.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).

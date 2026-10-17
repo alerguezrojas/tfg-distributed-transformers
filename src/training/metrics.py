@@ -63,17 +63,13 @@ def roc_auc_macro(probs: torch.Tensor, hard: torch.Tensor) -> float:
 
 
 def _average_ranks(x: torch.Tensor) -> torch.Tensor:
-    """1-based ranks of ``x``; tied values share the mean of their ranks."""
-    order = torch.argsort(x)
-    sorted_x = x[order]
-    ranks = torch.empty_like(x)
-    i, n = 0, len(x)
-    while i < n:
-        j = i
-        while j + 1 < n and sorted_x[j + 1] == sorted_x[i]:
-            j += 1
-        ranks[order[i:j + 1]] = (i + j) / 2 + 1
-        i = j + 1
+    """1-based ranks of ``x``; tied values share the mean of their ranks (vectorized)."""
+    sorted_x, order = torch.sort(x)
+    _, counts = torch.unique_consecutive(sorted_x, return_counts=True)
+    ends = torch.cumsum(counts, dim=0)                  # 1-based last rank of each tie group
+    group_rank = (ends - counts + 1 + ends).double() / 2
+    ranks = torch.empty_like(x, dtype=torch.float64)
+    ranks[order] = torch.repeat_interleave(group_rank, counts)
     return ranks
 
 

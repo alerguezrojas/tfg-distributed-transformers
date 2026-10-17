@@ -52,3 +52,31 @@ def test_evaluate_respects_max_batches():
     assert probs.shape[0] == 8           # 2 batches × 4
     assert labels.shape[0] == 8
     assert loss == loss                  # not NaN (divided by n_batches, not len)
+
+
+class TestChooseThreshold:
+    """The test number must use a threshold tuned on validation, never on test."""
+
+    probs = torch.tensor([[0.3, 0.1], [0.1, 0.3]])
+    labels = torch.tensor([[1.0, 0.0], [0.0, 1.0]])
+
+    def _choose(self, source, ckpt_metrics, val_outputs=None):
+        from src.training.tasks import MultiLabelTask
+        return eval_script.choose_threshold(source, ckpt_metrics, MultiLabelTask(),
+                                            self.probs, self.labels, val_outputs)
+
+    def test_uses_the_threshold_stored_in_the_checkpoint(self):
+        def fail():
+            raise AssertionError("validation should not be evaluated")
+        assert self._choose("checkpoint", {"optimal_threshold": 0.35}, fail) == (0.35, "checkpoint")
+
+    def test_old_checkpoint_falls_back_to_validation(self):
+        val = (torch.tensor([[0.45, 0.05]]), torch.tensor([[1.0, 0.0]]))
+        t, source = self._choose("checkpoint", {}, lambda: val)
+        assert source == "val"
+        assert t < 0.45                     # tuned on the validation outputs
+
+    def test_test_source_is_explicit_and_labelled(self):
+        t, source = self._choose("test", {"optimal_threshold": 0.5})
+        assert source == "test"
+        assert t < 0.3                      # tuned on the evaluated split

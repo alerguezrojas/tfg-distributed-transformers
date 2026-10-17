@@ -271,3 +271,46 @@ class TestEpochController:
         ctrl.fit(_tiny_loader(), _tiny_loader(), epochs=2)
         checkpoints = list(tmp_path.glob("checkpoint_epoch_*.pt"))
         assert len(checkpoints) >= 1
+
+
+def test_checkpoint_stores_the_validation_tuned_threshold(tmp_path):
+    """eval.py applies this threshold to test instead of tuning on test."""
+    from src.training.trainer import Trainer
+    from src.training.decorators import TracingDecorator
+    model = _tiny_model()
+    trainer = Trainer(model, torch.optim.AdamW(model.parameters(), lr=1e-3), None,
+                      torch.device("cpu"), checkpoint_dir=str(tmp_path))
+    TracingDecorator(trainer).fit(_tiny_loader(), _tiny_loader(), epochs=1)
+    ckpt = torch.load(tmp_path / "checkpoint_epoch_001.pt", weights_only=True)
+    assert 0.0 < ckpt["metrics"]["optimal_threshold"] < 1.0
+
+
+class _ScriptedTrainer:
+    """Stub trainer whose validation metrics follow a script, epoch by epoch."""
+
+    def __init__(self, val_script):
+        self._val = iter(val_script)
+        self.saved_epochs = []
+
+    def train_epoch(self, loader):
+        return {"loss": 0.1, "f1": 0.5, "accuracy": 0.5, "time": 0.0}
+
+    def eval_epoch(self, loader):
+        return {"loss": 0.1, "accuracy": 0.9, "precision": 0.5, "recall": 0.5,
+                **next(self._val)}
+
+    def save_checkpoint(self, epoch, metrics):
+        self.saved_epochs.append(epoch)
+
+
+@pytest.mark.parametrize("select_by, best_epochs", [("f1", [1, 2, 3]), ("auc", [1])])
+def test_select_by_picks_the_checkpoint(tmp_path, select_by, best_epochs):
+    from src.training.decorators import TracingDecorator
+    # F1 keeps rising while AUC keeps falling: the two criteria disagree.
+    script = [{"f1": 0.1, "auc": 0.9}, {"f1": 0.2, "auc": 0.8}, {"f1": 0.3, "auc": 0.7}]
+    stub = _ScriptedTrainer(script)
+    csv_path = tmp_path / "epochs.csv"
+    TracingDecorator(stub, select_metric=select_by, epoch_csv=csv_path).fit(None, None, epochs=3)
+    assert stub.saved_epochs == best_epochs
+    import pandas as pd
+    assert pd.read_csv(csv_path)["val_auc"].tolist() == [0.9, 0.8, 0.7]

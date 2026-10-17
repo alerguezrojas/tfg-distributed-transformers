@@ -214,6 +214,7 @@ class Trainer(BaseTrainer):
         hard = self.task.hard_targets(labels)
         preds = self.task.predict(probs)
         result = self.task.metrics(preds, hard)   # f1 @ default threshold = checkpoint criterion
+        result["auc"] = m.roc_auc_macro(probs, hard)   # threshold-free (select_by: auc)
         found = self.task.search_threshold(probs, hard)
         if found is not None:
             result["_optimal_threshold"], result["_f1_at_optimal_threshold"] = found

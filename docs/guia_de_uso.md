@@ -149,7 +149,12 @@ uv run paravit.py eval --checkpoint checkpoints/verode/checkpoint_epoch_007.pt -
 ```
 
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
-agregada) que el panel web muestra en la tarjeta «Held-out test set» del run.
+agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
+
+En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbral **elegido en
+validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
+que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce
+el comportamiento anterior (ajustarlo sobre el propio test), que da una cifra optimista.
 
 ## 4. Los ficheros de configuración
 

@@ -5,6 +5,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- `training.select_by: auc`: elige el checkpoint y el early stopping por el AUC de validación
+  (sin umbral), útil cuando las clases son tan raras que el F1 a 0,5 se queda en cero. El AUC de
+  validación se calcula en cada época y se escribe como `val_auc` en `epoch_metrics_*.csv`.
+- El checkpoint guarda el umbral óptimo elegido en validación (`metrics.optimal_threshold`).
 - MedMNIST: cuatro datasets médicos (`medmnist_breast`, `medmnist_derma`, `medmnist_path`,
   `medmnist_chest`) que cubren las tareas binaria, multiclase y multi-etiqueta, con 1 o 3
   canales. Incluye script de descarga con verificación MD5 y configs locales.
@@ -22,6 +26,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- `eval.py` aplica a test el umbral elegido en **validación** (el del checkpoint, o ajustado sobre
+  val en checkpoints antiguos); antes lo ajustaba sobre el propio test, lo que inflaba el "F1 con
+  umbral óptimo". `--threshold-from test` mantiene el comportamiento anterior. El CSV de test
+  indica `threshold_source` y la web lo muestra.
+- AUC por rangos vectorizado (de ~32 s a ~0,2 s a escala de BigEarthNet).
 - Trainers (single, DDP, heterogéneo, model-parallel), deep tracing, `eval.py`, benchmark y
   estudio de convergencia dejan de asumir BigEarthNet. Para BigEarthNet los resultados son
   idénticos: verificado en GPU (vit_tiny, subset, semilla fija) con single, DDP, paralelismo de

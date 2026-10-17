@@ -26,6 +26,7 @@ training:
   early_stopping_patience: 5
   log_batch_every: 10
   seed: 42
+  select_by: auc        # métrica de referencia de MedMNIST; F1@0.5 falla con clases raras
 
 checkpoint:
   dir: "checkpoints/local"
