@@ -1,0 +1,4 @@
+class_idx,class_name,f1,precision,recall
+0,malignant,0.6905,0.6905,0.6905
+
+# aggregate,loss=0.638504,f1_t05=0.7000,f1_opt=0.6905,threshold=0.25,threshold_source=checkpoint,accuracy=0.8462,precision=0.7368,recall=0.6667,auc=0.8945

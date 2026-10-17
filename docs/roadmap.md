@@ -6,32 +6,39 @@
 
 ## Estado actual
 
-> Actualizado el 17/10/2026. Se reescribe al cerrar cada bloque de trabajo (ver `CLAUDE.md`,
-> "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra al empezar.
+> Actualizado el 17/10/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
+> `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
-**Hecho:** fase 1 (higiene) y fase 2 (abstracción de dataset y tarea, verificada en GPU con las
-cuatro estrategias). De la fase 3: MedMNIST integrado (cuatro datasets médicos), AUC en
-validación y test, selección del checkpoint por AUC y umbral elegido en validación. Corregidos
-los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo con
-`pos_weight`.
+**Hecho:**
+- Fases 1 (higiene) y 2 (abstracción de dataset y tarea, verificada en GPU con las cuatro
+  estrategias).
+- Fase 3, primer bloque: MedMNIST (cuatro datasets médicos) con **3 semillas**. DermaMNIST y
+  PathMNIST superan a todas las referencias oficiales; BreastMNIST y ChestMNIST, dentro del rango.
+  AUC en validación y test, selección por AUC, umbral elegido en validación, `--seed` y
+  `scripts/summarize_runs.py`.
+- Predictor: perfilado automático de cualquier modelo de timm (fase 5, primer punto), revisado
+  por el agente revisor y corregido.
+- Web: AUC de validación y filtro por dataset. Estado del arte sobre predicción del rendimiento
+  (`docs/research/`).
+- Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
+- Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
+  con `pos_weight`.
 
-**En curso:**
-- Barrido de MedMNIST con 3 semillas por dataset (rama `feature/medmnist-seeds`) para dar media ±
-  desviación frente a las referencias oficiales.
-- PRs abiertos pendientes de revisión: AUC y filtro por dataset en la web (#152), estado del arte
-  sobre predicción del rendimiento (#153) y perfilado automático de modelos para `estimate`.
-- Arnés de trabajo con IA: agentes, hooks, skills, lint en CI y pre-commit.
+**En curso:** nada. Todo está integrado en `develop`.
 
-**Siguiente paso:** cerrar la tabla de MedMNIST con semillas e integrar los PRs. Después, fase 4
-(instrumentación y registro de medidas), orientada por la revisión del estado del arte: el
-ángulo más prometedor para el artículo es la predicción conjunta de tiempo y energía según el
-régimen (cómputo frente a I/O).
+**Siguiente paso recomendado:** fase 4, instrumentación y registro de medidas. Su objetivo es
+medir el tiempo de espera del DataLoader y la potencia por GPU, en un esquema estándar, para
+validar el ángulo más prometedor del artículo: tiempo y energía según el régimen (cómputo o I/O).
+Los cuatro MedMNIST, BigEarthNet y su subset ya dan perfiles de I/O muy distintos para probarlo.
 
 **Decisiones pendientes del autor o del tutor:**
-- Integrar `develop` en `main`.
+- Integrar `develop` en `main` (contiene todo lo anterior).
+- Elegir el enfoque de la contribución entre los tres de
+  [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
 - Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
-- Elegir el enfoque de la contribución entre los tres que propone `docs/research/` (#153).
 - Máquinas nuevas a las que dará acceso el tutor (aún sin concretar).
+- Instalar el pre-commit una vez por clon:
+  `uvx pre-commit install --hook-type pre-commit --hook-type commit-msg`.
 
 ## Diagnóstico de partida (auditoría del 17/10/2026)
 
@@ -106,7 +113,8 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
       README; reevaluar el checkpoint v4 en Verode con el umbral de validación, que fue 0,40).
 - [x] `select_by: auc` y AUC de validación en cada época (`val_auc` en el CSV); los configs de
       MedMNIST lo usan.
-- [ ] Repeticiones (≥3 semillas) y AUC también en validación para los runs de MedMNIST.
+- [x] Repeticiones (3 semillas) y AUC en validación para MedMNIST: Derma y Path superan a todas las
+      referencias oficiales; Breast y Chest, dentro del rango ([ficha](datasets/medmnist.md)).
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).

@@ -1,0 +1,13 @@
+epoch,true_class,pred_class,value
+1,malignant,malignant,0.428571
+2,malignant,malignant,0.0
+3,malignant,malignant,0.809524
+4,malignant,malignant,0.761905
+5,malignant,malignant,0.380952
+6,malignant,malignant,0.619048
+7,malignant,malignant,0.666667
+8,malignant,malignant,0.571429
+9,malignant,malignant,0.666667
+10,malignant,malignant,0.619048
+11,malignant,malignant,0.619048
+12,malignant,malignant,0.619048

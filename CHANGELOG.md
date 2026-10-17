@@ -5,6 +5,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- MedMNIST con 3 semillas: media ± desviación en test (`docs/datasets/medmnist.md`). `--seed` en
+  `train_single_gpu.py` (se escribe en el log) y `scripts/summarize_runs.py` para agregar los
+  resultados de test de runs repetidos.
 - Perfilado automático de modelos (`src/model_profile.py`): `paravit estimate` y la pestaña
   *Estimate* de la web funcionan con cualquier modelo de timm, no solo con los seis de la
   tabla. Parámetros y FLOPs se miden con `torch.utils.flop_counter` en el dispositivo `meta`
