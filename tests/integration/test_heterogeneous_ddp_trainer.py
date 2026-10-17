@@ -324,3 +324,35 @@ def test_heterogeneous_sampler_no_overlap():
 
     assert s0.isdisjoint(s1), "Los índices de rank 0 y rank 1 no deben solaparse"
     assert s0 | s1 == set(range(n)), "La unión debe cubrir todo el dataset"
+
+
+# ── El builder pasa la pérdida configurada (pos_weight) al trainer heterogéneo ──
+
+
+def _built_hetero_criterion_sum(tmp_path: Path, training: dict):
+    from src.training.builder import TrainingSessionBuilder
+    cfg = {
+        "data": {"root": "/r", "metadata": "/m.parquet"},
+        "model": {"name": "resnet18", "pretrained": False},
+        "training": {"epochs": 1, "batch_size": 4, "lr": 0.001, **training},
+        "checkpoint": {"dir": str(tmp_path / "ckpt")},
+    }
+    trainer = (TrainingSessionBuilder(cfg, torch.device("cpu"), distributed=True)
+               .with_heterogeneous_ddp(4).with_trace("off").build())
+    while hasattr(trainer, "_trainer"):
+        trainer = trainer._trainer
+    return trainer._criterion_sum
+
+
+def test_builder_passes_pos_weight_to_heterogeneous(tmp_path, monkeypatch):
+    """Regresión: el builder no pasaba el criterion → pos_weight se perdía en esta ruta."""
+    monkeypatch.chdir(tmp_path)
+    _init_gloo()
+    try:
+        weights = [2.0] * 19
+        crit = _built_hetero_criterion_sum(tmp_path, {"pos_weight": weights})
+        assert crit.pos_weight is not None
+        assert crit.pos_weight.tolist() == weights
+        assert _built_hetero_criterion_sum(tmp_path, {}).pos_weight is None
+    finally:
+        _destroy_gloo()

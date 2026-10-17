@@ -277,6 +277,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                criterion=criterion,      # its pos_weight carries into the summed loss
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,

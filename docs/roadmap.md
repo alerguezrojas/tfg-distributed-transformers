@@ -61,7 +61,7 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 - [x] Quitar las listas de clases duplicadas (eval, confusion, web) y leerlas de la ficha.
 - [x] `in_chans` configurable en el modelo (las 12 bandas necesitan además un lector multibanda).
 - [x] Corregido: `model.dropout` del YAML no se aplicaba (la cabeza usaba siempre 0.1).
-- [ ] Corregir: el builder no pasa la pérdida configurada al trainer heterogéneo (`pos_weight` se pierde).
+- [x] Corregido: el builder no pasaba la pérdida configurada al trainer heterogéneo (`pos_weight` se perdía).
 - [ ] La web (galería y estadísticas del dataset) sigue siendo específica de BigEarthNet.
 - [ ] El benchmark aún toma de BigEarthNet los tamaños de split por defecto y el perfil de I/O
       (ficheros `*.tif`); se generaliza junto con el modelo de I/O en la fase 5.
