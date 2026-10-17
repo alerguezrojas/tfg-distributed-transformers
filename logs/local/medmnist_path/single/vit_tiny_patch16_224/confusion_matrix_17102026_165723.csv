@@ -1,0 +1,406 @@
+epoch,true_class,pred_class,value
+1,adipose,adipose,0.96926
+1,adipose,background,0.006724
+1,adipose,debris,0.0
+1,adipose,lymphocytes,0.0
+1,adipose,mucus,0.017291
+1,adipose,smooth muscle,0.005764
+1,adipose,normal colon mucosa,0.000961
+1,adipose,cancer-associated stroma,0.0
+1,adipose,colorectal adenocarcinoma epithelium,0.0
+1,background,adipose,0.0
+1,background,background,0.982971
+1,background,debris,0.005676
+1,background,lymphocytes,0.001892
+1,background,mucus,0.006623
+1,background,smooth muscle,0.0
+1,background,normal colon mucosa,0.0
+1,background,cancer-associated stroma,0.0
+1,background,colorectal adenocarcinoma epithelium,0.002838
+1,debris,adipose,0.000868
+1,debris,background,0.003472
+1,debris,debris,0.880208
+1,debris,lymphocytes,0.008681
+1,debris,mucus,0.00434
+1,debris,smooth muscle,0.02691
+1,debris,normal colon mucosa,0.00434
+1,debris,cancer-associated stroma,0.051215
+1,debris,colorectal adenocarcinoma epithelium,0.019965
+1,lymphocytes,adipose,0.0
+1,lymphocytes,background,0.0
+1,lymphocytes,debris,0.006055
+1,lymphocytes,lymphocytes,0.981834
+1,lymphocytes,mucus,0.0
+1,lymphocytes,smooth muscle,0.0
+1,lymphocytes,normal colon mucosa,0.00346
+1,lymphocytes,cancer-associated stroma,0.00173
+1,lymphocytes,colorectal adenocarcinoma epithelium,0.00692
+1,mucus,adipose,0.003371
+1,mucus,background,0.001124
+1,mucus,debris,0.010112
+1,mucus,lymphocytes,0.002247
+1,mucus,mucus,0.904494
+1,mucus,smooth muscle,0.007865
+1,mucus,normal colon mucosa,0.039326
+1,mucus,cancer-associated stroma,0.020225
+1,mucus,colorectal adenocarcinoma epithelium,0.011236
+1,smooth muscle,adipose,0.00517
+1,smooth muscle,background,0.004431
+1,smooth muscle,debris,0.014032
+1,smooth muscle,lymphocytes,0.0
+1,smooth muscle,mucus,0.008863
+1,smooth muscle,smooth muscle,0.917282
+1,smooth muscle,normal colon mucosa,0.001477
+1,smooth muscle,cancer-associated stroma,0.046529
+1,smooth muscle,colorectal adenocarcinoma epithelium,0.002216
+1,normal colon mucosa,adipose,0.0
+1,normal colon mucosa,background,0.0
+1,normal colon mucosa,debris,0.004561
+1,normal colon mucosa,lymphocytes,0.013683
+1,normal colon mucosa,mucus,0.047891
+1,normal colon mucosa,smooth muscle,0.00114
+1,normal colon mucosa,normal colon mucosa,0.872292
+1,normal colon mucosa,cancer-associated stroma,0.00114
+1,normal colon mucosa,colorectal adenocarcinoma epithelium,0.059293
+1,cancer-associated stroma,adipose,0.000957
+1,cancer-associated stroma,background,0.000957
+1,cancer-associated stroma,debris,0.053589
+1,cancer-associated stroma,lymphocytes,0.002871
+1,cancer-associated stroma,mucus,0.01244
+1,cancer-associated stroma,smooth muscle,0.098565
+1,cancer-associated stroma,normal colon mucosa,0.009569
+1,cancer-associated stroma,cancer-associated stroma,0.804785
+1,cancer-associated stroma,colorectal adenocarcinoma epithelium,0.016268
+1,colorectal adenocarcinoma epithelium,adipose,0.0
+1,colorectal adenocarcinoma epithelium,background,0.0
+1,colorectal adenocarcinoma epithelium,debris,0.023045
+1,colorectal adenocarcinoma epithelium,lymphocytes,0.001397
+1,colorectal adenocarcinoma epithelium,mucus,0.009777
+1,colorectal adenocarcinoma epithelium,smooth muscle,0.005587
+1,colorectal adenocarcinoma epithelium,normal colon mucosa,0.025838
+1,colorectal adenocarcinoma epithelium,cancer-associated stroma,0.007682
+1,colorectal adenocarcinoma epithelium,colorectal adenocarcinoma epithelium,0.926676
+2,adipose,adipose,0.993276
+2,adipose,background,0.0
+2,adipose,debris,0.0
+2,adipose,lymphocytes,0.0
+2,adipose,mucus,0.004803
+2,adipose,smooth muscle,0.001921
+2,adipose,normal colon mucosa,0.0
+2,adipose,cancer-associated stroma,0.0
+2,adipose,colorectal adenocarcinoma epithelium,0.0
+2,background,adipose,0.0
+2,background,background,0.997162
+2,background,debris,0.0
+2,background,lymphocytes,0.0
+2,background,mucus,0.0
+2,background,smooth muscle,0.000946
+2,background,normal colon mucosa,0.0
+2,background,cancer-associated stroma,0.0
+2,background,colorectal adenocarcinoma epithelium,0.001892
+2,debris,adipose,0.001736
+2,debris,background,0.0
+2,debris,debris,0.938368
+2,debris,lymphocytes,0.0
+2,debris,mucus,0.000868
+2,debris,smooth muscle,0.003472
+2,debris,normal colon mucosa,0.0
+2,debris,cancer-associated stroma,0.03125
+2,debris,colorectal adenocarcinoma epithelium,0.024306
+2,lymphocytes,adipose,0.0
+2,lymphocytes,background,0.0
+2,lymphocytes,debris,0.00173
+2,lymphocytes,lymphocytes,0.987889
+2,lymphocytes,mucus,0.0
+2,lymphocytes,smooth muscle,0.0
+2,lymphocytes,normal colon mucosa,0.000865
+2,lymphocytes,cancer-associated stroma,0.00173
+2,lymphocytes,colorectal adenocarcinoma epithelium,0.007785
+2,mucus,adipose,0.002247
+2,mucus,background,0.0
+2,mucus,debris,0.001124
+2,mucus,lymphocytes,0.0
+2,mucus,mucus,0.980899
+2,mucus,smooth muscle,0.0
+2,mucus,normal colon mucosa,0.002247
+2,mucus,cancer-associated stroma,0.006742
+2,mucus,colorectal adenocarcinoma epithelium,0.006742
+2,smooth muscle,adipose,0.0
+2,smooth muscle,background,0.001477
+2,smooth muscle,debris,0.003693
+2,smooth muscle,lymphocytes,0.0
+2,smooth muscle,mucus,0.002216
+2,smooth muscle,smooth muscle,0.973412
+2,smooth muscle,normal colon mucosa,0.000739
+2,smooth muscle,cancer-associated stroma,0.018464
+2,smooth muscle,colorectal adenocarcinoma epithelium,0.0
+2,normal colon mucosa,adipose,0.0
+2,normal colon mucosa,background,0.0
+2,normal colon mucosa,debris,0.0
+2,normal colon mucosa,lymphocytes,0.007982
+2,normal colon mucosa,mucus,0.028506
+2,normal colon mucosa,smooth muscle,0.0
+2,normal colon mucosa,normal colon mucosa,0.901938
+2,normal colon mucosa,cancer-associated stroma,0.0
+2,normal colon mucosa,colorectal adenocarcinoma epithelium,0.061574
+2,cancer-associated stroma,adipose,0.0
+2,cancer-associated stroma,background,0.0
+2,cancer-associated stroma,debris,0.019139
+2,cancer-associated stroma,lymphocytes,0.0
+2,cancer-associated stroma,mucus,0.011483
+2,cancer-associated stroma,smooth muscle,0.028708
+2,cancer-associated stroma,normal colon mucosa,0.000957
+2,cancer-associated stroma,cancer-associated stroma,0.91866
+2,cancer-associated stroma,colorectal adenocarcinoma epithelium,0.021053
+2,colorectal adenocarcinoma epithelium,adipose,0.0
+2,colorectal adenocarcinoma epithelium,background,0.0
+2,colorectal adenocarcinoma epithelium,debris,0.002095
+2,colorectal adenocarcinoma epithelium,lymphocytes,0.0
+2,colorectal adenocarcinoma epithelium,mucus,0.005587
+2,colorectal adenocarcinoma epithelium,smooth muscle,0.002095
+2,colorectal adenocarcinoma epithelium,normal colon mucosa,0.0
+2,colorectal adenocarcinoma epithelium,cancer-associated stroma,0.0
+2,colorectal adenocarcinoma epithelium,colorectal adenocarcinoma epithelium,0.990223
+3,adipose,adipose,0.998079
+3,adipose,background,0.0
+3,adipose,debris,0.0
+3,adipose,lymphocytes,0.0
+3,adipose,mucus,0.001921
+3,adipose,smooth muscle,0.0
+3,adipose,normal colon mucosa,0.0
+3,adipose,cancer-associated stroma,0.0
+3,adipose,colorectal adenocarcinoma epithelium,0.0
+3,background,adipose,0.0
+3,background,background,1.0
+3,background,debris,0.0
+3,background,lymphocytes,0.0
+3,background,mucus,0.0
+3,background,smooth muscle,0.0
+3,background,normal colon mucosa,0.0
+3,background,cancer-associated stroma,0.0
+3,background,colorectal adenocarcinoma epithelium,0.0
+3,debris,adipose,0.0
+3,debris,background,0.0
+3,debris,debris,0.986979
+3,debris,lymphocytes,0.000868
+3,debris,mucus,0.0
+3,debris,smooth muscle,0.000868
+3,debris,normal colon mucosa,0.0
+3,debris,cancer-associated stroma,0.005208
+3,debris,colorectal adenocarcinoma epithelium,0.006076
+3,lymphocytes,adipose,0.0
+3,lymphocytes,background,0.0
+3,lymphocytes,debris,0.000865
+3,lymphocytes,lymphocytes,0.99654
+3,lymphocytes,mucus,0.0
+3,lymphocytes,smooth muscle,0.0
+3,lymphocytes,normal colon mucosa,0.0
+3,lymphocytes,cancer-associated stroma,0.0
+3,lymphocytes,colorectal adenocarcinoma epithelium,0.002595
+3,mucus,adipose,0.002247
+3,mucus,background,0.0
+3,mucus,debris,0.003371
+3,mucus,lymphocytes,0.0
+3,mucus,mucus,0.977528
+3,mucus,smooth muscle,0.0
+3,mucus,normal colon mucosa,0.002247
+3,mucus,cancer-associated stroma,0.004494
+3,mucus,colorectal adenocarcinoma epithelium,0.010112
+3,smooth muscle,adipose,0.000739
+3,smooth muscle,background,0.0
+3,smooth muscle,debris,0.006647
+3,smooth muscle,lymphocytes,0.0
+3,smooth muscle,mucus,0.000739
+3,smooth muscle,smooth muscle,0.974889
+3,smooth muscle,normal colon mucosa,0.0
+3,smooth muscle,cancer-associated stroma,0.016987
+3,smooth muscle,colorectal adenocarcinoma epithelium,0.0
+3,normal colon mucosa,adipose,0.0
+3,normal colon mucosa,background,0.0
+3,normal colon mucosa,debris,0.00114
+3,normal colon mucosa,lymphocytes,0.009122
+3,normal colon mucosa,mucus,0.015964
+3,normal colon mucosa,smooth muscle,0.0
+3,normal colon mucosa,normal colon mucosa,0.948689
+3,normal colon mucosa,cancer-associated stroma,0.0
+3,normal colon mucosa,colorectal adenocarcinoma epithelium,0.025086
+3,cancer-associated stroma,adipose,0.0
+3,cancer-associated stroma,background,0.000957
+3,cancer-associated stroma,debris,0.04689
+3,cancer-associated stroma,lymphocytes,0.002871
+3,cancer-associated stroma,mucus,0.003828
+3,cancer-associated stroma,smooth muscle,0.01244
+3,cancer-associated stroma,normal colon mucosa,0.001914
+3,cancer-associated stroma,cancer-associated stroma,0.914833
+3,cancer-associated stroma,colorectal adenocarcinoma epithelium,0.016268
+3,colorectal adenocarcinoma epithelium,adipose,0.0
+3,colorectal adenocarcinoma epithelium,background,0.0
+3,colorectal adenocarcinoma epithelium,debris,0.003492
+3,colorectal adenocarcinoma epithelium,lymphocytes,0.002793
+3,colorectal adenocarcinoma epithelium,mucus,0.00419
+3,colorectal adenocarcinoma epithelium,smooth muscle,0.000698
+3,colorectal adenocarcinoma epithelium,normal colon mucosa,0.003492
+3,colorectal adenocarcinoma epithelium,cancer-associated stroma,0.0
+3,colorectal adenocarcinoma epithelium,colorectal adenocarcinoma epithelium,0.985335
+4,adipose,adipose,0.994236
+4,adipose,background,0.0
+4,adipose,debris,0.0
+4,adipose,lymphocytes,0.0
+4,adipose,mucus,0.003842
+4,adipose,smooth muscle,0.000961
+4,adipose,normal colon mucosa,0.0
+4,adipose,cancer-associated stroma,0.000961
+4,adipose,colorectal adenocarcinoma epithelium,0.0
+4,background,adipose,0.0
+4,background,background,0.999054
+4,background,debris,0.0
+4,background,lymphocytes,0.0
+4,background,mucus,0.0
+4,background,smooth muscle,0.000946
+4,background,normal colon mucosa,0.0
+4,background,cancer-associated stroma,0.0
+4,background,colorectal adenocarcinoma epithelium,0.0
+4,debris,adipose,0.0
+4,debris,background,0.0
+4,debris,debris,0.977431
+4,debris,lymphocytes,0.0
+4,debris,mucus,0.0
+4,debris,smooth muscle,0.002604
+4,debris,normal colon mucosa,0.000868
+4,debris,cancer-associated stroma,0.015625
+4,debris,colorectal adenocarcinoma epithelium,0.003472
+4,lymphocytes,adipose,0.0
+4,lymphocytes,background,0.0
+4,lymphocytes,debris,0.00173
+4,lymphocytes,lymphocytes,0.990484
+4,lymphocytes,mucus,0.0
+4,lymphocytes,smooth muscle,0.0
+4,lymphocytes,normal colon mucosa,0.0
+4,lymphocytes,cancer-associated stroma,0.00173
+4,lymphocytes,colorectal adenocarcinoma epithelium,0.006055
+4,mucus,adipose,0.001124
+4,mucus,background,0.0
+4,mucus,debris,0.003371
+4,mucus,lymphocytes,0.0
+4,mucus,mucus,0.978652
+4,mucus,smooth muscle,0.0
+4,mucus,normal colon mucosa,0.001124
+4,mucus,cancer-associated stroma,0.008989
+4,mucus,colorectal adenocarcinoma epithelium,0.006742
+4,smooth muscle,adipose,0.0
+4,smooth muscle,background,0.0
+4,smooth muscle,debris,0.004431
+4,smooth muscle,lymphocytes,0.0
+4,smooth muscle,mucus,0.000739
+4,smooth muscle,smooth muscle,0.980059
+4,smooth muscle,normal colon mucosa,0.0
+4,smooth muscle,cancer-associated stroma,0.014032
+4,smooth muscle,colorectal adenocarcinoma epithelium,0.000739
+4,normal colon mucosa,adipose,0.0
+4,normal colon mucosa,background,0.0
+4,normal colon mucosa,debris,0.00114
+4,normal colon mucosa,lymphocytes,0.004561
+4,normal colon mucosa,mucus,0.011403
+4,normal colon mucosa,smooth muscle,0.0
+4,normal colon mucosa,normal colon mucosa,0.950969
+4,normal colon mucosa,cancer-associated stroma,0.00114
+4,normal colon mucosa,colorectal adenocarcinoma epithelium,0.030787
+4,cancer-associated stroma,adipose,0.0
+4,cancer-associated stroma,background,0.0
+4,cancer-associated stroma,debris,0.01244
+4,cancer-associated stroma,lymphocytes,0.0
+4,cancer-associated stroma,mucus,0.001914
+4,cancer-associated stroma,smooth muscle,0.008612
+4,cancer-associated stroma,normal colon mucosa,0.0
+4,cancer-associated stroma,cancer-associated stroma,0.973206
+4,cancer-associated stroma,colorectal adenocarcinoma epithelium,0.003828
+4,colorectal adenocarcinoma epithelium,adipose,0.0
+4,colorectal adenocarcinoma epithelium,background,0.0
+4,colorectal adenocarcinoma epithelium,debris,0.001397
+4,colorectal adenocarcinoma epithelium,lymphocytes,0.0
+4,colorectal adenocarcinoma epithelium,mucus,0.00419
+4,colorectal adenocarcinoma epithelium,smooth muscle,0.000698
+4,colorectal adenocarcinoma epithelium,normal colon mucosa,0.002793
+4,colorectal adenocarcinoma epithelium,cancer-associated stroma,0.000698
+4,colorectal adenocarcinoma epithelium,colorectal adenocarcinoma epithelium,0.990223
+5,adipose,adipose,0.994236
+5,adipose,background,0.0
+5,adipose,debris,0.0
+5,adipose,lymphocytes,0.0
+5,adipose,mucus,0.002882
+5,adipose,smooth muscle,0.001921
+5,adipose,normal colon mucosa,0.0
+5,adipose,cancer-associated stroma,0.000961
+5,adipose,colorectal adenocarcinoma epithelium,0.0
+5,background,adipose,0.0
+5,background,background,0.999054
+5,background,debris,0.0
+5,background,lymphocytes,0.0
+5,background,mucus,0.0
+5,background,smooth muscle,0.000946
+5,background,normal colon mucosa,0.0
+5,background,cancer-associated stroma,0.0
+5,background,colorectal adenocarcinoma epithelium,0.0
+5,debris,adipose,0.0
+5,debris,background,0.0
+5,debris,debris,0.981771
+5,debris,lymphocytes,0.0
+5,debris,mucus,0.0
+5,debris,smooth muscle,0.003472
+5,debris,normal colon mucosa,0.001736
+5,debris,cancer-associated stroma,0.008681
+5,debris,colorectal adenocarcinoma epithelium,0.00434
+5,lymphocytes,adipose,0.0
+5,lymphocytes,background,0.0
+5,lymphocytes,debris,0.000865
+5,lymphocytes,lymphocytes,0.991349
+5,lymphocytes,mucus,0.0
+5,lymphocytes,smooth muscle,0.0
+5,lymphocytes,normal colon mucosa,0.0
+5,lymphocytes,cancer-associated stroma,0.004325
+5,lymphocytes,colorectal adenocarcinoma epithelium,0.00346
+5,mucus,adipose,0.0
+5,mucus,background,0.0
+5,mucus,debris,0.001124
+5,mucus,lymphocytes,0.0
+5,mucus,mucus,0.966292
+5,mucus,smooth muscle,0.0
+5,mucus,normal colon mucosa,0.011236
+5,mucus,cancer-associated stroma,0.010112
+5,mucus,colorectal adenocarcinoma epithelium,0.011236
+5,smooth muscle,adipose,0.0
+5,smooth muscle,background,0.0
+5,smooth muscle,debris,0.00517
+5,smooth muscle,lymphocytes,0.0
+5,smooth muscle,mucus,0.0
+5,smooth muscle,smooth muscle,0.988922
+5,smooth muscle,normal colon mucosa,0.0
+5,smooth muscle,cancer-associated stroma,0.005908
+5,smooth muscle,colorectal adenocarcinoma epithelium,0.0
+5,normal colon mucosa,adipose,0.0
+5,normal colon mucosa,background,0.0
+5,normal colon mucosa,debris,0.0
+5,normal colon mucosa,lymphocytes,0.00114
+5,normal colon mucosa,mucus,0.0
+5,normal colon mucosa,smooth muscle,0.0
+5,normal colon mucosa,normal colon mucosa,0.982896
+5,normal colon mucosa,cancer-associated stroma,0.00114
+5,normal colon mucosa,colorectal adenocarcinoma epithelium,0.014823
+5,cancer-associated stroma,adipose,0.0
+5,cancer-associated stroma,background,0.0
+5,cancer-associated stroma,debris,0.01244
+5,cancer-associated stroma,lymphocytes,0.0
+5,cancer-associated stroma,mucus,0.001914
+5,cancer-associated stroma,smooth muscle,0.014354
+5,cancer-associated stroma,normal colon mucosa,0.0
+5,cancer-associated stroma,cancer-associated stroma,0.969378
+5,cancer-associated stroma,colorectal adenocarcinoma epithelium,0.001914
+5,colorectal adenocarcinoma epithelium,adipose,0.0
+5,colorectal adenocarcinoma epithelium,background,0.0
+5,colorectal adenocarcinoma epithelium,debris,0.002793
+5,colorectal adenocarcinoma epithelium,lymphocytes,0.0
+5,colorectal adenocarcinoma epithelium,mucus,0.002095
+5,colorectal adenocarcinoma epithelium,smooth muscle,0.000698
+5,colorectal adenocarcinoma epithelium,normal colon mucosa,0.005587
+5,colorectal adenocarcinoma epithelium,cancer-associated stroma,0.002095
+5,colorectal adenocarcinoma epithelium,colorectal adenocarcinoma epithelium,0.986732

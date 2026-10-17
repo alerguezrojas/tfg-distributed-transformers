@@ -1,0 +1,17 @@
+class_idx,class_name,f1,precision,recall
+0,atelectasis,0.3263,0.2118,0.7099
+1,cardiomegaly,0.2442,0.1683,0.445
+2,effusion,0.4121,0.2713,0.8562
+3,infiltration,0.3335,0.2034,0.9256
+4,mass,0.232,0.1548,0.4625
+5,nodule,0.1559,0.1399,0.176
+6,pneumonia,0.0,0.0,0.0
+7,pneumothorax,0.2717,0.1778,0.5758
+8,consolidation,0.2159,0.1459,0.4148
+9,edema,0.1949,0.1272,0.4165
+10,emphysema,0.1495,0.1222,0.1925
+11,fibrosis,0.0251,0.1389,0.0138
+12,pleural,0.1561,0.1229,0.2139
+13,hernia,0.0,0.0,0.0
+
+# aggregate,loss=0.162207,f1_t05=0.0506,f1_opt=0.1941,threshold=0.10,threshold_source=checkpoint,accuracy=0.9478,precision=0.2197,recall=0.0333,auc=0.7666
