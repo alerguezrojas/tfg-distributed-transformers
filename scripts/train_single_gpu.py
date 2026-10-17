@@ -68,6 +68,7 @@ def parse_args():
     parser.add_argument("--config", type=str, default="configs/train.yaml")
     parser.add_argument("--data-root", type=str, help="Override data.root")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
+    parser.add_argument("--seed", type=int, help="Override training.seed (repetitions)")
     parser.add_argument("--batch-size", type=int, help="Override training.batch_size")
     parser.add_argument(
         "--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
@@ -129,6 +130,8 @@ def main():
         cfg["data"]["root"] = args.data_root
     if args.epochs:
         cfg["training"]["epochs"] = args.epochs
+    if args.seed is not None:
+        cfg["training"]["seed"] = args.seed
     if args.batch_size:
         cfg["training"]["batch_size"] = args.batch_size
     if args.precision:
@@ -228,7 +231,7 @@ def main():
         f"Configuración: modelo={model_name} | batch={_bs}/GPU (global={_bs}) | "
         f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
         f"precision={_prec} | loss={_loss} | train={len(train_ds)} | val={len(val_ds)} | "
-        f"dataset={spec.name}"
+        f"dataset={spec.name} | seed={seed}"
     )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────
