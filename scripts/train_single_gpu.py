@@ -227,7 +227,8 @@ def main():
     logging.getLogger("trainer").info(
         f"Configuración: modelo={model_name} | batch={_bs}/GPU (global={_bs}) | "
         f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-        f"precision={_prec} | loss={_loss} | train={len(train_ds)} | val={len(val_ds)}"
+        f"precision={_prec} | loss={_loss} | train={len(train_ds)} | val={len(val_ds)} | "
+        f"dataset={spec.name}"
     )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

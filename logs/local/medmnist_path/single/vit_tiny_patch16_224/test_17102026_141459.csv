@@ -1,0 +1,12 @@
+class_idx,class_name,f1,precision,recall
+0,adipose,0.9737,0.9945,0.9537
+1,background,0.9571,0.9177,1.0
+2,debris,0.8252,0.7312,0.9469
+3,lymphocytes,0.9635,0.9309,0.9984
+4,mucus,0.96,0.9818,0.9391
+5,smooth muscle,0.8077,0.803,0.8125
+6,normal colon mucosa,0.9286,0.9273,0.9298
+7,cancer-associated stroma,0.7624,0.9109,0.6556
+8,colorectal adenocarcinoma epithelium,0.9368,0.9418,0.9319
+
+# aggregate,loss=0.315489,f1_t05=0.9017,accuracy=0.9253,precision=0.9043,recall=0.9075,auc=0.9933

@@ -215,7 +215,7 @@ def main():
             f"reparto=GPU {_n_gpu/_n_tot*100:.0f}% (~{_n_gpu} img) / "
             f"CPU {_n_cpu/_n_tot*100:.0f}% (~{_n_cpu} img) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-            f"train={_n_tot} | val={len(val_ds)}"
+            f"train={_n_tot} | val={len(val_ds)} | dataset={spec.name}"
         )
 
     # ── Entrenamiento ─────────────────────────────────────────────────────────

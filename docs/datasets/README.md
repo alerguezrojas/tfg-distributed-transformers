@@ -8,6 +8,10 @@ anteriores siguen funcionando sin cambios.
 | Nombre (`data.name`) | Tarea | Clases | Canales | Ficha |
 |---|---|---|---|---|
 | `bigearthnet` (por defecto) | multi-etiqueta | 19 | 3 | [bigearthnet.md](bigearthnet.md) |
+| `medmnist_breast` | binaria | 1 | 1 | [medmnist.md](medmnist.md) |
+| `medmnist_derma` | multiclase | 7 | 3 | [medmnist.md](medmnist.md) |
+| `medmnist_path` | multiclase | 9 | 3 | [medmnist.md](medmnist.md) |
+| `medmnist_chest` | multi-etiqueta | 14 | 1 | [medmnist.md](medmnist.md) |
 
 ## Qué decide la ficha y qué decide la tarea
 
@@ -74,7 +78,9 @@ un dataset multiclase de un canal y otro binario.
   que solo admite tareas `multilabel` y `binary`.
 - La pérdida **focal** y `pos_weight` existen solo para tareas sigmoide.
 - La **web** sigue siendo específica de BigEarthNet en la galería de clases y las
-  estadísticas del dataset; las curvas y métricas de cualquier run sí se ven bien.
+  estadísticas del dataset; las curvas y métricas de cualquier run sí se ven bien. Los runs de
+  otros datasets se guardan en `logs/{env}/<dataset>/{mode}/{model}/` y la web los etiqueta con
+  el nombre del dataset.
 - El **predictor analítico** (`src/performance_model.py`) sigue calibrado con BigEarthNet
   (tamaños de split, rendimiento de lectura de TIFF, prior de calidad). Generalizarlo es la
   fase 5 del [roadmap](../roadmap.md).

@@ -32,7 +32,7 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 
 | Ruta | Responsabilidad |
 |---|---|
-| `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`); hoy, BigEarthNet |
+| `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`): BigEarthNet y MedMNIST |
 | `src/models/` | `TimmClassifier` (backbone timm + cabeza), optimizador LLRD, `ModelParallelViT` |
 | `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, tareas (`tasks.py`), pérdidas, métricas |
 | `src/training/decorators/` | Decoradores GoF: controladores (`EpochController` → tracing/deep) y aspectos (plot, hooks, confusion, batch-monitor, reporters) |

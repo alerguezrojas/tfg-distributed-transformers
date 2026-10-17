@@ -33,6 +33,10 @@ def _read_precision(log_path: Path) -> str:
     return m.group(1) if m else ""
 
 
+
+# Kept as a literal (not imported from src.data) so the web stays torch-free.
+_DEFAULT_DATASET = "bigearthnet"
+
 @dataclass
 class RunInfo:
     timestamp: str
@@ -42,6 +46,7 @@ class RunInfo:
     mode: str = "single"
     model: str = ""
     precision: str = ""
+    dataset: str = _DEFAULT_DATASET
     confusion_matrix_csv_path: Path | None = None
     batch_csv_path: Path | None = None
     epoch_csv_path: Path | None = None
@@ -84,6 +89,8 @@ class RunInfo:
             date = f"{ts[6:8]}/{ts[4:6]}/{ts[:4]}"
         time_str = f"{ts[9:11]}:{ts[11:13]}"
         parts = [f"{date} {time_str}", f"[{self.env}]"]
+        if self.dataset != _DEFAULT_DATASET:
+            parts.append(f"[{self.dataset}]")
         if self.model:
             parts.append(self.model.replace("_patch16_224", ""))
         if self.mode != "single":
@@ -96,16 +103,23 @@ class RunInfo:
         return " ".join(parts)
 
 
-def _env_mode_model_from_path(log_path: Path, logs_root: Path) -> tuple[str, str, str]:
+def _env_mode_model_from_path(log_path: Path, logs_root: Path) -> tuple[str, str, str, str]:
+    """(env, mode, model, dataset) from the run's folder.
+
+    BigEarthNet runs use logs/{env}/{mode}/{model}/ (the historical layout); runs of
+    any other dataset add a level: logs/{env}/{dataset}/{mode}/{model}/.
+    """
     try:
         parts = log_path.relative_to(logs_root).parts
     except ValueError:
-        return "unknown", "single", ""
-    if len(parts) >= 4:
-        return parts[0], parts[1], parts[2]
-    elif len(parts) == 2:
-        return parts[0], "single", ""
-    return "legacy", "single", ""
+        return "unknown", "single", "", _DEFAULT_DATASET
+    if len(parts) >= 5:
+        return parts[0], parts[2], parts[3], parts[1]
+    if len(parts) == 4:
+        return parts[0], parts[1], parts[2], _DEFAULT_DATASET
+    if len(parts) == 2:
+        return parts[0], "single", "", _DEFAULT_DATASET
+    return "legacy", "single", "", _DEFAULT_DATASET
 
 
 def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
@@ -125,12 +139,12 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
             continue
         ts = m.group(1)
         is_deep = "deep" in name
-        env, mode, model = _env_mode_model_from_path(log_path, logs_root)
+        env, mode, model, dataset = _env_mode_model_from_path(log_path, logs_root)
         runs[ts] = RunInfo(
             timestamp=ts,
             log_path=log_path,
             trace_mode="deep" if is_deep else "simple",
-            env=env, mode=mode, model=model,
+            env=env, mode=mode, model=model, dataset=dataset,
             precision=_read_precision(log_path),
         )
 
