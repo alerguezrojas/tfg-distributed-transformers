@@ -261,10 +261,34 @@ act    = act(G) · 2,23               si la red es convolucional
   (que también es una estimación, sin medir). Las redes con convoluciones *depthwise*
   y bloques SE pueden necesitar más de lo que da la regla.
 
+**Qué se considera "de la tabla".** La búsqueda en `MODEL_TABLE` es **exacta** (solo se
+descarta una etiqueta de pesos del tipo `nombre.tag`). `model_spec()` casa por subcadena,
+lo cual vale para nombres de GPU pero habría tratado `wide_resnet50_2` como `resnet50`
+(26 M de parámetros en vez de 68,9 M) y lo habría dado por calibrado. Un modelo de la
+tabla al que se pide otro `in_chans` o `img_size` también se perfila (su entrada solo vale
+para 3 canales a 224²): `vit_base_patch16_224` a 384² sale con 55,5 GFLOPs frente a los
+17,6 de la tabla (×3,15). `num_classes` por sí solo no invalida la entrada (solo cambia la
+cabeza).
+
+**Heurística "convolucional".** Una red se considera convolucional si tiene más de una
+capa de convolución (la del *patch embedding* no cuenta). Eso también clasifica como CNN a
+los híbridos (p. ej. LeViT, con un tronco convolucional): su memoria de activaciones sale
+multiplicada por 2,23, lo que es una estimación conservadora (del lado de predecir más
+VRAM de la necesaria).
+
+**Qué no está calibrado en estos modelos.** Además de las activaciones, el **tiempo y la
+energía** descansan en la MFU = 0,17, calibrada con vit_base; en otras arquitecturas se
+sabe que se desvía (resnet50 −24 %, vit_large +18 % en la sesión de Kaggle del 24/06/2026). La **calidad** esperada
+(`predict_quality`) usa el prior de la familia más cercana (vit_base si ninguna casa), que
+no es una ejecución de esa arquitectura: con `calibrated=False` la confianza se **fuerza a
+"low"** (banda ±0,050) y se añade una nota. Es la opción menos sorprendente: se sigue
+mostrando un orden de magnitud, pero sin aparentar la confianza de un modelo medido.
+
 Estos modelos se marcan `calibrated=False`; `predict()` añade la nota *"Model profiled
-automatically …; activation memory estimated, not calibrated"*, que muestran el CLI y la
-web. Para los seis modelos de la tabla no cambia nada: se sigue usando su entrada
-(comprobado con 2 880 combinaciones idénticas a la versión anterior).
+automatically …; activation memory estimated, not calibrated … Compute throughput (MFU)
+is calibrated on vit_base and not on this architecture"*, que muestran el CLI y la web.
+Para los seis modelos de la tabla no cambia nada: se sigue usando su entrada
+(comprobado con valores fijados de la versión anterior del predictor).
 
 ```bash
 uv run paravit.py estimate --model convnext_tiny --gpu "Tesla T4"

@@ -226,9 +226,9 @@ def predict(
     dataset_size: Optional[int] = typer.Option(None, help="Custom train-image count (overrides --dataset)."),
     epochs: int = typer.Option(15, help="Number of epochs."),
     disk: str = typer.Option("ssd", help="ssd | nvme | hdd | nfs."),
-    in_chans: int = typer.Option(3, help="Input channels (only for models profiled automatically)."),
-    num_classes: int = typer.Option(19, help="Output classes (only for models profiled automatically)."),
-    img_size: int = typer.Option(224, help="Input resolution (only for models profiled automatically)."),
+    in_chans: int = typer.Option(3, help="Input channels (≠3 profiles the model instead of using its table entry)."),
+    num_classes: int = typer.Option(19, help="Output classes (negligible effect on cost; head only)."),
+    img_size: int = typer.Option(224, help="Input resolution (≠224 profiles the model instead of using its table entry)."),
 ) -> None:
     """Analytic estimate of time, memory, cost and quality for a config — no GPU, just formulas.
 
@@ -262,7 +262,8 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     if p is None:
         console.print("[red]Unknown model or GPU spec.[/]")
         return
-    q = predict_quality(model, dataset_size=dataset_size, epochs=epochs)
+    q = predict_quality(model, dataset_size=dataset_size, epochs=epochs,
+                        calibrated=ms.calibrated)
 
     # ── Headline ────────────────────────────────────────────────────────────────
     fit = "[green]fits[/]" if p.fits_in_memory else "[red]OOM[/]"
@@ -334,7 +335,8 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
         qt.add_row("Expected Val F1", f"{q.expected_best_f1:.3f} ± {q.band:.3f}")
         qt.add_row("Best epoch ≈", str(q.best_epoch))
         qt.add_row("Early stop ≈", str(q.early_stop_epoch))
-        qt.add_row("Confidence", str(q.confidence))
+        qt.add_row("Confidence", str(q.confidence)
+                   + ("" if ms.calibrated else " (architecture outside the curated table)"))
         console.print(qt)
 
     # ── Scaling 1→8 GPUs (data-parallel) ─────────────────────────────────────────

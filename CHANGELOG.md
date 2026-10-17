@@ -11,6 +11,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   (sin pesos ni GPU; con CPU como respaldo) y coinciden con la tabla a ≤3,6 %. La memoria de
   activaciones se estima por regla y se marca como no calibrada. Nuevas opciones del CLI:
   `--in-chans`, `--num-classes` e `--img-size`.
+  La búsqueda en la tabla es exacta (`wide_resnet50_2` ya no se confunde con `resnet50`), un
+  modelo de la tabla con otro `in_chans`/`img_size` se perfila, y los modelos perfilados avisan
+  de que la MFU (tiempo y energía) no está calibrada para su arquitectura y de que la confianza
+  de la calidad esperada es baja.
 - `docs/research/estado_del_arte_prediccion.md`: revisión del trabajo relacionado sobre predicción del
   rendimiento del entrenamiento (Paleo, Habitat, Daydream, DS-Analyzer, NeuSight…) y posibles contribuciones.
 - Web: curva de AUC de validación en *Run results → Curves* (con la mejor época marcada) y

@@ -97,7 +97,9 @@ def _analytic_predictor() -> None:
         if not ms.calibrated:
             st.caption(f"Profiled automatically: {ms.params_m:.1f}M params, "
                        f"{ms.gflops_fwd:.2f} GFLOPs/image (multiply-add = 1, as in the "
-                       f"curated table). Activation memory estimated by rule, not calibrated.")
+                       f"curated table). Activation memory is estimated by rule and the compute "
+                       f"throughput (MFU) is calibrated on vit_base, not on this "
+                       f"architecture — time, energy and VRAM are rough, quality is low-confidence.")
 
     with st.expander("Calibrate with a measured throughput (optional)"):
         st.caption("Pure formulas assume a typical model-FLOPs utilization. Enter a real "
@@ -200,7 +202,8 @@ def _analytic_predictor() -> None:
                "unmeasured GPUs use a TDP fallback (flagged)." + _energy_note)
 
     # ── Expected quality (empirical prior) + curve ───────────────────────────────
-    q = predict_quality(model_name, dataset_size=int(dataset_size), epochs=int(epochs))
+    q = predict_quality(model_name, dataset_size=int(dataset_size), epochs=int(epochs),
+                        calibrated=ms.calibrated if ms else True)
     if q is not None:
         st.markdown("#### Expected quality (empirical prior — not a measurement)")
         qc1, qc2, qc3 = st.columns(3)
@@ -208,6 +211,9 @@ def _analytic_predictor() -> None:
                    delta=f"±{q.band:.3f}", delta_color="off")
         qc2.metric("Best epoch ≈", q.best_epoch)
         qc3.metric("Early stop ≈", q.early_stop_epoch, help="patience=10")
+        if ms is not None and not ms.calibrated:
+            st.caption("Low confidence: this architecture is outside the curated table, so "
+                       "the F1 prior is that of the nearest model family, not a run of it.")
         ep = q.curve_epochs
         fig_q = go.Figure()
         fig_q.add_trace(go.Scatter(

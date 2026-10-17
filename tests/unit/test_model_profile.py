@@ -17,7 +17,8 @@ pytest.importorskip("timm")
 from src import model_profile
 from src.model_profile import profile_model, resolve_model_spec
 from src.performance_model import (
-    MODEL_TABLE, CONV_ACTIVATION_FACTOR, estimate_act_gb_per_img, predict, spec_from_profile,
+    MODEL_TABLE, CONV_ACTIVATION_FACTOR, _CONF_BAND, estimate_act_gb_per_img, expected_best_f1,
+    predict, predict_quality, spec_from_profile,
 )
 
 # Profiled vs MODEL_TABLE, both with the 1000-class ImageNet head of timm's tables.
@@ -90,11 +91,75 @@ def test_table_models_resolve_to_table_entry(name):
     assert resolve_model_spec(name) is MODEL_TABLE[name]
 
 
-@pytest.mark.parametrize("name", list(MODEL_TABLE))
-def test_table_predictions_unchanged(name):
-    kw = {"n_gpus": 2, "dataset_size": 5000, "batch": 96, "precision": "amp", "epochs": 15}
-    assert predict("ddp", name, "Tesla T4", **kw) == predict(
-        "ddp", name, "Tesla T4", model=resolve_model_spec(name), **kw)
+# Pinned from develop's predictor (src/performance_model.py before model profiling), at
+# dataset_size=5000, batch=96, epochs=15: (model, gpu, strategy, n_gpus, precision) →
+# (time/epoch s, VRAM/GPU GB, energy/epoch Wh). The table path must not move.
+_PINNED = [
+    (("vit_base_patch16_224", "Tesla T4", "ddp", 2, "amp"), (40.7352, 4.8228, 2.0761)),
+    (("resnet50", "Tesla V100", "single", 1, "fp32"), (38.4615, 10.6096, 1.6055)),
+    (("vit_large_patch16_224", "Tesla T4", "model_parallel", 2, "fp32"), (673.0313, 30.408, 22.8917)),
+    (("vit_tiny_patch16_224", "RTX 3060 Ti", "single", 1, "fp32"), (38.4615, 2.9952, 2.8058)),
+    (("efficientnet_b0", "Tesla V100", "heterogeneous", 2, "fp32"), (112.8783, 3.5648, 3.7347)),
+]
+
+
+@pytest.mark.parametrize("combo,expected", _PINNED)
+def test_table_predictions_unchanged(combo, expected):
+    name, gpu, strategy, n, prec = combo
+    kw = {"n_gpus": n, "dataset_size": 5000, "batch": 96, "precision": prec, "epochs": 15}
+    for model in (None, resolve_model_spec(name)):            # by name, and via the resolver
+        p = predict(strategy, name, gpu, model=model, **kw)
+        assert (p.time_per_epoch_train_s, p.vram_per_gpu_gb, p.energy_per_epoch_wh) == \
+            pytest.approx(expected, abs=1e-3)
+        assert not any("profiled automatically" in note for note in p.notes)
+
+
+# ── Exact lookup: names that merely CONTAIN a table key are not table models ──────
+
+def test_lookalike_name_is_profiled_not_fuzzy_matched():
+    spec = resolve_model_spec("wide_resnet50_2", num_classes=1000)
+    assert spec is not None and not spec.calibrated
+    assert spec.params_m == pytest.approx(68.9, rel=0.02)          # resnet50 would give 25.6
+    assert spec.gflops_fwd == pytest.approx(11.4, rel=0.05)
+    assert spec.name == "wide_resnet50_2"
+
+
+def test_pretrained_tag_is_dropped_for_table_lookup():
+    assert resolve_model_spec("resnet50.a1_in1k") is MODEL_TABLE["resnet50"]
+
+
+# ── Overrides on a table model invalidate its table entry ─────────────────────────
+
+def test_table_model_at_other_resolution_is_profiled():
+    base = MODEL_TABLE["vit_base_patch16_224"]
+    big = resolve_model_spec("vit_base_patch16_224", img_size=384)
+    assert not big.calibrated
+    assert big.gflops_fwd / base.gflops_fwd == pytest.approx(3.15, rel=0.05)   # timm quotes 55.5 GMACs at 384² vs 17.6
+
+
+def test_table_model_with_other_channels_is_profiled():
+    spec = resolve_model_spec("vit_base_patch16_224", in_chans=1)
+    assert not spec.calibrated
+    assert spec.params_m < MODEL_TABLE["vit_base_patch16_224"].params_m
+
+
+def test_num_classes_alone_keeps_the_table_entry():
+    assert resolve_model_spec("vit_base_patch16_224", num_classes=5) is MODEL_TABLE["vit_base_patch16_224"]
+
+
+# ── Honesty: notes and quality confidence for uncalibrated specs ──────────────────
+
+def test_uncalibrated_note_mentions_mfu():
+    p = predict("single", _UNKNOWN_MODEL, "Tesla T4", model=resolve_model_spec(_UNKNOWN_MODEL))
+    assert any("MFU" in n and "not on this architecture" in n for n in p.notes)
+
+
+def test_quality_confidence_forced_low_for_uncalibrated():
+    assert predict_quality("vit_base_patch16_224", 5000).confidence == "high"
+    q = predict_quality("vit_base_patch16_224", 5000, calibrated=False)
+    assert q.confidence == "low" and q.band == _CONF_BAND["low"]
+    assert any("confidence forced to low" in n for n in q.notes)
+    assert expected_best_f1("vit_base_patch16_224", 5000, calibrated=False)[1] == "low"
 
 
 @pytest.mark.parametrize("name", [_UNKNOWN_MODEL, "deit_small_patch16_224"])

@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from functools import lru_cache
 
-from src.performance_model import ModelSpec, model_spec, spec_from_profile
+from src.performance_model import MODEL_TABLE, ModelSpec, spec_from_profile
 
 # FlopCounterMode counts a multiply-add as 2 FLOPs; MODEL_TABLE counts it as 1.
 _FLOPS_PER_MAC: int = 2
@@ -114,19 +114,40 @@ def profile_model(name: str, in_chans: int = 3, num_classes: int = 1000,
     raise ValueError(f"could not profile {name}: " + " | ".join(errors))
 
 
+_TABLE_IN_CHANS: int = 3     # the curated entries are 3-channel, 224² models
+_TABLE_IMG_SIZE: int = 224
+
+
+def _base_name(name: str) -> str:
+    """Architecture name without the pretrained-weights tag ("vit_base_patch16_224.augreg_in1k")."""
+    return name.strip().split(".", 1)[0]
+
+
+def _table_entry(name: str) -> ModelSpec | None:
+    """EXACT MODEL_TABLE lookup (a trailing pretrained tag "name.tag" is dropped).
+
+    Deliberately not ``model_spec()``: that one matches by substring (right for GPU
+    names), so "wide_resnet50_2" would silently get resnet50's entry (26M params
+    instead of ~69M) and be reported as calibrated."""
+    return MODEL_TABLE.get(_base_name(name))
+
+
 def resolve_model_spec(name: str, in_chans: int = 3, num_classes: int = 19,
                        img_size: int = 224) -> ModelSpec | None:
-    """ModelSpec for the predictor: the curated MODEL_TABLE entry when there is one
-    (unchanged behaviour), otherwise a spec built from an automatic profile
-    (``calibrated=False``). Returns None if the model cannot be profiled.
+    """ModelSpec for the predictor: the curated MODEL_TABLE entry when ``name`` IS in
+    the table at its 3-channel 224² setup (unchanged behaviour), otherwise a spec built
+    from an automatic profile (``calibrated=False``). A table model asked for a
+    different ``in_chans`` or ``img_size`` is profiled with them (its table numbers no
+    longer apply). Returns None if the model cannot be profiled.
 
     ``num_classes`` defaults to the 19 BigEarthNet classes the predictor's dataset
-    sizes assume; the head is a negligible part of params/FLOPs anyway."""
-    spec = model_spec(name)
-    if spec is not None:
+    sizes assume; the head is a negligible part of params/FLOPs, so it alone never
+    invalidates a table entry."""
+    spec = _table_entry(name)
+    if spec is not None and in_chans == _TABLE_IN_CHANS and img_size == _TABLE_IMG_SIZE:
         return spec
     try:
-        prof = profile_model(name, in_chans=in_chans, num_classes=num_classes,
+        prof = profile_model(_base_name(name), in_chans=in_chans, num_classes=num_classes,
                              img_size=img_size)
     except (ValueError, ImportError):
         return None

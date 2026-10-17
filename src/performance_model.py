@@ -527,7 +527,10 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     if not model.calibrated:
         notes.append(f"Model profiled automatically ({model.params_m:.1f}M params, "
                      f"{model.gflops_fwd:.2f} GFLOPs measured); activation memory "
-                     f"estimated, not calibrated — treat VRAM/OOM as a rough estimate.")
+                     f"estimated, not calibrated — treat VRAM/OOM as a rough estimate. "
+                     f"Compute throughput (MFU {MFU}) is calibrated on vit_base and not "
+                     f"on this architecture (known deviations: resnet50 -24%, vit_large "
+                     f"+18%), so time and energy are rough too.")
     if not gpu.power_calibrated:
         notes.append(f"Energy uses a TDP-fallback power for {gpu.name} (≈"
                      f"{gpu.train_power_w:.0f} W/GPU, not measured here) — treat it as "
@@ -618,14 +621,19 @@ class QualityPrediction:
     notes: list[str] = field(default_factory=list)
 
 
-def expected_best_f1(model_name: str, dataset_size: int = N_FULL_TRAIN) -> tuple[float, str, float]:
+def expected_best_f1(model_name: str, dataset_size: int = N_FULL_TRAIN,
+                     calibrated: bool = True) -> tuple[float, str, float]:
     """Empirical-prior best Val F1 for a model on N training images.
 
     Returns ``(f1, confidence, band)``. Uses the log-linear data-scaling law
     anchored to the documented full-dataset plateau of the model family.
-    """
+    ``calibrated=False`` (a model profiled automatically, outside MODEL_TABLE) forces
+    confidence "low": the family prior (falling back to vit_base) was never run for
+    that architecture."""
     fam = _quality_family(model_name)
     f_full, _, _, k, conf = _QUALITY_ANCHORS[fam]
+    if not calibrated:
+        conf = "low"
     n = max(1, int(dataset_size))
     drop = k * math.log10(max(1.0, N_FULL_TRAIN / n))
     f1 = max(0.0, min(f_full, f_full - drop))
@@ -654,17 +662,21 @@ def _learning_curve(f_inf: float, best_epoch: int, epochs: list[int]
 
 
 def predict_quality(model_name: str, dataset_size: int = N_FULL_TRAIN,
-                    epochs: int = 30) -> QualityPrediction | None:
+                    epochs: int = 30, calibrated: bool = True) -> QualityPrediction | None:
     """Empirical-prior quality estimate (best Val F1 + a learning curve).
 
     The honest planning counterpart to ``predict``: anchored to documented runs,
     extended to any dataset size by the data-scaling law. Not a measurement — for
     that, run the convergence study. Returns ``None`` for an unknown family only
     in the sense that it always falls back to the ViT-Base prior (so never None
-    here, but kept Optional for symmetry with ``predict``)."""
+    here, but kept Optional for symmetry with ``predict``).
+
+    Pass ``calibrated=model_spec.calibrated``: for a model profiled automatically the
+    prior is that of its nearest family (vit_base when none matches) and the
+    confidence is forced to "low" with a note saying so."""
     fam = _quality_family(model_name)
     f_full, best_ep, stop_ep, _k, _conf = _QUALITY_ANCHORS[fam]
-    f1, conf, band = expected_best_f1(model_name, dataset_size)
+    f1, conf, band = expected_best_f1(model_name, dataset_size, calibrated)
 
     n_show = max(best_ep + 2, min(int(epochs), 40))
     curve_epochs = list(range(1, n_show + 1))
@@ -678,6 +690,9 @@ def predict_quality(model_name: str, dataset_size: int = N_FULL_TRAIN,
         f"Dataset = {int(dataset_size):,} train images "
         f"({frac*100:.0f}% of the full {N_FULL_TRAIN:,}).",
     ]
+    if not calibrated:
+        notes.append(f"Model outside the curated table: the {fam} prior is the nearest "
+                     f"family, not a run of this architecture — confidence forced to low.")
     if frac < 0.9:
         notes.append(f"Smaller dataset lowers the expected F1 (full-set plateau ≈ {f_full:.2f}).")
     notes.append("This is a planning prior, not a measurement — run the convergence "
