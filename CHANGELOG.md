@@ -5,6 +5,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- `docs/research/estado_del_arte_prediccion.md`: revisión del trabajo relacionado sobre predicción del
+  rendimiento del entrenamiento (Paleo, Habitat, Daydream, DS-Analyzer, NeuSight…) y posibles contribuciones.
 - Web: curva de AUC de validación en *Run results → Curves* (con la mejor época marcada) y
   *Best Val AUC* en las métricas y en el veredicto, solo para runs cuyo `epoch_metrics_*.csv`
   trae `val_auc`; los runs anteriores se ven igual que antes. En *Compare*, `val_auc` se puede
