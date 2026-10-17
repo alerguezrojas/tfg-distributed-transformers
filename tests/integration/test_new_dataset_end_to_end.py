@@ -63,7 +63,8 @@ def _train(tmp_path, monkeypatch, spec, epochs=2, inspect=()):
     train_dl = DataLoader(spec.dataset(cfg["data"], "train"), batch_size=8)
     val_dl = DataLoader(spec.dataset(cfg["data"], "val"), batch_size=8)
     trainer.fit(train_dl, val_dl, epochs=epochs)
-    return trainer, tmp_path / "logs" / "test" / "single" / "resnet18"
+    # Datasets other than BigEarthNet get their own level: logs/{env}/{dataset}/{mode}/{model}
+    return trainer, tmp_path / "logs" / "test" / spec.name / "single" / "resnet18"
 
 
 def test_model_summary_works_with_single_channel_inputs(tmp_path, monkeypatch, registered):

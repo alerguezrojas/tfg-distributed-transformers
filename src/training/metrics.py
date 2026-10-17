@@ -40,6 +40,43 @@ def accuracy(preds: torch.Tensor, labels: torch.Tensor) -> float:
     return correct.mean().item()
 
 
+def roc_auc(scores: torch.Tensor, positives: torch.Tensor) -> float | None:
+    """ROC AUC of one column (Mann-Whitney U on average ranks, ties count ½).
+
+    Returns None when the column has no positives or no negatives (undefined).
+    """
+    pos = positives.bool()
+    n_pos, n_neg = int(pos.sum()), int((~pos).sum())
+    if n_pos == 0 or n_neg == 0:
+        return None
+    ranks = _average_ranks(scores.double())
+    return ((ranks[pos].sum() - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)).item()
+
+
+def roc_auc_macro(probs: torch.Tensor, hard: torch.Tensor) -> float:
+    """Mean ROC AUC over the class columns where it is defined — per label for
+    multi-label, one-vs-rest for multi-class, the positive column for binary (the
+    MedMNIST evaluator's definition). NaN if no column is defined."""
+    aucs = [a for c in range(hard.shape[1])
+            if (a := roc_auc(probs[:, c], hard[:, c])) is not None]
+    return sum(aucs) / len(aucs) if aucs else float("nan")
+
+
+def _average_ranks(x: torch.Tensor) -> torch.Tensor:
+    """1-based ranks of ``x``; tied values share the mean of their ranks."""
+    order = torch.argsort(x)
+    sorted_x = x[order]
+    ranks = torch.empty_like(x)
+    i, n = 0, len(x)
+    while i < n:
+        j = i
+        while j + 1 < n and sorted_x[j + 1] == sorted_x[i]:
+            j += 1
+        ranks[order[i:j + 1]] = (i + j) / 2 + 1
+        i = j + 1
+    return ranks
+
+
 def eta_str(epoch_times: list[float], epochs_done: int, epochs_total: int) -> str:
     """Human-readable ETA string given a list of past epoch durations."""
     if not epoch_times:

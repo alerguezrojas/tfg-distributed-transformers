@@ -5,6 +5,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- MedMNIST: cuatro datasets médicos (`medmnist_breast`, `medmnist_derma`, `medmnist_path`,
+  `medmnist_chest`) que cubren las tareas binaria, multiclase y multi-etiqueta, con 1 o 3
+  canales. Incluye script de descarga con verificación MD5 y configs locales.
+- AUC macro (ROC) en `eval.py`, definido como en el evaluador de MedMNIST.
+- Los runs de datasets distintos de BigEarthNet se guardan en `logs/{env}/<dataset>/...` (la
+  ruta de BigEarthNet no cambia) y la línea `Configuración:` del log incluye `dataset=`.
 - Soporte multi-dataset: ficha de dataset (`DatasetSpec`) y registro por nombre; el config
   elige el dataset con `data.name` (por defecto `bigearthnet`, sin cambios para los configs
   existentes). Guía para añadir datasets en `docs/datasets/README.md`.

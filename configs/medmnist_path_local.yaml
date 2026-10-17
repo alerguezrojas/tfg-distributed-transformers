@@ -1,0 +1,34 @@
+# PathMNIST, histología de cáncer colorrectal (multiclase, 9 clases) — RTX 3060 Ti local.
+# Baseline sencillo: vit_tiny preentrenado, imágenes de 28 px reescaladas a 224, sin
+# augmentation (protocolo de MedMNIST). Descarga previa:
+#   uv run python scripts/download_medmnist.py --root /media/alejandro/SSD/datasets/medmnist
+
+data:
+  name: medmnist_path
+  root: "/media/alejandro/SSD/datasets/medmnist"
+  size: 28
+  num_workers: 4
+
+model:
+  name: "vit_tiny_patch16_224"
+  pretrained: true
+  dropout: 0.1
+
+training:
+  epochs: 5
+  batch_size: 128
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 5
+  log_batch_every: 10
+  seed: 42
+
+checkpoint:
+  dir: "checkpoints/local"
+
+output:
+  env: "local"

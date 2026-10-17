@@ -5,6 +5,7 @@ Regression: the old code thresholded the soft mixed labels at 0.5, fabricating
 wrong "true" labels and systematically biasing the reported train F1 (which the
 project's train-val overfitting narrative depends on).
 """
+import pytest
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
@@ -143,3 +144,27 @@ def test_selection_default_is_f1():
     t = _ScriptedTrainer([dict(d) for d in _SEQ])
     EpochController(t, patience=None).fit(None, None, epochs=3)
     assert t.saved == [1]                 # back-compat: default selects by 0.5-F1
+
+
+class TestRocAuc:
+    def test_reference_example(self):
+        # The classic scikit-learn docs example: roc_auc_score → 0.75
+        from src.training.metrics import roc_auc
+        assert roc_auc(torch.tensor([0.1, 0.4, 0.35, 0.8]), torch.tensor([0, 0, 1, 1])) == pytest.approx(0.75)
+
+    def test_perfect_reversed_and_ties(self):
+        from src.training.metrics import roc_auc
+        y = torch.tensor([0, 0, 1, 1])
+        assert roc_auc(torch.tensor([0.1, 0.2, 0.8, 0.9]), y) == pytest.approx(1.0)
+        assert roc_auc(torch.tensor([0.9, 0.8, 0.2, 0.1]), y) == pytest.approx(0.0)
+        assert roc_auc(torch.full((4,), 0.5), y) == pytest.approx(0.5)
+
+    def test_undefined_without_both_classes(self):
+        from src.training.metrics import roc_auc
+        assert roc_auc(torch.rand(3), torch.ones(3)) is None
+
+    def test_macro_skips_undefined_columns(self):
+        from src.training.metrics import roc_auc_macro
+        probs = torch.tensor([[0.9, 0.3], [0.2, 0.6], [0.8, 0.1]])
+        hard = torch.tensor([[1, 0], [0, 0], [1, 0]])          # column 1 has no positives
+        assert roc_auc_macro(probs, hard) == pytest.approx(1.0)

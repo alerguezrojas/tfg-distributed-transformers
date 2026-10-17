@@ -66,8 +66,13 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 - [ ] El benchmark aún toma de BigEarthNet los tamaños de split por defecto y el perfil de I/O
       (ficheros `*.tif`); se generaliza junto con el modelo de I/O en la fase 5.
 
-### Fase 3 — Nuevos datasets
-- [ ] Prueba rápida con MedMNIST (p. ej. ChestMNIST, multi-etiqueta).
+### Fase 3 — Nuevos datasets (en curso)
+- [x] MedMNIST: BreastMNIST (binaria, cáncer de mama), DermaMNIST (multiclase, melanoma),
+      PathMNIST (multiclase, cáncer colorrectal) y ChestMNIST (multi-etiqueta); descarga con MD5,
+      configs y comparación con las referencias oficiales ([ficha](datasets/medmnist.md)).
+- [x] AUC macro en la evaluación de test (métrica principal en imagen médica).
+- [ ] Elegir el umbral óptimo en **validación** y aplicarlo a test: hoy `eval.py` lo busca sobre
+      el propio test, lo que infla algo el "F1 con umbral óptimo" (también el 0,631 del TFG).
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
 - [ ] Una ficha por dataset en `docs/datasets/`.
