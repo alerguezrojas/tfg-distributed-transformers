@@ -35,18 +35,26 @@ def _test_callout(ctx: DashboardContext) -> None:
             if not agg and pcdf.empty:
                 continue
             st.markdown(f"**{p.name}**")
-            cols = st.columns(4)
+            cols = st.columns(5)
             if "f1_t05" in agg:
                 cols[0].metric("Macro F1 (t=0.50)", f"{float(agg['f1_t05']):.4f}")
             if "f1_opt" in agg:
                 _t = agg.get("threshold")
-                cols[1].metric("Macro F1 (optimal)", f"{float(agg['f1_opt']):.4f}",
+                # Older eval CSVs carry no source: their threshold was tuned on test.
+                _tuned_on_val = agg.get("threshold_source") in ("checkpoint", "val")
+                cols[1].metric("Macro F1 (val-tuned t)" if _tuned_on_val
+                               else "Macro F1 (test-tuned t)",
+                               f"{float(agg['f1_opt']):.4f}",
                                delta=f"t={float(_t):.2f}" if _t is not None else None,
-                               delta_color="off")
+                               delta_color="off",
+                               help=None if _tuned_on_val else
+                               "Threshold tuned on the test set itself: optimistic.")
             if "accuracy" in agg:
                 cols[2].metric("Accuracy", f"{float(agg['accuracy']):.4f}")
+            if "auc" in agg:
+                cols[3].metric("AUC (macro)", f"{float(agg['auc']):.4f}")
             if "loss" in agg:
-                cols[3].metric("BCE loss", f"{float(agg['loss']):.4f}")
+                cols[4].metric("Loss", f"{float(agg['loss']):.4f}")
             if not pcdf.empty and "class_name" in pcdf.columns:
                 zeros = pcdf[pcdf["f1"] == 0]["class_name"].tolist()
                 if zeros:

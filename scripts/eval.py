@@ -54,6 +54,13 @@ def parse_args():
                         help="Override metadata.parquet path (e.g. a demo subset)")
     parser.add_argument("--max-batches", type=int, default=None,
                         help="Stop after N batches (quick sanity check)")
+    parser.add_argument("--threshold-from", choices=["checkpoint", "val", "test"],
+                        default="checkpoint",
+                        help="Where the decision threshold is tuned: 'checkpoint' (the one "
+                             "chosen on validation during training; falls back to 'val' "
+                             "for older checkpoints), 'val' (tune now on the validation "
+                             "split) or 'test' (tuned on the evaluated split itself — "
+                             "optimistic, kept only to reproduce older numbers)")
     return parser.parse_args()
 
 
@@ -93,6 +100,26 @@ def threshold_search(probs, labels, task: Task | None = None):
     if found is None:
         return 0.5, m.f1_score(task.predict(probs), hard)
     return found
+
+
+def choose_threshold(source: str, ckpt_metrics: dict, task: Task, probs, labels,
+                     val_outputs=None) -> tuple[float, str]:
+    """Decision threshold and where it came from.
+
+    'checkpoint' → the validation-tuned threshold stored at training time (older
+    checkpoints lack it and fall back to 'val'); 'val' → tuned now on the validation
+    split (``val_outputs()`` returns its probabilities and targets); 'test' → tuned on
+    the evaluated split itself, which overstates the result.
+    """
+    if source == "checkpoint":
+        stored = ckpt_metrics.get("optimal_threshold")
+        if stored is not None:
+            return float(stored), "checkpoint"
+        source = "val"
+    if source == "val":
+        val_probs, val_labels = val_outputs()
+        return threshold_search(val_probs, val_labels, task)[0], "val"
+    return threshold_search(probs, labels, task)[0], "test"
 
 
 def per_class_metrics(probs, labels, threshold, class_names=(), task: Task | None = None):
@@ -159,11 +186,15 @@ def main():
     if args.metadata:
         data_cfg["metadata"] = args.metadata
     metadata_path = data_cfg.get("metadata", data_cfg.get("root"))
-    ds = spec.dataset(data_cfg, args.split)
-    loader = DataLoader(
-        ds, batch_size=batch_size, shuffle=False,
-        num_workers=cfg["data"].get("num_workers", 4), pin_memory=True,
-    )
+
+    def _loader(split: str):
+        split_ds = spec.dataset(data_cfg, split)
+        return split_ds, DataLoader(
+            split_ds, batch_size=batch_size, shuffle=False,
+            num_workers=cfg["data"].get("num_workers", 4), pin_memory=True,
+        )
+
+    ds, loader = _loader(args.split)
     print(f"Patches    : {len(ds)}")
     if len(ds) == 0:
         print(f"\nERROR: the '{args.split}' split is empty in {metadata_path}. "
@@ -180,7 +211,16 @@ def main():
     prec_05, rec_05 = agg["precision"], agg["recall"]
     auc = m.roc_auc_macro(probs, hard)       # threshold-free; MedMNIST's main metric
 
-    best_t, best_f1 = threshold_search(probs, labels, task)
+    best_t, best_f1, source = 0.5, f1_05, None
+    if task.searches_threshold:
+        def _val_outputs():
+            print("  (ajustando el umbral sobre el split de validación...)")
+            val_probs, val_labels, _ = evaluate(model, _loader("val")[1], device,
+                                                max_batches=args.max_batches, task=task)
+            return val_probs, val_labels
+        best_t, source = choose_threshold(args.threshold_from, ckpt.get("metrics", {}),
+                                          task, probs, labels, _val_outputs)
+        best_f1 = m.f1_score(task.predict(probs, best_t), hard)
 
     print("\n── Aggregate metrics ─────────────────────────────────────────────")
     print(f"  Loss              : {avg_loss:.6f}")
@@ -190,7 +230,8 @@ def main():
     print(f"  Recall   (t=0.50) : {rec_05:.4f}")
     print(f"  AUC (macro)       : {auc:.4f}")
     if task.searches_threshold:
-        print(f"  Optimal threshold : {best_t:.2f}")
+        note = "  (aviso: ajustado sobre el propio test, optimista)" if source == "test" else ""
+        print(f"  Threshold         : {best_t:.2f} (de {source}){note}")
         print(f"  F1  (t={best_t:.2f})     : {best_f1:.4f}")
     else:
         print(f"  Optimal threshold : n/a ({task.name})")
@@ -213,7 +254,7 @@ def main():
             writer.writerows(pc)
         # Append aggregate row
         with open(out_path, "a") as f:
-            thresh = (f"f1_opt={best_f1:.4f},threshold={best_t:.2f},"
+            thresh = (f"f1_opt={best_f1:.4f},threshold={best_t:.2f},threshold_source={source},"
                       if task.searches_threshold else "")
             f.write(f"\n# aggregate,loss={avg_loss:.6f},f1_t05={f1_05:.4f},{thresh}"
                     f"accuracy={acc_05:.4f},precision={prec_05:.4f},recall={rec_05:.4f},"

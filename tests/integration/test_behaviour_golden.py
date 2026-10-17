@@ -241,6 +241,7 @@ def test_threshold_search_ddp_matches_golden(tmp_path, gloo):
 
 
 # ── Recorded golden values (pre-refactor, develop @ 4d74549) ─────────────────
+# 'auc' was added later (validation AUC, 17/10/2026); every other value is unchanged.
 
 GOLDEN_PLAIN_TRAIN = {'loss': 0.752266, 'f1': 0.365506, 'accuracy': 0.491776}
 GOLDEN_PLAIN_VAL = {
@@ -249,6 +250,7 @@ GOLDEN_PLAIN_VAL = {
     'accuracy': 0.825658,
     'precision': 0.680566,
     'recall': 0.794964,
+    'auc': 0.877106,
 }
 GOLDEN_PLAIN_THR = 0.5
 GOLDEN_PLAIN_F1_THR = 0.722537
@@ -260,6 +262,7 @@ GOLDEN_REG_VAL = {
     'accuracy': 0.827303,
     'precision': 0.681742,
     'recall': 0.790977,
+    'auc': 0.879425,
 }
 GOLDEN_REG_THR = 0.5
 GOLDEN_LAST_BATCH = {
@@ -278,6 +281,7 @@ GOLDEN_HETERO_VAL = {
     'accuracy': 0.817434,
     'precision': 0.659051,
     'recall': 0.794441,
+    'auc': 0.871407,
 }
 GOLDEN_CLASS_ORDER = [
     'Urban fabric',
@@ -331,6 +335,7 @@ GOLDEN_LOW_VAL = {
     'accuracy': 0.679276,
     'precision': 0.236842,
     'recall': 0.027388,
+    'auc': 0.491361,
 }
 GOLDEN_LOW_THR = 0.1
 GOLDEN_LOW_F1_THR = 0.467966

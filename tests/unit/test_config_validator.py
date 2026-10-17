@@ -150,3 +150,19 @@ class TestDistributedConfig:
         cfg["distributed"] = {"ranks": [{"device": "cuda", "compute_weight": -1}]}
         with pytest.raises(ConfigError, match="compute_weight"):
             validate_config(cfg)
+
+
+@pytest.mark.parametrize("select_by", ["f1", "f1_optimal", "auc"])
+def test_select_by_accepted_values(select_by):
+    from src.training.config_validator import validate_config
+    cfg = _base_cfg()
+    cfg["training"]["select_by"] = select_by
+    validate_config(cfg)
+
+
+def test_select_by_unknown_rejected():
+    from src.training.config_validator import validate_config, ConfigError
+    cfg = _base_cfg()
+    cfg["training"]["select_by"] = "loss"
+    with pytest.raises(ConfigError, match="select_by"):
+        validate_config(cfg)
