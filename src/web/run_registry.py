@@ -185,6 +185,14 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
     return sorted(runs.values(), key=lambda r: r.sort_key, reverse=True)
 
 
+def filter_runs(runs: list[RunInfo], env: str | None = None,
+                dataset: str | None = None) -> list[RunInfo]:
+    """Runs matching an environment and/or a dataset (None = no filter)."""
+    return [r for r in runs
+            if (env is None or r.env == env)
+            and (dataset is None or r.dataset == dataset)]
+
+
 def discover_benchmark_csvs(root: Path = Path(".")) -> list[Path]:
     """Returns all benchmark CSVs sorted by modification time."""
     logs_root = root / "logs"

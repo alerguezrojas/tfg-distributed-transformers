@@ -216,6 +216,21 @@ def _safe_val_at_best(df: pd.DataFrame, metric_col: str, target_col: str):
     return None if pd.isna(v) else v
 
 
+def _best_metric(df: pd.DataFrame, col: str) -> tuple[float, int] | None:
+    """(best value, its epoch) of a "higher is better" metric column.
+
+    None when the column is missing or empty — e.g. ``val_auc`` in epoch CSVs
+    written before the AUC was logged, so callers can keep the old layout.
+    """
+    if df.empty or col not in df.columns or "epoch" not in df.columns:
+        return None
+    valid = df[[col, "epoch"]].dropna()
+    if valid.empty:
+        return None
+    row = valid.loc[valid[col].idxmax()]
+    return float(row[col]), int(row["epoch"])
+
+
 def _throughput_col(df: pd.DataFrame) -> str | None:
     for col in ("imgs_per_s_train", "imgs_per_s"):
         if col in df.columns and df[col].notna().any():

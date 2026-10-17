@@ -5,6 +5,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Web: curva de AUC de validación en *Run results → Curves* (con la mejor época marcada) y
+  *Best Val AUC* en las métricas y en el veredicto, solo para runs cuyo `epoch_metrics_*.csv`
+  trae `val_auc`; los runs anteriores se ven igual que antes. En *Compare*, `val_auc` se puede
+  superponer y la tabla resumen muestra *Best Val AUC* si algún run seleccionado lo tiene.
+- Web: filtro por dataset en el selector de runs de la barra lateral (solo aparece cuando hay
+  runs de más de un dataset).
+- Test de humo de la web con `streamlit.testing` (AppTest): renderiza las cinco secciones con un
+  run de BigEarthNet y otro de MedMNIST como run activo.
 - `training.select_by: auc`: elige el checkpoint y el early stopping por el AUC de validación
   (sin umbral), útil cuando las clases son tan raras que el F1 a 0,5 se queda en cero. El AUC de
   validación se calcula en cada época y se escribe como `val_auc` en `epoch_metrics_*.csv`.
