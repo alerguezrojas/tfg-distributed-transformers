@@ -18,7 +18,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ### Cambiado
 - Trainers (single, DDP, heterogéneo, model-parallel), deep tracing, `eval.py`, benchmark y
   estudio de convergencia dejan de asumir BigEarthNet. Para BigEarthNet los resultados son
-  idénticos: PENDIENTE_VERIFICACION_GPU
+  idénticos: verificado en GPU (vit_tiny, subset, semilla fija) con single, DDP, paralelismo de
+  modelo y heterogéneo GPU+CPU, comparando todos los CSV y el log contra el código anterior.
 - `model.num_classes` pasa a ser opcional: sale de la ficha del dataset; si se indica, debe
   coincidir. El validador comprueba la pérdida y `pos_weight` según la tarea.
 - `src/data/dataset.py` pasa a `src/data/bigearthnet.py`; `BigEarthModel` pasa a
