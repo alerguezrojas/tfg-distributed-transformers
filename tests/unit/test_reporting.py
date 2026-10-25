@@ -130,7 +130,8 @@ def test_load_run_ignores_partial_line_and_unknown_events(tmp_path):
         f.write(json.dumps({"v": 99, "type": "epoch_end", "time": 1.0}) + "\n")
         f.write('{"v": 1, "type": "epoch_en')                    # half-written last line
     run = load_run(path)
-    assert len(run.epoch_ends) == 3 and run.run_end is not None
+    assert len(run.epoch_ends) == 3
+    assert run.run_end is not None
 
 
 # ── Generación ─────────────────────────────────────────────────────────────────
@@ -139,7 +140,8 @@ def test_load_run_ignores_partial_line_and_unknown_events(tmp_path):
 def test_report_is_valid_self_contained_html(reports, task):
     html = reports[task]
     c = check(html)
-    assert c.errors == [] and c.stack == []
+    assert c.errors == []
+    assert c.stack == []
     assert html.startswith("<!DOCTYPE html>")
     assert {"h1", "h2", "table", "img", "nav", "details"} <= c.tags
     for sid in SECTION_IDS:
@@ -147,12 +149,15 @@ def test_report_is_valid_self_contained_html(reports, task):
     # the only external references are plain links (the DOI), never resources
     for tag, attr, value in c.refs:
         if value.startswith(("http://", "https://")):
-            assert tag == "a" and attr == "href", (tag, attr, value)
+            assert tag == "a", (tag, attr, value)
+            assert attr == "href", (tag, attr, value)
         else:
-            assert tag == "a" and value.startswith("#") or value.startswith("data:image/png")
-    assert "<link" not in html and "@import" not in html and "url(http" not in html
+            assert value.startswith(("#", "data:image/png")), (tag, attr, value)
+    assert "<link" not in html
+    assert "@import" not in html
+    assert "url(http" not in html
     assert c.big_scripts == 1                      # plotly.js embedded exactly once
-    assert html.count("data:image/png;base64,") >= 8      # thumbnails and Grad-CAM
+    assert html.count("data:image/png;base64,") >= 8  # thumbnails and Grad-CAM
 
 
 @pytest.mark.parametrize("task", ["multiclass", "multilabel", "binary"])
@@ -169,7 +174,8 @@ def test_report_has_every_section_and_block(reports, task):
     for i in ("eval-metrics", "eval-curves", "eval-perclass", "eval-confusion",
               "eval-calibration", "eval-operating", "eval-errors", "env", "config"):
         assert i in ids
-    assert "sensitivity &ge; 0.90" in html and "sensitivity &ge; 0.95" in html
+    assert "sensitivity &ge; 0.90" in html
+    assert "sensitivity &ge; 0.95" in html
     assert "10.1136/bmj-2023-078378" in html
 
 
@@ -178,7 +184,9 @@ def test_report_is_deterministic(runs):
     a = build_report(run, n_boot=30, seed=7, now=NOW)
     b = build_report(run, n_boot=30, seed=7, now=NOW)
     c = build_report(run, n_boot=30, seed=8, now=NOW)
-    assert a == b and a != c and "random seed = 7" in a
+    assert a == b
+    assert a != c
+    assert "random seed = 7" in a
 
 
 def test_epoch_option(runs):
@@ -209,10 +217,12 @@ def test_without_inspection_data_says_which_flag(tmp_path):
     folder = make_inspector_run(tmp_path, with_inspect=False)
     html = build_report(load_run(folder / f"events_{TS}.jsonl"), now=NOW)
     c = check(html)
-    assert c.errors == [] and c.stack == []
-    assert html.count("--monitor") >= 2             # evaluation and dynamics both name the flag
+    assert c.errors == []
+    assert c.stack == []
+    assert html.count("--monitor") >= 2  # evaluation and dynamics both name the flag
     assert "Metrics with confidence intervals" not in html
-    assert "2. Training" in html and "5. TRIPOD+AI" in html
+    assert "2. Training" in html
+    assert "5. TRIPOD+AI" in html
 
 
 def test_without_system_events(tmp_path):
@@ -223,7 +233,8 @@ def test_without_system_events(tmp_path):
     path.write_text("\n".join(keep) + "\n", encoding="utf-8")
     html = build_report(load_run(path), now=NOW)
     assert "monitor.system_interval_s" in html
-    assert "Approx. GPU energy" in html and "n/a (no system events" in html
+    assert "Approx. GPU energy" in html
+    assert "n/a (no system events" in html
 
 
 def test_alerts_are_listed(tmp_path):
@@ -235,8 +246,10 @@ def test_alerts_are_listed(tmp_path):
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(alert) + "\n")
     html = build_report(load_run(path), now=NOW)
-    assert "io_bound" in html and "level-warning" in html
-    assert "&lt;b&gt;high&lt;/b&gt;" in html and "<b>high</b>" not in html    # escaped
+    assert "io_bound" in html
+    assert "level-warning" in html
+    assert "&lt;b&gt;high&lt;/b&gt;" in html
+    assert "<b>high</b>" not in html  # escaped
     assert check(html).errors == []
 
 
@@ -252,7 +265,8 @@ def test_checklist_has_the_52_published_rows_with_unique_ids():
     ids = [row[0] for row in tripod.CHECKLIST]
     assert len(ids) == len(set(ids)) == 52
     assert {"3a", "12g", "18f", "23a", "27c"} <= set(ids)
-    assert ids[0] == "1" and ids[-1] == "27c"
+    assert ids[0] == "1"
+    assert ids[-1] == "27c"
 
 
 def test_tripod_is_honest_without_data():
@@ -294,11 +308,13 @@ def test_cli_report_writes_next_to_events_and_honours_output(runs, tmp_path):
     res = runner.invoke(app, ["report", str(folder), "--n-boot", "20", "--errors", "2"])
     assert res.exit_code == 0, res.output
     default = folder / f"report_{TS}.html"
-    assert default.is_file() and "Run report" in default.read_text(encoding="utf-8")
+    assert default.is_file()
+    assert "Run report" in default.read_text(encoding="utf-8")
     custom = tmp_path / "sub" / "mine.html"
     res = runner.invoke(app, ["report", str(folder / f"events_{TS}.jsonl"), "-o", str(custom),
                               "--n-boot", "20", "--epoch", "2"])
-    assert res.exit_code == 0 and custom.is_file()
+    assert res.exit_code == 0
+    assert custom.is_file()
     assert "Epoch 2 &middot;" in custom.read_text(encoding="utf-8")
 
 
@@ -309,7 +325,8 @@ def test_cli_report_errors_exit_1(runs, tmp_path):
     _, folder = runs["binary"]
     res = runner.invoke(app, ["report", str(folder), "--epoch", "42", "-o",
                               str(tmp_path / "x.html")])
-    assert res.exit_code == 1 and not (tmp_path / "x.html").exists()
+    assert res.exit_code == 1
+    assert not (tmp_path / "x.html").exists()
 
 
 def test_write_report_default_path(runs):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
+import math
 from pathlib import Path
 from typing import Any
 
@@ -34,9 +35,20 @@ METRIC_NAMES = {
     "specificity": "Specificity (macro, at threshold)", "accuracy": "Accuracy",
     "ece": "ECE (equal-width bins)", "brier": "Brier score",
 }
+_DIV_END = "</div>"
 SECTIONS = [("sec-summary", "Summary"), ("sec-training", "Training"),
             ("sec-evaluation", "Evaluation"), ("sec-dynamics", "Training dynamics"),
             ("sec-tripod", "TRIPOD+AI checklist")]
+
+
+def _scroll(inner: Any) -> Raw:
+    """Horizontally scrollable wrapper (wide tables)."""
+    return Raw(f"<div class=\"scroll\">{inner}{_DIV_END}")
+
+
+def _grid2(*parts: Any) -> Raw:
+    """Two-column grid (one column on narrow screens)."""
+    return Raw("<div class=\"grid2\">" + "".join(esc(p) for p in parts) + _DIV_END)
 
 
 class _Page:
@@ -109,24 +121,47 @@ def _config_text(cfg: dict[str, Any]) -> str:
         return json.dumps(cfg, indent=2, ensure_ascii=False, default=str)
 
 
+def _energy_text(gpu_df) -> str:
+    wh, n_gpu = _energy(gpu_df)
+    if wh is None:
+        return ("n/a (no system events with GPU power: keep --trace other than off and "
+                "monitor.system_interval_s > 0, on a machine with NVML)")
+    return (f"about {wh:.2f} Wh over {n_gpu} GPU(s): trapezoidal integral of the sampled "
+            "GPU power, GPU only; not a metered value")
+
+
+def _duration_text(run: RunData) -> str:
+    total = (run.run_end or {}).get("total_time_s")
+    if total is None and run.first_time is not None and run.last_time is not None:
+        return duration(run.last_time - run.first_time) + " (first to last event; no run_end)"
+    return duration(total)
+
+
+def _gpu_rows(run: RunData, gpu_df) -> list[list[Any]]:
+    """(index, name, uuid) per GPU; the uuid comes from the system events, not from the frame."""
+    if gpu_df.empty:
+        return []
+    seen: dict[int, str] = {}
+    for ev in run.systems:
+        for g in ev.get("gpus") or []:
+            seen.setdefault(int(g.get("index", 0)), str(g.get("uuid") or "n/a"))
+    return [[int(gpu), df["name"].iloc[-1], seen.get(int(gpu), "n/a")]
+            for gpu, df in gpu_df.groupby("gpu")]
+
+
+def _config_part(cfg: dict[str, Any]) -> list[Any]:
+    if cfg:
+        return [Raw("<details id=\"config\"><summary>Full configuration</summary><pre>"
+                    + esc(_config_text(cfg)) + "</pre></details>")]
+    return [Raw("<span id=\"config\"></span>"),
+            unavailable("The run_start event has no configuration.", "")]
+
+
 def summary_section(run: RunData, rows: list[dict[str, Any]], gpu_df) -> Raw:
     rs = run.run_start or {}
     env = rs.get("env") or {}
     classes = rs.get("classes") or []
     shown = ", ".join(map(str, classes[:12])) + (", ..." if len(classes) > 12 else "")
-    wh, n_gpu = _energy(gpu_df)
-    if wh is None:
-        energy = "n/a (no system events with GPU power: keep --trace other than off and " \
-                 "monitor.system_interval_s > 0, on a machine with NVML)"
-    else:
-        energy = (f"about {wh:.2f} Wh over {n_gpu} GPU(s): trapezoidal integral of the sampled "
-                  "GPU power, GPU only; not a metered value")
-    total = (run.run_end or {}).get("total_time_s")
-    if total is None and run.first_time is not None and run.last_time is not None:
-        total = run.last_time - run.first_time
-        dur = duration(total) + " (first to last event; no run_end)"
-    else:
-        dur = duration(total)
     run_pairs = [
         ("Run", run.stamp),
         ("Dataset", rs.get("dataset", "n/a")),
@@ -137,19 +172,11 @@ def summary_section(run: RunData, rows: list[dict[str, Any]], gpu_df) -> Raw:
         ("Epochs", f"{len(run.epoch_ends)} run of {rs.get('epochs', 'n/a')} planned"),
         ("Final state", _status(run)),
         ("Best (selection metric)", _best(run, rows)),
-        ("Duration", dur),
-        ("Approx. GPU energy", energy),
+        ("Duration", _duration_text(run)),
+        ("Approx. GPU energy", _energy_text(gpu_df)),
     ]
     devices = env.get("devices") or []
-    gpu_rows = []
-    if not gpu_df.empty:
-        # uuid comes from the system events (not in the frame): take the first one that has it
-        seen: dict[int, str] = {}
-        for ev in run.systems:
-            for g in ev.get("gpus") or []:
-                seen.setdefault(int(g.get("index", 0)), str(g.get("uuid") or "n/a"))
-        for gpu, df in gpu_df.groupby("gpu"):
-            gpu_rows.append([int(gpu), df["name"].iloc[-1], seen.get(int(gpu), "n/a")])
+    gpu_rows = _gpu_rows(run, gpu_df)
     env_pairs = [
         ("Host", env.get("host", "n/a")),
         ("Python / torch / timm",
@@ -160,17 +187,10 @@ def summary_section(run: RunData, rows: list[dict[str, Any]], gpu_df) -> Raw:
     parts: list[Any] = [kv_table(run_pairs), Raw("<h3 id=\"env\">Environment</h3>"),
                         kv_table(env_pairs)]
     if gpu_rows:
-        parts.append(Raw("<div class=\"scroll\">" + table(["GPU", "Name", "UUID"], gpu_rows)
-                         + "</div>"))
+        parts.append(_scroll(table(["GPU", "Name", "UUID"], gpu_rows)))
     else:
         parts.append(note("GPU UUIDs come from the system samples; this run has none."))
-    cfg = run.config
-    if cfg:
-        parts.append(Raw("<details id=\"config\"><summary>Full configuration</summary><pre>"
-                         + esc(_config_text(cfg)) + "</pre></details>"))
-    else:
-        parts.append(Raw("<span id=\"config\"></span>"))
-        parts.append(unavailable("The run_start event has no configuration.", ""))
+    parts += _config_part(run.config)
     return section("sec-summary", "1. Summary", *parts)
 
 
@@ -182,8 +202,8 @@ def _epoch_table(rows: list[dict[str, Any]]) -> Raw:
     cols = [c for c in cols if fg.has(rows, c[0])]
     body = [[r["epoch"], *[num(r.get(k), 4 if k != "epoch_time_s" else 1) for k, _ in cols],
              "best" if r.get("is_best") else ""] for r in rows]
-    return Raw("<div class=\"scroll\">" + table(
-        ["epoch", *[h for _, h in cols], ""], body, num_cols=range(1, len(cols) + 1)) + "</div>")
+    return _scroll(table(["epoch", *[h for _, h in cols], ""], body,
+                         num_cols=range(1, len(cols) + 1)))
 
 
 def _alerts(run: RunData) -> Raw:
@@ -195,9 +215,8 @@ def _alerts(run: RunData) -> Raw:
                          f"{esc(a.get('level', 'n/a'))}</span>"), a.get("code", ""),
                      a.get("message", ""), a.get("epoch", ""), a.get("batch", ""),
                      num(a.get("value"), 4), num(a.get("threshold"), 4)])
-    return Raw("<div class=\"scroll\">" + table(
-        ["level", "code", "message", "epoch", "batch", "value", "threshold"], rows,
-        num_cols=(3, 4, 5, 6)) + "</div>")
+    return _scroll(table(["level", "code", "message", "epoch", "batch", "value", "threshold"],
+                         rows, num_cols=(3, 4, 5, 6)))
 
 
 def training_section(run: RunData, rows: list[dict[str, Any]], gpu_df, pg: _Page) -> Raw:
@@ -205,16 +224,16 @@ def training_section(run: RunData, rows: list[dict[str, Any]], gpu_df, pg: _Page
         return section("sec-training", "2. Training", unavailable(
             "The stream has no epoch_end event yet.", "Re-run the report once an epoch ends."))
     parts: list[Any] = [Raw("<h3>Loss and metrics</h3>"),
-                        Raw("<div class=\"grid2\">"), pg.fig(fg.loss_fig(rows)),
-                        pg.fig(fg.metrics_fig(rows)), Raw("</div>"), _epoch_table(rows),
+                        _grid2(pg.fig(fg.loss_fig(rows)), pg.fig(fg.metrics_fig(rows))),
+                        _epoch_table(rows),
                         Raw("<h3>Throughput and data loading</h3>")]
     if fg.has(rows, "train_samples_per_s") or run.batches:
-        parts += [Raw("<div class=\"grid2\">"), pg.fig(fg.throughput_fig(rows, run.batches))]
+        figs = [pg.fig(fg.throughput_fig(rows, run.batches))]
         if fg.has(rows, "train_data_wait_frac"):
-            parts.append(pg.fig(fg.wait_fig(rows)))
-        parts.append(Raw("</div>"))
+            figs.append(pg.fig(fg.wait_fig(rows)))
+        parts.append(_grid2(*figs))
         if fg.has(rows, "train_data_wait_frac"):
-            worst = max(v for v in fg._col(rows, "train_data_wait_frac") if v == v)
+            worst = max(v for v in fg._col(rows, "train_data_wait_frac") if not math.isnan(v))
             parts.append(note(
                 f"Highest DataLoader wait: {100 * worst:.1f} % of the training time of an epoch. "
                 "Above 30 % the run is limited by data loading, not by the GPU. In DDP the "
@@ -226,7 +245,7 @@ def training_section(run: RunData, rows: list[dict[str, Any]], gpu_df, pg: _Page
     parts.append(Raw("<h3>GPU usage</h3>"))
     figs = fg.gpu_figs(gpu_df) if not gpu_df.empty else []
     if figs:
-        parts += [Raw("<div class=\"grid2\">"), *[pg.fig(f) for f in figs], Raw("</div>")]
+        parts.append(_grid2(*[pg.fig(f) for f in figs]))
     else:
         parts.append(unavailable("No system samples with GPU data.",
                                  "Keep --trace other than off and monitor.system_interval_s > 0; "
@@ -279,8 +298,8 @@ def _metrics_block(ev: Evaluation) -> list[Any]:
 
 def _curves_block(ev: Evaluation, pg: _Page) -> list[Any]:
     inp = ev.inputs
-    out: list[Any] = [Raw("<div class=\"grid2\">"), pg.fig(fg.roc_fig(ev.curves, inp.classes)),
-                      pg.fig(fg.pr_fig(ev.curves, inp.classes)), Raw("</div>"),
+    out: list[Any] = [_grid2(pg.fig(fg.roc_fig(ev.curves, inp.classes)),
+                             pg.fig(fg.pr_fig(ev.curves, inp.classes))),
                       note("Legend values are AUC (ROC) and average precision (PR) per class; "
                            "'micro' pools all (sample, class) pairs.")]
     return out
@@ -292,7 +311,7 @@ def _perclass_block(ev: Evaluation) -> list[Any]:
              num(r["ece"]), num(r["slope"]), num(r["intercept"])] for r in ev.per_class]
     heads = ["Class", "Positives", "Prev.", "AUC", "AP", "Sens.", "Spec.", "PPV", "NPV",
              "ECE", "Cal. slope", "Cal. intercept"]
-    return [Raw("<div class=\"scroll\">" + table(heads, rows, num_cols=range(1, 12)) + "</div>"),
+    return [_scroll(table(heads, rows, num_cols=range(1, 12))),
             note("Sensitivity, specificity, PPV and NPV at the decision threshold (argmax in "
                  "multiclass), one-vs-rest; PPV and NPV at the prevalence of this set. ECE is the "
                  "class-wise one (reliability of that class's probability). Slope and intercept "
@@ -311,7 +330,7 @@ def _confusion_block(ev: Evaluation, pg: _Page) -> list[Any]:
 
 
 def _slope_reading(slope: float, converged: bool) -> str:
-    if not converged or slope != slope:
+    if not converged or math.isnan(slope):
         return "The calibration fit does not exist (single outcome value, constant or separable)."
     if slope < 0.9:
         return ("Slope below 1: predictions are more extreme than the data support "
@@ -335,8 +354,7 @@ def _calibration_block(ev: Evaluation, pg: _Page) -> list[Any]:
         ["Calibration intercept (SE)", f"{num(st['intercept'])} ({num(st['intercept_se'])})"],
         ["Calibration-in-the-large (slope fixed at 1)", num(st["intercept_citl"])],
     ]
-    return [Raw("<div class=\"grid2\">"), pg.fig(fg.reliability_fig(cal)),
-            pg.fig(fg.confidence_hist_fig(cal)), Raw("</div>"),
+    return [_grid2(pg.fig(fg.reliability_fig(cal)), pg.fig(fg.confidence_hist_fig(cal))),
             table(["Measure", "Value"], rows, num_cols=(1,)),
             note(f"Basis: {basis}; {ev.bins} bins. Slope and intercept: logistic regression of "
                  "the outcome on the logit of the predicted probability (Cox 1958; Van Calster "
@@ -354,8 +372,7 @@ def _op_table(op: dict[str, Any], classes: list[str], with_threshold: bool) -> R
     macro = op["macro"]
     rows.append(["macro", *(["" ] if with_threshold else []), num(macro["sensitivity"]),
                  num(macro["specificity"]), num(macro["ppv"]), num(macro["npv"])])
-    return Raw("<div class=\"scroll\">" + table(
-        heads, rows, num_cols=range(1, len(heads))) + "</div>")
+    return _scroll(table(heads, rows, num_cols=range(1, len(heads))))
 
 
 def _operating_block(ev: Evaluation) -> list[Any]:
@@ -405,7 +422,7 @@ def _errors_block(ev: Evaluation, k: int) -> list[Any]:
         cards.append(f"<figure class=\"card\"><img alt=\"worst error {j + 1}\" "
                      f"src=\"{png_data_uri(_thumb(mon, int(i)))}\"><figcaption>{cap}"
                      "</figcaption></figure>")
-    out.append(Raw("<div class=\"grid\">" + "".join(cards) + "</div>"))
+    out.append(Raw("<div class=\"grid\">" + "".join(cards) + _DIV_END))
     return out
 
 
@@ -432,7 +449,7 @@ def _gradcam_block(inp: EvalInputs) -> list[Any]:
                      f"<img alt=\"input\" src=\"{png_data_uri(base)}\">"
                      f"<img alt=\"Grad-CAM overlay\" src=\"{png_data_uri(heat)}\"></div>"
                      f"<figcaption>{cap}</figcaption></figure>")
-    return [Raw("<div class=\"grid\">" + "".join(cards) + "</div>"),
+    return [Raw("<div class=\"grid\">" + "".join(cards) + _DIV_END),
             note("Input and Grad-CAM overlay of the fixed monitor panel, for the class the "
                  "model predicted. Grad-CAM shows where the model looked, not that it looked at "
                  "the right evidence; it has not been checked here with a sanity test.")]
@@ -471,57 +488,63 @@ def evaluation_section(run: RunData, epoch: int | None, n_boot: int, seed: int, 
 
 # ── 4. Dynamics ────────────────────────────────────────────────────────────────
 
+def _cartography_parts(run: RunData, epochs: list[int], pg: _Page) -> list[Any]:
+    if len(epochs) < 2:
+        return [unavailable(
+            f"Cartography needs at least two inspected epochs; this run has {len(epochs)}.",
+            "Lower monitor.every or train for more epochs.")]
+    pt, ok = dynamics_inputs(run.inspect_dir, epochs)
+    carto = an.cartography(pt, ok)
+    counts = {r: int((carto["region"] == r).sum()) for r in ("easy", "ambiguous", "hard")}
+    parts: list[Any] = [
+        pg.fig(fg.cartography_fig(carto)),
+        table(["Region", "Samples", "Share"],
+              [[r, n, f"{100 * n / max(len(carto['region']), 1):.1f} %"]
+               for r, n in counts.items()], num_cols=(1, 2)),
+        note(f"{len(carto['region'])} monitor samples over epochs {epochs[0]} to "
+             f"{epochs[-1]} ({len(epochs)} inspected). Ambiguous: variability above "
+             f"{num(carto['thresholds']['variability'], 3)}; of the rest, easy if "
+             f"confidence is at least {carto['thresholds']['confidence']:.2f}. "
+             "Consistently 'hard' samples are candidates for label noise.")]
+    mon = an.load_monitor_set(run.inspect_dir)
+    a, b = an.load_epoch(run.inspect_dir, epochs[-2]), an.load_epoch(run.inspect_dir, epochs[-1])
+    thr = b.threshold if b.threshold is not None else 0.5
+    fl = an.flips(a.probs, b.probs, mon.targets, mon.task, thr)
+    parts.append(note(f"Between epochs {epochs[-2]} and {epochs[-1]}: "
+                      f"{len(fl['to_wrong'])} samples went from right to wrong and "
+                      f"{len(fl['to_right'])} from wrong to right."))
+    return parts
+
+
+def _embedding_parts(ev: Evaluation | None, pg: _Page) -> list[Any]:
+    if ev is None or ev.inputs.epoch_data.embeddings is None:
+        return [unavailable("No embeddings were saved.",
+                            "Set monitor.embeddings: true (the default) with --monitor.")]
+    inp = ev.inputs
+    mon, data = inp.monitor, inp.epoch_data
+    xy = an.project_2d(data.embeddings, "pca")
+    thr = 0.5 if np.isnan(inp.threshold) else inp.threshold
+    if inp.task == "multilabel":
+        right = an.sample_correct(data.probs, mon.targets, inp.task, thr)
+        labels = ["exact match" if r else "not exact" for r in right]
+        what = "coloured by whether all labels are right"
+    else:
+        labels = [_names(mon.targets[i], inp.classes, inp.task) for i in range(len(xy))]
+        what = "coloured by true class"
+    return [pg.fig(fg.embedding_fig(xy, labels, f"PCA of the embeddings, epoch {inp.epoch}")),
+            note(f"Input of the last linear layer for the monitor subset, projected on its "
+                 f"first two principal components, {what}.")]
+
+
 def dynamics_section(run: RunData, ev: Evaluation | None, pg: _Page) -> Raw:
     title = "4. Training dynamics"
     if run.inspect_dir is None:
         return section("sec-dynamics", title, unavailable(
             "No inspection directory, so no per-epoch predictions or embeddings.", NEED_MONITOR))
     epochs = an.list_epochs(run.inspect_dir)
-    parts: list[Any] = [Raw("<h3 id=\"dyn-carto\">Data cartography</h3>")]
-    if len(epochs) < 2:
-        parts.append(unavailable(
-            f"Cartography needs at least two inspected epochs; this run has {len(epochs)}.",
-            "Lower monitor.every or train for more epochs."))
-    else:
-        pt, ok = dynamics_inputs(run.inspect_dir, epochs)
-        carto = an.cartography(pt, ok)
-        counts = {r: int((carto["region"] == r).sum()) for r in ("easy", "ambiguous", "hard")}
-        parts += [pg.fig(fg.cartography_fig(carto)),
-                  table(["Region", "Samples", "Share"],
-                        [[r, n, f"{100 * n / max(len(carto['region']), 1):.1f} %"]
-                         for r, n in counts.items()], num_cols=(1, 2)),
-                  note(f"{len(carto['region'])} monitor samples over epochs {epochs[0]} to "
-                       f"{epochs[-1]} ({len(epochs)} inspected). Ambiguous: variability above "
-                       f"{num(carto['thresholds']['variability'], 3)}; of the rest, easy if "
-                       f"confidence is at least {carto['thresholds']['confidence']:.2f}. "
-                       "Consistently 'hard' samples are candidates for label noise.")]
-        mon = an.load_monitor_set(run.inspect_dir)
-        a, b = an.load_epoch(run.inspect_dir, epochs[-2]), an.load_epoch(run.inspect_dir,
-                                                                           epochs[-1])
-        thr = b.threshold if b.threshold is not None else 0.5
-        fl = an.flips(a.probs, b.probs, mon.targets, mon.task, thr)
-        parts.append(note(f"Between epochs {epochs[-2]} and {epochs[-1]}: "
-                          f"{len(fl['to_wrong'])} samples went from right to wrong and "
-                          f"{len(fl['to_right'])} from wrong to right."))
-    parts.append(Raw("<h3 id=\"dyn-embed\">Embeddings</h3>"))
-    if ev is None or ev.inputs.epoch_data.embeddings is None:
-        parts.append(unavailable("No embeddings were saved.",
-                                 "Set monitor.embeddings: true (the default) with --monitor."))
-    else:
-        inp = ev.inputs
-        mon, data = inp.monitor, inp.epoch_data
-        xy = an.project_2d(data.embeddings, "pca")
-        thr = 0.5 if np.isnan(inp.threshold) else inp.threshold
-        if inp.task == "multilabel":
-            right = an.sample_correct(data.probs, mon.targets, inp.task, thr)
-            labels = ["exact match" if r else "not exact" for r in right]
-            what = "coloured by whether all labels are right"
-        else:
-            labels = [_names(mon.targets[i], inp.classes, inp.task) for i in range(len(xy))]
-            what = "coloured by true class"
-        parts += [pg.fig(fg.embedding_fig(xy, labels, f"PCA of the embeddings, epoch {inp.epoch}")),
-                  note(f"Input of the last linear layer for the monitor subset, projected on its "
-                       f"first two principal components, {what}.")]
+    parts: list[Any] = [Raw("<h3 id=\"dyn-carto\">Data cartography</h3>"),
+                        *_cartography_parts(run, epochs, pg),
+                        Raw("<h3 id=\"dyn-embed\">Embeddings</h3>"), *_embedding_parts(ev, pg)]
     return section("sec-dynamics", title, *parts)
 
 
@@ -558,10 +581,8 @@ def tripod_section(run: RunData, ev: Evaluation | None) -> Raw:
     summ = note(f"{len(items)} items: {count['documented']} documented, {count['partial']} partly "
                 f"documented, {count['pending']} pending. Applies: D = development, E = "
                 "evaluation, D;E = both.")
-    return section("sec-tripod", "5. TRIPOD+AI checklist", intro, summ, Raw(
-        "<div class=\"scroll\">" + table(
-            ["Item", "Requirement (abridged)", "Applies", "Status", "Where", "Notes"], rows)
-        + "</div>"))
+    return section("sec-tripod", "5. TRIPOD+AI checklist", intro, summ, _scroll(table(
+        ["Item", "Requirement (abridged)", "Applies", "Status", "Where", "Notes"], rows)))
 
 
 # ── Entry points ───────────────────────────────────────────────────────────────

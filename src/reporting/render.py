@@ -44,7 +44,9 @@ def duration(seconds: float | None) -> str:
     s = int(round(seconds))
     h, rem = divmod(s, 3600)
     m, s = divmod(rem, 60)
-    return f"{h} h {m:02d} min {s:02d} s" if h else (f"{m} min {s:02d} s" if m else f"{s} s")
+    if h:
+        return f"{h} h {m:02d} min {s:02d} s"
+    return f"{m} min {s:02d} s" if m else f"{s} s"
 
 
 def table(headers: list[str], rows: list[list[Any]], num_cols: Iterable[int] = (),

@@ -9,6 +9,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 # Okabe-Ito (colour-blind safe); black is reserved for reference lines.
+LINES_MARKERS = "lines+markers"
 PALETTE = ["#0072B2", "#D55E00", "#009E73", "#CC79A7", "#E69F00", "#56B4E9", "#F0E442",
            "#7A7A7A"]
 INK, GRID = "#1f2933", "#e3e7ea"
@@ -64,7 +65,7 @@ def loss_fig(rows: list[dict[str, Any]]) -> go.Figure:
     fig = go.Figure()
     for key, name in (("train_loss", "train"), ("val_loss", "validation")):
         if has(rows, key):
-            fig.add_scatter(x=ep, y=_col(rows, key), mode="lines+markers", name=name)
+            fig.add_scatter(x=ep, y=_col(rows, key), mode=LINES_MARKERS, name=name)
     return _layout(fig, "Loss per epoch", "epoch", "loss")
 
 
@@ -76,7 +77,7 @@ def metrics_fig(rows: list[dict[str, Any]]) -> go.Figure:
                             ("val_f1_at_optimal_threshold", "val F1 @ optimal threshold", "dot"),
                             ("train_f1", "train F1", "dash")):
         if has(rows, key):
-            fig.add_scatter(x=ep, y=_col(rows, key), mode="lines+markers", name=name,
+            fig.add_scatter(x=ep, y=_col(rows, key), mode=LINES_MARKERS, name=name,
                             line={"dash": dash})
     return _layout(fig, "Metrics per epoch", "epoch", "value")
 
@@ -97,7 +98,7 @@ def throughput_fig(rows: list[dict[str, Any]], batches: list[dict[str, Any]]) ->
     if has(rows, "train_samples_per_s"):
         # epoch mean is plotted at the end of its epoch
         fig.add_scatter(x=[r["epoch"] for r in rows], y=_col(rows, "train_samples_per_s"),
-                        mode="lines+markers", name="epoch mean", line={"color": PALETTE[0]})
+                        mode=LINES_MARKERS, name="epoch mean", line={"color": PALETTE[0]})
     return _layout(fig, "Training throughput", "epoch", "samples / s")
 
 
@@ -105,7 +106,7 @@ def wait_fig(rows: list[dict[str, Any]]) -> go.Figure:
     fig = go.Figure()
     fig.add_scatter(x=[r["epoch"] for r in rows],
                     y=[100 * v for v in _col(rows, "train_data_wait_frac")],
-                    mode="lines+markers", name="DataLoader wait", line={"color": PALETTE[1]})
+                    mode=LINES_MARKERS, name="DataLoader wait", line={"color": PALETTE[1]})
     fig.add_hline(y=30, line={"dash": "dot", "color": INK, "width": 1},
                   annotation_text="30 %: I/O-bound", annotation_position="top left")
     return _layout(fig, "Time waiting for the DataLoader", "epoch", "% of training time")
@@ -133,23 +134,28 @@ def gpu_figs(gpu_df) -> list[go.Figure]:
 
 # ── Evaluation ─────────────────────────────────────────────────────────────────
 
+def _curve_xy(cur: dict[str, Any], kind: str):
+    return (cur["fpr"], cur["tpr"]) if kind == "roc" else (cur["recall"], cur["precision"])
+
+
+def _curve_score(cur: dict[str, Any], kind: str) -> float:
+    return cur["auc"] if kind == "roc" else cur["ap"]
+
+
 def _curve_fig(curves: dict[str, Any], classes: list[str], kind: str) -> go.Figure:
     fig = go.Figure()
+    shape = "hv" if kind == "pr" else "linear"
     for c, name in enumerate(classes):
         cur = curves["classes"][c][kind]
-        x, y = (cur["fpr"], cur["tpr"]) if kind == "roc" else (cur["recall"], cur["precision"])
+        x, y = _curve_xy(cur, kind)
         if len(x) == 0:
             continue
-        score = cur["auc"] if kind == "roc" else cur["ap"]
-        fig.add_scatter(x=x, y=y, mode="lines", line={"width": 1.4, "shape": "hv" if kind == "pr"
-                                                      else "linear"},
-                        name=f"{name} ({score:.3f})")
+        fig.add_scatter(x=x, y=y, mode="lines", line={"width": 1.4, "shape": shape},
+                        name=f"{name} ({_curve_score(cur, kind):.3f})")
     micro = curves["micro"][kind]
-    mx, my = (micro["fpr"], micro["tpr"]) if kind == "roc" else (micro["recall"],
-                                                                 micro["precision"])
+    mx, my = _curve_xy(micro, kind)
     if len(mx) and len(curves["classes"]) > 1:
-        score = micro["auc"] if kind == "roc" else micro["ap"]
-        fig.add_scatter(x=mx, y=my, mode="lines", name=f"micro ({score:.3f})",
+        fig.add_scatter(x=mx, y=my, mode="lines", name=f"micro ({_curve_score(micro, kind):.3f})",
                         line={"color": INK, "width": 2, "dash": "dash"})
     if kind == "roc":
         fig.add_scatter(x=[0, 1], y=[0, 1], mode="lines", showlegend=False, hoverinfo="skip",
@@ -176,7 +182,7 @@ def reliability_fig(cal: dict[str, Any]) -> go.Figure:
     fig.add_scatter(x=[0, 1], y=[0, 1], mode="lines", name="perfect", hoverinfo="skip",
                     line={"color": "#9aa5b1", "dash": "dot", "width": 1})
     fig.add_scatter(x=[b["confidence"] for b in bins], y=[b["accuracy"] for b in bins],
-                    mode="lines+markers", name="observed", customdata=[b["count"] for b in bins],
+                    mode=LINES_MARKERS, name="observed", customdata=[b["count"] for b in bins],
                     hovertemplate="confidence %{x:.3f}<br>accuracy %{y:.3f}<br>n=%{customdata}"
                                   "<extra></extra>", line={"color": PALETTE[0]})
     _layout(fig, "Reliability diagram", "mean confidence", "observed accuracy", 380)

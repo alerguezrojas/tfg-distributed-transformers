@@ -32,6 +32,36 @@ def _newest(paths: list[Path]) -> Path:
     return max(paths, key=key)
 
 
+def _resolve_file(path: Path) -> Path:
+    if path.name.startswith("events_") and path.suffix == ".jsonl":
+        return path
+    m = _STAMP_IN.search(path.name)
+    sibling = path.parent / f"events_{m.group(1)}.jsonl" if m else None
+    if sibling is not None and sibling.is_file():
+        return sibling
+    raise RunNotFound(f"{path} is not an events file and has no events_<stamp>.jsonl next to it")
+
+
+def _resolve_dir(path: Path) -> Path:
+    m = _STAMP_IN.search(path.name) if path.name.startswith("inspect_") else None
+    if m and (path.parent / f"events_{m.group(1)}.jsonl").is_file():
+        return path.parent / f"events_{m.group(1)}.jsonl"
+    found = list(path.glob("events_*.jsonl")) or list(path.rglob("events_*.jsonl"))
+    if not found:
+        raise RunNotFound(f"no events_*.jsonl in {path} (was the run trained with --trace "
+                          "other than off?)")
+    return _newest(found)
+
+
+def _resolve_stamp(stamp: str, root: Path) -> Path:
+    found = sorted((root / "logs").rglob(f"events_{stamp}.jsonl"))
+    if not found:
+        raise RunNotFound(f"no events_{stamp}.jsonl under {root / 'logs'}")
+    if len(found) > 1:
+        raise RunNotFound(f"stamp {stamp} is ambiguous: " + ", ".join(str(p) for p in found))
+    return found[0]
+
+
 def resolve_run(spec: str | Path, root: Path | str = ".") -> Path:
     """Path of the ``events_*.jsonl`` that ``spec`` designates.
 
@@ -41,35 +71,14 @@ def resolve_run(spec: str | Path, root: Path | str = ".") -> Path:
       or the ``inspect_<stamp>`` directory of the run;
     * a stamp ``DDMMYYYY_HHMMSS``: searched under ``<root>/logs`` (error if it is in several places).
     """
-    root = Path(root)
     text = str(spec)
     path = Path(text)
     if path.is_file():
-        if path.name.startswith("events_") and path.suffix == ".jsonl":
-            return path
-        m = _STAMP_IN.search(path.name)
-        sibling = path.parent / f"events_{m.group(1)}.jsonl" if m else None
-        if sibling is not None and sibling.is_file():
-            return sibling
-        raise RunNotFound(f"{path} is not an events file and has no events_<stamp>.jsonl next to it")
+        return _resolve_file(path)
     if path.is_dir():
-        if path.name.startswith("inspect_"):
-            m = _STAMP_IN.search(path.name)
-            sibling = path.parent / f"events_{m.group(1)}.jsonl" if m else None
-            if sibling is not None and sibling.is_file():
-                return sibling
-        found = list(path.glob("events_*.jsonl")) or list(path.rglob("events_*.jsonl"))
-        if not found:
-            raise RunNotFound(f"no events_*.jsonl in {path} (was the run trained with --trace "
-                              "other than off?)")
-        return _newest(found)
+        return _resolve_dir(path)
     if _STAMP.match(text):
-        found = sorted((root / "logs").rglob(f"events_{text}.jsonl"))
-        if not found:
-            raise RunNotFound(f"no events_{text}.jsonl under {root / 'logs'}")
-        if len(found) > 1:
-            raise RunNotFound(f"stamp {text} is ambiguous: " + ", ".join(str(p) for p in found))
-        return found[0]
+        return _resolve_stamp(text, Path(root))
     raise RunNotFound(f"{text!r} is not a file, a folder or a DDMMYYYY_HHMMSS stamp")
 
 

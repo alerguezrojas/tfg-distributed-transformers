@@ -19,6 +19,11 @@ REFERENCE = ("Collins GS, Moons KGM, Dhiman P, et al. TRIPOD+AI statement: updat
              "methods. BMJ 2024;385:e078378.")
 DOI_URL = "https://doi.org/10.1136/bmj-2023-078378"
 
+NO_START = "The events file has no run_start."
+S_ANALYTICAL = "Analytical methods"
+S_OPEN = "Open science"
+S_PARTICIPANTS_R = "Participants (results)"
+
 DOCUMENTED, PARTIAL, PENDING = "documented", "partial", "pending"
 STATUS_LABEL = {DOCUMENTED: "Documented", PARTIAL: "Partly documented", PENDING: "Pending (human)"}
 
@@ -39,7 +44,7 @@ class Item:
     id: str
     section: str
     text: str
-    applies: str                  # D, E or D;E
+    applies: str                  # "D" (development), "E" (evaluation) or both
     status: str
     note: str
     anchor: str | None = None     # id of the report section that documents it
@@ -56,7 +61,7 @@ def _need_start(note: str, anchor: str) -> _Check:
     def check(c: Context):
         if c.has_start:
             return PARTIAL, note, anchor
-        return PENDING, "The events file has no run_start.", None
+        return PENDING, NO_START, None
     return check
 
 
@@ -87,14 +92,14 @@ def _ci(c: Context):
 
 def _commit(c: Context):
     if not c.has_start:
-        return PENDING, "The events file has no run_start.", None
+        return PENDING, NO_START, None
     note = ("Run commit recorded; " if c.commit else "No git commit recorded in this run; ")
     return PARTIAL, note + "availability of the code is for the authors.", "env"
 
 
 def _model_spec(c: Context):
     if not c.has_start:
-        return PENDING, "The events file has no run_start.", None
+        return PENDING, NO_START, None
     return (PARTIAL, "Architecture, full configuration and code version are recorded; access to "
             "the weights and restrictions on reuse are for the authors.", "env")
 
@@ -141,31 +146,31 @@ CHECKLIST: list[tuple[str, str, str, str, _Check]] = [
      _need_eval(PARTIAL, "The size of the evaluation set and the positives per class are "
                 "reported; a sample-size justification is for the authors.", "eval-perclass")),
     ("11", "Missing data", "How missing data were handled.", "D;E", _pending()),
-    ("12a", "Analytical methods", "How the data were used (development, evaluation, "
+    ("12a", S_ANALYTICAL, "How the data were used (development, evaluation, "
      "partitioning).", "D",
      _need_config("The partitioning is defined by the dataset and, if set, the seed in the configuration; "
                   "this report evaluates the validation partition only (no held-out test).",
                   "sec-summary")),
-    ("12b", "Analytical methods", "How predictors were handled (rescaling, transformation, "
+    ("12b", S_ANALYTICAL, "How predictors were handled (rescaling, transformation, "
      "standardisation).", "D",
      _need_config("Rescaling and normalisation are set in the configuration.", "config")),
-    ("12c", "Analytical methods", "Type of model, rationale, all model-building steps, "
+    ("12c", S_ANALYTICAL, "Type of model, rationale, all model-building steps, "
      "hyperparameter tuning, internal validation.", "D",
      _need_config("Model, optimiser, schedule, selection metric, early stopping and the "
                   "hold-out validation are recorded. The rationale and any hyperparameter search "
                   "(done outside the run) are for the authors.", "sec-training")),
-    ("12d", "Analytical methods", "Heterogeneity of estimates across clusters (centres, "
+    ("12d", S_ANALYTICAL, "Heterogeneity of estimates across clusters (centres, "
      "countries).", "D;E", _pending("No cluster identifiers are logged.")),
-    ("12e", "Analytical methods", "Measures and plots used to evaluate performance "
+    ("12e", S_ANALYTICAL, "Measures and plots used to evaluate performance "
      "(discrimination, calibration, clinical utility).", "D;E",
      _need_eval(DOCUMENTED, "AUC and AP, F1, sensitivity, specificity, accuracy, ROC and PR "
                 "curves, calibration (ECE, slope, intercept, reliability diagram) and operating "
                 "points, all with their definitions. Clinical utility (net benefit, decision curves) is "
                 "not computed.", "sec-evaluation")),
-    ("12f", "Analytical methods", "Model updating (e.g. recalibration) after evaluation.", "E",
+    ("12f", S_ANALYTICAL, "Model updating (e.g. recalibration) after evaluation.", "E",
      _pending("No updating is performed or logged. The calibration slope and intercept in the "
               "report can inform one.")),
-    ("12g", "Analytical methods", "How predictions were calculated (formula, code, API).", "E",
+    ("12g", S_ANALYTICAL, "How predictions were calculated (formula, code, API).", "E",
      _commit),
     ("13", "Class imbalance", "Class-imbalance methods, why and how; later recalibration.", "D;E",
      _need_config("Loss settings are in the configuration and the class prevalence in the "
@@ -184,24 +189,24 @@ CHECKLIST: list[tuple[str, str, str, str, _Check]] = [
                      "evaluation dataset to compare.")),
     ("17", "Ethical approval", "Ethics committee and informed consent or waiver.", "D;E",
      _pending()),
-    ("18a", "Open science", "Source of funding and role of funders.", "D;E", _pending()),
-    ("18b", "Open science", "Conflicts of interest.", "D;E", _pending()),
-    ("18c", "Open science", "Where the study protocol can be accessed.", "D;E", _pending()),
-    ("18d", "Open science", "Registration information.", "D;E", _pending()),
-    ("18e", "Open science", "Availability of the study data.", "D;E", _pending()),
-    ("18f", "Open science", "Availability of the analytical code.", "D;E", _commit),
+    ("18a", S_OPEN, "Source of funding and role of funders.", "D;E", _pending()),
+    ("18b", S_OPEN, "Conflicts of interest.", "D;E", _pending()),
+    ("18c", S_OPEN, "Where the study protocol can be accessed.", "D;E", _pending()),
+    ("18d", S_OPEN, "Registration information.", "D;E", _pending()),
+    ("18e", S_OPEN, "Availability of the study data.", "D;E", _pending()),
+    ("18f", S_OPEN, "Availability of the analytical code.", "D;E", _commit),
     ("19", "Patient and public involvement", "Involvement in design, conduct, reporting.", "D;E",
      _pending()),
-    ("20a", "Participants (results)", "Flow of participants; numbers with and without the "
+    ("20a", S_PARTICIPANTS_R, "Flow of participants; numbers with and without the "
      "outcome.", "D;E",
      _need_eval(PARTIAL, "Size of the evaluation set and positives and negatives per class are "
                 "reported; the flow from the source population is for the authors.",
                 "eval-perclass")),
-    ("20b", "Participants (results)", "Characteristics of participants, per data source or "
+    ("20b", S_PARTICIPANTS_R, "Characteristics of participants, per data source or "
      "setting.", "D;E",
      _pending("Only class counts are available; demographics and clinical characteristics are "
               "not logged.")),
-    ("20c", "Participants (results)", "Comparison of predictor distributions with the "
+    ("20c", S_PARTICIPANTS_R, "Comparison of predictor distributions with the "
      "development data.", "E", _pending()),
     ("21", "Model development", "Number of participants and outcome events in each analysis.",
      "D;E",
