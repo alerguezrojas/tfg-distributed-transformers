@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 25/10/2026. Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 25/10/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
@@ -26,9 +26,12 @@ observabilidad (25/10/2026)" y en la fase 4.
   `scripts/summarize_runs.py`.
 - Predictor: perfilado automático de cualquier modelo de timm (fase 5, primer punto), revisado
   por el agente revisor y corregido.
-- Web: AUC de validación y filtro por dataset; pestaña Live (seguimiento en tiempo real).
-  Estado del arte sobre predicción del rendimiento
-  (`docs/research/`).
+- Web: AUC de validación y filtro por dataset. Estado del arte sobre predicción del rendimiento
+  y sobre observabilidad (`docs/research/`).
+- Fase 4, primer bloque (observabilidad): **flujo de eventos** `events_*.jsonl` en cada run
+  ([esquema](eventos.md); observadores del bucle, *heartbeat*, nunca detiene el entrenamiento) y
+  pestaña **Live** de la web, que sigue el run en tiempo real. Verificado con un entrenamiento real
+  en GPU seguido desde el navegador. PRs #160-#163.
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
@@ -36,10 +39,8 @@ observabilidad (25/10/2026)" y en la fase 4.
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso (fase 4, observabilidad):**
-- Flujo de eventos estructurado (`events_*.jsonl`), la base común de la vista en vivo y de las
-  medidas del predictor ([esquema](eventos.md)).
-- Pestaña *Live* de la web, que sigue un entrenamiento en curso leyendo ese flujo.
+**En curso:** nada. Todo está integrado en `develop` (aún no en `main`: `develop → main` cuando el
+autor lo valide).
 
 **Siguiente paso recomendado:** el panel fijo de validación (probabilidades por época de un
 conjunto fijo de imágenes), las predicciones por muestra en test con calibración y curvas ROC/PR,

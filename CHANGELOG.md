@@ -5,6 +5,7 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Fuentes PlantUML de los diagramas del diseño multi-dataset en `docs/diagramas/multidataset/`.
 - Flujo de eventos de cada run (`events_<ts>.jsonl`, esquema v1 en `docs/eventos.md`): inicio
   con configuración y huella del entorno (host, versiones, commit, GPUs), épocas, batches (con
   el monitor de batches), parada temprana y fin, también si el entrenamiento falla. Lo escribe

@@ -1,0 +1,28 @@
+@startuml
+!include style.iuml
+class Contexto {
+  - estrategia : Estrategia
+  + hacer_trabajo()
+}
+abstract class Estrategia <<abstract>> {
+  + ejecutar(datos)
+}
+class EstrategiaA {
+  + ejecutar(datos)
+}
+class EstrategiaB {
+  + ejecutar(datos)
+}
+class EstrategiaC {
+  + ejecutar(datos)
+}
+Contexto --> Estrategia : usa
+Estrategia <|-- EstrategiaA
+Estrategia <|-- EstrategiaB
+Estrategia <|-- EstrategiaC
+note right of Contexto
+  Solo conoce la interfaz
+  común; no sabe cuál de las
+  estrategias concretas usa.
+end note
+@enduml

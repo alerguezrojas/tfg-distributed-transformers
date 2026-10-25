@@ -1,0 +1,16 @@
+!pragma layout smetana
+skinparam monochrome true
+skinparam shadowing false
+skinparam roundCorner 0
+skinparam classAttributeIconSize 0
+skinparam classBackgroundColor white
+skinparam noteBackgroundColor white
+skinparam packageBackgroundColor white
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 12
+skinparam classFontSize 13
+skinparam ArrowFontSize 11
+skinparam nodesep 40
+skinparam ranksep 45
+hide circle
+hide empty members
