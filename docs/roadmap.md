@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 25/10/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 25/10/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
@@ -32,14 +32,20 @@ observabilidad (25/10/2026)" y en la fase 4.
   ([esquema](eventos.md); observadores del bucle, *heartbeat*, nunca detiene el entrenamiento) y
   pestaña **Live** de la web, que sigue el run en tiempo real. Verificado con un entrenamiento real
   en GPU seguido desde el navegador. PRs #160-#163.
-- Fase 4, segundo bloque (en PR): evento `system` (GPU/CPU/RAM cada 5 s) y rendimiento por batch
-  (espera del DataLoader, muestras/s) en el flujo de eventos; verificado con un run corto en GPU.
-- Fase 4, segunda ola, estadística (en PR): IC *bootstrap* de todas las métricas, calibración
-  completa, punto de operación clínico y métricas por subgrupo en `src/analysis/`.
-- Fase 4, segunda ola, alertas (en PR): evento `alert` (NaN, divergencia, sobreajuste,
-  gradientes, cuello de I/O, GPU al límite, caída de throughput) con umbrales en
-  `monitor.alerts`, e histogramas de gradientes (`kind` en `histograms`); falta mostrarlos en la
-  web.
+- Fase 4, segundo bloque: **inspección profesional del entrenamiento** (PRs #164-#175), con el
+  [inventario del sector](research/inventario_herramientas_observabilidad.md) como referencia:
+  - Terminal: monitor de predicciones (`--monitor`: subconjunto fijo de validación por época con
+    probabilidades, pérdida por imagen, *embeddings* y Grad-CAM), estadísticas por capa
+    (gradientes, pesos, ratio de actualización, histogramas), métricas de sistema (GPU/CPU/RAM),
+    rendimiento por batch (espera del DataLoader, muestras/s) y **alertas** (NaN, divergencia,
+    sobreajuste, gradientes, cuello de I/O, GPU al límite). Nada de esto cambia el entrenamiento
+    (tests de pesos idénticos) y todo queda fuera del tiempo medido.
+  - Análisis (`src/analysis/`, NumPy): curvas ROC/PR, calibración completa (ECE, pendiente,
+    intercepto), IC *bootstrap*, punto de operación clínico, subgrupos, cartografía y proyecciones.
+  - Web: página **Inspector** con 13 vistas (System, Performance, Predictions, Errors, Curves,
+    Clinical, Calibration, Subgroups, Dynamics, Embeddings, Explain, Layers, Alerts), en vivo y a
+    posteriori. `paravit report` genera un **informe HTML** autocontenido con la lista TRIPOD+AI.
+  - Verificado con entrenamientos reales en GPU (DermaMNIST) recorriendo cada vista en el navegador.
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
@@ -50,9 +56,11 @@ observabilidad (25/10/2026)" y en la fase 4.
 **En curso:** nada. Todo está integrado en `develop` (aún no en `main`: `develop → main` cuando el
 autor lo valide).
 
-**Siguiente paso recomendado:** el panel fijo de validación (probabilidades por época de un
-conjunto fijo de imágenes), las predicciones por muestra en test con calibración y curvas ROC/PR,
-y después `paravit predict` y `paravit explain` (Grad-CAM). Orden y motivos en la auditoría.
+**Siguiente paso recomendado:** con el dataset del tutor, registrar su ficha y, si trae
+metadatos (sexo, edad, centro), que el monitor escriba `groups.npz` para la vista *Subgroups* y el
+informe. Pendientes de la fase 4: predicciones por muestra en **test** (`eval.py
+--save-predictions`, para que el informe use test y no validación), `paravit predict`/`explain`
+con la prueba de cordura de Grad-CAM, y la agregación por semilla en *Compare*.
 
 **Decisiones pendientes del autor o del tutor:**
 - **El dataset médico definitivo** (lo enviará el tutor). Si fuera de segmentación, detección o
@@ -189,8 +197,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Muestreo de sistema (evento `system`: GPU por NVML, CPU y RAM) y rendimiento por batch
       (`data_time_s`, `step_time_s`, `samples_per_s`, `data_wait_frac`) en el flujo de eventos
       ([inspeccion.md](inspeccion.md)).
-- [ ] Panel fijo de validación: probabilidades de un conjunto fijo de imágenes en cada época
-      (eventos `panel`) para ver cómo evolucionan las decisiones del modelo.
+- [x] Panel fijo de validación: probabilidades, pérdida, *embeddings* y Grad-CAM de un
+      subconjunto fijo de validación en cada época (`--monitor`, `inspect_<ts>/`).
 - [x] Análisis de la inspección en CPU: paquete puro `src/analysis/` (curvas, umbrales,
       calibración, confusión, cartografía, flips, peores errores, proyección 2D y lector de
       `inspect_<ts>/`); la web los muestra en la página *Inspector*.
@@ -207,11 +215,11 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
         lo escriba cuando el dataset del tutor aporte metadatos.
   - [x] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, sobreajuste, gradientes
         fuera de rango, cuello de I/O, GPU al límite, caída de throughput): evento `alert`
-        (`src/training/alerts.py`, en PR); lado web hecho (banner en Live e Inspector, vista
+        (`src/training/alerts.py`); lado web hecho (banner en Live e Inspector, vista
         *Alerts*).
-  - [x] Histogramas de gradientes (evento `histograms` con `kind`; en PR; la web ya los lee).
+  - [x] Histogramas de gradientes (evento `histograms` con `kind`; la web los muestra).
   - [ ] Prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo et al. 2018).
-  - [x] Informe exportable de un run (HTML) con la lista TRIPOD+AI: `paravit report` (en PR);
+  - [x] Informe exportable de un run (HTML) con la lista TRIPOD+AI: `paravit report`;
         falta CLAIM y los subgrupos (dependen de los metadatos del dataset del tutor).
   - [ ] Agregación por semilla en la comparación de runs (media y banda).
   - [ ] Métricas por *rank* en DDP (rezagados; cómputo frente a comunicación).
