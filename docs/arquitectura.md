@@ -172,7 +172,7 @@ Es la fuente estructurada de la vista en vivo de la web.
 
 Con el mismo flujo de eventos, el builder suscribe un `SystemSampler`
 (`src/training/system_sampler.py`, otro `TrainingListener`) **antes** del sink, de modo que se
-detiene antes de escribirse `run_end`. Al empezar el run lanza un hilo *daemon* que cada
+detiene antes de escribirse `run_end`. Al empezar la primera época lanza un hilo *daemon* que cada
 `monitor.system_interval_s` segundos (5 por defecto; 0 lo desactiva) lee NVML (`pynvml`) y `psutil`
 y añade un evento `system` con `sink.emit`. Solo lee: no toca torch ni CUDA. Sin NVML o sin GPU
 reporta `gpus: []`, y un error de lectura o escritura se convierte en un único aviso.

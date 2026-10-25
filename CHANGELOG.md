@@ -10,7 +10,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   segundos (5 por defecto; 0 lo desactiva) con, por GPU visible, uso, memoria, potencia,
   temperatura y reloj SM (NVML) y, del equipo y del proceso, CPU y RAM (`psutil`). Respeta
   `CUDA_VISIBLE_DEVICES`; sin NVML o sin GPU emite `gpus: []`; los errores se avisan una vez y
-  nunca detienen el entrenamiento. Lo cablea el builder en rank 0 junto al `JsonlEventSink`.
+  nunca detienen el entrenamiento. Lo cablea el builder en rank 0 junto al `JsonlEventSink`. Las
+  GPU se identifican por UUID (NVML y CUDA numeran distinto), de modo que `index` es `cuda:N`;
+  cada entrada lleva `uuid`. La medida de energía (`_PowerSampler`) usa el mismo criterio.
 - Rendimiento por batch (`src/training/throughput.py`, `StepTimer`): espera del DataLoader y tiempo
   de paso con `time.perf_counter()` (sin `cuda.synchronize`). Los *batch hooks* reciben
   `data_time_s`, `step_time_s` y `samples_per_s`, y el resultado de `train_epoch` añade

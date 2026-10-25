@@ -14,7 +14,7 @@ import pytest
 from src.training.events import JsonlEventSink
 from src.training.system_sampler import SystemProbe, SystemSampler
 
-GPU_FIELDS = {"index", "name", "util_pct", "mem_used_mb", "mem_total_mb", "power_w",
+GPU_FIELDS = {"index", "uuid", "name", "util_pct", "mem_used_mb", "mem_total_mb", "power_w",
               "temp_c", "sm_clock_mhz"}
 EVENT_FIELDS = {"gpus", "cpu_pct", "ram_used_pct", "proc_cpu_pct", "proc_rss_mb"}
 
@@ -51,6 +51,9 @@ class FakeNvml:
 
     def nvmlDeviceGetHandleByUUID(self, uuid):
         return self.uuids[uuid]
+
+    def nvmlDeviceGetUUID(self, h):
+        return f"GPU-uuid-{h}"
 
     def nvmlDeviceGetName(self, h):
         return f"GPU-{h}".encode()                      # bytes, como las versiones viejas
@@ -112,7 +115,7 @@ def test_sample_has_exactly_the_contract_fields():
 def test_sample_values_and_units():
     s = _probe().sample()
     g1 = s["gpus"][1]
-    assert g1 == {"index": 1, "name": "GPU-1", "util_pct": 41, "mem_used_mb": 101.0,
+    assert g1 == {"index": 1, "uuid": "GPU-uuid-1", "name": "GPU-1", "util_pct": 41, "mem_used_mb": 101.0,
                   "mem_total_mb": 8192.0, "power_w": pytest.approx(75.501),
                   "temp_c": 61, "sm_clock_mhz": 1701}
     assert (s["cpu_pct"], s["ram_used_pct"], s["proc_cpu_pct"], s["proc_rss_mb"]) == (
@@ -162,6 +165,44 @@ def test_cuda_visible_devices_is_read_from_the_environment(monkeypatch):
     assert [g["name"] for g in gpus] == ["GPU-1"]
 
 
+def test_gpus_follow_the_given_uuid_order_not_the_nvml_order():
+    # torch's cuda:0 is NVML's GPU 1 (CUDA_DEVICE_ORDER=FASTEST_FIRST ≠ PCI bus order)
+    probe = SystemProbe(nvml=FakeNvml(), psutil_mod=FakePsutil(),
+                        gpu_uuids=["GPU-uuid-1", "GPU-uuid-0"])
+    gpus = probe.sample()["gpus"]
+    assert [(g["index"], g["uuid"], g["name"]) for g in gpus] == [
+        (0, "GPU-uuid-1", "GPU-1"), (1, "GPU-uuid-0", "GPU-0")]
+
+
+def test_uuids_win_over_cuda_visible_devices():
+    probe = SystemProbe(nvml=FakeNvml(), psutil_mod=FakePsutil(), visible_devices="0",
+                        gpu_uuids=["GPU-uuid-1"])      # torch already applied the variable
+    assert [g["name"] for g in probe.sample()["gpus"]] == ["GPU-1"]
+
+
+def test_unknown_uuids_fall_back_to_the_environment_logic():
+    probe = SystemProbe(nvml=FakeNvml(), psutil_mod=FakePsutil(), visible_devices="1",
+                        gpu_uuids=["GPU-unknown"])
+    assert [g["name"] for g in probe.sample()["gpus"]] == ["GPU-1"]
+
+
+def test_visible_gpu_uuids_without_cuda(monkeypatch):
+    import torch
+    from src.training.system_sampler import visible_gpu_uuids
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    assert visible_gpu_uuids() is None
+
+
+def test_visible_gpu_uuids_format(monkeypatch):
+    import torch
+    from src.training import system_sampler
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
+    monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
+    monkeypatch.setattr(torch.cuda, "get_device_properties",
+                        lambda i: SimpleNamespace(uuid=f"aaaa-{i}"))
+    assert system_sampler.visible_gpu_uuids() == ["GPU-aaaa-0", "GPU-aaaa-1"]
+
+
 def test_close_shuts_nvml_down_once():
     nvml = FakeNvml()
     probe = _probe(nvml)
@@ -199,7 +240,7 @@ def _wait_for(cond, timeout=5.0):
 def test_emits_system_events_at_the_interval_and_stops():
     sink = ListSink()
     sampler = SystemSampler(sink, interval_s=0.02, probe_factory=_factory())
-    sampler.on_fit_start(3)
+    sampler.on_epoch_start(1, 3)
     assert _wait_for(lambda: len(sink.events) >= 3)
     sampler.on_fit_end(0.9, 3, False)
     n = len(sink.events)
@@ -209,10 +250,63 @@ def test_emits_system_events_at_the_interval_and_stops():
     assert all(t == "system" and set(f) == EVENT_FIELDS for t, f in sink.events)
 
 
+def test_no_system_event_before_run_start_even_with_a_tiny_interval(tmp_path):
+    path = tmp_path / "events_t.jsonl"
+    sink = JsonlEventSink(path, run_info={"run_id": "t"}, heartbeat_s=0)
+    sampler = SystemSampler(sink, interval_s=1e-6, probe_factory=_factory())
+    sampler.on_fit_start(1)                  # the sampler is registered before the sink
+    time.sleep(0.05)
+    assert path.read_text() == ""            # nothing yet: its thread starts with epoch 1
+    sink.on_fit_start(1)
+    sampler.on_epoch_start(1, 1)
+    sink.on_epoch_start(1, 1)
+    assert _wait_for(lambda: path.read_text().count('"system"') >= 2)
+    sampler.on_fit_end(0.0, 1, False)
+    sink.on_fit_end(0.0, 1, False)
+    types = [json.loads(line)["type"] for line in path.read_text().splitlines()]
+    assert types[0] == "run_start" and types[-1] == "run_end"
+
+
+def test_a_sample_in_flight_when_stopping_is_dropped():
+    sink = ListSink()
+    gate = threading.Event()
+    released = threading.Event()
+
+    class SlowProbe:
+        def sample(self):
+            gate.set()
+            released.wait(5)
+            return {"gpus": []}
+
+        def close(self):
+            pass
+
+    sampler = SystemSampler(sink, interval_s=0.001, probe_factory=SlowProbe)
+    sampler.on_epoch_start(1, 1)
+    assert gate.wait(5)                      # the thread is inside sample()
+    stopper = threading.Thread(target=sampler.on_fit_end, args=(0.0, 1, False))
+    stopper.start()
+    time.sleep(0.05)
+    released.set()
+    stopper.join(5)
+    assert sink.events == []                 # it never reaches emit after the stop
+
+
+def test_the_thread_starts_once_at_the_first_epoch_only():
+    sampler = SystemSampler(ListSink(), interval_s=0.01, probe_factory=_factory())
+    sampler.on_fit_start(2)
+    assert sampler._thread is None
+    sampler.on_epoch_start(1, 2)
+    first = sampler._thread
+    sampler.on_epoch_start(2, 2)
+    assert sampler._thread is first
+    sampler.on_fit_end(0.0, 2, False)
+
+
 def test_first_sample_waits_one_interval():
     sink = ListSink()
     sampler = SystemSampler(sink, interval_s=60, probe_factory=_factory())
-    sampler.on_fit_start(1)
+    sampler.on_epoch_start(1, 1)
     time.sleep(0.05)
     assert sink.events == []                             # nada antes de run_start
     t0 = time.monotonic()
@@ -223,7 +317,7 @@ def test_first_sample_waits_one_interval():
 def test_stops_on_fit_error_too():
     sink = ListSink()
     sampler = SystemSampler(sink, interval_s=0.01, probe_factory=_factory())
-    sampler.on_fit_start(1)
+    sampler.on_epoch_start(1, 1)
     thread = sampler._thread
     sampler.on_fit_error(RuntimeError("boom"), 0, -1.0)
     assert not thread.is_alive()
@@ -232,7 +326,7 @@ def test_stops_on_fit_error_too():
 def test_nvml_is_shut_down_after_the_run():
     nvml = FakeNvml()
     sampler = SystemSampler(ListSink(), interval_s=0.01, probe_factory=_factory(nvml))
-    sampler.on_fit_start(1)
+    sampler.on_epoch_start(1, 1)
     sampler.on_fit_end(0.0, 0, False)
     assert (nvml.inits, nvml.shutdowns) == (1, 1)
 
@@ -241,7 +335,7 @@ def test_nvml_is_shut_down_after_the_run():
 def test_disabled_interval_starts_nothing(interval):
     sink = ListSink()
     sampler = SystemSampler(sink, interval_s=interval, probe_factory=_factory())
-    sampler.on_fit_start(1)
+    sampler.on_epoch_start(1, 1)
     assert sampler._thread is None and not sampler.enabled
     sampler.on_fit_end(0.0, 0, False)                    # no falla
     assert sink.events == []
@@ -257,7 +351,7 @@ def test_write_errors_warn_once_and_never_propagate():
 
     sampler = SystemSampler(BrokenSink(), interval_s=0.01, probe_factory=_factory())
     with pytest.warns(RuntimeWarning, match="sample not written") as record:
-        sampler.on_fit_start(1)
+        sampler.on_epoch_start(1, 1)
         assert _wait_for(lambda: BrokenSink.calls >= 3)  # el hilo sigue vivo tras fallar
         sampler.on_fit_end(0.0, 0, False)
     assert len([w for w in record if "system sampler" in str(w.message)]) == 1
@@ -277,7 +371,7 @@ def test_sampling_errors_warn_once_and_never_propagate():
     sink = ListSink()
     sampler = SystemSampler(sink, interval_s=0.01, probe_factory=BadProbe)
     with pytest.warns(RuntimeWarning, match="sample not written"):
-        sampler.on_fit_start(1)
+        sampler.on_epoch_start(1, 1)
         assert _wait_for(lambda: BadProbe.n >= 3)
         sampler.on_fit_end(0.0, 0, False)
     assert sink.events == []
@@ -289,7 +383,7 @@ def test_probe_failure_disables_the_sampler_without_raising():
 
     sampler = SystemSampler(ListSink(), interval_s=0.01, probe_factory=broken)
     with pytest.warns(RuntimeWarning, match="probe failed"):
-        sampler.on_fit_start(1)
+        sampler.on_epoch_start(1, 1)
     assert sampler._thread is None
     sampler.on_fit_end(0.0, 0, False)
 
@@ -298,8 +392,8 @@ def test_events_reach_the_jsonl_stream(tmp_path):
     path = tmp_path / "events_t.jsonl"
     sink = JsonlEventSink(path, run_info={"run_id": "t"}, heartbeat_s=0)
     sampler = SystemSampler(sink, interval_s=0.01, probe_factory=_factory())
-    sampler.on_fit_start(1)
     sink.on_fit_start(1)
+    sampler.on_epoch_start(1, 1)
     assert _wait_for(lambda: path.read_text().count('"system"') >= 2)
     sampler.on_fit_end(0.0, 0, False)
     sink.on_fit_end(0.0, 0, False)
@@ -335,3 +429,26 @@ def test_real_nvml_sample():
     assert g["mem_total_mb"] > 0 and 0 <= g["mem_used_mb"] <= g["mem_total_mb"]
     assert g["name"]
     json.dumps(s, allow_nan=False)
+
+
+# ── _PowerSampler (energía): índice de torch → handle NVML por UUID ───────────
+
+def test_power_sampler_resolves_torch_ordinals_through_the_uuid(monkeypatch):
+    from src.training import fn_decorators, system_sampler
+
+    class Nvml(FakeNvml):
+        def nvmlDeviceGetHandleByUUID(self, uuid):
+            return {"GPU-aaaa-0": 1, "GPU-aaaa-1": 0}[uuid]     # torch order ≠ NVML order
+
+    nvml = Nvml()
+    monkeypatch.setitem(sys.modules, "pynvml", nvml)
+    monkeypatch.setattr(system_sampler, "gpu_uuid", lambda i: f"GPU-aaaa-{i}")
+    sampler = fn_decorators._PowerSampler((0, 1))
+    assert sampler._handles == [1, 0]
+
+
+def test_power_sampler_falls_back_to_the_index_without_uuid(monkeypatch):
+    from src.training import fn_decorators, system_sampler
+    monkeypatch.setitem(sys.modules, "pynvml", FakeNvml())
+    monkeypatch.setattr(system_sampler, "gpu_uuid", lambda i: None)
+    assert fn_decorators._PowerSampler((1,))._handles == [1]

@@ -49,7 +49,7 @@ paralelismo de modelo equivale a `monitor.enabled: true`.
 
 | `type` | Campos | Cuándo |
 |---|---|---|
-| `system` | `gpus`: lista de `{index, name, util_pct, mem_used_mb, mem_total_mb, power_w, temp_c, sm_clock_mhz}`; `cpu_pct` (equipo), `ram_used_pct`, `proc_cpu_pct`, `proc_rss_mb` | Cada `system_interval_s` s desde un hilo aparte (sin NVML: `gpus` vacío) |
+| `system` | `gpus`: lista de `{index, uuid, name, util_pct, mem_used_mb, mem_total_mb, power_w, temp_c, sm_clock_mhz}`; `cpu_pct` (equipo), `ram_used_pct`, `proc_cpu_pct`, `proc_rss_mb` | Cada `system_interval_s` s desde un hilo aparte (sin NVML: `gpus` vacío) |
 | `monitor_start` | `dir` (relativo al log), `samples`, `panel`, `classes`, `full_val`, `embedding_dim` | Al empezar el run, si el monitor está activo |
 | `inspection` | `epoch`, `file` (relativo al log), `seconds` (lo que tardó la captura) | Tras cada época inspeccionada |
 | `layers` | `epoch`, `batch`, `groups`: lista de `{name, grad_norm, weight_norm, update_ratio}` | Cada `log_batch_every` batches, si `monitor.layers` |
@@ -73,23 +73,31 @@ paralelismo de modelo equivale a `monitor.enabled: true`.
   de batches (sin él no se calculan métricas por batch). Los cuatro bucles lo comparten: `Trainer`
   (también DDP y paralelismo de modelo), heterogéneo y el bucle de `--trace deep` con `batch-table`.
   - En DDP las cifras son **por rank** (el flujo lo escribe el rank 0): la capacidad global es
-    aproximadamente `samples_per_s × world_size`.
+    aproximadamente `samples_per_s × world_size`. En DDP y heterogéneo, la espera al rank más
+    lento (el *all-reduce*) cuenta como `step_time_s`, así que el `data_wait_frac` del rank 0 no
+    refleja un cuello de I/O de otro rank.
   - El primer batch de cada época incluye el arranque de los *workers* del DataLoader (si no son
     persistentes), así que `data_wait_frac` puede salir alto con épocas muy cortas aunque los
     batches siguientes no esperen.
 - **Sistema** (`src/training/system_sampler.py`, `SystemSampler`): hilo *daemon* que arranca en
-  `on_fit_start` y se para (con `join` de 5 s) en `on_fit_end`/`on_fit_error`. La primera muestra
-  llega tras un intervalo, así que `system` nunca precede a `run_start` ni sigue a `run_end`.
+  el primer `on_epoch_start` (cuando el sink ya ha escrito `run_start`) y se para (con `join` de
+  5 s) en `on_fit_end`/`on_fit_error`. La primera muestra llega tras un intervalo, y una muestra
+  en curso al parar se descarta, así que `system` no precede a `run_start` ni sigue a `run_end`.
   - `mem_used_mb` y `mem_total_mb` están en MiB (1024²); `power_w` en vatios; `cpu_pct` y
     `ram_used_pct` son del equipo; `proc_cpu_pct` y `proc_rss_mb` son del proceso de
     entrenamiento (pueden superar 100 con varios hilos) y **no** incluyen a los *workers* del
     DataLoader, que son procesos aparte.
   - Una consulta que la GPU no soporta (potencia, reloj…) da `null` en ese campo.
-  - **GPUs visibles:** NVML numera las GPU físicas e ignora `CUDA_VISIBLE_DEVICES`, así que se
-    aplica a mano: índices, UUID `GPU-…` o vacío (ninguna); se corta en la primera entrada
-    inválida, como hace CUDA. `index` es la posición entre las visibles (la misma que `cuda:N` en
-    torch y el orden de `env.devices` en `run_start`), no el índice físico. Los UUID de MIG no
-    se interpretan.
+  - **GPUs visibles:** NVML numera por bus PCI y CUDA según `CUDA_DEVICE_ORDER` (por defecto,
+    la más rápida primero), así que el índice de NVML puede no ser `cuda:N`. El builder pasa las
+    UUID de las GPU que ve torch (`torch.cuda.get_device_properties(i).uuid`, que ya aplica
+    `CUDA_VISIBLE_DEVICES` y `CUDA_DEVICE_ORDER`) y el probe las resuelve con
+    `nvmlDeviceGetHandleByUUID` en ese orden: `index` coincide con `cuda:N` y con el orden de
+    `env.devices` en `run_start`, y `uuid` (`GPU-…`) identifica la tarjeta. Sin torch/CUDA se
+    usa la numeración de NVML filtrada a mano por `CUDA_VISIBLE_DEVICES` (índices, UUID o vacío =
+    ninguna; se corta en la primera entrada inválida, como CUDA), donde `index` es la posición
+    entre las visibles. Los UUID de MIG no se interpretan. El mismo criterio (índice de torch →
+    UUID → NVML) lo aplica la medida de energía (`_PowerSampler`).
   - Errores: sin `pynvml` o sin driver, `gpus: []`; un fallo al leer o escribir se avisa una vez y
     el hilo sigue. Escribir eventos nunca detiene el entrenamiento.
   - Solo rank 0 y solo si hay flujo de eventos (`--trace` distinto de `off`). En DDP/heterogéneo se
