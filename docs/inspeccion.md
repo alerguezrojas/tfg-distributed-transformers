@@ -165,3 +165,35 @@ cada paso (trabajo pequeño en CPU; no cambia ningún número).
 | `flips(probs_prev, probs_curr, targets, task)` | Muestras que pasan de acierto a fallo y al revés entre épocas |
 | `project_2d(embeddings, method="pca")` | Proyección 2D (PCA siempre; UMAP si `umap-learn` está instalado) |
 | `worst_errors(probs, targets, loss, task, k)` | Las *k* muestras con mayor pérdida y sus etiquetas |
+
+### Estadística para publicación
+
+Lo que ninguna herramienta general del [inventario](research/inventario_herramientas_observabilidad.md)
+trae (secciones 3 y 4): intervalos de confianza en todas las métricas, calibración completa y
+rendimiento por subgrupo (TRIPOD+AI, ítem 23a). Todo NumPy, sin dependencias nuevas.
+
+| Función | Devuelve |
+|---|---|
+| `bootstrap_ci(metric_fn, probs, targets, n_boot=1000, alpha=0.05, seed=0, stratified=True)` | Intervalo percentil (Efron 1979) de cualquier `metric_fn(probs, targets) -> float`: `estimate`, `ci=(lo, hi)`, `n_boot` válidas, `n_degenerate` descartadas (métrica no finita, p. ej. AUC con una sola clase) y la distribución. Remuestreo por muestra, estratificado por clase en binaria y multiclase |
+| `metrics_with_ci(probs, targets, task, threshold=0.5, n_boot=1000, ..., metrics=None)` | `estimate` e IC95 de AUC y AP (macro), F1, sensibilidad, especificidad (macro, al umbral), exactitud, ECE y Brier. Ruta vectorizada por pesos: 1000 remuestras de 10 000 × 10 en ~3 s en un núcleo; coincide remuestra a remuestra con las funciones del paquete |
+| `calibration_curve_stats(probs, targets, task)` | Pendiente e intercepto de calibración (regresión logística de `y` sobre `logit(p)`, Newton/IRLS; Cox 1958, Van Calster et al. 2019) con error estándar, más el intercepto con pendiente fija a 1 (`intercept_citl`) y el ajuste por clase. Multiclase: top-label; multi-etiqueta: por elemento |
+| `per_class_calibration(probs, targets, task, bins=15)` | ECE, MCE y Brier de la probabilidad de cada clase (SCE de Nixon et al. 2019) y su diagrama de fiabilidad por clase |
+| `adaptive_ece(probs, targets, task, bins=15, classwise=False)` | ECE con bins de igual masa (Nixon et al. 2019); `classwise=True` da el ACE por clase |
+| `operating_point(probs, targets, task, threshold, prevalence=None)` | Conteos, sensibilidad, especificidad, VPP y VPN por clase a un umbral fijo; la prevalencia por defecto es la observada |
+| `threshold_for_sensitivity(probs, targets, task, target=0.90)` / `youden_threshold(...)` | Por clase, el umbral más alto que alcanza la sensibilidad objetivo (o que maximiza J de Youden, 1950) y la especificidad, VPP y VPN resultantes. El umbral cae entre dos puntuaciones distintas: vale igual con `>` y `>=` |
+| `operating_points(probs, targets, task, threshold, sensitivities=(0.90, 0.95))` | Los tres criterios en una llamada |
+| `predictive_values(sensitivity, specificity, prevalence)` | VPP y VPN por Bayes para otra prevalencia (Altman y Bland, 1994) |
+| `subgroup_metrics(probs, targets, task, groups, threshold=0.5, min_size=20, n_boot=0)` | AUC, F1, sensibilidad, especificidad, ECE y `n` por valor de `groups` (sexo, centro, edad en tramos...), IC bootstrap opcional, `overall` y brecha máx-mín. Los grupos con menos de `min_size` muestras se marcan (`small`), no llevan IC y quedan fuera de la brecha |
+
+Decisiones de método:
+- El IC es el **percentil** simple: es optimista con pocas decenas de muestras o con una métrica
+  pegada a su límite (AUC ≈ 1). Con multi-etiqueta se remuestrea la muestra completa (no hay una
+  clase única por muestra para estratificar).
+- Una remuestra es *degenerada* si la métrica no es finita; solo puede ocurrir en AUC/AP (ninguna
+  clase conserva positivos y negativos). Se descarta y se cuenta.
+- La ECE de `calibration` mide la confianza de la etiqueta predicha; la de `per_class_calibration`,
+  la fiabilidad de la probabilidad de cada clase, que es lo que necesita una clase rara. Ambas
+  conviven, no se sustituyen.
+- La brecha por subgrupo es descriptiva (diferencia de estimaciones puntuales): para decir si
+  supera el ruido hay que mirar los intervalos.
+- Los umbrales de punto de operación deben fijarse en validación y aplicarse a test.

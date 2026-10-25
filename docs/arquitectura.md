@@ -229,7 +229,10 @@ bruto; aquí se calculan las vistas. Un módulo por pregunta:
 | `io.py` | `load_monitor_set`, `list_epochs`, `load_epoch` (dataclasses `MonitorSet` y `EpochData`; las claves opcionales ausentes quedan en `None`) |
 | `curves.py` | `roc_curve`, `pr_curve`, `per_class_curves` (por clase + macro y micro; ≤ 1000 puntos por curva) |
 | `thresholds.py` | `threshold_sweep`: F1, precisión, recall, sensibilidad y especificidad frente al umbral (misma definición que `training/metrics.py`) |
-| `calibration.py` | `calibration`: ECE, MCE, Brier y diagrama de fiabilidad |
+| `calibration.py` | `calibration`: ECE, MCE, Brier y diagrama de fiabilidad; `calibration_curve_stats` (pendiente e intercepto), `per_class_calibration`, `adaptive_ece` |
+| `bootstrap.py` | `bootstrap_ci` (cualquier métrica) y `metrics_with_ci` (AUC, AP, F1, sensibilidad, especificidad, exactitud, ECE y Brier con IC95; remuestreo vectorizado por pesos) |
+| `operating_point.py` | Punto de operación por clase: umbral fijo, sensibilidad objetivo, Youden, VPP/VPN según la prevalencia |
+| `subgroups.py` | `subgroup_metrics`: métricas (con IC opcional) por valor de un array de grupos y brecha máx-mín |
 | `confusion.py` | `confusion`: matriz de conteos, índices por celda y TP/FP/FN/TN por clase |
 | `dynamics.py` | `cartography`, `prob_of_true`, `sample_correct`, `flips`, `worst_errors` |
 | `projection.py` | `project_2d`: PCA por SVD (determinista); UMAP solo si `umap-learn` está instalado |
