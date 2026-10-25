@@ -29,6 +29,7 @@ from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
 from src.training.events import JsonlEventSink, environment_fingerprint
+from src.training.system_sampler import SystemSampler
 from src.training.decorators import (
     TracingDecorator,
     DeepTracingDecorator,
@@ -432,6 +433,11 @@ class TrainingSessionBuilder:
                 },
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),
             )
+            # System sampler (GPU/CPU/RAM every N s). Added before the sink so it stops
+            # before `run_end` is written. 0 disables it; independent of the monitor.
+            system_interval = (cfg.get("monitor") or {}).get("system_interval_s", 5)
+            if system_interval and system_interval > 0:
+                trainer.add_listener(SystemSampler(sink, interval_s=system_interval))
             trainer.add_listener(sink)
             if "batch-monitor" in self._layers:
                 # Same cadence as the batch CSV; without the monitor no per-batch

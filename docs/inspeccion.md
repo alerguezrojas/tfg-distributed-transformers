@@ -59,6 +59,42 @@ paralelismo de modelo equivale a `monitor.enabled: true`.
 (resto del paso), `samples_per_s`. **`epoch_end.train`** añade `samples_per_s` y
 `data_wait_frac` (fracción del tiempo de entrenamiento esperando datos: >0,3 indica cuello de I/O).
 
+### Cómo se miden
+
+- **Rendimiento por batch** (`src/training/throughput.py`, `StepTimer`): `data_time_s` es el
+  tiempo desde que acaba la iteración anterior hasta tener el batch; `step_time_s`, el resto del
+  paso (transferencia, forward, backward, optimizador y las lecturas que sincronizan la GPU).
+  `samples_per_s = muestras del batch / (data_time_s + step_time_s)`. Se usa
+  `time.perf_counter()` y no hay `cuda.synchronize`, porque `loss.item()` ya sincroniza. Los
+  *batch hooks* (escribir el CSV o el evento) se ejecutan después y no cuentan en ninguno de los
+  dos. A nivel de época, `data_wait_frac = Σ data_time_s / Σ (data_time_s + step_time_s)` (en
+  [0, 1]) y `samples_per_s = muestras / Σ (data_time_s + step_time_s)`. Las claves salen en
+  `epoch_end.train` solas; el CSV de épocas no cambia. Los `batch` solo se escriben con el monitor
+  de batches (sin él no se calculan métricas por batch). Los cuatro bucles lo comparten: `Trainer`
+  (también DDP y paralelismo de modelo), heterogéneo y el bucle de `--trace deep` con `batch-table`.
+  - En DDP las cifras son **por rank** (el flujo lo escribe el rank 0): la capacidad global es
+    aproximadamente `samples_per_s × world_size`.
+  - El primer batch de cada época incluye el arranque de los *workers* del DataLoader (si no son
+    persistentes), así que `data_wait_frac` puede salir alto con épocas muy cortas aunque los
+    batches siguientes no esperen.
+- **Sistema** (`src/training/system_sampler.py`, `SystemSampler`): hilo *daemon* que arranca en
+  `on_fit_start` y se para (con `join` de 5 s) en `on_fit_end`/`on_fit_error`. La primera muestra
+  llega tras un intervalo, así que `system` nunca precede a `run_start` ni sigue a `run_end`.
+  - `mem_used_mb` y `mem_total_mb` están en MiB (1024²); `power_w` en vatios; `cpu_pct` y
+    `ram_used_pct` son del equipo; `proc_cpu_pct` y `proc_rss_mb` son del proceso de
+    entrenamiento (pueden superar 100 con varios hilos) y **no** incluyen a los *workers* del
+    DataLoader, que son procesos aparte.
+  - Una consulta que la GPU no soporta (potencia, reloj…) da `null` en ese campo.
+  - **GPUs visibles:** NVML numera las GPU físicas e ignora `CUDA_VISIBLE_DEVICES`, así que se
+    aplica a mano: índices, UUID `GPU-…` o vacío (ninguna); se corta en la primera entrada
+    inválida, como hace CUDA. `index` es la posición entre las visibles (la misma que `cuda:N` en
+    torch y el orden de `env.devices` en `run_start`), no el índice físico. Los UUID de MIG no
+    se interpretan.
+  - Errores: sin `pynvml` o sin driver, `gpus: []`; un fallo al leer o escribir se avisa una vez y
+    el hilo sigue. Escribir eventos nunca detiene el entrenamiento.
+  - Solo rank 0 y solo si hay flujo de eventos (`--trace` distinto de `off`). En DDP/heterogéneo se
+    muestrean todas las GPU visibles para ese proceso, no solo la del rank 0.
+
 ## Directorio de inspección
 
 `logs/<env>/<subdir>/inspect_<ts>/`, junto al log del run. **No se versiona** (`.gitignore`):

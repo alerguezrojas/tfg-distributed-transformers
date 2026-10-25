@@ -14,6 +14,7 @@ from src.training.base_trainer import BaseTrainer
 from src.training import metrics as m
 from src.training.augmentations import mixup_batch
 from src.training.tasks import MultiLabelTask, Task
+from src.training.throughput import StepTimer
 
 
 class Trainer(BaseTrainer):
@@ -38,6 +39,9 @@ class Trainer(BaseTrainer):
         batch_f1     — macro F1 of this batch (indicative; post-mixup labels)
         batch_acc    — accuracy of this batch (as defined by the task)
         batch_prec   — macro precision of this batch
+        data_time_s  — DataLoader wait before this batch (s)
+        step_time_s  — rest of the step: transfer, forward, backward, optimizer (s)
+        samples_per_s — samples of this batch / (data_time_s + step_time_s)
 
     BatchMonitorDecorator uses this mechanism instead of duplicating train_epoch.
     """
@@ -110,8 +114,11 @@ class Trainer(BaseTrainer):
         all_labels: list[torch.Tensor] = []
         start = time.time()
         n_batches = len(loader)
+        timer = StepTimer()
+        timer.start()
 
         for batch_idx, (images, labels) in enumerate(loader, 1):
+            timer.batch_ready()
             images = images.to(self.device)
             labels = labels.to(self.device)
 
@@ -149,6 +156,7 @@ class Trainer(BaseTrainer):
                 if not mixed:
                     all_preds.append(preds_cpu)
                     all_labels.append(hard_labels_cpu)
+            timing = timer.step_done(labels.shape[0])   # after the syncs above: real time
 
             if self._batch_hooks:
                 batch_metrics = {
@@ -158,9 +166,11 @@ class Trainer(BaseTrainer):
                     "batch_f1": m.f1_score(preds_cpu, hard_labels_cpu),
                     "batch_acc": self.task.accuracy(preds_cpu, hard_labels_cpu),
                     "batch_prec": m.precision(preds_cpu, hard_labels_cpu),
+                    **timing,
                 }
                 for hook in self._batch_hooks:
                     hook(self._current_epoch, batch_idx, n_batches, batch_metrics)
+            timer.iteration_end()
 
         if self.scheduler:
             self.scheduler.step()
@@ -179,6 +189,7 @@ class Trainer(BaseTrainer):
             "f1": m.f1_score(all_preds_t, all_labels_t),
             "accuracy": self.task.accuracy(all_preds_t, all_labels_t),
             "time": time.time() - start,
+            **timer.epoch_stats(),
         }
 
     @torch.no_grad()

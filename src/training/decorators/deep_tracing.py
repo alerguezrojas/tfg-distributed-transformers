@@ -46,6 +46,7 @@ from src.training.tasks import MultiLabelTask
 from src.models.vit import input_channels
 from src.training.augmentations import mixup_batch
 from src.training.decorators.tracing import TracingDecorator
+from src.training.throughput import StepTimer
 
 
 ALL_INSPECT_FEATURES: frozenset[str] = frozenset(
@@ -278,8 +279,11 @@ class DeepTracingDecorator(TracingDecorator):
 
         label_smoothing = getattr(self._trainer, "label_smoothing", 0.0)
         mixup_alpha = getattr(self._trainer, "mixup_alpha", 0.0)
+        timer = StepTimer()
+        timer.start()
 
         for batch_idx, (images, labels) in enumerate(loader, 1):
+            timer.batch_ready()
             images, labels = images.to(device), labels.to(device)
 
             # `labels` stays the original 0/1 targets (for metrics); the loss uses
@@ -309,6 +313,7 @@ class DeepTracingDecorator(TracingDecorator):
                 if not mixed:                            # skip blended batches
                     all_preds.append(preds_cpu)
                     all_labels.append(hard_labels_cpu)
+            timing = timer.step_done(labels.shape[0])    # after the syncs above: real time
 
             # This loop replaces Trainer.train_epoch, so it must feed the Trainer's batch
             # hooks too (BatchMonitorDecorator): same dict as Trainer.train_epoch.
@@ -321,12 +326,14 @@ class DeepTracingDecorator(TracingDecorator):
                     "batch_f1": f1_score(preds_cpu, hard_labels_cpu),
                     "batch_acc": task.accuracy(preds_cpu, hard_labels_cpu),
                     "batch_prec": precision(preds_cpu, hard_labels_cpu),
+                    **timing,
                 }
                 for hook in batch_hooks:
                     hook(self._current_epoch, batch_idx, len(loader), batch_metrics)
 
             if batch_idx % self.log_every == 0:
                 self._log_layer_table(self._current_epoch, batch_idx, len(loader))
+            timer.iteration_end()
 
         scheduler = getattr(self._trainer, "scheduler", None)
         if scheduler:
@@ -343,6 +350,7 @@ class DeepTracingDecorator(TracingDecorator):
             "f1": f1_score(all_preds_t, all_labels_t),
             "accuracy": task.accuracy(all_preds_t, all_labels_t),
             "time": time.time() - start,
+            **timer.epoch_stats(),
         }
         self._propagate_train_result(result)
         return result

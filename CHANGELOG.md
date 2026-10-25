@@ -5,6 +5,17 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Muestreo de sistema (`src/training/system_sampler.py`): un `TrainingListener` que, mientras el
+  run está vivo, añade al flujo de eventos un evento `system` cada `monitor.system_interval_s`
+  segundos (5 por defecto; 0 lo desactiva) con, por GPU visible, uso, memoria, potencia,
+  temperatura y reloj SM (NVML) y, del equipo y del proceso, CPU y RAM (`psutil`). Respeta
+  `CUDA_VISIBLE_DEVICES`; sin NVML o sin GPU emite `gpus: []`; los errores se avisan una vez y
+  nunca detienen el entrenamiento. Lo cablea el builder en rank 0 junto al `JsonlEventSink`.
+- Rendimiento por batch (`src/training/throughput.py`, `StepTimer`): espera del DataLoader y tiempo
+  de paso con `time.perf_counter()` (sin `cuda.synchronize`). Los *batch hooks* reciben
+  `data_time_s`, `step_time_s` y `samples_per_s`, y el resultado de `train_epoch` añade
+  `samples_per_s` y `data_wait_frac`, que salen en `epoch_end.train`. Lo usan los tres bucles
+  (`Trainer`, heterogéneo y `--trace deep`); el CSV de épocas no cambia de columnas.
 - Contrato de la inspección del entrenamiento (`docs/inspeccion.md`): eventos de sistema,
   rendimiento por batch, monitor de predicciones por muestra, Grad-CAM y capas; sección `monitor:`
   validada en la config; `JsonlEventSink.emit()` para otros productores del flujo; los datos de
