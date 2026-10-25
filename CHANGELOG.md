@@ -5,6 +5,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Flujo de eventos de cada run (`events_<ts>.jsonl`, esquema v1 en `docs/eventos.md`): inicio
+  con configuración y huella del entorno (host, versiones, commit, GPUs), épocas, batches (con
+  el monitor de batches), parada temprana y fin, también si el entrenamiento falla. Lo escribe
+  rank 0 con *flush* por línea, para seguir el run en vivo; un hilo aparte escribe un `heartbeat`
+  cada 30 s, y un error de escritura nunca detiene el entrenamiento. `EpochController` admite observadores
+  (`TrainingListener`, `add_listener`); el bucle y sus resultados no cambian.
 - Tests de `LayerHooksDecorator`, de los metric reporters y de `batch-table` + `batch-monitor`.
 - Auditoría de observabilidad (`docs/roadmap.md`) y revisión del sector en
   `docs/research/observabilidad_entrenamiento.md`: seguimiento en vivo, formato de eventos e
