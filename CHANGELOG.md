@@ -5,6 +5,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Auditoría de observabilidad (`docs/roadmap.md`) y revisión del sector en
+  `docs/research/observabilidad_entrenamiento.md`: seguimiento en vivo, formato de eventos e
+  interpretabilidad de ViT en imagen médica. Esquema v1 del flujo de eventos en `docs/eventos.md`.
 - MedMNIST con 3 semillas: media ± desviación en test (`docs/datasets/medmnist.md`). `--seed` en
   `train_single_gpu.py` (se escribe en el log) y `scripts/summarize_runs.py` para agregar los
   resultados de test de runs repetidos.
