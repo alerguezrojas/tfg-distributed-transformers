@@ -18,6 +18,7 @@ collective is ever issued.
 """
 from __future__ import annotations
 
+import contextlib
 import math
 import time
 import warnings
@@ -155,6 +156,10 @@ def select_indices(n: int, m: int, seed: int,
     perm = torch.randperm(n, generator=g)
     if labels is None or labels.dim() != 2:
         return np.sort(perm[:m].numpy())
+    if labels.shape[1] == 1:
+        # Binary targets are one column (the positive class): add the negative one,
+        # or the "per class" quota would be the whole subset and fill it with positives.
+        labels = torch.cat([1 - labels, labels], dim=1)
     chosen: list[int] = []
     taken = torch.zeros(n, dtype=torch.bool)
     per_class = max(1, m // labels.shape[1])
@@ -280,7 +285,8 @@ class PredictionMonitor(TrainingListener):
         self._sink.emit("monitor_start", dir=self._rel(self.dir),
                         samples=len(self._indices), panel=len(self._panel),
                         classes=self._classes,
-                        full_val=int(self._cfg["full_val_max"]) > 0,
+                        full_val=len(self._val) * len(self._classes)
+                        <= int(self._cfg["full_val_max"]),
                         embedding_dim=head.in_features if head is not None else None)
 
     def on_epoch_end(self, epoch, epochs, train_m, val_m, best, is_best, epoch_time_s):
@@ -310,9 +316,14 @@ class PredictionMonitor(TrainingListener):
         probs, losses = [], []
         model.eval()
         try:
+            # Same autocast as eval_epoch, so the subset's probabilities match the
+            # validation ones under amp/bf16.
+            autocast = getattr(self._trainer, "_autocast", None)
             with torch.no_grad():
                 for images, y in self._loader():
-                    logits = model(images.to(device)).float()
+                    with autocast() if autocast is not None else contextlib.nullcontext():
+                        logits = model(images.to(device))
+                    logits = logits.float()
                     y = y.float().to(logits.device)
                     probs.append(self._task.probabilities(logits).cpu())
                     losses.append(per_sample_loss(logits, y, self._task.sigmoid_outputs).cpu())
@@ -338,7 +349,14 @@ class PredictionMonitor(TrainingListener):
     def _cams(self, model, core, device, probs: np.ndarray) -> dict:
         images = torch.stack([self._val[int(self._indices[p])][0] for p in self._panel])
         classes = torch.as_tensor(probs[self._panel].astype(np.float32).argmax(axis=1))
-        maps = grad_cam(model, core, images.to(device), classes)
+        try:
+            maps = grad_cam(model, core, images.to(device), classes)
+        except Exception as exc:  # noqa: BLE001 — keep the rest of the capture
+            self._cam_ok = False
+            warnings.warn(f"prediction monitor: Grad-CAM failed ({exc!r}); maps "
+                          f"disabled, predictions are still saved", RuntimeWarning,
+                          stacklevel=2)
+            return {}
         if maps is None:
             self._cam_ok = False
             warnings.warn("prediction monitor: Grad-CAM is not available for this "
@@ -377,7 +395,8 @@ def layer_group(name: str) -> str:
 class LayerStatsMonitor(TrainingListener):
     """Per-group gradient/weight norms and update ratio (batch hook) and weight
     histograms (epoch end). The update is the step AdamW just applied, rebuilt from
-    its state; for other optimizers ``lr × grad`` is used."""
+    its state; for other optimizers (Adam with coupled weight decay, AMSGrad, SGD…)
+    ``lr × grad`` is used as an approximation."""
 
     BINS = 32
 
@@ -407,7 +426,10 @@ class LayerStatsMonitor(TrainingListener):
             return None
         state = self._trainer.optimizer.state.get(p, {})
         lr = hp.get("lr", 0.0)
-        if "exp_avg" in state and "exp_avg_sq" in state:
+        decoupled = (isinstance(self._trainer.optimizer, torch.optim.AdamW)
+                     or hp.get("decoupled_weight_decay", False))
+        if decoupled and not hp.get("amsgrad", False) and \
+                "exp_avg" in state and "exp_avg_sq" in state:
             beta1, beta2 = hp.get("betas", (0.9, 0.999))
             step = float(state.get("step", 1))
             m_hat = state["exp_avg"] / (1 - beta1 ** step)

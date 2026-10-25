@@ -250,3 +250,33 @@ def test_gradcam_never_touches_parameter_gradients():
     assert maps.shape == (2, 2, 2) and maps.dtype == np.uint8
     assert maps.max() == 255
     assert all(p.grad is None for p in model.parameters())
+
+
+def test_binary_subset_keeps_negatives():
+    labels = torch.zeros(2000, 1)
+    labels[:500] = 1                                            # 25 % positives
+    idx = select_indices(2000, 200, seed=0, labels=labels)
+    frac = labels[idx].mean().item()
+    assert 0.4 < frac < 0.6                                     # balanced, not ~100 %
+
+
+def test_a_failing_gradcam_keeps_the_predictions(tmp_path, monkeypatch, toy):
+    spec = toy("toy_camfail", ("a", "b"), "multiclass")
+    monkeypatch.setattr("src.training.monitor.grad_cam",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("CUDA OOM")))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        _, log_dir = _train(tmp_path, monkeypatch, spec,
+                            monitor={"enabled": True, "samples": 6, "gradcam": 2})
+    assert any("Grad-CAM failed" in str(w.message) for w in caught)
+    for epoch in (1, 2):
+        ep = np.load(log_dir / "inspect_t" / f"epoch_{epoch:03d}.npz")
+        assert "probs" in ep.files and "cam" not in ep.files
+
+
+def test_monitor_with_trace_off_warns(tmp_path, monkeypatch, toy):
+    spec = toy("toy_traceoff", ("a", "b"), "multiclass")
+    monkeypatch.chdir(tmp_path)
+    cfg = _cfg(tmp_path, spec, monitor={"enabled": True})
+    with pytest.warns(RuntimeWarning, match="trace off"):
+        TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t").with_trace("off").build()

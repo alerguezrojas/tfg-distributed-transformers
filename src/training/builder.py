@@ -19,6 +19,7 @@ Usage:
 """
 
 import logging
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -441,10 +442,14 @@ class TrainingSessionBuilder:
             )
             trainer.add_listener(sink)
             if "batch-monitor" in self._layers:
-                # Same cadence as the batch CSV; without the monitor no per-batch
-                # metrics are computed, so the events add no work to the loop.
+                # Same cadence as the batch CSV (the monitor already makes the
+                # Trainer compute the per-batch metrics).
                 base.register_batch_hook(sink.on_batch)
             self._attach_monitors(trainer, base, sink, cfg, spec, task, log_dir)
+        elif self._trace == "off" and (self._monitor or monitor_config(cfg)["enabled"]):
+            warnings.warn("the prediction monitor writes to the event stream, which "
+                          "--trace off disables: the monitor is not active",
+                          RuntimeWarning, stacklevel=2)
 
         return trainer
 
@@ -455,6 +460,8 @@ class TrainingSessionBuilder:
         mon = monitor_config(cfg)
         if not (mon["enabled"] or self._monitor):
             return
+        # Note: with layer statistics the Trainer has a batch hook, so it computes the
+        # per-batch metrics dict every batch (small CPU work; no number changes).
         data_cfg = cfg["data"]
         trainer.add_listener(PredictionMonitor(
             base, spec.dataset(data_cfg, "val"), task, spec.classes, sink, log_dir,
