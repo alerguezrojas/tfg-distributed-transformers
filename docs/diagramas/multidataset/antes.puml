@@ -1,0 +1,27 @@
+@startuml
+!include style.iuml
+class "scripts de entrenamiento\n(train_*.py)" as S
+class BigEarthNetDataset {
+  CLASSES : 19 clases CORINE
+  + __getitem__(i) : lee 3 TIFF (rasterio)
+  normalización ImageNet fija
+}
+class Trainer {
+  criterion = BCEWithLogitsLoss()
+  preds = sigmoid(logits) > 0.5
+  métricas multi-etiqueta
+}
+class TimmClassifier {
+  in_chans = 3 (fijo)
+}
+class "scripts/eval.py" as E
+class ConfusionDecorator
+class "Web (src/web)" as W
+S ..> BigEarthNetDataset : crea
+S ..> Trainer : crea
+S ..> TimmClassifier : crea(num_classes=19)
+Trainer --> TimmClassifier
+E ..> BigEarthNetDataset : importa CLASSES
+ConfusionDecorator ..> BigEarthNetDataset : copia de CLASSES
+W ..> BigEarthNetDataset : ~35 referencias\na nombres de clase
+@enduml

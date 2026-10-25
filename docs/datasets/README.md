@@ -35,6 +35,9 @@ Las etiquetas viajan siempre como tensores `float` de forma `(N, C)`: multi-hot 
 multi-etiqueta, one-hot en multiclase y `(N, 1)` en binaria. Así el mixup, los trainers y
 los decoradores no necesitan saber qué tarea es.
 
+Diagramas UML del diseño (antes y después, patrones y secuencia de un entrenamiento) en
+[diagramas/multidataset/](../diagramas/multidataset/).
+
 ## Cómo añadir un dataset
 
 1. **Crear `src/data/<nombre>.py`** con un `torch.utils.data.Dataset` que devuelva

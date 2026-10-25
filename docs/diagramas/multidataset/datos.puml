@@ -1,0 +1,35 @@
+@startuml
+!include style.iuml
+class "torch.utils.data.Dataset" as D <<PyTorch>> {
+  + __len__()
+  + __getitem__(i) : (imagen, objetivo)
+}
+class BigEarthNetDataset {
+  lee TIFF por banda
+}
+class MedMNISTDataset {
+  lee .npz en memoria
+}
+class DatasetSpec <<dataclass>> {
+  + build : DatasetFactory
+  + transforms : TransformFactory
+  + class_counts : ClassCounter
+  + dataset(cfg, split) : Dataset
+}
+class "bigearthnet.py" as BE <<módulo>> {
+  BIGEARTHNET : DatasetSpec
+  _build(cfg, split, transform)
+  get_transforms(split)
+}
+class "medmnist.py" as MM <<módulo>> {
+  SUBSETS : 4 subconjuntos
+  _spec(nombre, subset) : DatasetSpec
+}
+D <|-- BigEarthNetDataset
+D <|-- MedMNISTDataset
+BE ..> DatasetSpec : crea y registra 1
+MM ..> DatasetSpec : crea y registra 4
+BE ..> BigEarthNetDataset : _build() lo crea
+MM ..> MedMNISTDataset : build() lo crea
+DatasetSpec ..> D : dataset() devuelve
+@enduml

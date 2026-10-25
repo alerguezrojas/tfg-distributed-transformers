@@ -1,0 +1,37 @@
+@startuml
+skinparam monochrome true
+skinparam shadowing false
+skinparam roundCorner 0
+skinparam defaultFontName "DejaVu Sans"
+skinparam defaultFontSize 13
+skinparam sequenceParticipantBackgroundColor white
+skinparam noteBackgroundColor white
+skinparam maxMessageSize 170
+hide footbox
+participant "Script de\nentrenamiento" as SC
+participant "registry" as R
+participant "DatasetSpec\n(medmnist_derma)" as S
+participant "Builder" as B
+participant "MultiClass\nTask" as T
+participant "Trainer" as TR
+SC -> R : dataset_spec_from_config(cfg)
+R -> R : importa medmnist.py\n(registra sus fichas)
+R --> SC : spec
+SC -> S : dataset(cfg, "train" / "val")
+S --> SC : MedMNISTDataset
+SC -> B : build()
+B -> R : dataset_spec_from_config(cfg)
+R --> B : spec
+B -> S : make_task()
+S -> T ** : get_task("multiclass")
+S --> B : task
+B -> B : modelo (7 salidas,\n3 canales) y pérdida
+B -> TR ** : Trainer(..., task)
+B --> SC : trainer
+SC -> TR : fit(...)
+loop cada batch
+  TR -> T : probabilities(logits)
+  TR -> T : predict(probs)
+end
+TR -> T : metrics(...)
+@enduml

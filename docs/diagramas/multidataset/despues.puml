@@ -1,0 +1,50 @@
+@startuml
+!include style.iuml
+skinparam nodesep 35
+skinparam ranksep 50
+class TrainingSessionBuilder <<builder>> {
+  + build() : Trainer
+  - _build_criterion(cfg, spec)
+}
+class "registry" as R <<módulo>> {
+  + register_dataset(spec)
+  + get_dataset_spec(nombre)
+  + dataset_spec_from_config(cfg)
+}
+class DatasetSpec <<dataclass>> {
+  + name, classes, task : str
+  + in_channels, required_keys
+  + build, transforms, class_counts
+  + make_task() : Task
+  + dataset(cfg, split) : Dataset
+}
+abstract class Task <<abstract>> {
+  + build_criterion()
+  + probabilities(logits)
+  + predict(probs, umbral)
+  + metrics(preds, objetivos)
+  + search_threshold(...)
+}
+class MultiLabelTask
+class BinaryTask
+class MultiClassTask
+class Trainer {
+  - task : Task
+  + train_epoch()
+  + eval_epoch()
+}
+class TimmClassifier {
+  in_chans, num_classes
+}
+TrainingSessionBuilder --> R : 1. dataset_spec_from_config(cfg)
+R o-- "*" DatasetSpec
+TrainingSessionBuilder ..> Task : 2. spec.make_task()
+TrainingSessionBuilder ..> TimmClassifier : 3. crea(spec.num_classes,\nspec.in_channels)
+TrainingSessionBuilder ..> Trainer : 4. crea(task=…)
+DatasetSpec ..> Task : crea
+Trainer --> Task : usa
+Trainer --> TimmClassifier
+Task <|-- MultiLabelTask
+Task <|-- MultiClassTask
+MultiLabelTask <|-- BinaryTask
+@enduml
