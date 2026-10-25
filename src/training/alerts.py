@@ -32,7 +32,7 @@ ALERT_DEFAULTS: dict = {
     "overfit_epochs": 3,             # val loss rising N epochs in a row, train falling
     "grad_explosion_factor": 100.0,  # group grad norm > k × its recent median
     "grad_history": 20,              # recent `layers` samples kept per group
-    "update_ratio_min": 1e-6,
+    "update_ratio_min": 1e-7,        # LLRD + LR decay make low groups ~1e-6
     "update_ratio_max": 1e-1,
     "update_ratio_patience": 3,      # consecutive `layers` samples out of range
     "data_wait_frac": 0.3,           # share of the epoch waiting for data
@@ -135,7 +135,7 @@ def check_grad_explosion(name: str, norm, history: list[float],
     return None
 
 
-def check_update_ratio(name: str, ratios: list, lo: float = 1e-6, hi: float = 1e-1,
+def check_update_ratio(name: str, ratios: list, lo: float = 1e-7, hi: float = 1e-1,
                        patience: int = 3) -> Finding | None:
     """Warning: the update/weight ratio of a group was outside ``[lo, hi]`` in each of the
     last ``patience`` samples (``None`` samples count as in range)."""

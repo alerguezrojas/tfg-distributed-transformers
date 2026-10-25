@@ -283,7 +283,7 @@ def _check_monitor(monitor: dict, errors: list) -> None:
         if isinstance(alerts, dict):
             n_before = len(errors)
             _check_typed("monitor.alerts", alerts, _ALERT_KEYS, errors)
-            lo, hi = alerts.get("update_ratio_min", 1e-6), alerts.get("update_ratio_max", 1e-1)
+            lo, hi = alerts.get("update_ratio_min", 1e-7), alerts.get("update_ratio_max", 1e-1)
             if len(errors) == n_before and lo >= hi:
                 errors.append("monitor.alerts.update_ratio_min must be < update_ratio_max, "
                               f"got {lo!r} >= {hi!r}")

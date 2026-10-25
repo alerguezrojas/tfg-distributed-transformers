@@ -48,7 +48,7 @@ monitor:
     overfit_epochs: 3             # validación sube N épocas seguidas mientras la de train baja
     grad_explosion_factor: 100.0  # norma de gradiente de un grupo > k × su mediana reciente
     grad_history: 20              # muestras de `layers` que forman esa mediana
-    update_ratio_min: 0.000001    # ratio actualización/peso fuera de [min, max]...
+    update_ratio_min: 0.0000001    # ratio actualización/peso fuera de [min, max]...
     update_ratio_max: 0.1
     update_ratio_patience: 3      # ...en N muestras de `layers` seguidas
     data_wait_frac: 0.3           # fracción de la época esperando datos
@@ -148,7 +148,7 @@ cada hallazgo nuevo. **Contrato del evento** (esquema v1; los campos de abajo si
 | `loss_divergence` | warning | Pérdida de validación > 2 × la mejor de las épocas anteriores | `epoch_end` |
 | `overfitting` | warning | La de validación sube 3 épocas seguidas mientras la de train baja | `epoch_end` |
 | `grad_explosion` | warning | Norma del gradiente de un grupo (`group` = capa) o del modelo entero (`group` `total`) > 100 × su mediana reciente (mínimo 5 muestras). Un gradiente no finito con pérdida finita es un paso que el `GradScaler` (fp16) salta: se ignora | `layers`; norma total del batch hook |
-| `update_ratio_out_of_range` | warning | Ratio actualización/peso fuera de [1e-6, 1e-1] en 3 muestras seguidas | `layers` |
+| `update_ratio_out_of_range` | warning | Ratio actualización/peso fuera de [1e-7, 1e-1] en 3 muestras seguidas | `layers` |
 | `dataloader_bound` | warning | `data_wait_frac` de la época > 0,3 | `epoch_end.train` |
 | `gpu_memory_high` | warning | Memoria usada > 95 % del total (`group` `gpu<N>`) | `system` |
 | `gpu_temp_high` | warning | Temperatura > 85 °C (`group` `gpu<N>`) | `system` |
@@ -177,8 +177,10 @@ Reglas de emisión:
   entrenamiento ni cambia ningún número (test de invariancia de pesos y de RNG).
 - Se cablea en rank 0 con el sink, también sin `--monitor`. `monitor.alerts.enabled: false` las
   desactiva. Las claves de `monitor.alerts` se validan (claves conocidas, tipos y mínimos).
-- Con LLRD y *warmup* los grupos más bajos del ViT pueden rondar el límite inferior del ratio
-  (1e-6) en las primeras épocas: el umbral se ajusta con `update_ratio_min`.
+- Con LLRD y con el *learning rate* decayendo al final de un *schedule* coseno, las capas de
+  normalización y los grupos más bajos del ViT bajan de 1e-6 sin que haya ningún problema (visto
+  en DermaMNIST, vit_tiny, época 5: `backbone.norm` ≈ 2e-7…2e-6). Por eso el límite inferior por
+  defecto es 1e-7; se ajusta con `update_ratio_min`.
 
 ## Directorio de inspección
 

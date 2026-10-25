@@ -75,7 +75,7 @@ def test_update_ratio_needs_persistence():
     ok, low, high = 1e-3, 1e-8, 0.5
     assert A.check_update_ratio("g", [low, low], patience=3) is None
     assert A.check_update_ratio("g", [low, ok, low], patience=3) is None
-    assert A.check_update_ratio("g", [low, low, low], patience=3).threshold == 1e-6
+    assert A.check_update_ratio("g", [low, low, low], patience=3).threshold == 1e-7
     assert A.check_update_ratio("g", [ok, high, high, high], patience=3).threshold == 0.1
     assert A.check_update_ratio("g", [1e-6, 1e-1, 1e-6], patience=3) is None   # bounds inclusive
     assert A.check_update_ratio("g", [None, None, None]) is None
