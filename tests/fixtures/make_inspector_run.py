@@ -62,7 +62,7 @@ def make_inspector_run(root, task: str = "multilabel", ts: str = "25102026_12000
                             "samples_per_s": 32 / (data_t + step_t)})
                 _w(f, type="system", time=t, cpu_pct=30.0 + ep, ram_used_pct=40.0,
                    proc_cpu_pct=110.0, proc_rss_mb=2500.0,
-                   gpus=[{"index": g, "name": "NVIDIA GeForce RTX 3060 Ti",
+                   gpus=[{"index": g, "uuid": f"GPU-{g:08d}", "name": "NVIDIA GeForce RTX 3060 Ti",
                           "util_pct": float(rng.uniform(60, 95)), "mem_used_mb": 3000.0 + 100 * ep,
                           "mem_total_mb": 8192.0, "power_w": float(rng.uniform(100, 160)),
                           "temp_c": float(rng.uniform(55, 70)), "sm_clock_mhz": 1700.0}

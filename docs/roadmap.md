@@ -187,7 +187,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
       (eventos `panel`) para ver cómo evolucionan las decisiones del modelo.
 - [x] Análisis de la inspección en CPU: paquete puro `src/analysis/` (curvas, umbrales,
       calibración, confusión, cartografía, flips, peores errores, proyección 2D y lector de
-      `inspect_<ts>/`); pendiente su pestaña en la web.
+      `inspect_<ts>/`); la web los muestra en la página *Inspector*.
 - [ ] Predicciones por muestra en test (`eval.py --save-predictions`), calibración (ECE, diagrama
       de fiabilidad), curvas ROC/PR y peores errores, con su pestaña en la web.
 - [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.

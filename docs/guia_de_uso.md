@@ -249,9 +249,9 @@ ficheros.
 uv run paravit.py dashboard    # → http://localhost:8501
 ```
 
-Interfaz de solo lectura (el terminal ejecuta, la web analiza), con seis secciones: **Overview**
+Interfaz de solo lectura (el terminal ejecuta, la web analiza), con siete secciones: **Overview**
 (indicadores globales, run activo, tabla de runs), **Live** (seguimiento de un entrenamiento en
-curso, ver más abajo), **Run results** (curvas, métricas por clase,
+curso, ver más abajo), **Inspector** (análisis a fondo de un run, ver más abajo), **Run results** (curvas, métricas por clase,
 confusiones, lotes y detalles del run activo), **Compare** (hasta 8 runs: aceleración frente a una
 referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
@@ -279,6 +279,36 @@ pausa el refresco automático y **Refresh every** fija el intervalo (2, 5, 10 o 
 a pintar el contenido de la sección, no el resto de la página. Si se lanza un entrenamiento con la
 sección ya abierta, pulsar **Refresh now** para que aparezca en la lista. La web no entrena ni
 toca la GPU: solo lee el fichero.
+
+### Analizar un run a fondo (Inspector)
+
+**Inspector** abre un run con flujo de eventos y/o directorio `inspect_<ts>/` (se generan con
+`--monitor`, ver [inspeccion.md](inspeccion.md)) y sirve tanto en vivo (mismo refresco que Live)
+como a posteriori. Un selector elige la vista; las vistas por época usan un deslizador de época
+(por defecto sigue la última):
+
+- **System**: utilización, memoria, potencia, temperatura y reloj por GPU; CPU y RAM del proceso;
+  medias, picos y energía aproximada (integral de la potencia muestreada).
+- **Performance**: muestras/s, tiempo de paso y espera del DataLoader. Más de un 30 % del tiempo
+  esperando datos se diagnostica como cuello de I/O.
+- **Predictions**: galería de miniaturas con borde verde (acierto) o rojo (fallo), filtros por
+  clase real y predicha, acierto, cambio respecto a la época anterior y orden por pérdida o
+  confianza; al elegir una muestra, su trayectoria por época y su Grad-CAM.
+- **Errors**: peores errores, matriz de confusión (conteos o normalizada) con las imágenes de la
+  celda elegida, y TP/FP/FN por clase.
+- **Curves**: ROC y PR por clase con macro y micro, F1/sensibilidad/especificidad frente al umbral,
+  tabla por clase y evolución del AUC y AP macro. Usa las probabilidades de toda la validación si
+  el run las guardó; si no, las del subconjunto (y lo indica).
+- **Calibration**: diagrama de fiabilidad, histograma de confianza y ECE/MCE/Brier por época.
+- **Dynamics**: cartografía de datos (fácil, ambigua, difícil) y cambios de acierto entre épocas;
+  las muestras «difíciles» son candidatas a etiqueta errónea.
+- **Embeddings**: proyección 2D (PCA, o UMAP si está instalado) coloreada por clase o acierto.
+- **Explain**: panel de Grad-CAM superpuesto (opacidad ajustable) y su evolución por época.
+- **Layers**: mapas de calor por grupo de capas de la norma del gradiente, la norma de los pesos y
+  el ratio de actualización (banda sana 1e-4 a 1e-2), e histogramas de pesos por época.
+
+Cada vista indica cómo activar los datos que le faltan (`--monitor`, `monitor.layers: true`…). Solo
+se calcula la vista elegida y los `.npz` se cachean por ruta y fecha de modificación.
 
 ![Overview del cuadro de mandos](img/dashboard_overview.png)
 

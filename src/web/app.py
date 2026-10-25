@@ -27,6 +27,7 @@ from src.web.tabs import (
     benchmark,
     dataset,
     live,
+    inspector,
 )
 
 # ── Page configuration ──────────────────────────────────────────────────────────
@@ -57,12 +58,13 @@ runs = _get_runs()
 # workflow, and "Import runs" now lives under "Data & runs". "Live" follows a
 # training in progress from its events_*.jsonl stream (it refreshes only its own
 # fragment; every other page is a snapshot of logs/ taken when it renders).
-_NAV_KEYS = ["overview", "live", "run", "compare", "benchmark", "data"]
-_NAV_LABELS = ["Overview", "Live", "Run results", "Compare", "Estimate/Benchmark", "Dataset"]
-_NAV_ICONS = ["house", "broadcast", "graph-up", "bar-chart-line", "speedometer2", "database"]
+_NAV_KEYS = ["overview", "live", "inspector", "run", "compare", "benchmark", "data"]
+_NAV_LABELS = ["Overview", "Live", "Inspector", "Run results", "Compare", "Estimate/Benchmark", "Dataset"]
+_NAV_ICONS = ["house", "broadcast", "search", "graph-up", "bar-chart-line", "speedometer2", "database"]
 _PAGES = {
     "overview": home.render,
     "live": live.render,
+    "inspector": inspector.render,
     "run": run_tab.render,
     "compare": comparison.render,
     "benchmark": benchmark.render,
