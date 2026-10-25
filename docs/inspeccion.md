@@ -107,6 +107,8 @@ paralelismo de modelo: sin `cam` (y se avisa una vez).
 | `calibration(probs, targets, task, bins=15)` | ECE, MCE, Brier y diagrama de fiabilidad (top-label en multiclase; por etiqueta agregada en multi-etiqueta) |
 | `confusion(probs, targets, task, threshold)` | Matriz de confusión e índices de las muestras de cada celda |
 | `cartography(prob_true_by_epoch, correct_by_epoch)` | Confianza, variabilidad y corrección por muestra; regiones fácil / ambigua / difícil (Swayamdipta et al., 2020) |
+| `prob_of_true(probs, targets, task)` / `sample_correct(probs, targets, task)` | Probabilidad de la verdad y acierto por muestra: entradas de `cartography` (acierto multi-etiqueta = coincidencia exacta) |
+| `load_monitor_set(dir)` / `list_epochs(dir)` / `load_epoch(dir, epoch)` | Lector de este directorio (`src/analysis/io.py`) |
 | `flips(probs_prev, probs_curr, targets, task)` | Muestras que pasan de acierto a fallo y al revés entre épocas |
 | `project_2d(embeddings, method="pca")` | Proyección 2D (PCA siempre; UMAP si `umap-learn` está instalado) |
 | `worst_errors(probs, targets, loss, task, k)` | Las *k* muestras con mayor pérdida y sus etiquetas |
