@@ -62,6 +62,6 @@ class LayerHooksDecorator(TrainerDecorator):
     def _print(self):
         if not self._activations:
             return
-        _log(f"\n[hooks] Activaciones medias — epoch {self._epoch:03d}:")
+        _log(f"[hooks] Activaciones medias — epoch {self._epoch:03d}:")
         for name, val in list(self._activations.items())[:5]:
             _log(f"  {name:<50} {val:.4f}  {'█' * int(val * 20)}")

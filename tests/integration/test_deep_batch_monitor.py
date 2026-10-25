@@ -44,3 +44,10 @@ def test_batch_monitor_con_deep_sin_batch_table(tmp_path):
     deep, monitor = _stack(tmp_path, {"grad-monitor"})
     deep.train_epoch(_loader())
     assert len(pd.read_csv(monitor.batch_csv_path)) == 4
+
+
+def test_batch_table_numera_las_epocas_al_pasar_por_fit(tmp_path):
+    deep, monitor = _stack(tmp_path, {"batch-table"})
+    deep.fit(_loader(), _loader(), epochs=2)
+    df = pd.read_csv(monitor.batch_csv_path)
+    assert list(df["epoch"]) == [1] * 4 + [2] * 4

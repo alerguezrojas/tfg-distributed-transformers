@@ -305,15 +305,15 @@ class DeepTracingDecorator(TracingDecorator):
             with torch.no_grad():
                 hard_labels = task.hard_targets(labels)  # ORIGINAL targets
                 preds = task.predict(task.probabilities(logits))
+                preds_cpu, hard_labels_cpu = preds.cpu(), hard_labels.cpu()
                 if not mixed:                            # skip blended batches
-                    all_preds.append(preds.cpu())
-                    all_labels.append(hard_labels.cpu())
+                    all_preds.append(preds_cpu)
+                    all_labels.append(hard_labels_cpu)
 
             # This loop replaces Trainer.train_epoch, so it must feed the Trainer's batch
             # hooks too (BatchMonitorDecorator): same dict as Trainer.train_epoch.
             batch_hooks = getattr(self._trainer, "_batch_hooks", None)
             if batch_hooks:
-                preds_cpu, hard_labels_cpu = preds.cpu(), hard_labels.cpu()
                 batch_metrics = {
                     "running_loss": total_loss / batch_idx,
                     "batch_loss": loss.item(),

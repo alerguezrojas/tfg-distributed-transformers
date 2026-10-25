@@ -5,6 +5,7 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Tests de `LayerHooksDecorator`, de los metric reporters y de `batch-table` + `batch-monitor`.
 - Auditoría de observabilidad (`docs/roadmap.md`) y revisión del sector en
   `docs/research/observabilidad_entrenamiento.md`: seguimiento en vivo, formato de eventos e
   interpretabilidad de ViT en imagen médica. Esquema v1 del flujo de eventos en `docs/eventos.md`.
@@ -96,7 +97,6 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   `@fn`) y en stdout si no; el texto es el mismo.
 - `psutil` declarado en las dependencias (lo importan `src/web/system_monitor.py` y las sondas del
   benchmark; solo llegaba de forma transitiva vía `ipykernel`).
-- Tests de `LayerHooksDecorator`, de los metric reporters y de `batch-table` + `batch-monitor`.
 - El hook guardián de commits solo examina el mensaje del `git commit`: antes bloqueaba
   comandos que mencionaban "Co-Authored-By" en otro sitio (por ejemplo, el cuerpo de un PR).
 - Web: `use_container_width` (obsoleto en Streamlit) pasa a `width="stretch"`; la columna
