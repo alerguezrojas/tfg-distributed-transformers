@@ -64,3 +64,14 @@ Los eventos de sistema, rendimiento por batch, monitor de predicciones y capas (
 `monitor_start`, `inspection`, `layers`, `histograms`) y los datos por época que referencian se
 describen en [inspeccion.md](inspeccion.md). Previstos para la fase 4: `io` / `power` (medidas del
 predictor).
+
+## Evento `alert`
+
+Lo emiten las reglas de salud del entrenamiento y lo muestran el banner de Live y del Inspector y
+la vista *Alerts*: `{"type": "alert", "level": "warning"|"critical", "code": str, "message": str,
+"epoch": int|null, "batch": int|null, "value": float|null, "threshold": float|null, "group":
+str|null}`. Códigos: `nan_loss` (el único `critical`), `loss_divergence`, `overfitting`,
+`grad_explosion`, `update_ratio_out_of_range`, `dataloader_bound`, `gpu_memory_high`,
+`gpu_temp_high`, `throughput_drop`. `group` es el nombre de la capa, `gpu<N>` o `train`/`val`;
+`value` es `null` si no es finito. Una alerta por (`code`, `group`). Los lectores antiguos la
+ignoran (tipo desconocido).

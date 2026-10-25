@@ -53,7 +53,8 @@ paralelismo de modelo equivale a `monitor.enabled: true`.
 | `monitor_start` | `dir` (relativo al log), `samples`, `panel`, `classes`, `full_val`, `embedding_dim` | Al empezar el run, si el monitor está activo |
 | `inspection` | `epoch`, `file` (relativo al log), `seconds` (lo que tardó la captura) | Tras cada época inspeccionada |
 | `layers` | `epoch`, `batch`, `groups`: lista de `{name, grad_norm, weight_norm, update_ratio}` | Cada `log_batch_every` batches, si `monitor.layers` |
-| `histograms` | `epoch`, `groups`: lista de `{name, edges (33), counts (32)}` de los pesos | Al final de cada época, si `monitor.layers` |
+| `histograms` | `epoch`, `kind` (`weights` por defecto o `gradients`), `groups`: lista de `{name, edges (33), counts (32)}` | Al final de cada época, si `monitor.layers`: un evento de cada tipo (el de gradientes omite los grupos sin gradiente) |
+| `alert` | `level` (`warning`/`critical`), `code`, `message`, `epoch`, `batch`, `value`, `threshold`, `group` (capa, `gpu<N>`, `train`/`val` o `null`) | Cuando salta una regla de salud; una alerta por (`code`, `group`). Contrato en [eventos.md](eventos.md) |
 
 **`batch`** añade a `metrics`: `data_time_s` (espera del DataLoader en ese batch), `step_time_s`
 (resto del paso), `samples_per_s`. **`epoch_end.train`** añade `samples_per_s` y
@@ -132,6 +133,18 @@ puede ocupar decenas de MB. Ficheros NumPy comprimidos (`np.savez_compressed`):
 | `val_targets` | `(N, C)` uint8 | Etiquetas reales alineadas con `val_probs` |
 | `threshold` | `()` float32 | Umbral óptimo de validación de la época (o 0,5) |
 
+**`groups.npz`** (opcional; *previsto: lo escribirá el monitor cuando el dataset exponga
+metadatos*; hoy la web lo lee si existe, p. ej. escrito a mano o con otro script). Una clave por
+variable de agrupación (sexo, centro, edad...), cada una un vector 1-D de `M` valores **alineado
+con `monitor_set.npz`** (la fila `i` es la muestra `i` del subconjunto):
+
+| Clave | Forma y tipo | Significado |
+|---|---|---|
+| `<nombre>` (p. ej. `sex`, `age`, `centre`) | `(M,)` cadenas o números | Etiqueta de grupo de cada muestra. Las numéricas con muchos valores distintos (edad) la web las parte en cuantiles; los datos faltantes se codifican como su propio valor (`"NA"`) |
+
+Si alguna variable no tiene exactamente `M` entradas, el fichero se ignora entero (una variable
+desalineada daría cifras falsas). Sin `groups.npz` la vista *Subgroups* no aparece.
+
 En DDP, `val_probs` sale de las probabilidades ya reunidas de todos los ranks (el orden no es el
 del dataset, pero cada fila está alineada con su `val_targets`; puede haber duplicados del relleno
 del `DistributedSampler`).
@@ -165,6 +178,7 @@ cada paso (trabajo pequeño en CPU; no cambia ningún número).
 | `flips(probs_prev, probs_curr, targets, task)` | Muestras que pasan de acierto a fallo y al revés entre épocas |
 | `project_2d(embeddings, method="pca")` | Proyección 2D (PCA siempre; UMAP si `umap-learn` está instalado) |
 | `worst_errors(probs, targets, loss, task, k)` | Las *k* muestras con mayor pérdida y sus etiquetas |
+| `load_groups(dir, n=None)` | Lee el `groups.npz` opcional (`None` si no existe; `ValueError` si una variable no tiene `n` entradas) |
 
 ### Estadística para publicación
 
@@ -197,3 +211,31 @@ Decisiones de método:
 - La brecha por subgrupo es descriptiva (diferencia de estimaciones puntuales): para decir si
   supera el ruido hay que mirar los intervalos.
 - Los umbrales de punto de operación deben fijarse en validación y aplicarse a test.
+
+### Vistas clínicas del Inspector
+
+La web usa estas funciones en cuatro sitios (`src/web/inspector_stats.py` reúne los helpers puros):
+
+- **Curves:** AUC, AP, F1, sensibilidad, especificidad y exactitud macro con IC95 (`metrics_with_ci`),
+  y opcionalmente IC por clase (un *bootstrap* por columna; en multiclase solo AUC y AP). Control de
+  remuestras (200 / 1000 / 2000), semilla fija 0, resultados cacheados por (fichero, mtime,
+  ajustes). Cada intervalo lleva la nota «95% CI, percentile bootstrap, n=…».
+- **Clinical:** punto de operación de una clase (uno contra el resto en multiclase, sobre su
+  probabilidad): umbral manual, el óptimo de validación del run (`threshold` del `.npz`),
+  sensibilidad objetivo (0,80 / 0,90 / 0,95 / 0,99) o Youden. Muestra sensibilidad, especificidad,
+  VPP, VPN, F1 y exactitud con IC, la matriz 2×2 y la ROC con el punto marcado. La prevalencia de
+  VPP/VPN es la observada o la que indique el usuario (Bayes; con prevalencia impuesta el remuestreo
+  se estratifica por etiqueta). Los IC son *condicionales al umbral*: si este se eligió con los
+  mismos datos (sensibilidad objetivo, Youden) no recogen la incertidumbre de esa elección.
+- **Calibration:** pendiente e intercepto (CITL) con interpretación (pendiente < 1 = sobreconfianza,
+  > 1 = infraconfianza; se compara con 1 usando el IC de Wald), ECE adaptativa, ECE por clase (tabla
+  con MCE, Brier, ACE, pendiente e intercepto por clase) y la pendiente en la evolución por época.
+- **Subgroups:** solo si existe `groups.npz`. Métricas por grupo con IC opcional y brecha máx-mín;
+  se calculan sobre el subconjunto monitorizado (el que tiene los grupos alineados), así que los
+  grupos pequeños son ruidosos (`min_size` los marca y los excluye de la brecha).
+- **Alerts:** lista cronológica de los eventos `alert` y banner con las alertas activas en la
+  cabecera del Inspector y de Live. Como no hay evento de «resuelta», *activa* se define por
+  recencia: la última de cada (`code`, `group`) emitida en la época actual o la anterior (con el
+  run terminado, todas las que saltaron). Rojo = `critical`, ámbar = `warning`.
+- **Layers:** si el run trae histogramas de gradientes (`kind: "gradients"`) aparece un selector
+  Weights / Gradients.

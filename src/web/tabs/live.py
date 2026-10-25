@@ -16,6 +16,7 @@ from src.web.events_reader import (
     EventsFile, EventsFollower, RunState, discover_event_files,
 )
 from src.web.ui import helpers
+from src.web.ui.alert_banner import render_alert_banner
 from src.web.ui.charts import COLORS, _base_layout, _metric_fig, _show
 from src.web.ui.context import DashboardContext
 
@@ -185,6 +186,7 @@ def _view(path, stalled_s: float, armed: bool) -> None:
         st.rerun(scope="app")
 
     _header(state, status, state.eta_s(stalled_after_s=stalled_s))
+    render_alert_banner(state, status)
     rows = state.epoch_rows()
     _kpis(state, rows)
     _curves(rows)
