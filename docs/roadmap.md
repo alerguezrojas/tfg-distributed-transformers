@@ -31,13 +31,14 @@ observabilidad (25/10/2026)" y en la fase 4.
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
+- Limpieza de trazas (deuda de la auditoría): docstrings de `plot`/`confusion` al día,
+  `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
+  `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
 **En curso (fase 4, observabilidad):**
 - Flujo de eventos estructurado (`events_*.jsonl`), la base común de la vista en vivo y de las
   medidas del predictor ([esquema](eventos.md)).
 - Pestaña *Live* de la web, que sigue un entrenamiento en curso leyendo ese flujo.
-- Limpieza de la deuda de las trazas: docstrings que prometían PNG, `LayerHooksDecorator` sin
-  logger, un posible fallo de los *batch hooks* con `--inspect batch-table` y `psutil` sin declarar.
 
 **Siguiente paso recomendado:** el panel fijo de validación (probabilidades por época de un
 conjunto fijo de imágenes), las predicciones por muestra en test con calibración y curvas ROC/PR,
@@ -113,7 +114,7 @@ y desde la web. Inventario del código y revisión del sector en
 4. **La web no es "en vivo".** Lee los ficheros al interactuar o cuando caduca la caché (30-60 s);
    `refresh_interval` está definido pero nadie lo usa, y el monitor del sistema se retiró.
 5. **Deuda menor:** docstrings que prometen PNG que no se generan, `LayerHooksDecorator` que solo
-   imprime por consola, decoradores sin tests, `tensorboard` declarado y sin uso, y `psutil`
+   imprime por consola, decoradores sin tests, `tensorboard` declarado y sin uso (se mantiene para un futuro exportador), y `psutil`
    usado y sin declarar.
 
 **Decisión de diseño:** un único **flujo de eventos** (`events_*.jsonl`, solo rank 0, una línea
@@ -173,7 +174,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Flujo de eventos `events_*.jsonl` (esquema v1 en [eventos.md](eventos.md)): inicio con
       configuración y huella del entorno, épocas, batches, parada temprana y fin (también si falla).
 - [ ] Web: pestaña *Live* que sigue un run en curso con lectura incremental del flujo.
-- [ ] Limpieza de la deuda de las trazas (docstrings, `LayerHooksDecorator`, *batch hooks* con
+- [x] Limpieza de la deuda de las trazas (docstrings, `LayerHooksDecorator`, *batch hooks* con
       `batch-table`, dependencias).
 - [ ] Panel fijo de validación: probabilidades de un conjunto fijo de imágenes en cada época
       (eventos `panel`) para ver cómo evolucionan las decisiones del modelo.

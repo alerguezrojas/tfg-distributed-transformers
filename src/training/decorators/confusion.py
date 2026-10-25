@@ -24,14 +24,16 @@ from src.training.decorators.base import TrainerDecorator
 
 
 class ConfusionMatrixDecorator(TrainerDecorator):
-    """Aspect decorator that saves per-class metric plots after each eval epoch.
+    """Aspect decorator that writes per-class metrics and the confusion matrix as CSV.
 
     Activates with --layers confusion. Compatible with all trace modes and other
     aspect decorators. Positions between Trainer and metric reporters in the stack.
 
-    The plot is saved as '{output_dir}/perclass_{timestamp}_epoch{N:03d}.png'.
-    If csv_dir is provided, a row is appended to
-    '{csv_dir}/perclass_metrics_{timestamp}.csv' after each epoch.
+    It writes no images. If csv_dir is provided, after each (every_n_epochs-th) eval it
+    appends to two files: '{csv_dir}/perclass_metrics_{timestamp}.csv' (F1, precision,
+    recall per class) and '{csv_dir}/confusion_matrix_{timestamp}.csv' (C x C matrix).
+    Without csv_dir nothing is written. output_dir is only created (kept for
+    compatibility with the Builder); no file goes into it.
     """
 
     def __init__(
