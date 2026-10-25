@@ -34,6 +34,8 @@ observabilidad (25/10/2026)" y en la fase 4.
   en GPU seguido desde el navegador. PRs #160-#163.
 - Fase 4, segundo bloque (en PR): evento `system` (GPU/CPU/RAM cada 5 s) y rendimiento por batch
   (espera del DataLoader, muestras/s) en el flujo de eventos; verificado con un run corto en GPU.
+- Fase 4, segunda ola, estadística (en PR): IC *bootstrap* de todas las métricas, calibración
+  completa, punto de operación clínico y métricas por subgrupo en `src/analysis/`.
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
@@ -194,9 +196,10 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
 - Segunda ola, según el [inventario del sector](research/inventario_herramientas_observabilidad.md)
   (lo que ninguna herramienta general trae y la imagen médica exige):
-  - [ ] Intervalos de confianza *bootstrap*, calibración completa (pendiente, intercepto, ECE por
+  - [x] Intervalos de confianza *bootstrap*, calibración completa (pendiente, intercepto, ECE por
         clase), punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN) y métricas
-        por subgrupo.
+        por subgrupo: cálculo en `src/analysis/` (en PR); falta mostrarlo en la web y que el
+        dataset del tutor aporte metadatos para los subgrupos.
   - [ ] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, gradientes fuera de
         rango, cuello de I/O, GPU al límite) con aviso en la web.
   - [ ] Histogramas de gradientes y prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo

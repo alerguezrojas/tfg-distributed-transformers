@@ -5,6 +5,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Estadística para publicación en `src/analysis/` (solo NumPy): intervalos de confianza
+  *bootstrap* (`bootstrap_ci`, `metrics_with_ci` con AUC, AP, F1, sensibilidad, especificidad,
+  exactitud, ECE y Brier; ruta vectorizada), pendiente e intercepto de calibración, ECE por clase
+  y ECE adaptativo, punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN por
+  prevalencia) y métricas por subgrupo con brecha máx-mín. No cambia ninguna función existente.
+  Descrito en `docs/inspeccion.md` y `docs/arquitectura.md`.
 - `docs/research/inventario_herramientas_observabilidad.md`: inventario funcionalidad a
   funcionalidad de 14 herramientas de observabilidad, matriz comparativa, requisitos de imagen
   médica y lista priorizada; la segunda ola de la fase 4 sale de ahí.
