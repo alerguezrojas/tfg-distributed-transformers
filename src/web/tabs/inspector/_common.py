@@ -12,7 +12,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.analysis.io import EpochData, MonitorSet, load_epoch, load_monitor_set
+from src.analysis.io import EpochData, MonitorSet, load_epoch, load_groups, load_monitor_set
 from src.web.events_reader import RunState
 from src.web.inspector_data import outcome_card
 from src.web.ui.charts import _show
@@ -54,6 +54,23 @@ def _cached_epoch(dir_str: str, epoch: int, mtime: float) -> EpochData | None:
         return None
 
 
+@st.cache_data(show_spinner=False, max_entries=8)
+def _cached_groups(dir_str: str, n: int, mtime: float) -> dict[str, np.ndarray] | None:
+    try:
+        return load_groups(dir_str, n)
+    except Exception:           # misaligned or unreadable: the view simply does not appear
+        return None
+
+
+def load_groups_cached(inspect_dir: Path | None, monitor: MonitorSet | None
+                       ) -> dict[str, np.ndarray] | None:
+    """Optional ``groups.npz`` (docs/inspeccion.md), checked against the monitor-set size."""
+    if inspect_dir is None or monitor is None:
+        return None
+    return _cached_groups(str(inspect_dir), len(monitor.indices),
+                          _mtime(inspect_dir / "groups.npz"))
+
+
 def load_monitor(inspect_dir: Path | None) -> MonitorSet | None:
     if inspect_dir is None:
         return None
@@ -78,6 +95,7 @@ class InspectorCtx:
     epoch: int | None                       # the epoch the per-epoch views show
     task: str = "multilabel"
     classes: list[str] = field(default_factory=list)
+    groups: dict[str, np.ndarray] | None = None     # groups.npz: variable → (M,) labels
 
     @property
     def n_classes(self) -> int:

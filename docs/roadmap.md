@@ -202,14 +202,17 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   (lo que ninguna herramienta general trae y la imagen médica exige):
   - [x] Intervalos de confianza *bootstrap*, calibración completa (pendiente, intercepto, ECE por
         clase), punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN) y métricas
-        por subgrupo: cálculo en `src/analysis/` (en PR); falta mostrarlo en la web y que el
-        dataset del tutor aporte metadatos para los subgrupos.
+        por subgrupo: cálculo en `src/analysis/` y vistas *Curves*, *Clinical*, *Calibration* y
+        *Subgroups* del Inspector (esta última lee un `groups.npz` opcional); falta que el monitor
+        lo escriba cuando el dataset del tutor aporte metadatos.
   - [x] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, sobreajuste, gradientes
         fuera de rango, cuello de I/O, GPU al límite, caída de throughput): evento `alert`
-        (`src/training/alerts.py`, en PR); falta el aviso en la web.
-  - [x] Histogramas de gradientes (evento `histograms` con `kind`; en PR).
+        (`src/training/alerts.py`, en PR); lado web hecho (banner en Live e Inspector, vista
+        *Alerts*).
+  - [x] Histogramas de gradientes (evento `histograms` con `kind`; en PR; la web ya los lee).
   - [ ] Prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo et al. 2018).
-  - [ ] Informe exportable de un run (HTML) con la lista TRIPOD+AI/CLAIM.
+  - [x] Informe exportable de un run (HTML) con la lista TRIPOD+AI: `paravit report` (en PR);
+        falta CLAIM y los subgrupos (dependen de los metadatos del dataset del tutor).
   - [ ] Agregación por semilla en la comparación de runs (media y banda).
   - [ ] Métricas por *rank* en DDP (rezagados; cómputo frente a comunicación).
   - [ ] Duplicados y fuga entre particiones (hash/embeddings; por paciente).

@@ -8,7 +8,8 @@ Streamlit, no torch, no GPU — the web only reads.
 Schema v1 (every line carries ``v``, ``type`` and ``time``): ``run_start``,
 ``epoch_start``, ``batch``, ``epoch_end``, ``early_stop``, ``heartbeat``, ``run_end``
 (docs/eventos.md) and the inspection events ``system``, ``monitor_start``, ``inspection``,
-``layers`` and ``histograms`` (docs/inspeccion.md), which the "Inspector" page reads. Unknown
+``layers`` and ``histograms`` (docs/inspeccion.md), which the "Inspector" page reads, and the
+``alert`` events of the trainer's health rules (level, code, message; docs/eventos.md). Unknown
 types, and lines from a newer schema version, are ignored so an older dashboard
 keeps working with a newer trainer.
 """
@@ -33,6 +34,7 @@ MAX_SYSTEM = 5000                   # ``system`` samples kept (every few seconds
 MAX_LAYERS = 4000                   # ``layers`` events kept (most recent)
 MAX_HISTOGRAMS = 200                # epochs with weight histograms kept (most recent)
 MAX_INSPECTIONS = 1000
+MAX_ALERTS = 500                    # ``alert`` events kept (most recent)
 _TAIL_BYTES = 8192                  # how much of the file end is scanned for run_end
 
 # Derived run states.
@@ -68,7 +70,9 @@ class RunState:
     # Inspection events (docs/inspeccion.md): bounded, most recent kept.
     systems: deque = field(default_factory=lambda: deque(maxlen=MAX_SYSTEM))
     layers: deque = field(default_factory=lambda: deque(maxlen=MAX_LAYERS))
-    histograms: dict[int, dict[str, Any]] = field(default_factory=dict)   # epoch → event
+    histograms: dict[int, dict[str, Any]] = field(default_factory=dict)   # epoch → event (weights)
+    grad_histograms: dict[int, dict[str, Any]] = field(default_factory=dict)   # kind "gradients"
+    alerts: deque = field(default_factory=lambda: deque(maxlen=MAX_ALERTS))
     inspections: deque = field(default_factory=lambda: deque(maxlen=MAX_INSPECTIONS))
     monitor_start: dict[str, Any] | None = None
     run_end: dict[str, Any] | None = None
@@ -81,48 +85,71 @@ class RunState:
 
     def apply(self, ev: dict[str, Any]) -> None:
         """Folds one event (already validated by :func:`parse_event`)."""
-        kind = ev["type"]
-        if kind == "run_start":
-            self.run_start = ev
-            self.planned_epochs = _as_int(ev.get("epochs"), self.planned_epochs)
-        elif kind == "epoch_start":
-            self.current_epoch = _as_int(ev.get("epoch"), self.current_epoch)
-            self.planned_epochs = _as_int(ev.get("epochs"), self.planned_epochs)
-        elif kind == "batch":
-            self.batches.append(ev)
-        elif kind == "epoch_end":
-            self.planned_epochs = _as_int(ev.get("epochs"), self.planned_epochs)
-            if self.epoch_ends and self.epoch_ends[-1].get("epoch") == ev.get("epoch"):
-                self.epoch_ends[-1] = ev        # re-emitted epoch: keep the latest
-            else:
-                self.epoch_ends.append(ev)
-        elif kind == "early_stop":
-            self.early_stop = ev
-        elif kind == "run_end":
-            self.run_end = ev
-        elif kind == "heartbeat":
-            pass                                # only proves the trainer is alive
-        elif kind == "system":
-            self.systems.append(ev)
-        elif kind == "layers":
-            self.layers.append(ev)
-        elif kind == "histograms":
-            epoch = _as_int(ev.get("epoch"), None)
-            if epoch is not None:
-                self.histograms[epoch] = ev     # one per epoch: the latest wins
-                while len(self.histograms) > MAX_HISTOGRAMS:
-                    del self.histograms[min(self.histograms)]
-        elif kind == "monitor_start":
-            self.monitor_start = ev
-        elif kind == "inspection":
-            self.inspections.append(ev)
-        else:
-            self.n_ignored += 1                 # unknown type: forward compatibility
+        handler = self._HANDLERS.get(ev["type"])
+        if handler is None or handler(self, ev) is False:
+            self.n_ignored += 1                 # unknown type/kind: forward compatibility
             return
         self.n_events += 1
         t = ev.get("time")
         if isinstance(t, (int, float)) and not isinstance(t, bool):
             self.last_event_time = float(t)
+
+    # One handler per event type; returning False means "not understood".
+
+    def _on_run_start(self, ev):
+        self.run_start = ev
+        self.planned_epochs = _as_int(ev.get("epochs"), self.planned_epochs)
+
+    def _on_epoch_start(self, ev):
+        self.current_epoch = _as_int(ev.get("epoch"), self.current_epoch)
+        self.planned_epochs = _as_int(ev.get("epochs"), self.planned_epochs)
+
+    def _on_epoch_end(self, ev):
+        self.planned_epochs = _as_int(ev.get("epochs"), self.planned_epochs)
+        if self.epoch_ends and self.epoch_ends[-1].get("epoch") == ev.get("epoch"):
+            self.epoch_ends[-1] = ev            # re-emitted epoch: keep the latest
+        else:
+            self.epoch_ends.append(ev)
+
+    def _on_histograms(self, ev):
+        kind_h = ev.get("kind", "weights")      # no field = weights
+        target = {"weights": self.histograms, "gradients": self.grad_histograms}.get(
+            kind_h if isinstance(kind_h, str) else "")
+        if target is None:
+            return False
+        epoch = _as_int(ev.get("epoch"), None)
+        if epoch is not None:
+            target[epoch] = ev                  # one per epoch and kind: the latest wins
+            while len(target) > MAX_HISTOGRAMS:
+                del target[min(target)]
+        return True
+
+    def _setter(name):  # noqa: N805 — builds handlers at class creation
+        def handler(self, ev):
+            setattr(self, name, ev)
+        return handler
+
+    def _appender(name):  # noqa: N805
+        def handler(self, ev):
+            getattr(self, name).append(ev)
+        return handler
+
+    _HANDLERS = {
+        "run_start": _on_run_start,
+        "epoch_start": _on_epoch_start,
+        "epoch_end": _on_epoch_end,
+        "histograms": _on_histograms,
+        "batch": _appender("batches"),
+        "system": _appender("systems"),
+        "layers": _appender("layers"),
+        "alert": _appender("alerts"),
+        "inspection": _appender("inspections"),
+        "early_stop": _setter("early_stop"),
+        "run_end": _setter("run_end"),
+        "monitor_start": _setter("monitor_start"),
+        "heartbeat": lambda self, ev: None,     # only proves the trainer is alive
+    }
+    del _setter, _appender
 
     # ── derived state ──────────────────────────────────────────────────────────
 

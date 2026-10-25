@@ -78,6 +78,7 @@ alias). `--help` funciona en cada subcomando.
 | `train` | Entrenamiento con la estrategia elegida | Sí |
 | `eval` | Evaluación de un checkpoint sobre el split de test (o val) | Sí |
 | `runs` | Tabla de todos los entrenamientos registrados con su mejor F1 | No |
+| `report` | Informe HTML autocontenido de un run (métricas con IC, calibración, TRIPOD+AI) | No |
 | `dashboard` | Abre el panel web en `http://localhost:8501` | No |
 
 ### `estimate` — predecir sin entrenar
@@ -162,6 +163,28 @@ En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbra
 validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
 que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce
 el comportamiento anterior (ajustarlo sobre el propio test), que da una cifra optimista.
+
+### `report` — informe de un run
+
+```bash
+uv run paravit.py report 25102026_120000                 # por sello (se busca bajo logs/)
+uv run paravit.py report logs/local/medmnist_derma/single/vit_tiny_patch16_224   # carpeta del run
+uv run paravit.py report logs/.../events_25102026_120000.jsonl --epoch 12 --n-boot 2000 -o informe.html
+```
+
+Genera **un solo fichero HTML** (plotly.js embebido una vez, imágenes en base64, sin recursos
+externos), que se puede enviar por correo. Por defecto queda en `report_<sello>.html` junto al
+`events_*.jsonl` (los `report_*.html` no se versionan). Solo lee `logs/`: no usa GPU ni entrena.
+Secciones: resumen (dataset, tarea, modelo, entorno con UUID de GPU, energía aproximada,
+configuración plegable), entrenamiento (curvas, rendimiento, GPU, alertas), evaluación de la
+época elegida (`--epoch`, por defecto la última inspeccionada: métricas con IC95 *bootstrap* con
+semilla anotada, ROC/PR, tabla por clase, matriz de confusión, calibración con pendiente e
+intercepto, puntos de operación, peores errores y Grad-CAM), dinámica (cartografía y PCA) y la
+lista **TRIPOD+AI** (Collins et al., BMJ 2024, [doi:10.1136/bmj-2023-078378](https://doi.org/10.1136/bmj-2023-078378)),
+con cada ítem como *documentado*, *parcial* o *pendiente* (lo que exige a los autores no se marca).
+Sin `inspect_<sello>/` o sin eventos `system`, la sección lo dice e indica qué activar
+(`--monitor`, `monitor.system_interval_s`). La evaluación usa la validación: no sustituye a `eval`
+sobre test.
 
 ## 4. Los ficheros de configuración
 
@@ -301,15 +324,26 @@ como a posteriori. Un selector elige la vista; las vistas por época usan un des
 - **Errors**: peores errores, matriz de confusión (conteos o normalizada) con las imágenes de la
   celda elegida, y TP/FP/FN por clase.
 - **Curves**: ROC y PR por clase con macro y micro, F1/sensibilidad/especificidad frente al umbral,
-  tabla por clase y evolución del AUC y AP macro. Usa las probabilidades de toda la validación si
+  tabla por clase y evolución del AUC y AP macro. Las métricas macro (y, si se pide, las de cada clase) llevan
+  intervalos de confianza *bootstrap* al 95 % con 200, 1000 o 2000 remuestras. Usa las probabilidades de toda la validación si
   el run las guardó; si no, las del subconjunto (y lo indica).
-- **Calibration**: diagrama de fiabilidad, histograma de confianza y ECE/MCE/Brier por época.
+- **Clinical**: punto de operación de una clase (uno contra el resto en multiclase): umbral manual, el óptimo de
+  validación del run, sensibilidad objetivo (0,90 / 0,95…) o Youden; sensibilidad, especificidad, VPP, VPN, F1 y
+  matriz 2×2 con intervalos de confianza, prevalencia editable para VPP/VPN y ROC con el punto marcado.
+- **Calibration**: diagrama de fiabilidad, histograma de confianza, ECE/MCE/Brier, pendiente e intercepto de
+  calibración (pendiente < 1 = sobreconfianza), ECE adaptativa y por clase, y su evolución por época.
+- **Subgroups**: solo aparece si el run tiene `groups.npz` (ver [inspeccion.md](inspeccion.md)); métricas por
+  grupo con intervalos y la brecha entre el mejor y el peor.
 - **Dynamics**: cartografía de datos (fácil, ambigua, difícil) y cambios de acierto entre épocas;
   las muestras «difíciles» son candidatas a etiqueta errónea.
 - **Embeddings**: proyección 2D (PCA, o UMAP si está instalado) coloreada por clase o acierto.
 - **Explain**: panel de Grad-CAM superpuesto (opacidad ajustable) y su evolución por época.
 - **Layers**: mapas de calor por grupo de capas de la norma del gradiente, la norma de los pesos y
-  el ratio de actualización (banda sana 1e-4 a 1e-2), e histogramas de pesos por época.
+  el ratio de actualización (banda sana 1e-4 a 1e-2), e histogramas de pesos (o de gradientes, si el run los
+  trae) por época.
+- **Alerts**: lista cronológica de las alertas de salud del entrenamiento (NaN, divergencia, sobreajuste,
+  gradientes, cuello de I/O, GPU). Las activas salen como banner (rojo = crítica, ámbar = aviso) en la
+  cabecera del Inspector y de Live.
 
 Cada vista indica cómo activar los datos que le faltan (`--monitor`, `monitor.layers: true`…). Solo
 se calcula la vista elegida y los `.npz` se cachean por ruta y fecha de modificación.

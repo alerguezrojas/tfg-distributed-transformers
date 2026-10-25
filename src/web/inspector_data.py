@@ -445,10 +445,85 @@ def thin_epochs(epochs: list[int], max_n: int) -> list[int]:
     return [epochs[i] for i in keep]
 
 
+# ── Alerts ──────────────────────────────────────────────────────────────────────
+
+CRITICAL, WARNING = "critical", "warning"
+ALERT_COLUMNS = ["time", "level", "code", "group", "epoch", "batch", "value", "threshold", "message"]
+
+
+def _alert_level(ev: dict[str, Any]) -> str:
+    return CRITICAL if ev.get("level") == CRITICAL else WARNING     # unknown level: warning
+
+
+def _group(ev: dict[str, Any]) -> str:
+    """Layer name, ``gpu<N>``, ``train`` / ``val`` or empty (the alert has no group)."""
+    g = ev.get("group")
+    return "" if g is None else str(g)
+
+
+def alert_frame(alerts: Iterable[dict[str, Any]]) -> pd.DataFrame:
+    """Chronological table of ``alert`` events (contract in docs/eventos.md).
+
+    Columns: ``time`` (datetime, UTC), ``level`` (``critical`` / ``warning``; anything else is
+    shown as a warning), ``code``, ``group``, ``epoch``, ``batch``, ``value``, ``threshold``, ``message``.
+    Missing numeric fields are NaN.
+    """
+    rows = []
+    for ev in alerts:
+        rows.append({"time": _num(ev.get("time")), "level": _alert_level(ev),
+                     "code": str(ev.get("code", "")), "group": _group(ev), "epoch": _num(ev.get("epoch")),
+                     "batch": _num(ev.get("batch")), "value": _num(ev.get("value")),
+                     "threshold": _num(ev.get("threshold")), "message": str(ev.get("message", ""))})
+    df = pd.DataFrame(rows, columns=ALERT_COLUMNS)
+    df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
+    return df.sort_values("time", kind="stable").reset_index(drop=True)
+
+
+def _time_key(ev: dict[str, Any]) -> float:
+    t = _num(ev.get("time"))
+    return 0.0 if math.isnan(t) else t
+
+
+def active_alerts(alerts: Iterable[dict[str, Any]], current_epoch: int | None = None,
+                  window: int = 1) -> list[dict[str, Any]]:
+    """Alerts to show in the banner: the latest event of each (``code``, ``group``).
+
+    The contract has no "resolved" event, so *active* is defined by recency: an alert stays
+    while its epoch is within ``window`` epochs of ``current_epoch`` (or has no epoch). With
+    ``current_epoch=None`` (finished run) every (code, group) that fired is kept. Critical first, then the
+    most recent. Each returned dict gains a normalised ``level``.
+    """
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for ev in alerts:                       # the trainer fires one alert per (code, group)
+        latest[(str(ev.get("code", "")), _group(ev))] = ev
+    out = []
+    for ev in latest.values():
+        ep = ev.get("epoch")
+        if (current_epoch is not None and isinstance(ep, (int, float)) and not isinstance(ep, bool)
+                and ep < current_epoch - window):
+            continue
+        out.append({**ev, "level": _alert_level(ev)})
+    out.sort(key=lambda e: (e["level"] != CRITICAL, -_time_key(e)))
+    return out
+
+
+def alert_line(ev: dict[str, Any]) -> str:
+    """One banner line: ``epoch 3 · loss_divergence · message``."""
+    parts = []
+    ep = ev.get("epoch")
+    if isinstance(ep, (int, float)) and not isinstance(ep, bool):
+        parts.append(f"epoch {int(ep)}")
+    parts.append(str(ev.get("code", "alert")) + (f" [{_group(ev)}]" if _group(ev) else ""))
+    if ev.get("message"):
+        parts.append(str(ev["message"]))
+    return " · ".join(parts)
+
+
 def events_have(state: Any) -> dict[str, bool]:
     """Which event families the run carries (to explain what is missing)."""
     return {
         "system": bool(state.systems), "layers": bool(state.layers),
-        "histograms": bool(state.histograms), "monitor": state.monitor_start is not None,
+        "histograms": bool(state.histograms or state.grad_histograms),
+        "monitor": state.monitor_start is not None,
     }
 

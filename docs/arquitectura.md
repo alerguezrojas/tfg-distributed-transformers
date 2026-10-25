@@ -256,9 +256,24 @@ Los tests usan un generador de directorios sintéticos
 La página **Inspector** de la web (`src/web/tabs/inspector/`, un módulo por vista) la consume:
 `src/web/inspector_data.py` reúne los helpers puros (tablas de muestras, matrices de capas,
 superposición de Grad-CAM, descubrimiento de runs) y `EventsFollower` guarda, acotados, los
-eventos `system`, `layers`, `histograms`, `monitor_start` e `inspection`. Solo la vista elegida
+eventos `system`, `layers`, `histograms` (pesos y gradientes), `monitor_start`, `inspection` y `alert`.
+`src/web/inspector_stats.py` reúne los helpers puros de las vistas clínicas (IC, punto de operación,
+subgrupos, interpretación de la calibración) y `src/web/ui/alert_banner.py` el banner de alertas que
+comparten Live y el Inspector. Solo la vista elegida
 se calcula en cada refresco. `tests/fixtures/make_inspector_run.py` genera un run completo
 (eventos + `inspect_<ts>/`) para los tests.
+
+---
+
+## Informe de un run (`src/reporting/`)
+
+`paravit report <run>` genera un HTML autocontenido a partir de `events_*.jsonl` e `inspect_<ts>/`
+(solo lectura, CPU). Un módulo por responsabilidad: `data.py` (resolver el argumento: fichero,
+carpeta o sello; leer los eventos), `evaluation.py` (estadística con `src/analysis/` para la época
+elegida), `figures.py` (plotly), `tripod.py` (lista TRIPOD+AI y su estado por ítem), `render.py`
+(HTML, tablas y estilo, sin plantillas ni recursos externos) y `report.py` (secciones y
+`build_report`/`write_report`). Reutiliza `parse_event`, `system_frames`, `energy_wh` y los
+helpers de imagen de `src/web/`. Tests: `tests/unit/test_reporting.py`.
 
 ---
 

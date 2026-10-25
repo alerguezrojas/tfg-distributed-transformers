@@ -27,8 +27,14 @@ def make_inspector_run(root, task: str = "multilabel", ts: str = "25102026_12000
                        epochs: int = 3, c: int = 5, m: int = 48, n_batches: int = 20,
                        dataset: str = "medmnist_chest", model: str = "vit_tiny_patch16_224",
                        with_inspect: bool = True, with_events: bool = True,
-                       finished: bool = True, seed: int = 0) -> Path:
-    """Create the run under ``<root>/logs/local/<dataset>/single/<model>/``; return that folder."""
+                       finished: bool = True, seed: int = 0, with_groups: bool = False,
+                       alerts: list | None = None, grad_hist: bool = False) -> Path:
+    """Create the run under ``<root>/logs/local/<dataset>/single/<model>/``; return that folder.
+
+    ``with_groups`` adds ``groups.npz``; ``alerts`` is a list of ``alert`` events without the
+    envelope (``{"level", "code", "message", "epoch", "batch", "value", "threshold"}``, written
+    in their epoch); ``grad_hist`` adds ``histograms`` events with ``kind: "gradients"``.
+    """
     rng = np.random.default_rng(seed)
     folder = Path(root) / "logs" / "local" / dataset / "single" / model
     folder.mkdir(parents=True, exist_ok=True)
@@ -36,7 +42,7 @@ def make_inspector_run(root, task: str = "multilabel", ts: str = "25102026_12000
     c = 1 if task == "binary" else c
     if with_inspect:
         make_inspect_fixture(folder, ts=ts, task=task, c=c, m=m, epochs=tuple(range(1, epochs + 1)),
-                             seed=seed)
+                             seed=seed, with_groups=with_groups)
     if not with_events:
         return folder
     classes = [f"class_{i}" for i in range(c)]
@@ -75,6 +81,13 @@ def make_inspector_run(root, task: str = "multilabel", ts: str = "25102026_12000
             _w(f, type="histograms", time=t, epoch=ep, groups=[
                 {"name": g, "edges": np.linspace(-0.5, 0.5, 33).round(4).tolist(),
                  "counts": rng.integers(0, 500, 32).tolist()} for g in GROUPS])
+            if grad_hist:
+                _w(f, type="histograms", time=t, epoch=ep, kind="gradients", groups=[
+                    {"name": g, "edges": np.linspace(-0.05, 0.05, 33).round(5).tolist(),
+                     "counts": rng.integers(0, 500, 32).tolist()} for g in GROUPS])
+            for a in alerts or []:
+                if (a.get("epoch") or 1) == ep:         # epoch null: emitted in epoch 1
+                    _w(f, type="alert", time=t + 0.5, **a)
             _w(f, type="epoch_end", time=t, epoch=ep, epochs=epochs,
                train={"loss": 0.5 / ep, "f1": 0.3 + 0.1 * ep, "samples_per_s": 180.0 + ep,
                       "data_wait_frac": 0.15 / ep},

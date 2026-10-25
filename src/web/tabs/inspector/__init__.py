@@ -21,12 +21,13 @@ from src.web.inspector_data import (
     InspectorRun, discover_inspector_runs, resolve_inspect_dir,
 )
 from src.web.tabs.inspector import (
-    calibration, curves, dynamics, embeddings, errors, explain, layers, performance,
-    predictions, system,
+    alerts, calibration, clinical, curves, dynamics, embeddings, errors, explain, layers,
+    performance, predictions, subgroups, system,
 )
-from src.web.tabs.inspector._common import InspectorCtx, load_monitor
+from src.web.tabs.inspector._common import InspectorCtx, load_groups_cached, load_monitor
 from src.web.tabs.live import _FOLLOWERS_KEY, _STATUS_STYLE, _fmt_duration
 from src.web.ui import helpers
+from src.web.ui.alert_banner import render_alert_banner
 from src.web.ui.context import DashboardContext
 
 _INTERVALS_S = [2, 5, 10, 30]
@@ -36,11 +37,18 @@ _DEFAULT_STALLED_MIN = 3
 VIEWS = {
     "System": system.render, "Performance": performance.render,
     "Predictions": predictions.render, "Errors": errors.render, "Curves": curves.render,
-    "Calibration": calibration.render, "Dynamics": dynamics.render,
+    "Clinical": clinical.render, "Calibration": calibration.render,
+    "Subgroups": subgroups.render, "Dynamics": dynamics.render,
     "Embeddings": embeddings.render, "Explain": explain.render, "Layers": layers.render,
+    "Alerts": alerts.render,
 }
-_EPOCH_VIEWS = {"Predictions", "Errors", "Curves", "Calibration", "Dynamics", "Embeddings",
-                "Explain"}
+_EPOCH_VIEWS = {"Predictions", "Errors", "Curves", "Clinical", "Calibration", "Subgroups",
+                "Dynamics", "Embeddings", "Explain"}
+
+
+def view_names(c: InspectorCtx) -> list[str]:
+    """The sub-views on offer: Subgroups only appears when the run has ``groups.npz``."""
+    return [v for v in VIEWS if v != "Subgroups" or c.groups]
 
 
 def _follower(path: Path) -> EventsFollower:
@@ -77,7 +85,8 @@ def _context(run: InspectorRun, state) -> InspectorCtx:
     task = monitor.task if monitor else start.get("task") or "multilabel"
     classes = list(monitor.classes) if monitor else list(start.get("classes") or [])
     return InspectorCtx(state=state, inspect_dir=inspect_dir, monitor=monitor, epochs=epochs,
-                        epoch=epochs[-1] if epochs else None, task=task, classes=classes)
+                        epoch=epochs[-1] if epochs else None, task=task, classes=classes,
+                        groups=load_groups_cached(inspect_dir, monitor))
 
 
 def _view(run: InspectorRun, stalled_s: float, armed: bool) -> None:
@@ -92,12 +101,15 @@ def _view(run: InspectorRun, stalled_s: float, armed: bool) -> None:
             st.rerun(scope="app")           # the run ended: one full rerun disarms the timer
     c = _context(run, state)
     _status_line(run, state, status, len(c.epochs))
+    render_alert_banner(state, status)
 
     # Epoch selection (by default the latest), only for the per-epoch views.
-    view_names = list(VIEWS)
+    names = view_names(c)
     default = "Predictions" if c.epochs else "System"
-    view = st.segmented_control("View", view_names, default=default, key="insp_view",
+    view = st.segmented_control("View", names, default=default, key="insp_view",
                                 label_visibility="collapsed") or default
+    if view not in names:               # e.g. Subgroups of a previous run
+        view = default
     if view in _EPOCH_VIEWS and len(c.epochs) > 1:
         a, b = st.columns([1, 4], vertical_alignment="center")
         follow = a.toggle("Latest epoch", value=True, key=f"insp_follow_{run.timestamp}")
@@ -114,8 +126,9 @@ def _view(run: InspectorRun, stalled_s: float, armed: bool) -> None:
 def render(ctx: DashboardContext) -> None:
     st.markdown("## Inspector")
     st.caption("Analyse a run live and afterwards: system, throughput, predictions, errors, "
-               "curves, calibration, training dynamics, embeddings, Grad-CAM and per-layer "
-               "statistics. Read-only: it only reads the run's event stream and `inspect_*` "
+               "curves with confidence intervals, clinical operating point, calibration, "
+               "subgroups, training dynamics, embeddings, Grad-CAM, per-layer statistics and "
+               "alerts. Read-only: it only reads the run's event stream and `inspect_*` "
                "directory.")
     runs = discover_inspector_runs(helpers.ROOT)
     if not runs:

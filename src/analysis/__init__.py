@@ -10,7 +10,7 @@ from src.analysis.confusion import confusion
 from src.analysis.curves import per_class_curves, pr_curve, roc_curve
 from src.analysis.dynamics import (cartography, flips, prob_of_true, sample_correct,
                                    worst_errors)
-from src.analysis.io import (EpochData, MonitorSet, list_epochs, load_epoch,
+from src.analysis.io import (EpochData, MonitorSet, list_epochs, load_epoch, load_groups,
                              load_monitor_set)
 from src.analysis.operating_point import (operating_point, operating_points,
                                           predictive_values, threshold_for_sensitivity,
@@ -22,7 +22,7 @@ from src.analysis.thresholds import threshold_sweep
 __all__ = [
     "EpochData", "MonitorSet", "adaptive_ece", "bootstrap_ci", "calibration",
     "calibration_curve_stats", "cartography", "confusion", "flips", "list_epochs",
-    "load_epoch", "load_monitor_set", "metrics_with_ci", "operating_point",
+    "load_epoch", "load_groups", "load_monitor_set", "metrics_with_ci", "operating_point",
     "operating_points", "per_class_calibration", "per_class_curves", "pr_curve",
     "predictive_values", "prob_of_true", "project_2d", "roc_curve", "sample_correct",
     "subgroup_metrics", "threshold_for_sensitivity", "threshold_sweep", "worst_errors",

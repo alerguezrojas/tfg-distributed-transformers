@@ -224,3 +224,6 @@ mlartifacts/
 
 # Copias de trabajo de los agentes de Claude Code (los agentes de .claude/agents/ sí se versionan)
 .claude/worktrees/
+
+# Informes HTML de un run (paravit report): pesan ~5 MB cada uno
+logs/**/report_*.html

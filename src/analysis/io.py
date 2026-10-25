@@ -75,3 +75,22 @@ def load_epoch(directory, epoch: int) -> EpochData:
                      cam_class=d.get("cam_class"), val_probs=d.get("val_probs"),
                      val_targets=d.get("val_targets"),
                      threshold=None if threshold is None else float(threshold))
+
+
+def load_groups(directory, n: int | None = None) -> dict[str, np.ndarray] | None:
+    """Read the optional ``groups.npz``: ``{variable: (M,) array}`` aligned with the monitor set.
+
+    One 1-D array per group variable (sex, age band, centre...). Returns ``None`` if the file does
+    not exist (the monitor only writes it when the dataset exposes metadata). With ``n`` (the
+    monitor-set size), arrays that do not have exactly ``n`` entries raise ``ValueError``: a
+    misaligned variable would silently give wrong subgroup numbers.
+    """
+    path = Path(directory) / "groups.npz"
+    if not path.is_file():
+        return None
+    out = {}
+    for name, arr in _read(path, ()).items():
+        if arr.ndim != 1 or (n is not None and arr.shape[0] != n):
+            raise ValueError(f"groups.npz: {name!r} has shape {arr.shape}; expected ({n},)")
+        out[name] = arr
+    return out
