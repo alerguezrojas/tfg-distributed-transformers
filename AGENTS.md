@@ -39,6 +39,7 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | `src/training/events.py` | Observadores del bucle (`TrainingListener`) y flujo de eventos `events_*.jsonl` ([esquema](docs/eventos.md)) |
 | `src/training/fn_decorators.py` | Decoradores `@` de Python: `timed`, `measure_energy`, `retry_on_cuda_oom` |
 | `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md) |
+| `src/analysis/` | Análisis puro (NumPy) de los datos de inspección: curvas, calibración, umbrales, confusión, dinámica, proyección; lo usa la web |
 | `src/benchmark/` | Benchmark empírico en la máquina real (Facade `BenchmarkChecker`) |
 | `src/cli.py`, `src/cli_menu.py` | CLI Typer y menú interactivo; lanzadores `paravit.py` / `tfg.py` (alias) |
 | `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV |

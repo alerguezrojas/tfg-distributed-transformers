@@ -200,6 +200,29 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
 
 ---
 
+## Análisis de la inspección (`src/analysis/`)
+
+Paquete **puro** (solo NumPy: sin torch, sin Streamlit, sin GPU) con el que la web analiza en CPU
+los `.npz` del directorio `inspect_<ts>/` ([contrato](inspeccion.md)). El terminal guarda datos en
+bruto; aquí se calculan las vistas. Un módulo por pregunta:
+
+| Módulo | Funciones |
+|---|---|
+| `io.py` | `load_monitor_set`, `list_epochs`, `load_epoch` (dataclasses `MonitorSet` y `EpochData`; las claves opcionales ausentes quedan en `None`) |
+| `curves.py` | `roc_curve`, `pr_curve`, `per_class_curves` (por clase + macro y micro; ≤ 1000 puntos por curva) |
+| `thresholds.py` | `threshold_sweep`: F1, precisión, recall, sensibilidad y especificidad frente al umbral (misma definición que `training/metrics.py`) |
+| `calibration.py` | `calibration`: ECE, MCE, Brier y diagrama de fiabilidad |
+| `confusion.py` | `confusion`: matriz de conteos, índices por celda y TP/FP/FN/TN por clase |
+| `dynamics.py` | `cartography`, `prob_of_true`, `sample_correct`, `flips`, `worst_errors` |
+| `projection.py` | `project_2d`: PCA por SVD (determinista); UMAP solo si `umap-learn` está instalado |
+
+Todas reciben la tarea (`multilabel`, `binary` o `multiclass`) y las probabilidades tal como se
+guardan (float16 incluido). Una clase sin positivos o sin negativos da NaN, nunca una excepción.
+Los tests usan un generador de directorios sintéticos
+(`tests/fixtures/make_inspect_fixture.py`) que cumple exactamente el contrato.
+
+---
+
 ## CLI unificado (`paravit`)
 
 **El sistema/framework se denomina `ParaViT-Lab`** (*Parallel/Parallax ViT Lab*); el comando es `paravit` y `tfg` se mantiene como **alias retrocompatible** (`tfg.py` sigue funcionando). Renombrado el 26/06/2026 (rama `feature/rename-paravit-cli`).
