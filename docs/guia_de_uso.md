@@ -78,6 +78,7 @@ alias). `--help` funciona en cada subcomando.
 | `train` | Entrenamiento con la estrategia elegida | Sí |
 | `eval` | Evaluación de un checkpoint sobre el split de test (o val) | Sí |
 | `runs` | Tabla de todos los entrenamientos registrados con su mejor F1 | No |
+| `report` | Informe HTML autocontenido de un run (métricas con IC, calibración, TRIPOD+AI) | No |
 | `dashboard` | Abre el panel web en `http://localhost:8501` | No |
 
 ### `estimate` — predecir sin entrenar
@@ -161,6 +162,28 @@ En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbra
 validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
 que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce
 el comportamiento anterior (ajustarlo sobre el propio test), que da una cifra optimista.
+
+### `report` — informe de un run
+
+```bash
+uv run paravit.py report 25102026_120000                 # por sello (se busca bajo logs/)
+uv run paravit.py report logs/local/medmnist_derma/single/vit_tiny_patch16_224   # carpeta del run
+uv run paravit.py report logs/.../events_25102026_120000.jsonl --epoch 12 --n-boot 2000 -o informe.html
+```
+
+Genera **un solo fichero HTML** (plotly.js embebido una vez, imágenes en base64, sin recursos
+externos), que se puede enviar por correo. Por defecto queda en `report_<sello>.html` junto al
+`events_*.jsonl` (los `report_*.html` no se versionan). Solo lee `logs/`: no usa GPU ni entrena.
+Secciones: resumen (dataset, tarea, modelo, entorno con UUID de GPU, energía aproximada,
+configuración plegable), entrenamiento (curvas, rendimiento, GPU, alertas), evaluación de la
+época elegida (`--epoch`, por defecto la última inspeccionada: métricas con IC95 *bootstrap* con
+semilla anotada, ROC/PR, tabla por clase, matriz de confusión, calibración con pendiente e
+intercepto, puntos de operación, peores errores y Grad-CAM), dinámica (cartografía y PCA) y la
+lista **TRIPOD+AI** (Collins et al., BMJ 2024, [doi:10.1136/bmj-2023-078378](https://doi.org/10.1136/bmj-2023-078378)),
+con cada ítem como *documentado*, *parcial* o *pendiente* (lo que exige a los autores no se marca).
+Sin `inspect_<sello>/` o sin eventos `system`, la sección lo dice e indica qué activar
+(`--monitor`, `monitor.system_interval_s`). La evaluación usa la validación: no sustituye a `eval`
+sobre test.
 
 ## 4. Los ficheros de configuración
 

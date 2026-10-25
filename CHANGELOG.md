@@ -13,6 +13,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   documentado en `docs/inspeccion.md`, `load_groups` en `src/analysis/io.py`); **Alerts** y banner
   de alertas en Inspector y Live a partir de los eventos `alert` (con `group`); selector
   pesos/gradientes en **Layers** (`histograms.kind`). Helpers en `src/web/inspector_stats.py`.
+- `paravit report <run>` (`src/reporting/`): informe HTML autocontenido de un run (un solo
+  fichero, plotly.js una vez, imágenes en base64) con resumen y entorno, curvas de entrenamiento,
+  rendimiento y GPU, alertas, evaluación con IC95 *bootstrap* (semilla anotada), ROC/PR, calibración
+  (pendiente e intercepto), puntos de operación, peores errores, Grad-CAM, dinámica y lista
+  TRIPOD+AI con cada ítem documentado, parcial o pendiente. `<run>` es un `events_*.jsonl`, la
+  carpeta del run o un sello. Degrada indicando qué flag activar. `report_*.html` se ignora en git.
 - Estadística para publicación en `src/analysis/` (solo NumPy): intervalos de confianza
   *bootstrap* (`bootstrap_ci`, `metrics_with_ci` con AUC, AP, F1, sensibilidad, especificidad,
   exactitud, ECE y Brier; ruta vectorizada), pendiente e intercepto de calibración, ECE por clase
