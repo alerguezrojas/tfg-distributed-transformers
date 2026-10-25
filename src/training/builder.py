@@ -28,6 +28,7 @@ from src.training.base_trainer import BaseTrainer
 from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
+from src.training.events import JsonlEventSink, environment_fingerprint
 from src.training.decorators import (
     TracingDecorator,
     DeepTracingDecorator,
@@ -412,6 +413,30 @@ class TrainingSessionBuilder:
         else:  # simple
             trainer = TracingDecorator(inner, logger=logger, patience=patience,
                                        epoch_csv=epoch_csv, select_metric=select_metric)
+
+        # ── 6. Event stream (rank 0) — docs/eventos.md ────────────────────────
+        if self._trace != "off" and self._rank == 0:
+            sink = JsonlEventSink(
+                log_dir / f"events_{self._timestamp}.jsonl",
+                run_info={
+                    "run_id": self._timestamp,
+                    "dataset": spec.name,
+                    "task": task.name,
+                    "classes": list(spec.classes),
+                    "model": model_name,
+                    "mode": mode,
+                    "world_size": self._world_size,
+                    "select_metric": select_metric,
+                    "config": cfg,
+                    "env": environment_fingerprint(),
+                },
+                log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),
+            )
+            trainer.add_listener(sink)
+            if "batch-monitor" in self._layers:
+                # Same cadence as the batch CSV; without the monitor no per-batch
+                # metrics are computed, so the events add no work to the loop.
+                base.register_batch_hook(sink.on_batch)
 
         return trainer
 

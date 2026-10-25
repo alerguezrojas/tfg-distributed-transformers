@@ -155,6 +155,21 @@ TracingDecorator / DeepTracingDecorator   ← controlador (--trace)
 - `@fn` en `train_epoch` no dispara; sí dispara en `eval_epoch`
 - `PlottingDecorator` recibe métricas de train vía `_propagate_train_result()` al final de cada epoch
 
+### Observadores del bucle: flujo de eventos
+
+El controlador también admite **observadores** (patrón *Observer*): objetos `TrainingListener`
+(`src/training/events.py`) que se suscriben con `add_listener` y reciben el ciclo de vida del run
+(`on_fit_start`, `on_epoch_start`, `on_epoch_end`, `on_early_stop`, `on_fit_end` y
+`on_fit_error` si el entrenamiento lanza una excepción). Solo observan: reciben los mismos valores
+que los hooks `_on_*` cuando el bucle ya los ha usado, y si uno falla se emite un aviso sin parar el
+entrenamiento. A diferencia de los decoradores, que envuelven `train_epoch`/`eval_epoch`, un
+observador ve el run entero, incluido su final o su fallo.
+
+El builder suscribe en rank 0 un `JsonlEventSink`, que escribe `events_<ts>.jsonl` (esquema en
+[eventos.md](eventos.md)) siempre que `--trace` no sea `off`. Si el monitor de batches está activo,
+registra además su `on_batch` como *batch hook* del `Trainer`, con la misma cadencia que el CSV.
+Es la fuente estructurada de la vista en vivo de la web.
+
 ### DeepTracingDecorator — detalle
 
 Registra en cada epoch:
@@ -357,7 +372,7 @@ Los artefactos se organizan por entorno (`local`/`verode`/`kaggle`), modo (`sing
 logs/
   local/
     single/{model}/   # train_*.log, epoch_metrics_*.csv, perclass_metrics_*.csv,
-                      # batch_metrics_*.csv, confusion_matrix_*.csv
+                      # batch_metrics_*.csv, confusion_matrix_*.csv, events_*.jsonl
     ddp/{model}/      # ídem para runs distribuidos
     benchmark/        # benchmark_*.log + benchmark_*.csv
   verode/

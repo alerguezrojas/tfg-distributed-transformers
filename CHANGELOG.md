@@ -5,6 +5,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Flujo de eventos de cada run (`events_<ts>.jsonl`, esquema v1 en `docs/eventos.md`): inicio
+  con configuración y huella del entorno (host, versiones, commit, GPUs), épocas, batches (con
+  el monitor de batches), parada temprana y fin, también si el entrenamiento falla. Lo escribe
+  rank 0 con *flush* por línea, para seguir el run en vivo. `EpochController` admite observadores
+  (`TrainingListener`, `add_listener`); el bucle y sus resultados no cambian.
 - Auditoría de observabilidad (`docs/roadmap.md`) y revisión del sector en
   `docs/research/observabilidad_entrenamiento.md`: seguimiento en vivo, formato de eventos e
   interpretabilidad de ViT en imagen médica. Esquema v1 del flujo de eventos en `docs/eventos.md`.
