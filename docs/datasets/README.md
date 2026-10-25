@@ -81,6 +81,14 @@ un dataset multiclase de un canal y otro binario.
   estadísticas del dataset; las curvas y métricas de cualquier run sí se ven bien. Los runs de
   otros datasets se guardan en `logs/{env}/<dataset>/{mode}/{model}/` y la web los etiqueta con
   el nombre del dataset.
+- El diseño cubre la **clasificación de imágenes 2D** (multi-etiqueta, multiclase y binaria).
+  Una tarea de **segmentación o detección** cambia la forma de la salida (ya no es una fila
+  `(C,)` por imagen) y exigiría ampliar la `Task` (pérdidas y métricas como Dice o IoU) y la
+  cabeza del modelo; la ficha, el registro y el builder se mantendrían. Los **volúmenes 3D**
+  (TAC, resonancia) necesitan cortes 2D o un modelo 3D. Más de 3 canales ya está admitido por
+  el modelo (`in_channels`); solo falta el lector.
+- En imagen médica, el lector debe respetar las **particiones por paciente** oficiales: si las
+  imágenes de un paciente caen en train y test a la vez, los resultados salen inflados.
 - El **predictor analítico** (`src/performance_model.py`) sigue calibrado con BigEarthNet
   (tamaños de split, rendimiento de lectura de TIFF, prior de calidad). Generalizarlo es la
   fase 5 del [roadmap](../roadmap.md).

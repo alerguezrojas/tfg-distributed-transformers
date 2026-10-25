@@ -280,3 +280,17 @@ def test_fixture_copy_roundtrip(tmp_path):
     f.poll()                                  # (size unchanged: only the mtime is refreshed)
     assert f.state.status(now=last + 5) == RUNNING
     assert f.state.status(now=last + 5000) == STALLED
+
+
+def test_heartbeat_is_a_known_event_that_keeps_the_run_alive():
+    s = _state(_line(type="run_start", epochs=5), _line(type="heartbeat", epoch=1, elapsed_s=30.0))
+    assert s.n_ignored == 0 and s.n_events == 2
+    assert s.status(now=s.last_event_time + 60, stalled_after_s=180) == RUNNING
+
+
+def test_interrupted_run_is_final():
+    from src.web.events_reader import INTERRUPTED, FINAL_STATES
+    s = _state(_line(type="run_start", epochs=5),
+               _line(type="run_end", status="interrupted", epochs_run=0, best=None,
+                     error="KeyboardInterrupt: "))
+    assert s.status() == INTERRUPTED and INTERRUPTED in FINAL_STATES

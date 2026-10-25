@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.web.events_reader import (
-    COMPLETED, EARLY_STOPPED, FAILED, FINAL_STATES, RUNNING, STALLED, WAITING,
+    COMPLETED, EARLY_STOPPED, FAILED, FINAL_STATES, INTERRUPTED, RUNNING, STALLED, WAITING,
     EventsFile, EventsFollower, RunState, discover_event_files,
 )
 from src.web.ui import helpers
@@ -21,7 +21,7 @@ from src.web.ui.context import DashboardContext
 
 _INTERVALS_S = [2, 5, 10, 30]
 _DEFAULT_INTERVAL_S = 5
-_DEFAULT_STALLED_MIN = 10
+_DEFAULT_STALLED_MIN = 3
 _FOLLOWERS_KEY = "_live_followers"
 _NO_VALUE = "—"
 _METRIC_NAMES = {"f1": "F1", "f1_optimal": "F1 (optimal thr.)", "auc": "AUC"}
@@ -30,7 +30,8 @@ _METRIC_NAMES = {"f1": "F1", "f1_optimal": "F1 (optimal thr.)", "auc": "AUC"}
 _STATUS_STYLE = {
     RUNNING: ("blue", "Running"), WAITING: ("gray", "Waiting for events"),
     COMPLETED: ("green", "Completed"), EARLY_STOPPED: ("orange", "Early stopped"),
-    FAILED: ("red", "Failed"), STALLED: ("red", "Stalled"),
+    FAILED: ("red", "Failed"), INTERRUPTED: ("orange", "Interrupted"),
+    STALLED: ("red", "Stalled"),
 }
 
 
@@ -202,7 +203,7 @@ def render(ctx: DashboardContext) -> None:
                 "the trainer writes `events_<timestamp>.jsonl` next to the run's log.")
         return
 
-    c_run, c_live, c_int, c_stall, c_now = st.columns([4, 1, 1.4, 1.4, 1.2],
+    c_run, c_live, c_int, c_stall, c_now = st.columns([4, 1.3, 1.4, 1.4, 1.2],
                                                        vertical_alignment="bottom")
     by_path = {str(f.path): f for f in files}
     chosen = c_run.selectbox(

@@ -6,7 +6,8 @@ folds the events into a :class:`RunState` that the "Live" tab renders. Pure: no
 Streamlit, no torch, no GPU — the web only reads.
 
 Schema v1 (every line carries ``v``, ``type`` and ``time``): ``run_start``,
-``epoch_start``, ``batch``, ``epoch_end``, ``early_stop``, ``run_end``. Unknown
+``epoch_start``, ``batch``, ``epoch_end``, ``early_stop``, ``heartbeat``, ``run_end``
+(docs/eventos.md). Unknown
 types, and lines from a newer schema version, are ignored so an older dashboard
 keeps working with a newer trainer.
 """
@@ -25,13 +26,14 @@ from src.web.run_registry import (
 
 SUPPORTED_VERSION = 1
 MAX_BATCHES = 2000                  # per-batch events kept in memory (most recent)
-DEFAULT_STALLED_AFTER_S = 600.0     # no run_end and no writes for this long → stalled
+DEFAULT_STALLED_AFTER_S = 180.0     # no run_end and no writes for this long → stalled
+                                    # (a live trainer writes a heartbeat every 30 s)
 _TAIL_BYTES = 8192                  # how much of the file end is scanned for run_end
 
 # Derived run states.
-RUNNING, COMPLETED, EARLY_STOPPED, FAILED, STALLED, WAITING = (
-    "running", "completed", "early_stopped", "failed", "stalled", "waiting")
-FINAL_STATES = (COMPLETED, EARLY_STOPPED, FAILED)
+RUNNING, COMPLETED, EARLY_STOPPED, FAILED, INTERRUPTED, STALLED, WAITING = (
+    "running", "completed", "early_stopped", "failed", "interrupted", "stalled", "waiting")
+FINAL_STATES = (COMPLETED, EARLY_STOPPED, FAILED, INTERRUPTED)
 
 
 def parse_event(line: bytes | str) -> dict[str, Any] | None:
@@ -87,6 +89,8 @@ class RunState:
             self.early_stop = ev
         elif kind == "run_end":
             self.run_end = ev
+        elif kind == "heartbeat":
+            pass                                # only proves the trainer is alive
         else:
             self.n_ignored += 1                 # unknown type: forward compatibility
             return

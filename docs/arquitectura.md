@@ -155,6 +155,21 @@ TracingDecorator / DeepTracingDecorator   ← controlador (--trace)
 - `@fn` en `train_epoch` no dispara; sí dispara en `eval_epoch`
 - `PlottingDecorator` recibe métricas de train vía `_propagate_train_result()` al final de cada epoch
 
+### Observadores del bucle: flujo de eventos
+
+El controlador también admite **observadores** (patrón *Observer*): objetos `TrainingListener`
+(`src/training/events.py`) que se suscriben con `add_listener` y reciben el ciclo de vida del run
+(`on_fit_start`, `on_epoch_start`, `on_epoch_end`, `on_early_stop`, `on_fit_end` y
+`on_fit_error` si el entrenamiento lanza una excepción). Solo observan: reciben los mismos valores
+que los hooks `_on_*` cuando el bucle ya los ha usado, y si uno falla se emite un aviso sin parar el
+entrenamiento. A diferencia de los decoradores, que envuelven `train_epoch`/`eval_epoch`, un
+observador ve el run entero, incluido su final o su fallo.
+
+El builder suscribe en rank 0 un `JsonlEventSink`, que escribe `events_<ts>.jsonl` (esquema en
+[eventos.md](eventos.md)) siempre que `--trace` no sea `off`. Si el monitor de batches está activo,
+registra además su `on_batch` como *batch hook* del `Trainer`, con la misma cadencia que el CSV.
+Es la fuente estructurada de la vista en vivo de la web.
+
 ### DeepTracingDecorator — detalle
 
 Registra en cada epoch:
@@ -357,7 +372,7 @@ Los artefactos se organizan por entorno (`local`/`verode`/`kaggle`), modo (`sing
 logs/
   local/
     single/{model}/   # train_*.log, epoch_metrics_*.csv, perclass_metrics_*.csv,
-                      # batch_metrics_*.csv, confusion_matrix_*.csv
+                      # batch_metrics_*.csv, confusion_matrix_*.csv, events_*.jsonl
     ddp/{model}/      # ídem para runs distribuidos
     benchmark/        # benchmark_*.log + benchmark_*.csv
   verode/
@@ -489,17 +504,12 @@ src/web/
   system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo con specs de GPU (usado por el predictor)
 ```
 
-**Flujo de eventos (esquema v1) y pestaña Live.** El proceso principal escribe
-`events_<DDMMYYYY_HHMMSS>.jsonl` junto al `train_*.log` (solo rank 0, `flush` por línea; la última línea
-puede estar a medias). Una línea JSON por evento, con `v` (=1), `type` y `time` (epoch Unix, s):
-`run_start` (`run_id`, `dataset`, `task`, `classes`, `model`, `mode`, `world_size`, `epochs`,
-`select_metric`, `config`, `env`), `epoch_start` (`epoch`, `epochs`), `batch` (`epoch`, `batch`,
-`n_batches`, `metrics`; espaciado), `epoch_end` (`epoch`, `epochs`, `train`, `val`, `epoch_time_s`,
-`best`, `is_best`), `early_stop` (`epoch`, `best`) y `run_end` (`status`, `epochs_run`, `best`,
-`total_time_s`, `error`). Los tipos desconocidos o de versión mayor se ignoran. `EventsFollower` guarda
-el desplazamiento en bytes y solo lee lo añadido; descarta la última línea si no parsea y la reintenta.
-El estado (`running`/`completed`/`early_stopped`/`failed`/`stalled`) sale de `run_end` o, sin él, de que
-el fichero lleve más de X minutos sin modificarse. La web sigue siendo de solo lectura.
+**Pestaña Live.** Sigue un run en curso a partir de su flujo de eventos (`events_*.jsonl`, esquema
+en [eventos.md](eventos.md)). `EventsFollower` guarda el desplazamiento en bytes y solo lee lo
+añadido; descarta la última línea si no parsea y la reintenta. El estado (`running`, `completed`,
+`early_stopped`, `failed`, `interrupted`, `stalled`) sale de `run_end` o, sin él, de que el fichero
+lleve más de 3 minutos sin cambiar (un entrenamiento vivo escribe un `heartbeat` cada 30 s). Los
+tipos desconocidos o de versión mayor se ignoran. La web sigue siendo de solo lectura.
 
 **Motor analítico de predicción** (`src/performance_model.py`): **único motor** de predicción del proyecto. Predice tiempo/speedup/memoria/cuello/coste/**energía** **y calidad (F1)** de **cualquier** (estrategia, modelo, GPU, nº GPUs, dataset, batch, precisión) **sin benchmark** (fórmula maestra `T(n,π)`, estimación de `r_c/r_io/π` por specs, modelo de memoria/OOM). **Energía = potencia efectiva × tiempo** (29/06/26): `GpuSpec.train_power_w` calibrada de los logs `--fn energy` (T4 64W, V100 103W, RTX 3060 Ti 180W; resto = 0.65×TDP, `power_calibrated=False`), potencia independiente de precisión (AMP ahorra por *tiempo*), eval=0.9×train, `power_working_gpus` (single/heterogéneo=1, ddp/MP=n), MP×0.83 (idle de tubería); `predict()` también estima el tiempo de **eval** → total/epoch. Calibrado contra los datos reales de Kaggle (<10% en compute-bound). Expuesto en la pestaña **Estimate** (tiempo + memoria + **energía** + coste + calidad + puente `rc_measured`). Derivación en `docs/performance_model.md`.
 
