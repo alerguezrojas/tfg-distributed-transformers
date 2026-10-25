@@ -170,6 +170,38 @@ El builder suscribe en rank 0 un `JsonlEventSink`, que escribe `events_<ts>.json
 registra además su `on_batch` como *batch hook* del `Trainer`, con la misma cadencia que el CSV.
 Es la fuente estructurada de la vista en vivo de la web.
 
+Con el mismo flujo de eventos, el builder suscribe un `SystemSampler`
+(`src/training/system_sampler.py`, otro `TrainingListener`) **antes** del sink, de modo que se
+detiene antes de escribirse `run_end`. Al empezar la primera época lanza un hilo *daemon* que cada
+`monitor.system_interval_s` segundos (5 por defecto; 0 lo desactiva) lee NVML (`pynvml`) y `psutil`
+y añade un evento `system` con `sink.emit`. Solo lee: no toca torch ni CUDA. Sin NVML o sin GPU
+reporta `gpus: []`, y un error de lectura o escritura se convierte en un único aviso.
+
+El rendimiento por batch lo mide `StepTimer` (`src/training/throughput.py`), compartido por los tres
+bucles que poseen una época (`Trainer` —y con él DDP y paralelismo de modelo—,
+`HeterogeneousDDPTrainer` y `_train_epoch_deep`). Solo usa `time.perf_counter()`, sin
+`cuda.synchronize`: el `loss.item()` del propio paso ya sincroniza la GPU. Los *batch hooks* reciben
+`data_time_s`, `step_time_s` y `samples_per_s`, y el diccionario de `train_epoch` añade
+`samples_per_s` y `data_wait_frac`; el CSV de épocas no cambia de columnas.
+
+### Monitores de inspección
+
+Con `--monitor` (o `monitor.enabled`), el builder suscribe dos observadores más
+(`src/training/monitor.py`, contrato en [inspeccion.md](inspeccion.md)):
+
+- `PredictionMonitor`: elige con su propia semilla un subconjunto de validación (equilibrado por
+  clase si el dataset expone `targets`) y, tras cada época, guarda sus probabilidades, la pérdida
+  por imagen, la entrada de la última capa lineal (*embedding*) y Grad-CAM de un panel, además de
+  las probabilidades de toda la validación. Trabaja en `on_epoch_end`, fuera del tiempo medido, con
+  el modelo desenvuelto de DDP y en modo `eval`, y restaura el modo al terminar.
+- `LayerStatsMonitor`: *batch hook* que mide por grupo de capas la norma del gradiente, la de los
+  pesos y el ratio actualización/peso (el paso real de AdamW reconstruido de su estado), e
+  histogramas de pesos por época.
+
+Ninguno consume números aleatorios globales ni acumula gradientes en los parámetros
+(Grad-CAM usa `torch.autograd.grad` respecto a la activación): un test comprueba que los pesos
+finales son idénticos con el monitor activado o no.
+
 ### DeepTracingDecorator — detalle
 
 Registra en cada epoch:

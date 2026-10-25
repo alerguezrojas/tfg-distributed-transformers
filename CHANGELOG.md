@@ -5,6 +5,22 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- `docs/research/inventario_herramientas_observabilidad.md`: inventario funcionalidad a
+  funcionalidad de 14 herramientas de observabilidad, matriz comparativa, requisitos de imagen
+  médica y lista priorizada; la segunda ola de la fase 4 sale de ahí.
+- Muestreo de sistema (`src/training/system_sampler.py`): un `TrainingListener` que, mientras el
+  run está vivo, añade al flujo de eventos un evento `system` cada `monitor.system_interval_s`
+  segundos (5 por defecto; 0 lo desactiva) con, por GPU visible, uso, memoria, potencia,
+  temperatura y reloj SM (NVML) y, del equipo y del proceso, CPU y RAM (`psutil`). Respeta
+  `CUDA_VISIBLE_DEVICES`; sin NVML o sin GPU emite `gpus: []`; los errores se avisan una vez y
+  nunca detienen el entrenamiento. Lo cablea el builder en rank 0 junto al `JsonlEventSink`. Las
+  GPU se identifican por UUID (NVML y CUDA numeran distinto), de modo que `index` es `cuda:N`;
+  cada entrada lleva `uuid`. La medida de energía (`_PowerSampler`) usa el mismo criterio.
+- Rendimiento por batch (`src/training/throughput.py`, `StepTimer`): espera del DataLoader y tiempo
+  de paso con `time.perf_counter()` (sin `cuda.synchronize`). Los *batch hooks* reciben
+  `data_time_s`, `step_time_s` y `samples_per_s`, y el resultado de `train_epoch` añade
+  `samples_per_s` y `data_wait_frac`, que salen en `epoch_end.train`. Lo usan los tres bucles
+  (`Trainer`, heterogéneo y `--trace deep`); el CSV de épocas no cambia de columnas.
 - Paquete `src/analysis/` (solo NumPy, sin torch ni Streamlit) para analizar los datos de
   inspección en la web: curvas ROC/PR por clase con macro y micro, barrido de umbral (misma
   definición de F1 que `training/metrics.py`), calibración (ECE, MCE, Brier, diagrama de
@@ -12,6 +28,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   épocas, peores errores, proyección 2D (PCA; UMAP opcional) y lector del directorio
   `inspect_<ts>/`. Generador de fixtures sintéticos que cumplen el contrato
   (`tests/fixtures/make_inspect_fixture.py`). Descrito en `docs/arquitectura.md`.
+- Monitor de predicciones (`--monitor` en los scripts y en `paravit train`, o `monitor.enabled`):
+  en cada época guarda en `inspect_<ts>/` las probabilidades, la pérdida por imagen, los
+  *embeddings* y Grad-CAM (ViT y CNN) de un subconjunto fijo de validación con miniaturas, y las
+  probabilidades de toda la validación; `LayerStatsMonitor` registra normas de gradiente y peso,
+  ratio de actualización e histogramas por grupo de capas. No altera el entrenamiento (test de
+  pesos idénticos). Coste en DermaMNIST (512 muestras, 16 mapas): ~0,6 s por época, fuera del
+  tiempo medido.
 - Contrato de la inspección del entrenamiento (`docs/inspeccion.md`): eventos de sistema,
   rendimiento por batch, monitor de predicciones por muestra, Grad-CAM y capas; sección `monitor:`
   validada en la config; `JsonlEventSink.emit()` para otros productores del flujo; los datos de

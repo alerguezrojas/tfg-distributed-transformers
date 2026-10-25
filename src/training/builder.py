@@ -19,6 +19,7 @@ Usage:
 """
 
 import logging
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +30,8 @@ from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
 from src.training.events import JsonlEventSink, environment_fingerprint
+from src.training.monitor import LayerStatsMonitor, PredictionMonitor, monitor_config
+from src.training.system_sampler import SystemSampler, visible_gpu_uuids
 from src.training.decorators import (
     TracingDecorator,
     DeepTracingDecorator,
@@ -88,6 +91,7 @@ class TrainingSessionBuilder:
         self._hetero_local_batch_size: int | None = None  # None → standard DDPTrainer
         self._model_parallel: tuple | None = None     # None → not model-parallel; else (devices, split_block)
         self._output_mode: str | None = None         # None → "ddp"/"single" por defecto
+        self._monitor: bool = False                   # --monitor (or monitor.enabled)
 
     # ── Fluent configuration API ─────────────────────────────────────────────
 
@@ -117,6 +121,11 @@ class TrainingSessionBuilder:
         """Select metric reporters (only active for --trace off/simple):
         'loss', 'f1', 'accuracy', 'precision_recall'. Pass nothing to disable all."""
         self._metrics = list(metrics)
+        return self
+
+    def with_monitor(self, enabled: bool = True) -> "TrainingSessionBuilder":
+        """Enable the prediction and layer monitors (same as ``monitor.enabled``)."""
+        self._monitor = enabled
         return self
 
     def with_inspect(self, *features: str) -> "TrainingSessionBuilder":
@@ -432,13 +441,46 @@ class TrainingSessionBuilder:
                 },
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),
             )
+            # System sampler (GPU/CPU/RAM every N s). Added before the sink so it stops
+            # before `run_end` is written. 0 disables it; independent of the monitor.
+            system_interval = (cfg.get("monitor") or {}).get("system_interval_s", 5)
+            if system_interval and system_interval > 0:
+                uuids = visible_gpu_uuids() if self._device.type == "cuda" else None
+                trainer.add_listener(SystemSampler(sink, interval_s=system_interval,
+                                                   gpu_uuids=uuids))
             trainer.add_listener(sink)
             if "batch-monitor" in self._layers:
-                # Same cadence as the batch CSV; without the monitor no per-batch
-                # metrics are computed, so the events add no work to the loop.
+                # Same cadence as the batch CSV (the monitor already makes the
+                # Trainer compute the per-batch metrics).
                 base.register_batch_hook(sink.on_batch)
+            self._attach_monitors(trainer, base, sink, cfg, spec, task, log_dir)
+        elif self._trace == "off" and (self._monitor or monitor_config(cfg)["enabled"]):
+            warnings.warn("the prediction monitor writes to the event stream, which "
+                          "--trace off disables: the monitor is not active",
+                          RuntimeWarning, stacklevel=2)
 
         return trainer
+
+    # ── Inspection (docs/inspeccion.md) ───────────────────────────────────────
+
+    def _attach_monitors(self, trainer, base, sink, cfg, spec, task, log_dir) -> None:
+        """Prediction and layer monitors (``monitor.enabled`` or ``--monitor``)."""
+        mon = monitor_config(cfg)
+        if not (mon["enabled"] or self._monitor):
+            return
+        # Note: with layer statistics the Trainer has a batch hook, so it computes the
+        # per-batch metrics dict every batch (small CPU work; no number changes).
+        data_cfg = cfg["data"]
+        trainer.add_listener(PredictionMonitor(
+            base, spec.dataset(data_cfg, "val"), task, spec.classes, sink, log_dir,
+            self._timestamp, mon, batch_size=cfg["training"]["batch_size"],
+            num_workers=min(int(data_cfg.get("num_workers", 0)), 4)))
+        if mon["layers"]:
+            layers = LayerStatsMonitor(
+                base, sink,
+                log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 50))
+            trainer.add_listener(layers)
+            base.register_batch_hook(layers.on_batch)
 
     # ── Output layout ─────────────────────────────────────────────────────────
 
