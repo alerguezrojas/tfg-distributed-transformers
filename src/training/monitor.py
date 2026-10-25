@@ -8,7 +8,8 @@ data the web's Inspector analyses (contract: ``docs/inspeccion.md``):
   saved after every inspected epoch, plus the probabilities of the whole validation
   split (for curves and calibration). Written to ``inspect_<ts>/epoch_<EEE>.npz``.
 * :class:`LayerStatsMonitor` — gradient norm, weight norm and update/weight ratio per
-  group of layers every ``log_every`` batches, and weight histograms per epoch.
+  group of layers every ``log_every`` batches, and per epoch the histograms of the weights
+  and of the gradients of the epoch's last batch.
 
 Neither changes the training: no global RNG is consumed (own ``torch.Generator``),
 gradients are taken with ``torch.autograd.grad`` w.r.t. activations (parameter
@@ -393,8 +394,8 @@ def layer_group(name: str) -> str:
 
 
 class LayerStatsMonitor(TrainingListener):
-    """Per-group gradient/weight norms and update ratio (batch hook) and weight
-    histograms (epoch end). The update is the step AdamW just applied, rebuilt from
+    """Per-group gradient/weight norms and update ratio (batch hook) and weight and
+    last-batch gradient histograms (epoch end). The update is the step AdamW just applied, rebuilt from
     its state; for other optimizers (Adam with coupled weight decay, AMSGrad, SGD…)
     ``lr × grad`` is used as an approximation."""
 
@@ -406,6 +407,7 @@ class LayerStatsMonitor(TrainingListener):
         self._log_every = max(1, int(log_every))
         self._epoch = 0
         self._groups: OrderedDict[str, list] | None = None
+        self._grad_hists: list[dict] | None = None   # last batch of the epoch
         self._warned = False
 
     def _param_groups(self) -> OrderedDict[str, list]:
@@ -440,6 +442,7 @@ class LayerStatsMonitor(TrainingListener):
 
     def on_epoch_start(self, epoch, epochs):
         self._epoch = epoch
+        self._grad_hists = None
 
     def on_batch(self, epoch: int, batch_idx: int, n_batches: int, metrics: dict) -> None:
         if batch_idx % self._log_every and batch_idx != n_batches:
@@ -448,10 +451,17 @@ class LayerStatsMonitor(TrainingListener):
             self._sink.emit("layers", epoch=self._epoch or epoch, batch=batch_idx,
                             groups=self._stats())
         except Exception as exc:  # noqa: BLE001 — never stop the training
-            if not self._warned:
-                self._warned = True
-                warnings.warn(f"layer monitor failed ({exc!r}); disabled warnings "
-                              f"follow silently", RuntimeWarning, stacklevel=2)
+            self._warn_once(f"layer monitor failed ({exc!r}); disabled warnings follow silently")
+        if batch_idx == n_batches:          # the epoch's last batch: its gradients
+            try:
+                self._grad_hists = self._histograms(gradients=True)
+            except Exception as exc:  # noqa: BLE001
+                self._warn_once(f"gradient histograms failed ({exc!r})")
+
+    def _warn_once(self, message: str) -> None:
+        if not self._warned:
+            self._warned = True
+            warnings.warn(message, RuntimeWarning, stacklevel=3)
 
     @torch.no_grad()
     def _stats(self) -> list[dict]:
@@ -480,24 +490,37 @@ class LayerStatsMonitor(TrainingListener):
 
     def on_epoch_end(self, epoch, epochs, train_m, val_m, best, is_best, epoch_time_s):
         try:
-            self._sink.emit("histograms", epoch=epoch, groups=self._histograms())
+            self._sink.emit("histograms", epoch=epoch, kind="weights",
+                            groups=self._histograms())
+            if self._grad_hists is not None:
+                self._sink.emit("histograms", epoch=epoch, kind="gradients",
+                                groups=self._grad_hists)
         except Exception as exc:  # noqa: BLE001
-            if not self._warned:
-                self._warned = True
-                warnings.warn(f"layer histograms failed ({exc!r})", RuntimeWarning,
-                              stacklevel=2)
+            self._warn_once(f"layer histograms failed ({exc!r})")
+        self._grad_hists = None
 
     @torch.no_grad()
-    def _histograms(self) -> list[dict]:
+    def _histograms(self, gradients: bool = False) -> list[dict]:
+        """Histogram (``BINS`` bins between the group's min and max) of each group's
+        weights, or of its current ``.grad``. Groups without gradients, or with NaN/inf
+        values (``histc`` cannot bin them), are skipped.
+        Computed on each tensor's device; only the min/max of each tensor are copied."""
         rows = []
         for name, params in self._param_groups().items():
-            weights = [p.detach().float() for p, _ in params]
-            lo = min(w.min().item() for w in weights)
-            hi = max(w.max().item() for w in weights)
+            if gradients:
+                tensors = [p.grad.detach().float() for p, _ in params if p.grad is not None]
+            else:
+                tensors = [p.detach().float() for p, _ in params]
+            if not tensors:
+                continue
+            ends = torch.stack([torch.stack([t.min(), t.max()]).cpu() for t in tensors])
+            lo, hi = ends[:, 0].min().item(), ends[:, 1].max().item()
+            if not (math.isfinite(lo) and math.isfinite(hi)):
+                continue                    # NaN/inf values: histc cannot bin them
             if hi <= lo:
                 hi = lo + 1e-6
-            counts = sum(torch.histc(w, bins=self.BINS, min=lo, max=hi).cpu()
-                         for w in weights)
+            counts = sum(torch.histc(t, bins=self.BINS, min=lo, max=hi).cpu()
+                         for t in tensors)
             edges = torch.linspace(lo, hi, self.BINS + 1)
             rows.append({"name": name, "edges": edges.tolist(),
                          "counts": counts.long().tolist()})

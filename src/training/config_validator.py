@@ -243,20 +243,50 @@ _MONITOR_KEYS: dict[str, tuple[type, float | None]] = {
 }
 
 
-def _check_monitor(monitor: dict, errors: list) -> None:
-    if not isinstance(monitor, dict):
-        errors.append(f"monitor must be a mapping, got {type(monitor).__name__}")
-        return
-    for key, value in monitor.items():
-        if key not in _MONITOR_KEYS:
-            errors.append(f"monitor.{key} is not a known key; "
-                          f"available: {sorted(_MONITOR_KEYS)}")
+# monitor.alerts.* (docs/inspeccion.md): key → (type, minimum)
+_ALERT_KEYS: dict[str, tuple[type, float | None]] = {
+    "enabled": (bool, None), "loss_divergence_factor": (float, 1), "overfit_epochs": (int, 1),
+    "grad_explosion_factor": (float, 1), "grad_history": (int, 5),
+    "update_ratio_min": (float, 0), "update_ratio_max": (float, 0),
+    "update_ratio_patience": (int, 1), "data_wait_frac": (float, 0),
+    "gpu_mem_pct": (float, 0), "gpu_temp_c": (float, 0), "throughput_drop_factor": (float, 0),
+}
+
+
+def _check_typed(section: str, values: dict, table: dict, errors: list,
+                 extra_keys: tuple = ()) -> None:
+    """Check ``values`` against ``table`` (key → (type, minimum)); ``extra_keys`` are known
+    keys checked elsewhere (listed in the "available" hint only)."""
+    for key, value in values.items():
+        if key in extra_keys:
             continue
-        kind, minimum = _MONITOR_KEYS[key]
+        if key not in table:
+            errors.append(f"{section}.{key} is not a known key; "
+                          f"available: {sorted([*table, *extra_keys])}")
+            continue
+        kind, minimum = table[key]
         ok = (isinstance(value, bool) if kind is bool
               else isinstance(value, (int, float)) and not isinstance(value, bool)
               and (kind is float or isinstance(value, int)))
         if not ok:
-            errors.append(f"monitor.{key} must be {kind.__name__}, got {value!r}")
+            errors.append(f"{section}.{key} must be {kind.__name__}, got {value!r}")
         elif minimum is not None and value < minimum:
-            errors.append(f"monitor.{key} must be >= {minimum}, got {value!r}")
+            errors.append(f"{section}.{key} must be >= {minimum}, got {value!r}")
+
+
+def _check_monitor(monitor: dict, errors: list) -> None:
+    if not isinstance(monitor, dict):
+        errors.append(f"monitor must be a mapping, got {type(monitor).__name__}")
+        return
+    alerts = monitor.get("alerts")
+    if alerts is not None:
+        if isinstance(alerts, dict):
+            n_before = len(errors)
+            _check_typed("monitor.alerts", alerts, _ALERT_KEYS, errors)
+            lo, hi = alerts.get("update_ratio_min", 1e-7), alerts.get("update_ratio_max", 1e-1)
+            if len(errors) == n_before and lo >= hi:
+                errors.append("monitor.alerts.update_ratio_min must be < update_ratio_max, "
+                              f"got {lo!r} >= {hi!r}")
+        else:
+            errors.append(f"monitor.alerts must be a mapping, got {type(alerts).__name__}")
+    _check_typed("monitor", monitor, _MONITOR_KEYS, errors, extra_keys=("alerts",))

@@ -61,7 +61,7 @@ se convierte en un aviso.
 ## Tipos ampliados
 
 Los eventos de sistema, rendimiento por batch, monitor de predicciones y capas (`system`,
-`monitor_start`, `inspection`, `layers`, `histograms`) y los datos por época que referencian se
+`monitor_start`, `inspection`, `layers`, `histograms`), las alertas (`alert`) y los datos por época que referencian se
 describen en [inspeccion.md](inspeccion.md). Previstos para la fase 4: `io` / `power` (medidas del
 predictor).
 

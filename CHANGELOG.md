@@ -5,6 +5,22 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Alertas (`src/training/alerts.py`): reglas puras y un `AlertMonitor` que escribe eventos `alert`
+  (`level` warning/critical, `code`, `message`, `epoch`, `batch`, `value`, `threshold`, `group`)
+  para `nan_loss`, `loss_divergence`, `overfitting`, `grad_explosion`,
+  `update_ratio_out_of_range`, `dataloader_bound`, `gpu_memory_high`, `gpu_temp_high` y
+  `throughput_drop`. Una vez por (código, grupo) y se re-arma al desaparecer la condición;
+  umbrales en `monitor.alerts` (validados), activas por defecto con el flujo de eventos. No
+  fuerzan cálculo por batch ni alteran el entrenamiento (test de invariancia). `JsonlEventSink`
+  gana `subscribe` para observar los eventos que otros productores emiten. Contrato en
+  `docs/inspeccion.md`.
+- Alertas: `grad_explosion` también sobre la norma total del gradiente antes del recorte
+  (`Trainer.last_grad_norm`, solo con *batch hooks*; los tres bucles), ignora los pasos que el
+  `GradScaler` salta, y el par (código, grupo) solo se da por emitido tras escribir el evento.
+- Histogramas de gradientes por grupo de capas (gradientes del último batch de cada época) en el
+  evento `histograms`, que ahora lleva `kind: "weights" | "gradients"`.
+- `pytest.ini`: `tmp_path_retention_policy = failed` y `tmp_path_retention_count = 1`, para que
+  los directorios temporales de los tests (con checkpoints) no llenen `/tmp`.
 - Web, Inspector: vistas clínicas. **Curves** con intervalos de confianza *bootstrap* (macro y por
   clase; 200/1000/2000 remuestras, semilla fija, cacheados); nueva vista **Clinical** (umbral
   manual, óptimo de validación, sensibilidad objetivo o Youden; sensibilidad, especificidad, VPP,

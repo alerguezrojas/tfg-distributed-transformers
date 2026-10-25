@@ -41,7 +41,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
-from src.training.metrics import f1_score, eta_str, precision
+from src.training.metrics import f1_score, eta_str, grad_norm_value, precision
 from src.training.tasks import MultiLabelTask
 from src.models.vit import input_channels
 from src.training.augmentations import mixup_batch
@@ -301,8 +301,9 @@ class DeepTracingDecorator(TracingDecorator):
             loss = criterion(logits, train_labels)
             loss.backward()
             grad_clip = getattr(self._trainer, "grad_clip", None)
+            pre_clip = None
             if grad_clip is not None:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                pre_clip = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
 
             total_loss += loss.item()
@@ -319,6 +320,7 @@ class DeepTracingDecorator(TracingDecorator):
             # hooks too (BatchMonitorDecorator): same dict as Trainer.train_epoch.
             batch_hooks = getattr(self._trainer, "_batch_hooks", None)
             if batch_hooks:
+                self._trainer.last_grad_norm = grad_norm_value(model, pre_clip)
                 batch_metrics = {
                     "running_loss": total_loss / batch_idx,
                     "batch_loss": loss.item(),

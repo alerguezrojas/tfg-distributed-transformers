@@ -30,6 +30,7 @@ from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
 from src.training.events import JsonlEventSink, environment_fingerprint
+from src.training.alerts import AlertMonitor, alerts_config
 from src.training.monitor import LayerStatsMonitor, PredictionMonitor, monitor_config
 from src.training.system_sampler import SystemSampler, visible_gpu_uuids
 from src.training.decorators import (
@@ -453,6 +454,9 @@ class TrainingSessionBuilder:
                 # Same cadence as the batch CSV (the monitor already makes the
                 # Trainer compute the per-batch metrics).
                 base.register_batch_hook(sink.on_batch)
+            # Alerts first: their batch hook must run before the layer monitor's, so a
+            # batch's loss is known when its `layers` event is evaluated.
+            self._attach_alerts(trainer, base, sink, cfg)
             self._attach_monitors(trainer, base, sink, cfg, spec, task, log_dir)
         elif self._trace == "off" and (self._monitor or monitor_config(cfg)["enabled"]):
             warnings.warn("the prediction monitor writes to the event stream, which "
@@ -481,6 +485,25 @@ class TrainingSessionBuilder:
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 50))
             trainer.add_listener(layers)
             base.register_batch_hook(layers.on_batch)
+
+    def _attach_alerts(self, trainer, base, sink, cfg) -> None:
+        """Alert rules over the event stream (``monitor.alerts``, on by default).
+
+        Added after the sink so each alert follows the ``epoch_end`` it comes from. It
+        listens to the sink for ``system`` / ``layers`` events, and takes the per-batch NaN
+        and gradient-norm checks only if the run has batch hooks anyway (batch monitor or
+        layer statistics): it never forces per-batch work, otherwise the epoch loss is
+        checked."""
+        acfg = alerts_config(cfg)
+        if not acfg["enabled"]:
+            return
+        alerts = AlertMonitor(sink, acfg, grad_norm_source=lambda: base.last_grad_norm)
+        trainer.add_listener(alerts)
+        sink.subscribe(alerts.on_event)
+        mon = monitor_config(cfg)
+        layer_stats = (mon["enabled"] or self._monitor) and mon["layers"]
+        if "batch-monitor" in self._layers or layer_stats:
+            base.register_batch_hook(alerts.on_batch)
 
     # ── Output layout ─────────────────────────────────────────────────────────
 

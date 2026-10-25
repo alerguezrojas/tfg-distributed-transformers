@@ -36,6 +36,10 @@ observabilidad (25/10/2026)" y en la fase 4.
   (espera del DataLoader, muestras/s) en el flujo de eventos; verificado con un run corto en GPU.
 - Fase 4, segunda ola, estadística (en PR): IC *bootstrap* de todas las métricas, calibración
   completa, punto de operación clínico y métricas por subgrupo en `src/analysis/`.
+- Fase 4, segunda ola, alertas (en PR): evento `alert` (NaN, divergencia, sobreajuste,
+  gradientes, cuello de I/O, GPU al límite, caída de throughput) con umbrales en
+  `monitor.alerts`, e histogramas de gradientes (`kind` en `histograms`); falta mostrarlos en la
+  web.
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
@@ -201,11 +205,12 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
         por subgrupo: cálculo en `src/analysis/` y vistas *Curves*, *Clinical*, *Calibration* y
         *Subgroups* del Inspector (esta última lee un `groups.npz` opcional); falta que el monitor
         lo escriba cuando el dataset del tutor aporte metadatos.
-  - [ ] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, gradientes fuera de
-        rango, cuello de I/O, GPU al límite): lado web hecho (banner en Live e Inspector, vista
-        *Alerts*); falta el emisor en el entrenamiento (rama `feat/alertas`).
-  - [ ] Histogramas de gradientes (la web ya los lee, `kind: "gradients"`; falta el emisor) y prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo
-        et al. 2018).
+  - [x] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, sobreajuste, gradientes
+        fuera de rango, cuello de I/O, GPU al límite, caída de throughput): evento `alert`
+        (`src/training/alerts.py`, en PR); lado web hecho (banner en Live e Inspector, vista
+        *Alerts*).
+  - [x] Histogramas de gradientes (evento `histograms` con `kind`; en PR; la web ya los lee).
+  - [ ] Prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo et al. 2018).
   - [x] Informe exportable de un run (HTML) con la lista TRIPOD+AI: `paravit report` (en PR);
         falta CLAIM y los subgrupos (dependen de los metadatos del dataset del tutor).
   - [ ] Agregación por semilla en la comparación de runs (media y banda).

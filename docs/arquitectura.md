@@ -184,6 +184,17 @@ bucles que poseen una época (`Trainer` —y con él DDP y paralelismo de modelo
 `data_time_s`, `step_time_s` y `samples_per_s`, y el diccionario de `train_epoch` añade
 `samples_per_s` y `data_wait_frac`; el CSV de épocas no cambia de columnas.
 
+### Alertas
+
+Con el flujo de eventos activo, el builder suscribe también un `AlertMonitor`
+(`src/training/alerts.py`, contrato en [inspeccion.md](inspeccion.md#alertas)) **después** del
+sink, de modo que cada alerta sigue al `epoch_end` que la origina. Las reglas son funciones puras
+(`check_*`, sin torch); el monitor las alimenta con los resultados de época, el *batch hook* (solo
+si el `Trainer` ya tiene alguno) y los eventos `system` y `layers`, a los que accede con
+`JsonlEventSink.subscribe` sin acoplar el muestreador ni el monitor de capas. Emite un evento
+`alert` por hallazgo nuevo y lo re-arma cuando la condición desaparece. Es un observador más:
+no puede detener el entrenamiento ni cambiar sus números.
+
 ### Monitores de inspección
 
 Con `--monitor` (o `monitor.enabled`), el builder suscribe dos observadores más
@@ -196,7 +207,7 @@ Con `--monitor` (o `monitor.enabled`), el builder suscribe dos observadores más
   el modelo desenvuelto de DDP y en modo `eval`, y restaura el modo al terminar.
 - `LayerStatsMonitor`: *batch hook* que mide por grupo de capas la norma del gradiente, la de los
   pesos y el ratio actualización/peso (el paso real de AdamW reconstruido de su estado), e
-  histogramas de pesos por época.
+  histogramas por época de los pesos y de los gradientes del último batch (`kind` en el evento).
 
 Ninguno consume números aleatorios globales ni acumula gradientes en los parámetros
 (Grad-CAM usa `torch.autograd.grad` respecto a la activación): un test comprueba que los pesos

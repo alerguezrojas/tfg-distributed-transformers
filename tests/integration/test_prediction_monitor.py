@@ -144,7 +144,7 @@ def test_monitor_writes_the_inspection_contract(tmp_path, monkeypatch, toy):
     layers = [e for e in events if e["type"] == "layers"]
     assert layers and {"name", "grad_norm", "weight_norm", "update_ratio"} <= set(
         layers[0]["groups"][0])
-    hists = [e for e in events if e["type"] == "histograms"]
+    hists = [e for e in events if e["type"] == "histograms" and e["kind"] == "weights"]
     assert [h["epoch"] for h in hists] == [1, 2]
     g = hists[0]["groups"][0]
     assert len(g["edges"]) == 33 and len(g["counts"]) == 32
