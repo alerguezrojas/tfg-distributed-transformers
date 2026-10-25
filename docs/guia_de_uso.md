@@ -300,15 +300,26 @@ como a posteriori. Un selector elige la vista; las vistas por época usan un des
 - **Errors**: peores errores, matriz de confusión (conteos o normalizada) con las imágenes de la
   celda elegida, y TP/FP/FN por clase.
 - **Curves**: ROC y PR por clase con macro y micro, F1/sensibilidad/especificidad frente al umbral,
-  tabla por clase y evolución del AUC y AP macro. Usa las probabilidades de toda la validación si
+  tabla por clase y evolución del AUC y AP macro. Las métricas macro (y, si se pide, las de cada clase) llevan
+  intervalos de confianza *bootstrap* al 95 % con 200, 1000 o 2000 remuestras. Usa las probabilidades de toda la validación si
   el run las guardó; si no, las del subconjunto (y lo indica).
-- **Calibration**: diagrama de fiabilidad, histograma de confianza y ECE/MCE/Brier por época.
+- **Clinical**: punto de operación de una clase (uno contra el resto en multiclase): umbral manual, el óptimo de
+  validación del run, sensibilidad objetivo (0,90 / 0,95…) o Youden; sensibilidad, especificidad, VPP, VPN, F1 y
+  matriz 2×2 con intervalos de confianza, prevalencia editable para VPP/VPN y ROC con el punto marcado.
+- **Calibration**: diagrama de fiabilidad, histograma de confianza, ECE/MCE/Brier, pendiente e intercepto de
+  calibración (pendiente < 1 = sobreconfianza), ECE adaptativa y por clase, y su evolución por época.
+- **Subgroups**: solo aparece si el run tiene `groups.npz` (ver [inspeccion.md](inspeccion.md)); métricas por
+  grupo con intervalos y la brecha entre el mejor y el peor.
 - **Dynamics**: cartografía de datos (fácil, ambigua, difícil) y cambios de acierto entre épocas;
   las muestras «difíciles» son candidatas a etiqueta errónea.
 - **Embeddings**: proyección 2D (PCA, o UMAP si está instalado) coloreada por clase o acierto.
 - **Explain**: panel de Grad-CAM superpuesto (opacidad ajustable) y su evolución por época.
 - **Layers**: mapas de calor por grupo de capas de la norma del gradiente, la norma de los pesos y
-  el ratio de actualización (banda sana 1e-4 a 1e-2), e histogramas de pesos por época.
+  el ratio de actualización (banda sana 1e-4 a 1e-2), e histogramas de pesos (o de gradientes, si el run los
+  trae) por época.
+- **Alerts**: lista cronológica de las alertas de salud del entrenamiento (NaN, divergencia, sobreajuste,
+  gradientes, cuello de I/O, GPU). Las activas salen como banner (rojo = crítica, ámbar = aviso) en la
+  cabecera del Inspector y de Live.
 
 Cada vista indica cómo activar los datos que le faltan (`--monitor`, `monitor.layers: true`…). Solo
 se calcula la vista elegida y los `.npz` se cachean por ruta y fecha de modificación.

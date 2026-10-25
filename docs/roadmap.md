@@ -198,11 +198,13 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   (lo que ninguna herramienta general trae y la imagen médica exige):
   - [x] Intervalos de confianza *bootstrap*, calibración completa (pendiente, intercepto, ECE por
         clase), punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN) y métricas
-        por subgrupo: cálculo en `src/analysis/` (en PR); falta mostrarlo en la web y que el
-        dataset del tutor aporte metadatos para los subgrupos.
+        por subgrupo: cálculo en `src/analysis/` y vistas *Curves*, *Clinical*, *Calibration* y
+        *Subgroups* del Inspector (esta última lee un `groups.npz` opcional); falta que el monitor
+        lo escriba cuando el dataset del tutor aporte metadatos.
   - [ ] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, gradientes fuera de
-        rango, cuello de I/O, GPU al límite) con aviso en la web.
-  - [ ] Histogramas de gradientes y prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo
+        rango, cuello de I/O, GPU al límite): lado web hecho (banner en Live e Inspector, vista
+        *Alerts*); falta el emisor en el entrenamiento (rama `feat/alertas`).
+  - [ ] Histogramas de gradientes (la web ya los lee, `kind: "gradients"`; falta el emisor) y prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo
         et al. 2018).
   - [ ] Informe exportable de un run (HTML) con la lista TRIPOD+AI/CLAIM.
   - [ ] Agregación por semilla en la comparación de runs (media y banda).

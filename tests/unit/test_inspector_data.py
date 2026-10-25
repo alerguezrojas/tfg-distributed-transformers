@@ -171,3 +171,75 @@ def test_reader_bounds_inspection_buffers():
         s.apply({"type": "histograms", "epoch": e, "groups": []})
     s.apply({"type": "histograms", "groups": []})          # sin época: se ignora sin fallar
     assert len(s.systems) == 5000 and len(s.histograms) == 200 and min(s.histograms) == 50
+
+
+# ── Alertas (contrato del evento `alert`) y histogramas con `kind` ───────────────
+
+def _alert(t, level, code, epoch=None, **kw):
+    return {"type": "alert", "time": t, "level": level, "code": code,
+            "message": f"msg {code}", "epoch": epoch, "batch": None, "value": 1.5,
+            "threshold": 1.0, **kw}
+
+
+def test_reader_collects_alerts_bounded_and_histogram_kinds():
+    s = RunState()
+    for i in range(600):
+        s.apply(_alert(float(i), "warning", "overfitting", epoch=i))
+    assert len(s.alerts) == 500 and s.alerts[0]["epoch"] == 100 and s.n_ignored == 0
+    s.apply({"type": "histograms", "epoch": 1, "groups": []})                       # sin kind
+    s.apply({"type": "histograms", "epoch": 1, "kind": "weights", "groups": []})
+    s.apply({"type": "histograms", "epoch": 1, "kind": "gradients", "groups": []})
+    s.apply({"type": "histograms", "epoch": 2, "kind": "gradients", "groups": []})
+    assert sorted(s.histograms) == [1] and sorted(s.grad_histograms) == [1, 2]
+    s.apply({"type": "histograms", "epoch": 3, "kind": "activations", "groups": []})
+    s.apply({"type": "histograms", "epoch": 3, "kind": ["x"], "groups": []})
+    assert s.n_ignored == 2 and 3 not in s.histograms and 3 not in s.grad_histograms
+    assert d.events_have(s)["histograms"] is True
+    only_grad = RunState()
+    only_grad.apply({"type": "histograms", "epoch": 1, "kind": "gradients", "groups": []})
+    assert d.events_have(only_grad)["histograms"] is True
+
+
+def test_alert_frame_is_chronological_and_tolerant():
+    evs = [_alert(20.0, "critical", "nan_loss", epoch=2, batch=7),
+           _alert(10.0, "warning", "gpu_temp_high"),
+           {"type": "alert", "time": 30.0, "level": "weird", "code": "x"}]
+    df = d.alert_frame(evs)
+    assert df["code"].tolist() == ["gpu_temp_high", "nan_loss", "x"]
+    assert df["level"].tolist() == ["warning", "critical", "warning"]   # desconocido: warning
+    assert df["epoch"].isna().tolist() == [True, False, True] and df["batch"].iloc[1] == 7
+    assert str(df["time"].dt.tz) == "UTC"
+    assert d.alert_frame([]).empty and list(d.alert_frame([]).columns) == d.ALERT_COLUMNS
+
+
+def test_active_alerts_latest_per_code_critical_first_with_window():
+    evs = [_alert(1.0, "warning", "overfitting", epoch=1),
+           _alert(2.0, "warning", "overfitting", epoch=4),
+           _alert(3.0, "critical", "nan_loss", epoch=2),
+           _alert(4.0, "warning", "gpu_temp_high", epoch=None),
+           _alert(5.0, "warning", "dataloader_bound", epoch=5)]
+    # en curso, época 5, ventana 1: nan_loss (ep 2) ya no está activa
+    live = d.active_alerts(evs, current_epoch=5)
+    assert [a["code"] for a in live] == ["dataloader_bound", "gpu_temp_high", "overfitting"]
+    assert [a["epoch"] for a in live if a["code"] == "overfitting"] == [4]
+    # run terminado: todos los códigos, el crítico primero
+    done = d.active_alerts(evs)
+    assert done[0]["code"] == "nan_loss" and done[0]["level"] == "critical" and len(done) == 4
+    assert d.active_alerts([], current_epoch=3) == []
+
+
+def test_active_alerts_are_per_code_and_group():
+    evs = [_alert(1.0, "warning", "grad_explosion", epoch=2, group="blocks.0"),
+           _alert(2.0, "warning", "grad_explosion", epoch=2, group="blocks.1"),
+           _alert(3.0, "warning", "grad_explosion", epoch=2, group="blocks.0")]
+    act = d.active_alerts(evs, current_epoch=2)
+    assert sorted(a["group"] for a in act) == ["blocks.0", "blocks.1"]
+    assert d.alert_line(act[0]).startswith("epoch 2 · grad_explosion [blocks.")
+    assert d.alert_frame(evs)["group"].tolist() == ["blocks.0", "blocks.1", "blocks.0"]
+    assert d.alert_frame([_alert(1.0, "warning", "x", value=None)])["group"].tolist() == [""]
+
+
+def test_alert_line():
+    assert d.alert_line(_alert(1.0, "critical", "nan_loss", epoch=3)) == \
+        "epoch 3 · nan_loss · msg nan_loss"
+    assert d.alert_line({"code": "gpu_temp_high"}) == "gpu_temp_high"

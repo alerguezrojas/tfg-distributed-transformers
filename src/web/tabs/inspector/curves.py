@@ -9,6 +9,9 @@ import streamlit as st
 
 from src.analysis.curves import per_class_curves
 from src.analysis.thresholds import threshold_sweep
+from src.web.inspector_stats import (
+    DEFAULT_SEED, N_BOOT_CHOICES, ci_column, ci_note, class_ci, macro_ci,
+)
 from src.web.tabs.inspector._common import InspectorCtx, _mtime, fmt, need_monitor
 from src.web.ui.charts import _show
 
@@ -37,6 +40,18 @@ def _curves(dir_str: str, epoch: int, mtime: float, source: str, _probs, _target
 def _sweep(dir_str: str, epoch: int, mtime: float, source: str, task: str, _probs,
            _targets) -> dict:
     return threshold_sweep(_probs, _targets, task)
+
+
+@st.cache_data(show_spinner="Bootstrapping the macro metrics…", max_entries=16)
+def _macro_ci(dir_str: str, epoch: int, mtime: float, source: str, task: str, thr: float,
+              n_boot: int, _probs, _targets) -> dict:
+    return macro_ci(_probs, _targets, task, thr, n_boot, DEFAULT_SEED)
+
+
+@st.cache_data(show_spinner="Bootstrapping each class…", max_entries=8)
+def _class_ci(dir_str: str, epoch: int, mtime: float, source: str, task: str, thr: float,
+              n_boot: int, _probs, _targets) -> list:
+    return class_ci(_probs, _targets, task, thr, n_boot, DEFAULT_SEED)
 
 
 def source_choice(c: InspectorCtx, key: str) -> str | None:
@@ -98,7 +113,8 @@ def render(c: InspectorCtx) -> None:
     st.markdown("---")
     sweep = _sweep(str(c.inspect_dir), c.epoch, mt, source, c.task, probs, targets)
     thr = _threshold_section(c, sweep)
-    _class_table(c, out, probs, targets, thr)
+    cis, n_boot = _ci_section(c, source, mt, probs, targets, thr)
+    _class_table(c, out, probs, targets, thr, cis, n_boot)
     _evolution(c, source)
 
 
@@ -132,7 +148,43 @@ def _threshold_section(c: InspectorCtx, sweep: dict) -> float | None:
                      help="Defaults to the epoch's validation-optimal threshold.")
 
 
-def _class_table(c: InspectorCtx, out: dict, probs, targets, thr: float | None) -> None:
+def _ci_section(c: InspectorCtx, source: str, mt: float, probs, targets,
+                thr: float | None) -> tuple[list | None, int]:
+    """Macro metrics with bootstrap intervals; returns (per-class intervals if requested,
+    resamples)."""
+    st.markdown("##### Metrics with confidence intervals")
+    a, b, d = st.columns([1, 1, 2], vertical_alignment="bottom")
+    on = a.toggle("Show intervals", value=True, key="insp_ci_on")
+    n_boot = b.selectbox("Resamples", N_BOOT_CHOICES, index=1, key="insp_ci_n", disabled=not on,
+                         help="More resamples give smoother limits but take longer "
+                              "(results are cached per run, epoch and settings).")
+    per_class = d.toggle("Per-class intervals", value=False, key="insp_ci_cls", disabled=not on,
+                         help="One bootstrap per class: slower. In multiclass only AUC and AP "
+                              "(the other metrics come from the argmax of all the classes).")
+    if not on:
+        st.caption("Intervals off: the numbers are point estimates.")
+        return None, 0
+    use = 0.5 if thr is None else thr
+    ci = _macro_ci(str(c.inspect_dir), c.epoch, mt, source, c.task, use, n_boot, probs, targets)
+    labels = {"auc": "Macro AUC", "ap": "Macro AP", "f1": "Macro F1",
+              "sensitivity": "Sensitivity", "specificity": "Specificity", "accuracy": "Accuracy"}
+    cols = st.columns(len(labels))
+    for col, (key, label) in zip(cols, labels.items()):
+        v = ci[key]
+        finite = v["lo"] == v["lo"] and v["hi"] == v["hi"]
+        col.metric(label, fmt(v["estimate"]), delta=f"[{v['lo']:.3f}, {v['hi']:.3f}]" if finite
+                   else None, delta_color="off")
+    where = "at the argmax decision" if thr is None else f"at threshold {use:.2f}"
+    st.caption(f"{ci_note(n_boot)} F1, sensitivity, specificity and accuracy {where}; "
+               "AUC and AP do not depend on a threshold.")
+    if not per_class:
+        return None, n_boot
+    return _class_ci(str(c.inspect_dir), c.epoch, mt, source, c.task, use, n_boot, probs,
+                     targets), n_boot
+
+
+def _class_table(c: InspectorCtx, out: dict, probs, targets, thr: float | None,
+                 cis: list | None = None, n_boot: int = 0) -> None:
     grid = None if thr is None else [thr]
     at = threshold_sweep(probs, targets, c.task, grid=grid)["per_class"]
     support = (np.asarray(targets) > 0).sum(axis=0)
@@ -142,8 +194,15 @@ def _class_table(c: InspectorCtx, out: dict, probs, targets, thr: float | None) 
         "Specificity": at["specificity"][0], "Precision": at["precision"][0],
     })
     label = "argmax" if thr is None else f"threshold {thr:.2f}"
+    df = df.round(3)
+    if cis:
+        for col, key in (("AUC", "auc"), ("AP", "ap"), ("F1", "f1"),
+                         ("Sensitivity", "sensitivity"), ("Specificity", "specificity")):
+            if key in cis[0]:
+                df[col] = ci_column(cis, key)
+        label += f"; intervals: {ci_note(n_boot)}"
     st.markdown(f"##### Per class ({label})")
-    st.dataframe(df.round(3), hide_index=True, width="stretch")
+    st.dataframe(df, hide_index=True, width="stretch")
 
 
 def _evolution(c: InspectorCtx, source: str) -> None:

@@ -245,7 +245,10 @@ Los tests usan un generador de directorios sintéticos
 La página **Inspector** de la web (`src/web/tabs/inspector/`, un módulo por vista) la consume:
 `src/web/inspector_data.py` reúne los helpers puros (tablas de muestras, matrices de capas,
 superposición de Grad-CAM, descubrimiento de runs) y `EventsFollower` guarda, acotados, los
-eventos `system`, `layers`, `histograms`, `monitor_start` e `inspection`. Solo la vista elegida
+eventos `system`, `layers`, `histograms` (pesos y gradientes), `monitor_start`, `inspection` y `alert`.
+`src/web/inspector_stats.py` reúne los helpers puros de las vistas clínicas (IC, punto de operación,
+subgrupos, interpretación de la calibración) y `src/web/ui/alert_banner.py` el banner de alertas que
+comparten Live y el Inspector. Solo la vista elegida
 se calcula en cada refresco. `tests/fixtures/make_inspector_run.py` genera un run completo
 (eventos + `inspect_<ts>/`) para los tests.
 
