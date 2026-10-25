@@ -17,7 +17,9 @@ import math
 import platform
 import socket
 import subprocess
+import threading
 import time
+import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -77,8 +79,9 @@ def public_metrics(metrics: Mapping) -> dict:
     """
     out = {k: _json_value(v) for k, v in metrics.items()
            if not k.startswith("_") and getattr(v, "ndim", 0) == 0}
-    if metrics.get("_optimal_threshold") is not None:
-        out["optimal_threshold"] = _json_value(metrics["_optimal_threshold"])
+    for private in ("_optimal_threshold", "_f1_at_optimal_threshold"):
+        if metrics.get(private) is not None:
+            out[private[1:]] = _json_value(metrics[private])
     return out
 
 
@@ -127,22 +130,54 @@ class JsonlEventSink(TrainingListener):
     ``run_info`` holds the static ``run_start`` fields (run_id, dataset, task,
     classes, model, mode, world_size, select_metric, config, env); the planned
     number of epochs is added when the run starts.
+
+    While the run is alive a daemon thread writes a ``heartbeat`` every
+    ``heartbeat_s`` seconds, so a reader can tell a long epoch from a dead process
+    without the training loop doing any extra work.
     """
 
-    def __init__(self, path: str | Path, run_info: Mapping, log_every: int = 1):
+    def __init__(self, path: str | Path, run_info: Mapping, log_every: int = 1,
+                 heartbeat_s: float = 30.0):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text("")            # one file per run (timestamped name)
         self._run_info = dict(run_info)
         self._log_every = max(1, int(log_every))
+        self._heartbeat_s = heartbeat_s
         self._t_start: float | None = None
+        self._epoch: int | None = None      # loop epoch, from on_epoch_start
+        self._lock = threading.Lock()       # heartbeat thread vs. training thread
+        self._stop = threading.Event()
+        self._heartbeat: threading.Thread | None = None
+        self._batch_warned = False
 
     def _write(self, event_type: str, **fields) -> None:
         record = {"v": SCHEMA_VERSION, "type": event_type, "time": time.time(),
                   **{k: _json_value(v) for k, v in fields.items()}}
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n")
+        line = json.dumps(record, ensure_ascii=False, allow_nan=False) + "\n"
+        with self._lock, open(self.path, "a", encoding="utf-8") as f:
+            f.write(line)
             f.flush()
+
+    def _beat(self) -> None:
+        while not self._stop.wait(self._heartbeat_s):
+            try:
+                self._write("heartbeat", epoch=self._epoch, elapsed_s=self._elapsed())
+            except Exception:  # noqa: BLE001 — a lost heartbeat only delays "stalled"
+                pass
+
+    def _start_heartbeat(self) -> None:
+        if self._heartbeat_s and self._heartbeat_s > 0:
+            self._stop.clear()
+            self._heartbeat = threading.Thread(target=self._beat, name="events-heartbeat",
+                                               daemon=True)
+            self._heartbeat.start()
+
+    def _stop_heartbeat(self) -> None:
+        self._stop.set()
+        if self._heartbeat is not None:
+            self._heartbeat.join(timeout=5)
+            self._heartbeat = None
 
     def _elapsed(self) -> float | None:
         return None if self._t_start is None else time.time() - self._t_start
@@ -152,8 +187,10 @@ class JsonlEventSink(TrainingListener):
     def on_fit_start(self, epochs):
         self._t_start = time.time()
         self._write("run_start", **self._run_info, epochs=epochs)
+        self._start_heartbeat()
 
     def on_epoch_start(self, epoch, epochs):
+        self._epoch = epoch
         self._write("epoch_start", epoch=epoch, epochs=epochs)
 
     def on_epoch_end(self, epoch, epochs, train_m, val_m, best, is_best, epoch_time_s):
@@ -165,18 +202,36 @@ class JsonlEventSink(TrainingListener):
         self._write("early_stop", epoch=epoch, best=_best(best))
 
     def on_fit_end(self, best, epochs_run, early_stopped):
+        self._stop_heartbeat()
         self._write("run_end", status="early_stopped" if early_stopped else "completed",
                     epochs_run=epochs_run, best=_best(best), total_time_s=self._elapsed())
 
     def on_fit_error(self, error, epochs_run, best):
-        self._write("run_end", status="failed", epochs_run=epochs_run, best=_best(best),
+        self._stop_heartbeat()
+        # Ctrl-C / SystemExit are not Exceptions: an interruption, not a failure.
+        status = "failed" if isinstance(error, Exception) else "interrupted"
+        self._write("run_end", status=status, epochs_run=epochs_run, best=_best(best),
                     total_time_s=self._elapsed(),
                     error=f"{type(error).__name__}: {error}")
 
     # ── Batch hook (Trainer.register_batch_hook) ─────────────────────────────
 
     def on_batch(self, epoch: int, batch_idx: int, n_batches: int, metrics: dict) -> None:
-        """Batch hook: one ``batch`` event every ``log_every`` batches (and the last)."""
-        if batch_idx % self._log_every == 0 or batch_idx == n_batches:
-            self._write("batch", epoch=epoch, batch=batch_idx, n_batches=n_batches,
-                        metrics=metrics)
+        """Batch hook: one ``batch`` event every ``log_every`` batches (and the last).
+
+        The epoch is the loop's (as in ``epoch_start``/``epoch_end``), not the
+        trainer's counter, which continues from the checkpoint after ``--resume``.
+        The Trainer calls batch hooks unguarded, so a write error is turned into a
+        warning here: the event stream must never stop a training run.
+        """
+        if batch_idx % self._log_every != 0 and batch_idx != n_batches:
+            return
+        try:
+            self._write("batch", epoch=self._epoch if self._epoch is not None else epoch,
+                        batch=batch_idx, n_batches=n_batches, metrics=metrics)
+        except Exception as exc:  # noqa: BLE001
+            if not self._batch_warned:
+                self._batch_warned = True
+                warnings.warn(f"events: batch event not written ({exc!r}); further "
+                              f"batch write errors are silenced", RuntimeWarning,
+                              stacklevel=2)

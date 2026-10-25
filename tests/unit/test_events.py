@@ -193,3 +193,54 @@ def test_nan_best_is_never_written_as_invalid_json(tmp_path):
     sink.on_epoch_end(1, 1, {"loss": math.inf}, {"f1": float("nan")}, 0.0, True, 1.0)
     event = _read(path)[0]
     assert event["train"]["loss"] is None and event["val"]["f1"] is None
+
+
+def test_a_failing_batch_write_is_only_a_warning(tmp_path):
+    sink = JsonlEventSink(tmp_path / "events_w.jsonl", run_info={})
+
+    def boom(*a, **k):
+        raise OSError("No space left on device")
+
+    sink._write = boom
+    with pytest.warns(RuntimeWarning, match="No space left"):
+        sink.on_batch(1, 1, 1, {"batch_loss": 1.0})
+    sink.on_batch(1, 1, 1, {"batch_loss": 1.0})       # silenced after the first
+
+
+def test_batch_events_use_the_loop_epoch(tmp_path):
+    # After --resume the trainer's own counter continues from the checkpoint (e.g. 6)
+    # while the loop restarts at 1: batch events must match epoch_start/epoch_end.
+    path = tmp_path / "events_r.jsonl"
+    sink = JsonlEventSink(path, run_info={})
+    sink.on_epoch_start(1, 3)
+    sink.on_batch(6, 1, 1, {"batch_loss": 1.0})
+    assert _read(path)[-1]["epoch"] == 1
+
+
+def test_heartbeats_while_the_run_is_alive(tmp_path):
+    import time
+    path = tmp_path / "events_h.jsonl"
+    sink = JsonlEventSink(path, run_info={}, heartbeat_s=0.05)
+    sink.on_fit_start(1)
+    time.sleep(0.3)
+    sink.on_fit_end(0.5, 1, False)
+    n = len(_read(path))
+    time.sleep(0.15)
+    events = _read(path)
+    assert len(events) == n                                    # stopped with the run
+    beats = [e for e in events if e["type"] == "heartbeat"]
+    assert beats and all(e["elapsed_s"] >= 0 for e in beats)
+    assert events[-1]["type"] == "run_end"
+
+
+def test_ctrl_c_is_reported_as_interrupted(tmp_path):
+    path = tmp_path / "events_i.jsonl"
+    sink = JsonlEventSink(path, run_info={}, heartbeat_s=0)
+    sink.on_fit_start(2)
+    sink.on_fit_error(KeyboardInterrupt(), 0, -1.0)
+    assert _read(path)[-1]["status"] == "interrupted"
+
+
+def test_the_optimal_threshold_f1_is_public():
+    m = public_metrics({"f1": 0.4, "_optimal_threshold": 0.3, "_f1_at_optimal_threshold": 0.6})
+    assert m == {"f1": 0.4, "optimal_threshold": 0.3, "f1_at_optimal_threshold": 0.6}

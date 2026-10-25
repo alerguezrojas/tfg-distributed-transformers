@@ -34,15 +34,20 @@ cambiar el significado de un campo sí.
 
 | `type` | Campos | Cuándo |
 |---|---|---|
-| `run_start` | `run_id` (el sello), `dataset`, `task` (`multilabel`/`binary`/`multiclass`), `classes`, `model`, `mode` (`single`/`ddp`/`heterogeneous`/`model_parallel`), `world_size`, `epochs` (planificadas), `select_metric` (`f1`/`f1_optimal`/`auc`), `config` (YAML completo), `env` (`host`, `python`, `torch`, `timm`, `git_commit` o `null`, `devices`) | Al empezar `fit()` |
+| `run_start` | `run_id` (el sello), `dataset`, `task` (`multilabel`/`binary`/`multiclass`), `classes`, `model`, `mode` (`single`/`ddp`/`ddp_hetero`/`model_parallel`, como la carpeta de `logs/`), `world_size`, `epochs` (planificadas), `select_metric` (`f1`/`f1_optimal`/`auc`), `config` (YAML completo), `env` (`host`, `python`, `torch`, `timm`, `git_commit` o `null`, `devices`) | Al empezar `fit()` |
 | `epoch_start` | `epoch`, `epochs` | Al empezar cada época |
-| `batch` | `epoch`, `batch`, `n_batches`, `metrics` (`batch_loss`, `running_loss`, `lr`, `batch_f1`, `batch_acc`…) | Cada `log_batch_every` batches, si está activo el monitor de batches |
-| `epoch_end` | `epoch`, `epochs`, `train` (métricas), `val` (`loss`, `f1`, `accuracy`, `precision`, `recall`, `auc` y `optimal_threshold` si la tarea lo busca), `epoch_time_s`, `best`, `is_best` | Al terminar cada época |
+| `batch` | `epoch` (la del bucle, como en `epoch_start`, también tras `--resume`), `batch`, `n_batches`, `metrics` (`batch_loss`, `running_loss`, `lr`, `batch_f1`, `batch_acc`…) | Cada `log_batch_every` batches, si está activo el monitor de batches |
+| `epoch_end` | `epoch`, `epochs`, `train` (métricas), `val` (`loss`, `f1`, `accuracy`, `precision`, `recall`, `auc` y, si la tarea busca umbral, `optimal_threshold` y `f1_at_optimal_threshold`), `epoch_time_s`, `best`, `is_best` | Al terminar cada época |
 | `early_stop` | `epoch`, `best` | Si salta la parada temprana |
-| `run_end` | `status` (`completed`/`early_stopped`/`failed`), `epochs_run`, `best`, `total_time_s`, `error` (solo si falló) | Al terminar `fit()`, también si lanza una excepción |
+| `heartbeat` | `epoch` (en curso o `null`), `elapsed_s` | Cada 30 s mientras el run está vivo, desde un hilo aparte: no añade trabajo al bucle |
+| `run_end` | `status` (`completed`/`early_stopped`/`failed`/`interrupted`), `epochs_run`, `best`, `total_time_s`, `error` (si falló o se interrumpió) | Al terminar `fit()`, también si lanza una excepción; `interrupted` es Ctrl-C o `SystemExit` |
 
-Un run sin `run_end` y cuyo fichero lleva varios minutos sin cambiar se considera **parado**
-(proceso muerto o máquina caída).
+Un run sin `run_end` cuyo fichero lleva varios minutos sin cambiar se considera **parado**
+(proceso muerto o máquina caída). Gracias al `heartbeat`, un run vivo escribe al menos cada 30 s
+aunque una época dure una hora. `best` es `null` mientras no ha terminado ninguna época.
+
+Escribir eventos nunca detiene el entrenamiento: un error de escritura (disco lleno, NFS caído)
+se convierte en un aviso.
 
 ### Ejemplo
 
