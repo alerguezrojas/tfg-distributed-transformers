@@ -71,8 +71,10 @@ class ConfusionMatrixDecorator(TrainerDecorator):
         result = self._trainer.eval_epoch(loader)
         self._epoch += 1
 
-        preds = result.pop("_preds", None)
-        labels = result.pop("_labels", None)
+        # Read, not pop: the prediction monitor also needs the validation targets
+        # (private keys never reach the checkpoint or the logs).
+        preds = result.get("_preds")
+        labels = result.get("_labels")
 
         if preds is not None and labels is not None and self._epoch % self._every_n == 0:
             if self._csv_path is not None:

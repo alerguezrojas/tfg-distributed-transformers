@@ -184,6 +184,24 @@ bucles que poseen una época (`Trainer` —y con él DDP y paralelismo de modelo
 `data_time_s`, `step_time_s` y `samples_per_s`, y el diccionario de `train_epoch` añade
 `samples_per_s` y `data_wait_frac`; el CSV de épocas no cambia de columnas.
 
+### Monitores de inspección
+
+Con `--monitor` (o `monitor.enabled`), el builder suscribe dos observadores más
+(`src/training/monitor.py`, contrato en [inspeccion.md](inspeccion.md)):
+
+- `PredictionMonitor`: elige con su propia semilla un subconjunto de validación (equilibrado por
+  clase si el dataset expone `targets`) y, tras cada época, guarda sus probabilidades, la pérdida
+  por imagen, la entrada de la última capa lineal (*embedding*) y Grad-CAM de un panel, además de
+  las probabilidades de toda la validación. Trabaja en `on_epoch_end`, fuera del tiempo medido, con
+  el modelo desenvuelto de DDP y en modo `eval`, y restaura el modo al terminar.
+- `LayerStatsMonitor`: *batch hook* que mide por grupo de capas la norma del gradiente, la de los
+  pesos y el ratio actualización/peso (el paso real de AdamW reconstruido de su estado), e
+  histogramas de pesos por época.
+
+Ninguno consume números aleatorios globales ni acumula gradientes en los parámetros
+(Grad-CAM usa `torch.autograd.grad` respecto a la activación): un test comprueba que los pesos
+finales son idénticos con el monitor activado o no.
+
 ### DeepTracingDecorator — detalle
 
 Registra en cada epoch:

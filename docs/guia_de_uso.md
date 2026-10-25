@@ -137,6 +137,7 @@ Opciones principales:
 | `--trace` | `off` · `simple` · `deep` | Solo consola / registro a fichero / traza profunda por capas |
 | `--layers` | `plot,confusion,batch-monitor,hooks` | Decoradores de aspecto, combinables por comas |
 | `--fn` | `timing,energy` | Cronometraje por fase y energía de todas las GPU del run |
+| `--monitor` | | Monitor de predicciones: en cada época guarda qué predice el modelo para un subconjunto fijo de validación (con miniaturas), su pérdida por imagen, *embeddings*, mapas Grad-CAM y estadísticas por capa ([detalle](inspeccion.md)). No cambia el entrenamiento |
 | `--n-gpus`, `--nnodes`, `--node-rank`, `--master-addr`, `--master-port` | | Coordinación multi-GPU y multi-nodo |
 | `--dry-run` | | Imprime el comando final sin ejecutarlo |
 
@@ -237,6 +238,8 @@ Cada run escribe, bajo `logs/<entorno>/<estrategia>/<modelo>/`:
 | `perclass_metrics_*.csv` | Precisión/exhaustividad/F1 de cada clase por época |
 | `confusion_matrix_*.csv` | Matriz de co-activación 19×19 por época |
 | `batch_metrics_*.csv` | Pérdida, F1 y learning rate por lote |
+| `events_*.jsonl` | Flujo de eventos del run ([esquema](eventos.md)): lo que lee la pestaña *Live* |
+| `inspect_<fecha>/` | Con `--monitor`: predicciones por imagen, *embeddings* y Grad-CAM por época ([formato](inspeccion.md)); no se versiona |
 | `test_*.csv` | Resultado de la evaluación en test (si se ejecutó `eval`) |
 
 Los pesos van a `checkpoints/` (fuera de git). El panel web descubre los runs automáticamente; los

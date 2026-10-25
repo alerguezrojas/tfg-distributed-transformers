@@ -11,6 +11,7 @@
 | [flujo_ia.md](flujo_ia.md) | Cómo se trabaja con IA: agentes, skills, hooks, permisos y controles |
 | [inspeccion.md](inspeccion.md) | Qué captura la inspección del entrenamiento (sistema, rendimiento, predicciones por muestra, Grad-CAM, capas) y en qué formato |
 | [eventos.md](eventos.md) | Esquema del flujo de eventos de cada run (`events_*.jsonl`): contrato entre el entrenamiento y la web |
+| [research/inventario_herramientas_observabilidad.md](research/inventario_herramientas_observabilidad.md) | Inventario funcionalidad a funcionalidad de W&B, TensorBoard, Comet, Aim, ClearML, FiftyOne, Lightning y otras: qué muestran, matriz comparativa, requisitos de imagen médica y lista priorizada para el proyecto |
 | [research/observabilidad_entrenamiento.md](research/observabilidad_entrenamiento.md) | Seguimiento en vivo, formatos de eventos e interpretabilidad de ViT en imagen médica: qué usa el sector y qué encaja aquí |
 | [research/estado_del_arte_prediccion.md](research/estado_del_arte_prediccion.md) | Trabajo relacionado sobre predicción del rendimiento del entrenamiento (tiempo, memoria, energía, escalado) y dónde encaja el predictor |
 | [resultados_tfg.md](resultados_tfg.md) | Resultados experimentales hasta la entrega (histórico) |

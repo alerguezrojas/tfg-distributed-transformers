@@ -51,6 +51,9 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Entrenamiento DDP heterogéneo (GPU + CPU)"
     )
+    parser.add_argument("--monitor", action="store_true",
+                        help="Prediction/layer monitor: per-sample predictions, embeddings, "
+                             "Grad-CAM and layer stats every epoch (docs/inspeccion.md)")
     parser.add_argument("--config", type=str,
                         default="configs/train_heterogeneous_ddp.yaml")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
@@ -195,6 +198,8 @@ def main():
     if args.batch_log_every is not None:
         builder = builder.with_batch_log_every(args.batch_log_every)
 
+    if args.monitor:
+        builder = builder.with_monitor()
     trainer = builder.build()
 
     if rank == 0:
