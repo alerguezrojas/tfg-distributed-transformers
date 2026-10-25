@@ -138,6 +138,7 @@ Opciones principales:
 | `--layers` | `plot,confusion,batch-monitor,hooks` | Decoradores de aspecto, combinables por comas |
 | `--fn` | `timing,energy` | Cronometraje por fase y energía de todas las GPU del run |
 | `--monitor` | | Monitor de predicciones: en cada época guarda qué predice el modelo para un subconjunto fijo de validación (con miniaturas), su pérdida por imagen, *embeddings*, mapas Grad-CAM y estadísticas por capa ([detalle](inspeccion.md)). No cambia el entrenamiento |
+| (config) `monitor.alerts` | | Alertas en el flujo de eventos (NaN, divergencia, sobreajuste, gradientes, cuello de I/O, GPU al límite); activas por defecto, `monitor.alerts.enabled: false` las apaga y cada umbral se ajusta ([detalle](inspeccion.md#alertas)) |
 | `--n-gpus`, `--nnodes`, `--node-rank`, `--master-addr`, `--master-port` | | Coordinación multi-GPU y multi-nodo |
 | `--dry-run` | | Imprime el comando final sin ejecutarlo |
 

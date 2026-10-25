@@ -10,7 +10,9 @@ Contrato entre lo que captura el entrenamiento (terminal) y lo que analiza la we
    cuyas predicciones, pérdida, *embeddings* y mapas Grad-CAM se guardan **en cada época**, más
    las probabilidades de toda la validación para curvas y calibración.
 4. **Capas** (opcional, `monitor.layers`): normas de gradientes y pesos, ratio de actualización e
-   histogramas de pesos por grupo de capas.
+   histogramas de pesos y de gradientes por grupo de capas.
+5. **Alertas** (siempre que haya flujo de eventos, `monitor.alerts`): avisos de problemas del run
+   (pérdida NaN, divergencia, sobreajuste, gradientes, cuello de I/O, GPU al límite).
 
 Diseño y alternativas: [auditoría de observabilidad](roadmap.md). Inventario de lo que ofrecen
 las herramientas del sector: [research/inventario_herramientas_observabilidad.md](research/inventario_herramientas_observabilidad.md).
@@ -40,6 +42,19 @@ monitor:
   full_val_max: 4000000   # guarda probabilidades de toda la validación si N×C ≤ este valor
   layers: true            # estadísticas por grupo de capas (cada log_batch_every batches)
   system_interval_s: 5    # muestreo de sistema (también sin monitor; 0 = desactivado)
+  alerts:                 # alertas (también sin monitor); todas las claves son opcionales
+    enabled: true
+    loss_divergence_factor: 2.0   # pérdida de validación > k × la mejor
+    overfit_epochs: 3             # validación sube N épocas seguidas mientras la de train baja
+    grad_explosion_factor: 100.0  # norma de gradiente de un grupo > k × su mediana reciente
+    grad_history: 20              # muestras de `layers` que forman esa mediana
+    update_ratio_min: 0.000001    # ratio actualización/peso fuera de [min, max]...
+    update_ratio_max: 0.1
+    update_ratio_patience: 3      # ...en N muestras de `layers` seguidas
+    data_wait_frac: 0.3           # fracción de la época esperando datos
+    gpu_mem_pct: 95.0             # memoria de GPU usada (%)
+    gpu_temp_c: 85.0              # temperatura de GPU (°C)
+    throughput_drop_factor: 0.5   # muestras/s < k × mediana de las épocas anteriores
 ```
 
 `--monitor` en `train_single_gpu.py`, `train_ddp.py`, `train_heterogeneous_ddp.py` y el de
@@ -53,7 +68,8 @@ paralelismo de modelo equivale a `monitor.enabled: true`.
 | `monitor_start` | `dir` (relativo al log), `samples`, `panel`, `classes`, `full_val`, `embedding_dim` | Al empezar el run, si el monitor está activo |
 | `inspection` | `epoch`, `file` (relativo al log), `seconds` (lo que tardó la captura) | Tras cada época inspeccionada |
 | `layers` | `epoch`, `batch`, `groups`: lista de `{name, grad_norm, weight_norm, update_ratio}` | Cada `log_batch_every` batches, si `monitor.layers` |
-| `histograms` | `epoch`, `groups`: lista de `{name, edges (33), counts (32)}` de los pesos | Al final de cada época, si `monitor.layers` |
+| `histograms` | `epoch`, `kind` (`"weights"` o `"gradients"`), `groups`: lista de `{name, edges (33), counts (32)}` | Al final de cada época, si `monitor.layers`: un evento de pesos y otro de gradientes del **último batch** de la época (los grupos sin gradiente no aparecen). Los eventos anteriores a `kind` eran de pesos |
+| `alert` | `level` (`"warning"` o `"critical"`), `code`, `message` (inglés), `epoch`, `batch`, `value`, `threshold`, `group` (ver [Alertas](#alertas)) | Cuando una regla salta por primera vez, o de nuevo tras dejar de cumplirse |
 
 **`batch`** añade a `metrics`: `data_time_s` (espera del DataLoader en ese batch), `step_time_s`
 (resto del paso), `samples_per_s`. **`epoch_end.train`** añade `samples_per_s` y
@@ -102,6 +118,60 @@ paralelismo de modelo equivale a `monitor.enabled: true`.
     el hilo sigue. Escribir eventos nunca detiene el entrenamiento.
   - Solo rank 0 y solo si hay flujo de eventos (`--trace` distinto de `off`). En DDP/heterogéneo se
     muestrean todas las GPU visibles para ese proceso, no solo la del rank 0.
+
+## Alertas
+
+`src/training/alerts.py`. Reglas puras (`check_*`, sin torch) y un `AlertMonitor`
+(`TrainingListener`) que las evalúa con lo que ya produce el run y escribe un evento `alert` por
+cada hallazgo nuevo. **Contrato del evento** (esquema v1; los campos de abajo siempre están):
+
+```json
+{"v": 1, "type": "alert", "time": 1761400061.9, "level": "warning", "code": "loss_divergence",
+ "message": "Validation loss 2.1 is 2.6x the best so far (0.81).", "epoch": 7, "batch": null,
+ "value": 2.1, "threshold": 1.62, "group": null}
+```
+
+| Campo | Tipo | Significado |
+|---|---|---|
+| `level` | `"warning"` o `"critical"` | `critical` solo para `nan_loss` |
+| `code` | str | Identificador estable de la regla (tabla siguiente) |
+| `message` | str | Frase en inglés legible, con las cifras |
+| `epoch` | int o null | Época en que se detectó (la del bucle); `null` si no aplica |
+| `batch` | int o null | Batch dentro de la época, si la regla mira batches (`nan_loss` con batch hook, `grad_explosion`, `update_ratio_out_of_range`); `null` si es de época o de sistema |
+| `value` | float o null | Valor medido. `null` si no es representable en JSON (NaN/inf) |
+| `threshold` | float o null | Umbral que se ha superado (ya multiplicado por el factor, p. ej. `2 × mejor`) |
+| `group` | str o null | Instancia dentro del código: grupo de capas, `gpu<N>` o `train`/`val`; `null` si es global. Campo aditivo (no estaba en el contrato mínimo): un lector que no lo conozca lo ignora |
+
+| `code` | Nivel | Regla (umbral por defecto) | Fuente |
+|---|---|---|---|
+| `nan_loss` | critical | La pérdida es NaN o infinita en un batch o en la media de la época (`group` `train` o `val`) | `epoch_end`; el batch hook si ya hay |
+| `loss_divergence` | warning | Pérdida de validación > 2 × la mejor de las épocas anteriores | `epoch_end` |
+| `overfitting` | warning | La de validación sube 3 épocas seguidas mientras la de train baja | `epoch_end` |
+| `grad_explosion` | warning | Norma del gradiente de un grupo > 100 × su mediana reciente (mínimo 5 muestras) | `layers` |
+| `update_ratio_out_of_range` | warning | Ratio actualización/peso fuera de [1e-6, 1e-1] en 3 muestras seguidas | `layers` |
+| `dataloader_bound` | warning | `data_wait_frac` de la época > 0,3 | `epoch_end.train` |
+| `gpu_memory_high` | warning | Memoria usada > 95 % del total (`group` `gpu<N>`) | `system` |
+| `gpu_temp_high` | warning | Temperatura > 85 °C (`group` `gpu<N>`) | `system` |
+| `throughput_drop` | warning | Muestras/s de la época < 50 % de la mediana de las anteriores (mínimo 2) | `epoch_end.train` |
+
+Reglas de emisión:
+- Una alerta se emite **una vez por (`code`, `group`)** y se **re-arma** solo cuando la condición
+  deja de cumplirse (una evaluación sin hallazgo para ese par). Mientras persiste no se repite.
+  Una regla que afecta a muchos grupos (p. ej. ratio de actualización) emite un evento por grupo.
+- `grad_explosion` y `update_ratio_out_of_range` solo se evalúan si hay eventos `layers`
+  (`monitor.layers`); sin ellos no se emiten. `gpu_*` necesita el muestreo de sistema.
+- El NaN por batch usa el *batch hook* **solo si el `Trainer` ya tiene alguno** (monitor de
+  batches o de capas): no fuerza cálculo por batch. Sin hooks se detecta al final de la época. Un
+  run con NaN no se detiene: sigue o termina como lo haría sin alertas.
+- Los eventos `system` y `layers` llegan al `AlertMonitor` porque este se suscribe al sink
+  (`JsonlEventSink.subscribe`); ni el muestreador ni el monitor de capas saben de alertas. Una
+  alerta de GPU sale desde el hilo del muestreador, siempre antes de `run_end`.
+- Todo error de una regla o de escritura se convierte en un aviso; nunca detiene el
+  entrenamiento ni cambia ningún número (test de invariancia de pesos y de RNG).
+- Se cablea en rank 0 con el sink, también sin `--monitor`. `monitor.alerts.enabled: false` las
+  desactiva. Las claves de `monitor.alerts` se validan (claves conocidas, tipos y mínimos).
+- Con LLRD y *warmup* los grupos más bajos del ViT pueden rondar el límite inferior del ratio
+  (1e-6) en las primeras épocas: el umbral se ajusta con `update_ratio_min`.
 
 ## Directorio de inspección
 

@@ -30,6 +30,7 @@ from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
 from src.training.events import JsonlEventSink, environment_fingerprint
+from src.training.alerts import AlertMonitor, alerts_config
 from src.training.monitor import LayerStatsMonitor, PredictionMonitor, monitor_config
 from src.training.system_sampler import SystemSampler, visible_gpu_uuids
 from src.training.decorators import (
@@ -454,6 +455,7 @@ class TrainingSessionBuilder:
                 # Trainer compute the per-batch metrics).
                 base.register_batch_hook(sink.on_batch)
             self._attach_monitors(trainer, base, sink, cfg, spec, task, log_dir)
+            self._attach_alerts(trainer, base, sink, cfg)
         elif self._trace == "off" and (self._monitor or monitor_config(cfg)["enabled"]):
             warnings.warn("the prediction monitor writes to the event stream, which "
                           "--trace off disables: the monitor is not active",
@@ -481,6 +483,23 @@ class TrainingSessionBuilder:
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 50))
             trainer.add_listener(layers)
             base.register_batch_hook(layers.on_batch)
+
+    @staticmethod
+    def _attach_alerts(trainer, base, sink, cfg) -> None:
+        """Alert rules over the event stream (``monitor.alerts``, on by default).
+
+        Added after the sink so each alert follows the ``epoch_end`` it comes from. It
+        listens to the sink for ``system`` / ``layers`` events, and takes the per-batch NaN
+        check only if the Trainer already has batch hooks (it never forces per-batch work:
+        otherwise the epoch loss is checked)."""
+        acfg = alerts_config(cfg)
+        if not acfg["enabled"]:
+            return
+        alerts = AlertMonitor(sink, acfg)
+        trainer.add_listener(alerts)
+        sink.subscribe(alerts.on_event)
+        if getattr(base, "_batch_hooks", None):
+            base.register_batch_hook(alerts.on_batch)
 
     # ── Output layout ─────────────────────────────────────────────────────────
 

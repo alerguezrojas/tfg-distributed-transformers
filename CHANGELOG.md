@@ -5,6 +5,19 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Alertas (`src/training/alerts.py`): reglas puras y un `AlertMonitor` que escribe eventos `alert`
+  (`level` warning/critical, `code`, `message`, `epoch`, `batch`, `value`, `threshold`, `group`)
+  para `nan_loss`, `loss_divergence`, `overfitting`, `grad_explosion`,
+  `update_ratio_out_of_range`, `dataloader_bound`, `gpu_memory_high`, `gpu_temp_high` y
+  `throughput_drop`. Una vez por (código, grupo) y se re-arma al desaparecer la condición;
+  umbrales en `monitor.alerts` (validados), activas por defecto con el flujo de eventos. No
+  fuerzan cálculo por batch ni alteran el entrenamiento (test de invariancia). `JsonlEventSink`
+  gana `subscribe` para observar los eventos que otros productores emiten. Contrato en
+  `docs/inspeccion.md`.
+- Histogramas de gradientes por grupo de capas (gradientes del último batch de cada época) en el
+  evento `histograms`, que ahora lleva `kind: "weights" | "gradients"`.
+- `pytest.ini`: `tmp_path_retention_policy = failed` y `tmp_path_retention_count = 1`, para que
+  los directorios temporales de los tests (con checkpoints) no llenen `/tmp`.
 - Estadística para publicación en `src/analysis/` (solo NumPy): intervalos de confianza
   *bootstrap* (`bootstrap_ci`, `metrics_with_ci` con AUC, AP, F1, sensibilidad, especificidad,
   exactitud, ECE y Brier; ruta vectorizada), pendiente e intercepto de calibración, ECE por clase

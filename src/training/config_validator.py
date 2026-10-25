@@ -243,14 +243,47 @@ _MONITOR_KEYS: dict[str, tuple[type, float | None]] = {
 }
 
 
+# monitor.alerts.* (docs/inspeccion.md): key → (type, minimum)
+_ALERT_KEYS: dict[str, tuple[type, float | None]] = {
+    "enabled": (bool, None), "loss_divergence_factor": (float, 1), "overfit_epochs": (int, 1),
+    "grad_explosion_factor": (float, 1), "grad_history": (int, 5),
+    "update_ratio_min": (float, 0), "update_ratio_max": (float, 0),
+    "update_ratio_patience": (int, 1), "data_wait_frac": (float, 0),
+    "gpu_mem_pct": (float, 0), "gpu_temp_c": (float, 0), "throughput_drop_factor": (float, 0),
+}
+
+
+def _check_typed(section: str, values: dict, table: dict, errors: list) -> None:
+    for key, value in values.items():
+        if key not in table:
+            errors.append(f"{section}.{key} is not a known key; available: {sorted(table)}")
+            continue
+        kind, minimum = table[key]
+        ok = (isinstance(value, bool) if kind is bool
+              else isinstance(value, (int, float)) and not isinstance(value, bool)
+              and (kind is float or isinstance(value, int)))
+        if not ok:
+            errors.append(f"{section}.{key} must be {kind.__name__}, got {value!r}")
+        elif minimum is not None and value < minimum:
+            errors.append(f"{section}.{key} must be >= {minimum}, got {value!r}")
+
+
 def _check_monitor(monitor: dict, errors: list) -> None:
     if not isinstance(monitor, dict):
         errors.append(f"monitor must be a mapping, got {type(monitor).__name__}")
         return
+    alerts = monitor.get("alerts")
+    if alerts is not None:
+        if isinstance(alerts, dict):
+            _check_typed("monitor.alerts", alerts, _ALERT_KEYS, errors)
+        else:
+            errors.append(f"monitor.alerts must be a mapping, got {type(alerts).__name__}")
     for key, value in monitor.items():
+        if key == "alerts":
+            continue
         if key not in _MONITOR_KEYS:
             errors.append(f"monitor.{key} is not a known key; "
-                          f"available: {sorted(_MONITOR_KEYS)}")
+                          f"available: {sorted([*_MONITOR_KEYS, 'alerts'])}")
             continue
         kind, minimum = _MONITOR_KEYS[key]
         ok = (isinstance(value, bool) if kind is bool

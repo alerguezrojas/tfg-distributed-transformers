@@ -36,6 +36,10 @@ observabilidad (25/10/2026)" y en la fase 4.
   (espera del DataLoader, muestras/s) en el flujo de eventos; verificado con un run corto en GPU.
 - Fase 4, segunda ola, estadística (en PR): IC *bootstrap* de todas las métricas, calibración
   completa, punto de operación clínico y métricas por subgrupo en `src/analysis/`.
+- Fase 4, segunda ola, alertas (en PR): evento `alert` (NaN, divergencia, sobreajuste,
+  gradientes, cuello de I/O, GPU al límite, caída de throughput) con umbrales en
+  `monitor.alerts`, e histogramas de gradientes (`kind` en `histograms`); falta mostrarlos en la
+  web.
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
@@ -200,10 +204,11 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
         clase), punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN) y métricas
         por subgrupo: cálculo en `src/analysis/` (en PR); falta mostrarlo en la web y que el
         dataset del tutor aporte metadatos para los subgrupos.
-  - [ ] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, gradientes fuera de
-        rango, cuello de I/O, GPU al límite) con aviso en la web.
-  - [ ] Histogramas de gradientes y prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo
-        et al. 2018).
+  - [x] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, sobreajuste, gradientes
+        fuera de rango, cuello de I/O, GPU al límite, caída de throughput): evento `alert`
+        (`src/training/alerts.py`, en PR); falta el aviso en la web.
+  - [x] Histogramas de gradientes (evento `histograms` con `kind`; en PR).
+  - [ ] Prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo et al. 2018).
   - [ ] Informe exportable de un run (HTML) con la lista TRIPOD+AI/CLAIM.
   - [ ] Agregación por semilla en la comparación de runs (media y banda).
   - [ ] Métricas por *rank* en DDP (rezagados; cómputo frente a comunicación).

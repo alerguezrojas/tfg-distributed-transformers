@@ -150,6 +150,7 @@ class JsonlEventSink(TrainingListener):
         self._stop = threading.Event()
         self._heartbeat: threading.Thread | None = None
         self._batch_warned = False
+        self._subscribers: list = []
 
     def _write(self, event_type: str, **fields) -> None:
         record = {"v": SCHEMA_VERSION, "type": event_type, "time": time.time(),
@@ -162,8 +163,19 @@ class JsonlEventSink(TrainingListener):
     def emit(self, event_type: str, **fields) -> None:
         """Append one event (thread-safe). For other producers of the same stream —
         system sampler, prediction monitor, layer statistics (docs/inspeccion.md).
-        Raises on I/O errors: callers inside the training loop must catch them."""
+        Raises on I/O errors: callers inside the training loop must catch them.
+        Subscribers (see :meth:`subscribe`) are called after the line is written."""
         self._write(event_type, **fields)
+        for fn in list(self._subscribers):
+            try:
+                fn(event_type, fields)
+            except Exception:  # noqa: BLE001 — an observer of the stream never breaks it
+                pass
+
+    def subscribe(self, fn) -> None:
+        """Call ``fn(event_type, fields)`` after every :meth:`emit` (not for the sink's
+        own lifecycle events). It runs on the emitting thread; errors are swallowed."""
+        self._subscribers.append(fn)
 
     def _beat(self) -> None:
         while not self._stop.wait(self._heartbeat_s):
