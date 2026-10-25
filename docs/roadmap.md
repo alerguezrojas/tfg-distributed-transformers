@@ -32,6 +32,8 @@ observabilidad (25/10/2026)" y en la fase 4.
   ([esquema](eventos.md); observadores del bucle, *heartbeat*, nunca detiene el entrenamiento) y
   pestaña **Live** de la web, que sigue el run en tiempo real. Verificado con un entrenamiento real
   en GPU seguido desde el navegador. PRs #160-#163.
+- Fase 4, segundo bloque (en PR): evento `system` (GPU/CPU/RAM cada 5 s) y rendimiento por batch
+  (espera del DataLoader, muestras/s) en el flujo de eventos; verificado con un run corto en GPU.
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
@@ -178,6 +180,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Web: pestaña *Live* que sigue un run en curso con lectura incremental del flujo.
 - [x] Limpieza de la deuda de las trazas (docstrings, `LayerHooksDecorator`, *batch hooks* con
       `batch-table`, dependencias).
+- [x] Muestreo de sistema (evento `system`: GPU por NVML, CPU y RAM) y rendimiento por batch
+      (`data_time_s`, `step_time_s`, `samples_per_s`, `data_wait_frac`) en el flujo de eventos
+      ([inspeccion.md](inspeccion.md)).
 - [ ] Panel fijo de validación: probabilidades de un conjunto fijo de imágenes en cada época
       (eventos `panel`) para ver cómo evolucionan las decisiones del modelo.
 - [x] Análisis de la inspección en CPU: paquete puro `src/analysis/` (curvas, umbrales,

@@ -209,3 +209,74 @@ def test_no_event_stream_without_trace_or_off_rank_zero(tmp_path, monkeypatch, r
     TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t", rank=rank) \
         .with_trace(trace).build()
     assert not list(tmp_path.rglob("events_*.jsonl"))
+
+
+# ── System sampler and per-batch throughput (docs/inspeccion.md) ──────────────
+
+def _events_cfg(spec, tmp_path, **monitor):
+    cfg = {
+        "data": {"name": spec.name},
+        "model": {"name": "resnet18", "pretrained": False},
+        "training": {"epochs": 1, "batch_size": 8, "lr": 0.001, "log_batch_every": 1},
+        "checkpoint": {"dir": str(tmp_path / "ckpt")},
+        "output": {"env": "test"},
+    }
+    if monitor:
+        cfg["monitor"] = monitor
+    return cfg
+
+
+def _sampler_listeners(trainer):
+    from src.training.system_sampler import SystemSampler
+    return [x for x in trainer._listeners if isinstance(x, SystemSampler)]
+
+
+@pytest.mark.parametrize("monitor, expected", [
+    ({}, 5),                                        # por defecto: cada 5 s, sin sección monitor
+    ({"system_interval_s": 2}, 2),
+    ({"system_interval_s": 0}, None),               # 0 lo desactiva
+    ({"enabled": False}, 5),                        # sección monitor sin la clave
+])
+def test_builder_wires_the_system_sampler(tmp_path, monkeypatch, registered, monitor, expected):
+    spec = registered("toy_system", ("a", "b"), "multiclass", channels=3)
+    monkeypatch.chdir(tmp_path)
+    cfg = _events_cfg(spec, tmp_path, **monitor)
+    trainer = TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t").with_trace(
+        "simple").build()
+    found = _sampler_listeners(trainer)
+    assert [s.interval_s for s in found] == ([] if expected is None else [expected])
+    if found:                                       # antes del sink: se para antes de run_end
+        kinds = [type(x).__name__ for x in trainer._listeners]
+        assert kinds.index("SystemSampler") < kinds.index("JsonlEventSink")
+
+
+@pytest.mark.parametrize("trace, rank", [("off", 0), ("simple", 1)])
+def test_no_system_sampler_without_event_stream(tmp_path, monkeypatch, registered, trace, rank):
+    spec = registered("toy_system_off", ("a", "b"), "multiclass", channels=3)
+    monkeypatch.chdir(tmp_path)
+    trainer = TrainingSessionBuilder(_events_cfg(spec, tmp_path), torch.device("cpu"),
+                                     timestamp="t", rank=rank).with_trace(trace).build()
+    assert _sampler_listeners(trainer) == []
+
+
+def test_run_writes_system_events_and_throughput_fields(tmp_path, monkeypatch, registered):
+    spec = registered("toy_throughput", ("a", "b", "c"), "multiclass", channels=3)
+    monkeypatch.chdir(tmp_path)
+    cfg = _events_cfg(spec, tmp_path, system_interval_s=0.01)
+    trainer = (TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t")
+               .with_layers("batch-monitor").build())
+    dl = DataLoader(spec.dataset(cfg["data"], "train"), batch_size=8)
+    trainer.fit(dl, dl, epochs=2)
+    log_dir = tmp_path / "logs" / "test" / spec.name / "single" / "resnet18"
+    events = _events(log_dir)
+
+    batches = [e for e in events if e["type"] == "batch"]
+    assert batches
+    for b in batches:
+        assert {"data_time_s", "step_time_s", "samples_per_s"} <= set(b["metrics"])
+    for e in (e for e in events if e["type"] == "epoch_end"):
+        assert e["train"]["samples_per_s"] > 0
+        assert 0.0 <= e["train"]["data_wait_frac"] <= 1.0
+    assert events[-1]["type"] == "run_end"          # el sampler para antes del run_end
+    for s in (e for e in events if e["type"] == "system"):
+        assert {"gpus", "cpu_pct", "ram_used_pct", "proc_cpu_pct", "proc_rss_mb"} <= set(s)

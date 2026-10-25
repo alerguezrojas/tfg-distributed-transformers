@@ -170,6 +170,20 @@ El builder suscribe en rank 0 un `JsonlEventSink`, que escribe `events_<ts>.json
 registra además su `on_batch` como *batch hook* del `Trainer`, con la misma cadencia que el CSV.
 Es la fuente estructurada de la vista en vivo de la web.
 
+Con el mismo flujo de eventos, el builder suscribe un `SystemSampler`
+(`src/training/system_sampler.py`, otro `TrainingListener`) **antes** del sink, de modo que se
+detiene antes de escribirse `run_end`. Al empezar la primera época lanza un hilo *daemon* que cada
+`monitor.system_interval_s` segundos (5 por defecto; 0 lo desactiva) lee NVML (`pynvml`) y `psutil`
+y añade un evento `system` con `sink.emit`. Solo lee: no toca torch ni CUDA. Sin NVML o sin GPU
+reporta `gpus: []`, y un error de lectura o escritura se convierte en un único aviso.
+
+El rendimiento por batch lo mide `StepTimer` (`src/training/throughput.py`), compartido por los tres
+bucles que poseen una época (`Trainer` —y con él DDP y paralelismo de modelo—,
+`HeterogeneousDDPTrainer` y `_train_epoch_deep`). Solo usa `time.perf_counter()`, sin
+`cuda.synchronize`: el `loss.item()` del propio paso ya sincroniza la GPU. Los *batch hooks* reciben
+`data_time_s`, `step_time_s` y `samples_per_s`, y el diccionario de `train_epoch` añade
+`samples_per_s` y `data_wait_frac`; el CSV de épocas no cambia de columnas.
+
 ### DeepTracingDecorator — detalle
 
 Registra en cada epoch:
