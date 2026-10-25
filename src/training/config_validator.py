@@ -50,6 +50,7 @@ def validate_config(cfg: dict) -> None:
     _check_model(cfg["model"], spec, errors)
     _check_training(cfg["training"], spec, errors)
     _check_distributed(cfg.get("distributed", {}), errors)
+    _check_monitor(cfg.get("monitor") or {}, errors)
 
     if errors:
         _raise(errors)
@@ -232,3 +233,30 @@ def _check_distributed(dist: dict, errors: list) -> None:
 def _raise(errors: list) -> None:
     msg = "\n".join(f"  • {e}" for e in errors)
     raise ConfigError(f"Config validation failed with {len(errors)} error(s):\n{msg}")
+
+
+# monitor.* (docs/inspeccion.md): key → (type, minimum)
+_MONITOR_KEYS: dict[str, tuple[type, float | None]] = {
+    "enabled": (bool, None), "embeddings": (bool, None), "layers": (bool, None),
+    "samples": (int, 1), "every": (int, 1), "seed": (int, 0), "thumbnail": (int, 8),
+    "gradcam": (int, 0), "full_val_max": (int, 0), "system_interval_s": (float, 0),
+}
+
+
+def _check_monitor(monitor: dict, errors: list) -> None:
+    if not isinstance(monitor, dict):
+        errors.append(f"monitor must be a mapping, got {type(monitor).__name__}")
+        return
+    for key, value in monitor.items():
+        if key not in _MONITOR_KEYS:
+            errors.append(f"monitor.{key} is not a known key; "
+                          f"available: {sorted(_MONITOR_KEYS)}")
+            continue
+        kind, minimum = _MONITOR_KEYS[key]
+        ok = (isinstance(value, bool) if kind is bool
+              else isinstance(value, (int, float)) and not isinstance(value, bool)
+              and (kind is float or isinstance(value, int)))
+        if not ok:
+            errors.append(f"monitor.{key} must be {kind.__name__}, got {value!r}")
+        elif minimum is not None and value < minimum:
+            errors.append(f"monitor.{key} must be >= {minimum}, got {value!r}")

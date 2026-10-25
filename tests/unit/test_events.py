@@ -244,3 +244,11 @@ def test_ctrl_c_is_reported_as_interrupted(tmp_path):
 def test_the_optimal_threshold_f1_is_public():
     m = public_metrics({"f1": 0.4, "_optimal_threshold": 0.3, "_f1_at_optimal_threshold": 0.6})
     assert m == {"f1": 0.4, "optimal_threshold": 0.3, "f1_at_optimal_threshold": 0.6}
+
+
+def test_emit_appends_a_custom_event(tmp_path):
+    path = tmp_path / "events_e.jsonl"
+    sink = JsonlEventSink(path, run_info={}, heartbeat_s=0)
+    sink.emit("system", gpus=[], cpu_pct=12.5)
+    event = _read(path)[0]
+    assert event["type"] == "system" and event["cpu_pct"] == 12.5 and event["v"] == SCHEMA_VERSION

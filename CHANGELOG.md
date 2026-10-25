@@ -5,6 +5,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Contrato de la inspección del entrenamiento (`docs/inspeccion.md`): eventos de sistema,
+  rendimiento por batch, monitor de predicciones por muestra, Grad-CAM y capas; sección `monitor:`
+  validada en la config; `JsonlEventSink.emit()` para otros productores del flujo; los datos de
+  inspección (`logs/**/inspect_*/`) no se versionan.
 - Fuentes PlantUML de los diagramas del diseño multi-dataset en `docs/diagramas/multidataset/`.
 - Flujo de eventos de cada run (`events_<ts>.jsonl`, esquema v1 en `docs/eventos.md`): inicio
   con configuración y huella del entorno (host, versiones, commit, GPUs), épocas, batches (con

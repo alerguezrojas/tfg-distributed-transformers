@@ -159,6 +159,12 @@ class JsonlEventSink(TrainingListener):
             f.write(line)
             f.flush()
 
+    def emit(self, event_type: str, **fields) -> None:
+        """Append one event (thread-safe). For other producers of the same stream —
+        system sampler, prediction monitor, layer statistics (docs/inspeccion.md).
+        Raises on I/O errors: callers inside the training loop must catch them."""
+        self._write(event_type, **fields)
+
     def _beat(self) -> None:
         while not self._stop.wait(self._heartbeat_s):
             try:
