@@ -13,6 +13,8 @@ import numpy as np
 
 from src.analysis._common import check_pair, task_name
 
+_BINS_ERROR = "bins must be >= 1"
+
 
 def calibration(probs, targets, task, bins: int = 15) -> dict:
     """Calibration of the predictions.
@@ -33,7 +35,7 @@ def calibration(probs, targets, task, bins: int = 15) -> dict:
     """
     name = task_name(task)
     if bins < 1:
-        raise ValueError("bins must be >= 1")
+        raise ValueError(_BINS_ERROR)
     p, y = check_pair(probs, targets)
     if name == "multiclass":
         conf = p.max(axis=1)
@@ -205,7 +207,7 @@ def per_class_calibration(probs, targets, task, bins: int = 15) -> dict:
     """
     task_name(task)
     if bins < 1:
-        raise ValueError("bins must be >= 1")
+        raise ValueError(_BINS_ERROR)
     p, y = check_pair(probs, targets)
     n, n_cls = p.shape
     ece, mce, brier = np.full(n_cls, np.nan), np.full(n_cls, np.nan), np.full(n_cls, np.nan)
@@ -255,7 +257,7 @@ def adaptive_ece(probs, targets, task, bins: int = 15, classwise: bool = False) 
     """
     name = task_name(task)
     if bins < 1:
-        raise ValueError("bins must be >= 1")
+        raise ValueError(_BINS_ERROR)
     p, y = check_pair(probs, targets)
     nan = float("nan")
     if classwise:
