@@ -30,7 +30,7 @@ def render(c: InspectorCtx) -> None:
         return
     panel = np.asarray(panel)
     table, _ = epoch_table(c)
-    alpha = st.slider("Heatmap opacity", 0.0, 1.0, 0.5, 0.05, key="insp_explain_alpha")
+    alpha = st.slider("Heatmap opacity", 0.0, 1.0, 0.4, 0.05, key="insp_explain_alpha")
 
     st.markdown(f"##### Panel at epoch {c.epoch}")
     cards = []

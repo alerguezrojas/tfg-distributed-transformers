@@ -75,11 +75,13 @@ def _heatmaps(state) -> None:
             hi = float(finite.max()) if finite.size else 1.0
             lo, hi = (lo - 0.5, hi + 0.5) if hi - lo < 1e-6 else (lo, hi)
             scale, bar = "Blues", {"title": "value", **_ticks(lo, hi)}
+        labels = [g.removeprefix("backbone.") for g in groups]   # readable, not cut
         fig = go.Figure(go.Heatmap(
-            x=x, y=groups, z=zl, zmin=lo, zmax=hi, colorscale=scale, colorbar=bar,
+            x=x, y=labels, z=zl, zmin=lo, zmax=hi, colorscale=scale, colorbar=bar,
             customdata=z, hovertemplate="%{y}<br>epoch %{x:.2f}<br>%{customdata:.3e}<extra></extra>"))
         fig.update_layout(height=max(240, 24 * len(groups) + 120), title={"text": title},
-                          xaxis_title="epoch", yaxis_autorange="reversed")
+                          xaxis_title="epoch", yaxis_autorange="reversed",
+                          margin={"l": 110})
         _show(fig, f"insp_layers_{metric}")
     if last_ratio:
         label = {"low": "too low", "healthy": "healthy", "high": "too high", "unknown": "—"}

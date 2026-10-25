@@ -147,7 +147,8 @@ def sample_cards(c: InspectorCtx, table: pd.DataFrame, extra: str | None = None
 
 
 def lines(df: pd.DataFrame, x: str, y: str, color: str | None, title: str, ytitle: str,
-          key: str, height: int = 260, hline: float | None = None) -> None:
+          key: str, height: int = 260, hline: float | None = None,
+          xtitle: str | None = None) -> None:
     """Line chart, one trace per value of ``color``."""
     fig = go.Figure()
     groups = [(None, df)] if color is None else list(df.groupby(color, sort=True))
@@ -156,7 +157,7 @@ def lines(df: pd.DataFrame, x: str, y: str, color: str | None, title: str, ytitl
                                  line={"width": 1.6}))
     if hline is not None:
         fig.add_hline(y=hline, line_dash="dot", opacity=0.6)
-    fig.update_layout(height=height, title={"text": title}, xaxis_title=None,
+    fig.update_layout(height=height, title={"text": title}, xaxis_title=xtitle,
                       yaxis_title=ytitle, hovermode="x unified", showlegend=color is not None)
     _show(fig, key)
 

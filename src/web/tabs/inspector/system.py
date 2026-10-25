@@ -45,7 +45,8 @@ def render(c: InspectorCtx) -> None:
             cols = st.columns(2)
             for col, (field, title, unit) in zip(cols, _GPU_CHARTS[i:i + 2]):
                 with col:
-                    lines(gpu, "t_s", field, "device", title, unit, f"sys_{field}")
+                    lines(gpu, "t_s", field, "device", title, unit, f"sys_{field}",
+                          xtitle="seconds since start")
         st.caption("Time axis: seconds since the first sample.")
 
     st.markdown("**Host**")
@@ -54,4 +55,5 @@ def render(c: InspectorCtx) -> None:
         for col, (field, title, unit) in zip(cols, _HOST_CHARTS[i:i + 2]):
             if host[field].notna().any():
                 with col:
-                    lines(host, "t_s", field, None, title, unit, f"sys_{field}")
+                    lines(host, "t_s", field, None, title, unit, f"sys_{field}",
+                          xtitle="seconds since start")
