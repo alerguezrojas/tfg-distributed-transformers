@@ -58,9 +58,9 @@ se convierte en un aviso.
 {"v": 1, "type": "run_end", "time": 1761400950.0, "status": "completed", "epochs_run": 15, "best": 0.93, "total_time_s": 950.0}
 ```
 
-## Tipos previstos (aún no implementados)
+## Tipos ampliados
 
-Se añadirán sin cambiar la versión:
-
-- `panel`: probabilidades de un conjunto fijo de imágenes de validación en cada época (fase 4).
-- `io` / `power`: espera del DataLoader y potencia por GPU (medidas del predictor, fase 4).
+Los eventos de sistema, rendimiento por batch, monitor de predicciones y capas (`system`,
+`monitor_start`, `inspection`, `layers`, `histograms`) y los datos por época que referencian se
+describen en [inspeccion.md](inspeccion.md). Previstos para la fase 4: `io` / `power` (medidas del
+predictor).

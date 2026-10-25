@@ -66,6 +66,9 @@ cover/
 
 # Django stuff:
 *.log
+# Per-run inspection data (predictions, embeddings, Grad-CAM): large, not versioned
+logs/**/inspect_*/
+
 # Training logs at any depth under logs/ are always committed
 !logs/**/*.log
 local_settings.py
