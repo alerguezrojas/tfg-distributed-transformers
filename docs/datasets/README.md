@@ -43,6 +43,9 @@ Diagramas UML del diseño (antes y después, patrones y secuencia de un entrenam
 1. **Crear `src/data/<nombre>.py`** con un `torch.utils.data.Dataset` que devuelva
    `(imagen, etiqueta)`: la imagen como tensor `(canales, H, W)` y la etiqueta como `float`
    de forma `(C,)`, en el formato de su tarea.
+   **Recomendado:** exponer todas las etiquetas en un atributo `targets` de forma `(N, C)`
+   (como `MedMNISTDataset`): así el monitor de predicciones (`--monitor`) elige un subconjunto
+   de validación equilibrado por clase y las clases raras no quedan fuera de la inspección.
 2. **Definir y registrar la ficha** al final del mismo fichero:
 
    ```python
@@ -72,6 +75,11 @@ Diagramas UML del diseño (antes y después, patrones y secuencia de un entrenam
    la ficha.
 
 No hace falta tocar el entrenamiento, las estrategias distribuidas ni los decoradores.
+Con la ficha registrada, el dataset funciona también con el seguimiento en vivo, el Inspector,
+las alertas y `paravit report` ([inspeccion.md](../inspeccion.md)), que solo consultan la ficha y
+la tarea. Si el dataset trae datos de los pacientes (sexo, edad, centro), conviene conservarlos:
+el análisis por subgrupos los leerá de un `groups.npz` junto a las predicciones (formato en
+[inspeccion.md](../inspeccion.md); falta que el monitor lo escriba).
 El test `tests/integration/test_new_dataset_end_to_end.py` comprueba precisamente eso, con
 un dataset multiclase de un canal y otro binario.
 
