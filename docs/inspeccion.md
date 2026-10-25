@@ -92,7 +92,9 @@ En DDP, `val_probs` sale de las probabilidades ya reunidas de todos los ranks (e
 del dataset, pero cada fila está alineada con su `val_targets`; puede haber duplicados del relleno
 del `DistributedSampler`).
 
-**Grad-CAM:** ViT/DeiT, sobre la salida del último bloque (tokens de parche, sin los de prefijo);
+**Grad-CAM:** ViT/DeiT, sobre la entrada de la atención del último bloque (`norm1`, tokens de
+parche sin los de prefijo: con cabeza de token CLS, la salida del último bloque no llega a los
+*logits* y su gradiente es cero);
 CNN, sobre el último mapa de activación 4D. Se calcula con `torch.autograd.grad` respecto a la
 activación, así que no toca los `.grad` de los parámetros. Modelos sin capa compatible o
 paralelismo de modelo: sin `cam` (y se avisa una vez).

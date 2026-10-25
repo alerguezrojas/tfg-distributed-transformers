@@ -5,6 +5,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Monitor de predicciones (`--monitor` en los scripts y en `paravit train`, o `monitor.enabled`):
+  en cada época guarda en `inspect_<ts>/` las probabilidades, la pérdida por imagen, los
+  *embeddings* y Grad-CAM (ViT y CNN) de un subconjunto fijo de validación con miniaturas, y las
+  probabilidades de toda la validación; `LayerStatsMonitor` registra normas de gradiente y peso,
+  ratio de actualización e histogramas por grupo de capas. No altera el entrenamiento (test de
+  pesos idénticos). Coste en DermaMNIST (512 muestras, 16 mapas): ~0,6 s por época, fuera del
+  tiempo medido.
 - Contrato de la inspección del entrenamiento (`docs/inspeccion.md`): eventos de sistema,
   rendimiento por batch, monitor de predicciones por muestra, Grad-CAM y capas; sección `monitor:`
   validada en la config; `JsonlEventSink.emit()` para otros productores del flujo; los datos de
