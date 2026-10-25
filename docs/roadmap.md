@@ -192,6 +192,20 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
       de fiabilidad), curvas ROC/PR y peores errores, con su pestaña en la web.
 - [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.
 - [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
+- Segunda ola, según el [inventario del sector](research/inventario_herramientas_observabilidad.md)
+  (lo que ninguna herramienta general trae y la imagen médica exige):
+  - [ ] Intervalos de confianza *bootstrap*, calibración completa (pendiente, intercepto, ECE por
+        clase), punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN) y métricas
+        por subgrupo.
+  - [ ] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, gradientes fuera de
+        rango, cuello de I/O, GPU al límite) con aviso en la web.
+  - [ ] Histogramas de gradientes y prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo
+        et al. 2018).
+  - [ ] Informe exportable de un run (HTML) con la lista TRIPOD+AI/CLAIM.
+  - [ ] Agregación por semilla en la comparación de runs (media y banda).
+  - [ ] Métricas por *rank* en DDP (rezagados; cómputo frente a comunicación).
+  - [ ] Duplicados y fuga entre particiones (hash/embeddings; por paciente).
+  - [ ] Perfil puntual con `torch.profiler` (traza Perfetto) y exportador opcional a TensorBoard.
 - [ ] Esquema estándar de cada medida: huella de hardware y software, configuración, throughput
       estable, pico de VRAM, potencia y **espera del DataLoader** (nuevos eventos del flujo).
 - [ ] Script de barrido con sondas cortas (N pasos en régimen estable) para muchas configuraciones.
