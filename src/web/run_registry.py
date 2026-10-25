@@ -4,8 +4,8 @@ Scans recursively to handle both the old flat layout
 (logs/{env}/train_*.log) and the new deep one
 (logs/{env}/{mode}/{model}/train_*.log).
 
-Only indexes CSVs — PNGs are no longer generated during training.
-The web dashboard renders every chart interactively from the CSVs.
+Only indexes CSVs (and the live-events JSONL) — PNGs are no longer generated
+during training. The web dashboard renders every chart interactively from them.
 """
 
 from __future__ import annotations
@@ -37,6 +37,22 @@ def _read_precision(log_path: Path) -> str:
 # Kept as a literal (not imported from src.data) so the web stays torch-free.
 _DEFAULT_DATASET = "bigearthnet"
 
+def timestamp_sort_key(ts: str) -> str:
+    """Chronological sort key (YYYYMMDD_HHMMSS) of a run timestamp.
+
+    Timestamps are written as DDMMYYYY_HHMMSS (current format) or
+    YYYYMMDD_HHMMSS (legacy). Sorting the raw string is NOT chronological
+    for the DDMMYYYY format ('27052026' > '02062026' even though May < June).
+    This normalizes both to YYYYMMDD_HHMMSS for a correct order.
+    """
+    time_part = ts[9:15] if len(ts) >= 15 else "000000"
+    if len(ts) >= 8 and int(ts[4:8]) >= 2000:  # DDMMYYYY
+        yyyymmdd = f"{ts[4:8]}{ts[2:4]}{ts[:2]}"
+    else:                                        # legacy YYYYMMDD
+        yyyymmdd = ts[:8]
+    return f"{yyyymmdd}_{time_part}"
+
+
 @dataclass
 class RunInfo:
     timestamp: str
@@ -51,6 +67,8 @@ class RunInfo:
     batch_csv_path: Path | None = None
     epoch_csv_path: Path | None = None
     perclass_csv_path: Path | None = None
+    # Live-events stream (events_*.jsonl, written by rank 0 while training).
+    events_path: Path | None = None
     # Held-out test-set results (from scripts/eval.py). Keyed by folder, not
     # timestamp — eval CSVs are named by loss/config (test_bce.csv …), so all
     # test_*.csv in the run's folder are offered against runs of that model.
@@ -58,20 +76,8 @@ class RunInfo:
 
     @property
     def sort_key(self) -> str:
-        """Chronological sort key (YYYYMMDD_HHMMSS).
-
-        Timestamps are written as DDMMYYYY_HHMMSS (current format) or
-        YYYYMMDD_HHMMSS (legacy). Sorting the raw string is NOT chronological
-        for the DDMMYYYY format ('27052026' > '02062026' even though May < June).
-        This property normalizes both to YYYYMMDD_HHMMSS for a correct order.
-        """
-        ts = self.timestamp
-        time_part = ts[9:15] if len(ts) >= 15 else "000000"
-        if len(ts) >= 8 and int(ts[4:8]) >= 2000:  # DDMMYYYY
-            yyyymmdd = f"{ts[4:8]}{ts[2:4]}{ts[:2]}"
-        else:                                        # legacy YYYYMMDD
-            yyyymmdd = ts[:8]
-        return f"{yyyymmdd}_{time_part}"
+        """Chronological sort key (YYYYMMDD_HHMMSS); see :func:`timestamp_sort_key`."""
+        return timestamp_sort_key(self.timestamp)
 
     @property
     def label(self) -> str:
@@ -165,6 +171,11 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
         m = _TIMESTAMP_RE.search(csv_path.stem)
         if m and m.group(1) in runs and runs[m.group(1)].perclass_csv_path is None:
             runs[m.group(1)].perclass_csv_path = csv_path
+
+    for jsonl_path in logs_root.rglob("events_*.jsonl"):
+        m = _TIMESTAMP_RE.search(jsonl_path.stem)
+        if m and m.group(1) in runs and runs[m.group(1)].events_path is None:
+            runs[m.group(1)].events_path = jsonl_path
 
     for csv_path in logs_root.rglob("confusion_matrix_*.csv"):
         m = _TIMESTAMP_RE.search(csv_path.stem)

@@ -18,7 +18,8 @@
   `scripts/summarize_runs.py`.
 - Predictor: perfilado automático de cualquier modelo de timm (fase 5, primer punto), revisado
   por el agente revisor y corregido.
-- Web: AUC de validación y filtro por dataset. Estado del arte sobre predicción del rendimiento
+- Web: AUC de validación y filtro por dataset; pestaña Live (seguimiento en tiempo real).
+  Estado del arte sobre predicción del rendimiento
   (`docs/research/`).
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
@@ -120,6 +121,9 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 - [ ] Una ficha por dataset en `docs/datasets/`.
 
 ### Fase 4 — Instrumentación y registro de medidas
+- [x] Web: pestaña **Live** para seguir un entrenamiento en curso a partir del flujo
+      `events_*.jsonl` (esquema v1, [arquitectura](arquitectura.md#dashboard-web)). El escritor
+      de eventos en el entrenamiento va en un PR aparte.
 - [ ] Esquema estándar de cada medida: huella de hardware y software, configuración, throughput
       estable, pico de VRAM, potencia y **espera del DataLoader** (un decorador nuevo).
 - [ ] Script de barrido con sondas cortas (N pasos en régimen estable) para muchas configuraciones.
