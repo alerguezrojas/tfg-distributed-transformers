@@ -53,6 +53,7 @@ from torch.utils.data import DataLoader
 from src.training.ddp_trainer import DDPTrainer
 from src.training import metrics as m
 from src.training.augmentations import mixup_batch
+from src.training.throughput import StepTimer
 
 
 class HeterogeneousDDPTrainer(DDPTrainer):
@@ -95,8 +96,11 @@ class HeterogeneousDDPTrainer(DDPTrainer):
         all_labels_list: list[torch.Tensor] = []
         start = time.time()
         n_batches = len(loader)
+        timer = StepTimer()
+        timer.start()
 
         for batch_idx, (images, labels) in enumerate(loader, 1):
+            timer.batch_ready()
             images = images.to(self.device)
             labels = labels.to(self.device)
             step_bs = labels.shape[0]
@@ -152,6 +156,7 @@ class HeterogeneousDDPTrainer(DDPTrainer):
                 labels_metrics = self.task.hard_targets(labels_for_metrics.detach().float()).cpu()
                 all_preds.append(preds)
                 all_labels_list.append(labels_metrics)
+            timing = timer.step_done(step_bs)
 
             # Batch hooks — necesario para BatchMonitorDecorator
             if self._batch_hooks:
@@ -162,9 +167,11 @@ class HeterogeneousDDPTrainer(DDPTrainer):
                     "batch_f1": m.f1_score(preds, labels_metrics),
                     "batch_acc": self.task.accuracy(preds, labels_metrics),
                     "batch_prec": m.precision(preds, labels_metrics),
+                    **timing,
                 }
                 for hook in self._batch_hooks:
                     hook(self._current_epoch, batch_idx, n_batches, batch_metrics)
+            timer.iteration_end()
 
         if self.scheduler is not None:
             self.scheduler.step()
@@ -177,6 +184,7 @@ class HeterogeneousDDPTrainer(DDPTrainer):
             "f1": m.f1_score(preds_t, labels_t),
             "accuracy": self.task.accuracy(preds_t, labels_t),
             "time": time.time() - start,
+            **timer.epoch_stats(),
             "_preds": preds_t,
             "_labels": labels_t,
         }
