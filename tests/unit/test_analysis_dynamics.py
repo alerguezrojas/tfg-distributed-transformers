@@ -12,11 +12,22 @@ def test_prob_of_true_multiclass():
     assert prob_of_true(p, y, "multiclass").tolist() == pytest.approx([0.7, 0.3])
 
 
-def test_prob_of_true_multilabel_uses_p_for_positives_and_1_minus_p_for_negatives():
-    p = np.array([[0.9, 0.2, 0.6]])
-    y = np.array([[1, 0, 0]])
-    assert prob_of_true(p, y, "multilabel")[0] == pytest.approx((0.9 + 0.8 + 0.4) / 3)
+def test_prob_of_true_multilabel_averages_only_the_positive_labels():
+    p = np.array([[0.9, 0.2, 0.6, 0.1], [0.3, 0.8, 0.1, 0.1]])
+    y = np.array([[1, 0, 1, 0], [0, 0, 0, 0]])
+    out = prob_of_true(p, y, "multilabel")
+    assert out[0] == pytest.approx((0.9 + 0.6) / 2)             # solo las positivas
+    assert out[1] == pytest.approx((0.7 + 0.2 + 0.9 + 0.9) / 4)  # sin positivas: 1-p de negativas
     assert prob_of_true(np.array([[0.3]]), np.array([[0]]), "binary")[0] == pytest.approx(0.7)
+    assert prob_of_true(np.array([[0.3]]), np.array([[1]]), "binary")[0] == pytest.approx(0.3)
+
+
+def test_prob_of_true_sparse_labels_can_be_low():
+    """Con etiquetas dispersas, un modelo que no detecta la positiva no debe parecer seguro."""
+    p = np.full((1, 19), 0.02)                                   # no detecta nada
+    y = np.zeros((1, 19), dtype=int)
+    y[0, 3] = 1
+    assert prob_of_true(p, y, "multilabel")[0] == pytest.approx(0.02)
 
 
 def test_sample_correct_conventions():

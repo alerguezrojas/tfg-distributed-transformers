@@ -16,15 +16,20 @@ CONFIDENCE_SPLIT = 0.5
 def prob_of_true(probs, targets, task) -> np.ndarray:
     """Probability the model gives to the truth, per sample -> (N,).
 
-    Multiclass: the probability of the true class. Multi-label / binary: the mean over all the
-    classes of ``p`` where the label is positive and ``1 - p`` where it is negative (so the
-    many easy negatives of a multi-label problem pull it up; it still ranks samples).
+    Multiclass: the probability of the true class. Multi-label / binary: the mean of ``p`` over
+    the sample's **positive** labels only; a sample with no positive label gets the mean of
+    ``1 - p`` over its negatives. Averaging over all the classes would let the many easy
+    negatives of sparse labels pull the value up, so almost every sample would look confident
+    and the ``hard`` region of the cartography would stay empty.
     """
     name = task_name(task)
     p, y = check_pair(probs, targets)
     if name == "multiclass":
         return p[np.arange(len(p)), y.argmax(axis=1)]
-    return np.where(y, p, 1.0 - p).mean(axis=1)
+    n_pos = y.sum(axis=1)
+    pos_mean = (p * y).sum(axis=1) / np.maximum(n_pos, 1)
+    neg_mean = ((1.0 - p) * ~y).sum(axis=1) / np.maximum(y.shape[1] - n_pos, 1)
+    return np.where(n_pos > 0, pos_mean, neg_mean)
 
 
 def sample_correct(probs, targets, task, threshold: float = 0.5) -> np.ndarray:
