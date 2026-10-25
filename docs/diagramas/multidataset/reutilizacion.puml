@@ -1,0 +1,34 @@
+@startuml
+!include style.iuml
+class DatasetSpec <<dataclass>> {
+  + name, classes, task
+  + dataset(cfg, split)
+}
+abstract class Task <<abstract>> {
+  + probabilities(logits)
+  + hard_targets(y)
+  + sigmoid_outputs
+}
+class Trainer
+class JsonlEventSink {
+  run_start: dataset, task, classes
+}
+class PredictionMonitor {
+  subconjunto de validación
+  pérdida por muestra
+}
+class "inspect_<ts>/monitor_set.npz" as MS <<fichero>> {
+  classes, task, targets
+}
+class "Inspector (web)\nparavit report" as WEB <<lectores>> {
+  curvas, calibración,
+  punto clínico… según la tarea
+}
+Trainer --> Task : usa
+JsonlEventSink ..> DatasetSpec : lee nombre y clases
+JsonlEventSink ..> Task : lee el nombre
+PredictionMonitor ..> DatasetSpec : dataset(cfg, "val")
+PredictionMonitor --> Task : probabilidades,\nobjetivos, pérdida
+PredictionMonitor ..> MS : escribe
+WEB ..> MS : lee
+@enduml
