@@ -5,6 +5,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Paquete `src/analysis/` (solo NumPy, sin torch ni Streamlit) para analizar los datos de
+  inspección en la web: curvas ROC/PR por clase con macro y micro, barrido de umbral (misma
+  definición de F1 que `training/metrics.py`), calibración (ECE, MCE, Brier, diagrama de
+  fiabilidad), matriz de confusión con índices por celda, cartografía de datos, *flips* entre
+  épocas, peores errores, proyección 2D (PCA; UMAP opcional) y lector del directorio
+  `inspect_<ts>/`. Generador de fixtures sintéticos que cumplen el contrato
+  (`tests/fixtures/make_inspect_fixture.py`). Descrito en `docs/arquitectura.md`.
 - Contrato de la inspección del entrenamiento (`docs/inspeccion.md`): eventos de sistema,
   rendimiento por batch, monitor de predicciones por muestra, Grad-CAM y capas; sección `monitor:`
   validada en la config; `JsonlEventSink.emit()` para otros productores del flujo; los datos de
