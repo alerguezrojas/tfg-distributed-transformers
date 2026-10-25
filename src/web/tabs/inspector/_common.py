@@ -2,6 +2,7 @@
 small drawing helpers."""
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
@@ -163,4 +164,4 @@ def lines(df: pd.DataFrame, x: str, y: str, color: str | None, title: str, ytitl
 
 
 def fmt(v: Any, pattern: str = "{:.3f}") -> str:
-    return pattern.format(v) if isinstance(v, (int, float)) and v == v else "—"
+    return pattern.format(v) if isinstance(v, (int, float)) and not math.isnan(v) else "—"

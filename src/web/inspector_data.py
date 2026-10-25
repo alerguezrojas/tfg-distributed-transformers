@@ -8,6 +8,8 @@ images ready to plot; the page modules only draw.
 """
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
@@ -111,7 +113,7 @@ def system_frames(events: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, pd.Da
     t0 = None
     for ev in events:
         t = _num(ev.get("time"))
-        if t != t:
+        if math.isnan(t):
             continue
         t0 = t if t0 is None else t0
         host_rows.append({"t_s": t - t0, **{k: _num(ev.get(k)) for k in HOST_FIELDS}})
@@ -120,7 +122,7 @@ def system_frames(events: Iterable[dict[str, Any]]) -> tuple[pd.DataFrame, pd.Da
                    else 0, "name": str(g.get("name", "")),
                    **{k: _num(g.get(k)) for k in GPU_FIELDS}}
             total = row["mem_total_mb"]
-            row["mem_pct"] = 100.0 * row["mem_used_mb"] / total if total and total == total \
+            row["mem_pct"] = 100.0 * row["mem_used_mb"] / total if total and not math.isnan(total) \
                 else float("nan")
             gpu_rows.append(row)
     return (pd.DataFrame(gpu_rows, columns=["t_s", "gpu", "name", *GPU_FIELDS, "mem_pct"]),
@@ -200,7 +202,7 @@ def diagnose_data_wait(frac: float | None) -> tuple[str, str]:
     ``level`` is ``bad`` (I/O-bound, > :data:`DATA_WAIT_IO_BOUND`), ``ok`` (compute-bound,
     < :data:`DATA_WAIT_COMPUTE_BOUND`), ``warn`` in between, or ``none`` without data.
     """
-    if frac is None or frac != frac:
+    if frac is None or math.isnan(frac):
         return "none", "No data-wait measurement (needs a trainer that logs data_wait_frac)."
     pct = f"{100 * frac:.0f}%"
     if frac > DATA_WAIT_IO_BOUND:
@@ -265,7 +267,7 @@ def layer_matrix(layer_events: Iterable[dict[str, Any]], metric: str,
 
 def update_ratio_status(value: float | None) -> str:
     """``low`` / ``healthy`` / ``high`` against :data:`HEALTHY_UPDATE_RATIO`, or ``unknown``."""
-    if value is None or value != value or value <= 0:
+    if value is None or math.isnan(value) or value <= 0:
         return "unknown"
     lo, hi = HEALTHY_UPDATE_RATIO
     return "low" if value < lo else "high" if value > hi else "healthy"
