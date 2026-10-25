@@ -31,6 +31,7 @@ from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
 from src.training.events import JsonlEventSink, environment_fingerprint
 from src.training.monitor import LayerStatsMonitor, PredictionMonitor, monitor_config
+from src.training.system_sampler import SystemSampler, visible_gpu_uuids
 from src.training.decorators import (
     TracingDecorator,
     DeepTracingDecorator,
@@ -440,6 +441,13 @@ class TrainingSessionBuilder:
                 },
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),
             )
+            # System sampler (GPU/CPU/RAM every N s). Added before the sink so it stops
+            # before `run_end` is written. 0 disables it; independent of the monitor.
+            system_interval = (cfg.get("monitor") or {}).get("system_interval_s", 5)
+            if system_interval and system_interval > 0:
+                uuids = visible_gpu_uuids() if self._device.type == "cuda" else None
+                trainer.add_listener(SystemSampler(sink, interval_s=system_interval,
+                                                   gpu_uuids=uuids))
             trainer.add_listener(sink)
             if "batch-monitor" in self._layers:
                 # Same cadence as the batch CSV (the monitor already makes the
