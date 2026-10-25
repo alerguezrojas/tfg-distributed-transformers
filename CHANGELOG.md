@@ -5,6 +5,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- `docs/research/inventario_herramientas_observabilidad.md`: inventario funcionalidad a
+  funcionalidad de 14 herramientas de observabilidad, matriz comparativa, requisitos de imagen
+  médica y lista priorizada; la segunda ola de la fase 4 sale de ahí.
 - Muestreo de sistema (`src/training/system_sampler.py`): un `TrainingListener` que, mientras el
   run está vivo, añade al flujo de eventos un evento `system` cada `monitor.system_interval_s`
   segundos (5 por defecto; 0 lo desactiva) con, por GPU visible, uso, memoria, potencia,
