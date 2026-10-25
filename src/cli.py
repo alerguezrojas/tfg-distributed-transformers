@@ -2,7 +2,7 @@
 
 One entry point for everything that runs in a terminal, where the compute lives:
 launch trainings (any strategy), estimate before training (analytic), run a real
-benchmark, evaluate on the test split, and open the dashboard. The web stays
+benchmark, evaluate on the test split, write a run report and open the dashboard. The web stays
 read-only (visualisation); anything that needs a GPU is driven from here — the
 same separation used by Weights & Biases / MLflow / TensorBoard.
 
@@ -493,6 +493,34 @@ def runs(
                   f"{d['best_val_f1']:.4f}" if d["best_val_f1"] is not None else "—",
                   f"[bold green]{d['test_f1']:.4f}[/]" if d["test_f1"] is not None else "—")
     console.print(t)
+
+@app.command()
+def report(
+    run: str = typer.Argument(..., help="An events_*.jsonl, a run folder, or a DDMMYYYY_HHMMSS "
+                                        "stamp (searched under logs/)."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o",
+                                          help="Output file (default: report_<stamp>.html next "
+                                               "to the run's events file)."),
+    epoch: Optional[int] = typer.Option(None, help="Inspected epoch to evaluate (default: the "
+                                                   "last one)."),
+    n_boot: int = typer.Option(1000, min=1, help="Bootstrap resamples for the confidence "
+                                                 "intervals."),
+    seed: int = typer.Option(0, help="Bootstrap random seed (written in the report)."),
+    bins: int = typer.Option(15, min=1, help="Calibration bins."),
+    errors: int = typer.Option(8, min=0, help="Worst-error thumbnails to show."),
+) -> None:
+    """Write a self-contained HTML report of a run (summary, training, evaluation with
+    confidence intervals, calibration, dynamics and a TRIPOD+AI checklist). Reads logs only:
+    no GPU, nothing is trained. Needs --monitor data for the evaluation sections."""
+    from src.reporting import NoInspection, RunNotFound, write_report
+    try:
+        out = write_report(run, output, root=ROOT, epoch=epoch, n_boot=n_boot, seed=seed,
+                           bins=bins, k_errors=errors)
+    except (RunNotFound, NoInspection) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1)
+    console.print(f"[green]Report written:[/] {out}")
+
 
 @app.command()
 def menu() -> None:

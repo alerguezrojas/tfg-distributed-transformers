@@ -251,6 +251,18 @@ se calcula en cada refresco. `tests/fixtures/make_inspector_run.py` genera un ru
 
 ---
 
+## Informe de un run (`src/reporting/`)
+
+`paravit report <run>` genera un HTML autocontenido a partir de `events_*.jsonl` e `inspect_<ts>/`
+(solo lectura, CPU). Un módulo por responsabilidad: `data.py` (resolver el argumento: fichero,
+carpeta o sello; leer los eventos), `evaluation.py` (estadística con `src/analysis/` para la época
+elegida), `figures.py` (plotly), `tripod.py` (lista TRIPOD+AI y su estado por ítem), `render.py`
+(HTML, tablas y estilo, sin plantillas ni recursos externos) y `report.py` (secciones y
+`build_report`/`write_report`). Reutiliza `parse_event`, `system_frames`, `energy_wh` y los
+helpers de imagen de `src/web/`. Tests: `tests/unit/test_reporting.py`.
+
+---
+
 ## CLI unificado (`paravit`)
 
 **El sistema/framework se denomina `ParaViT-Lab`** (*Parallel/Parallax ViT Lab*); el comando es `paravit` y `tfg` se mantiene como **alias retrocompatible** (`tfg.py` sigue funcionando). Renombrado el 26/06/2026 (rama `feature/rename-paravit-cli`).

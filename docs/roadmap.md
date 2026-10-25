@@ -204,7 +204,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
         rango, cuello de I/O, GPU al límite) con aviso en la web.
   - [ ] Histogramas de gradientes y prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo
         et al. 2018).
-  - [ ] Informe exportable de un run (HTML) con la lista TRIPOD+AI/CLAIM.
+  - [x] Informe exportable de un run (HTML) con la lista TRIPOD+AI: `paravit report` (en PR);
+        falta CLAIM y los subgrupos (dependen de los metadatos del dataset del tutor).
   - [ ] Agregación por semilla en la comparación de runs (media y banda).
   - [ ] Métricas por *rank* en DDP (rezagados; cómputo frente a comunicación).
   - [ ] Duplicados y fuga entre particiones (hash/embeddings; por paciente).
