@@ -253,10 +253,16 @@ _ALERT_KEYS: dict[str, tuple[type, float | None]] = {
 }
 
 
-def _check_typed(section: str, values: dict, table: dict, errors: list) -> None:
+def _check_typed(section: str, values: dict, table: dict, errors: list,
+                 extra_keys: tuple = ()) -> None:
+    """Check ``values`` against ``table`` (key → (type, minimum)); ``extra_keys`` are known
+    keys checked elsewhere (listed in the "available" hint only)."""
     for key, value in values.items():
+        if key in extra_keys:
+            continue
         if key not in table:
-            errors.append(f"{section}.{key} is not a known key; available: {sorted(table)}")
+            errors.append(f"{section}.{key} is not a known key; "
+                          f"available: {sorted([*table, *extra_keys])}")
             continue
         kind, minimum = table[key]
         ok = (isinstance(value, bool) if kind is bool
@@ -275,21 +281,12 @@ def _check_monitor(monitor: dict, errors: list) -> None:
     alerts = monitor.get("alerts")
     if alerts is not None:
         if isinstance(alerts, dict):
+            n_before = len(errors)
             _check_typed("monitor.alerts", alerts, _ALERT_KEYS, errors)
+            lo, hi = alerts.get("update_ratio_min", 1e-6), alerts.get("update_ratio_max", 1e-1)
+            if len(errors) == n_before and lo >= hi:
+                errors.append("monitor.alerts.update_ratio_min must be < update_ratio_max, "
+                              f"got {lo!r} >= {hi!r}")
         else:
             errors.append(f"monitor.alerts must be a mapping, got {type(alerts).__name__}")
-    for key, value in monitor.items():
-        if key == "alerts":
-            continue
-        if key not in _MONITOR_KEYS:
-            errors.append(f"monitor.{key} is not a known key; "
-                          f"available: {sorted([*_MONITOR_KEYS, 'alerts'])}")
-            continue
-        kind, minimum = _MONITOR_KEYS[key]
-        ok = (isinstance(value, bool) if kind is bool
-              else isinstance(value, (int, float)) and not isinstance(value, bool)
-              and (kind is float or isinstance(value, int)))
-        if not ok:
-            errors.append(f"monitor.{key} must be {kind.__name__}, got {value!r}")
-        elif minimum is not None and value < minimum:
-            errors.append(f"monitor.{key} must be >= {minimum}, got {value!r}")
+    _check_typed("monitor", monitor, _MONITOR_KEYS, errors, extra_keys=("alerts",))

@@ -138,8 +138,10 @@ class HeterogeneousDDPTrainer(DDPTrainer):
             loss = loss_sum * self.world_size / (global_bs * n_classes)
             loss.backward()
 
+            pre_clip = None
             if self.grad_clip is not None:
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                pre_clip = torch.nn.utils.clip_grad_norm_(self.model.parameters(),
+                                                          self.grad_clip)
 
             self.optimizer.step()
 
@@ -160,6 +162,7 @@ class HeterogeneousDDPTrainer(DDPTrainer):
 
             # Batch hooks — necesario para BatchMonitorDecorator
             if self._batch_hooks:
+                self.last_grad_norm = m.grad_norm_value(self.model, pre_clip)
                 batch_metrics = {
                     "running_loss": total_loss / batch_idx,
                     "batch_loss": batch_loss,

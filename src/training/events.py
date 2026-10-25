@@ -166,7 +166,7 @@ class JsonlEventSink(TrainingListener):
         Raises on I/O errors: callers inside the training loop must catch them.
         Subscribers (see :meth:`subscribe`) are called after the line is written."""
         self._write(event_type, **fields)
-        for fn in list(self._subscribers):
+        for fn in self._subscribers:
             try:
                 fn(event_type, fields)
             except Exception:  # noqa: BLE001 — an observer of the stream never breaks it

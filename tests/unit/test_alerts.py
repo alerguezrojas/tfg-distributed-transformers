@@ -35,7 +35,8 @@ def test_nan_loss(value, fires):
     f = A.check_nan_loss(value)
     assert (f is not None) == fires
     if fires:
-        assert f.level == "critical" and f.code == "nan_loss"
+        assert f.level == "critical"
+        assert f.code == "nan_loss"
 
 
 def test_loss_divergence_boundaries():
@@ -62,7 +63,9 @@ def test_grad_explosion():
     hist = [1.0] * 5
     assert A.check_grad_explosion("g", 100.0, hist) is None        # exactly 100x
     f = A.check_grad_explosion("g", 100.5, hist)
-    assert f.code == "grad_explosion" and f.group == "g" and f.threshold == pytest.approx(100.0)
+    assert f.code == "grad_explosion"
+    assert f.group == "g"
+    assert f.threshold == pytest.approx(100.0)
     assert A.check_grad_explosion("g", 1e9, [1.0] * 4) is None     # too little history
     assert A.check_grad_explosion("g", 1e9, [0.0] * 8) is None     # zero median
     assert A.check_grad_explosion("g", float("inf"), hist).value is None
@@ -79,11 +82,15 @@ def test_update_ratio_needs_persistence():
 
 
 def test_dataloader_gpu_and_throughput_thresholds():
-    assert A.check_dataloader_bound(0.3) is None and A.check_dataloader_bound(0.31)
+    assert A.check_dataloader_bound(0.3) is None
+    assert A.check_dataloader_bound(0.31)
     assert A.check_dataloader_bound(None) is None
-    assert A.check_gpu_memory(0, 950, 1000) is None and A.check_gpu_memory(0, 951, 1000)
-    assert A.check_gpu_memory(0, None, 1000) is None and A.check_gpu_memory(0, 1, 0) is None
-    assert A.check_gpu_temp(1, 85) is None and A.check_gpu_temp(1, 86).group == "gpu1"
+    assert A.check_gpu_memory(0, 950, 1000) is None
+    assert A.check_gpu_memory(0, 951, 1000)
+    assert A.check_gpu_memory(0, None, 1000) is None
+    assert A.check_gpu_memory(0, 1, 0) is None
+    assert A.check_gpu_temp(1, 85) is None
+    assert A.check_gpu_temp(1, 86).group == "gpu1"
     assert A.check_gpu_temp(1, None) is None
     assert A.check_throughput_drop([100.0], 10.0) is None          # needs two epochs
     assert A.check_throughput_drop([100.0, 100.0], 50.0) is None   # exactly 50 %
@@ -101,8 +108,11 @@ def test_epoch_alerts_fire_once_and_rearm():
     _epoch(mon, 3, val=3.0)                    # still diverged: no repeat
     assert [a["code"] for a in sink.alerts()] == ["loss_divergence"]
     a = sink.alerts()[0]
-    assert a["level"] == "warning" and a["epoch"] == 2 and a["batch"] is None
-    assert a["value"] == pytest.approx(2.5) and a["threshold"] == pytest.approx(2.0)
+    assert a["level"] == "warning"
+    assert a["epoch"] == 2
+    assert a["batch"] is None
+    assert a["value"] == pytest.approx(2.5)
+    assert a["threshold"] == pytest.approx(2.0)
     _epoch(mon, 4, val=1.1)                    # cleared: re-armed
     _epoch(mon, 5, val=2.4)
     assert [x["code"] for x in sink.alerts()] == ["loss_divergence"] * 2
@@ -116,11 +126,15 @@ def test_nan_loss_is_critical_from_epoch_and_batch():
     mon.on_batch(1, 5, 10, {"batch_loss": float("nan")})        # same condition: once
     mon.on_epoch_end(1, 3, {"loss": float("nan")}, {"loss": 0.7}, 0.0, False, 1.0)
     (a,) = sink.alerts()
-    assert a["level"] == "critical" and a["code"] == "nan_loss"
-    assert a["epoch"] == 1 and a["batch"] == 4 and a["group"] == "train"
+    assert a["level"] == "critical"
+    assert a["code"] == "nan_loss"
+    assert a["epoch"] == 1
+    assert a["batch"] == 4
+    assert a["group"] == "train"
     _epoch(mon, 2)                                              # finite again: re-armed
     _epoch(mon, 3, train=float("inf"))
-    assert len(sink.alerts()) == 2 and sink.alerts()[1]["batch"] is None
+    assert len(sink.alerts()) == 2
+    assert sink.alerts()[1]["batch"] is None
 
 
 def test_overfitting_dataloader_and_throughput_from_epochs():
@@ -178,7 +192,9 @@ def test_layer_alerts_need_layer_events():
     mon.on_event("layers", _layers(500.0, batch=7))
     mon.on_event("layers", _layers(600.0, batch=8))              # still exploded: once
     (a,) = sink.alerts()
-    assert a["code"] == "grad_explosion" and a["group"] == "head" and a["batch"] == 7
+    assert a["code"] == "grad_explosion"
+    assert a["group"] == "head"
+    assert a["batch"] == 7
     for i in range(3):
         mon.on_event("layers", _layers(1.0, ratio=1e-9, batch=10 + i))
     assert [x["code"] for x in sink.alerts()] == ["grad_explosion", "update_ratio_out_of_range"]
@@ -228,4 +244,73 @@ def test_invalid_alerts_config(alerts, message):
     cfg = _base_cfg()
     cfg["monitor"] = {"alerts": alerts}
     with pytest.raises(ConfigError, match=message):
+        validate_config(cfg)
+
+
+# ── Review fixes ──────────────────────────────────────────────────────────────
+
+def test_total_grad_norm_uses_the_pre_clip_value_and_skips_fp16_overflow_steps():
+    norms = iter([1.0] * 6 + [500.0, float("inf"), float("inf")])
+    sink = Sink()
+    mon = AlertMonitor(sink, grad_norm_source=lambda: next(norms))
+    mon.on_epoch_start(1, 2)
+    for i in range(1, 8):
+        mon.on_batch(1, i, 20, {"batch_loss": 0.5})
+    (a,) = sink.alerts()
+    assert a["code"] == "grad_explosion"
+    assert a["group"] == "total"
+    assert a["batch"] == 7
+    mon.on_batch(1, 8, 20, {"batch_loss": 0.5})                   # inf grad, finite loss
+    mon.on_batch(1, 9, 20, {"batch_loss": float("nan")})          # inf grad, NaN loss
+    assert [x["code"] for x in sink.alerts()] == ["grad_explosion", "nan_loss"]
+
+
+def test_layers_with_non_finite_grad_and_finite_loss_are_ignored():
+    sink = Sink()
+    mon = AlertMonitor(sink)
+    for i in range(6):
+        mon.on_event("layers", _layers(1.0, batch=i))
+    mon.on_batch(1, 7, 20, {"batch_loss": 0.4})
+    mon.on_event("layers", _layers(float("inf"), batch=7))
+    assert not sink.alerts()
+
+
+def test_total_and_group_explosions_rearm_independently():
+    sink = Sink()
+    norms = iter([1.0] * 6 + [900.0, 1.0])
+    mon = AlertMonitor(sink, grad_norm_source=lambda: next(norms))
+    for i in range(6):
+        mon.on_event("layers", _layers(1.0, batch=i))
+    mon.on_event("layers", _layers(900.0, batch=6))               # group "head" active
+    for i in range(1, 8):
+        mon.on_batch(1, i, 20, {"batch_loss": 0.5})               # "total" active at 7
+    mon.on_event("layers", _layers(900.0, batch=8))               # head still active: no repeat
+    assert sorted(a["group"] for a in sink.alerts()) == ["head", "total"]
+
+
+def test_a_failed_write_is_retried_and_not_marked_active():
+    class Flaky(Sink):
+        fail = True
+
+        def emit(self, *a, **k):
+            if self.fail:
+                raise OSError("busy")
+            super().emit(*a, **k)
+
+    sink = Flaky()
+    mon = AlertMonitor(sink)
+    with pytest.warns(RuntimeWarning):
+        _epoch(mon, 1, train=float("nan"))
+    sink.fail = False
+    _epoch(mon, 2, train=float("nan"))
+    assert [a["code"] for a in sink.alerts()] == ["nan_loss"]
+
+
+def test_update_ratio_bounds_must_be_ordered():
+    cfg = _base_cfg()
+    cfg["monitor"] = {"alerts": {"update_ratio_min": 0.5, "update_ratio_max": 0.1}}
+    with pytest.raises(ConfigError, match="update_ratio_min must be <"):
+        validate_config(cfg)
+    cfg["monitor"] = {"alerts": {"update_ratio_min": 0.5}}        # default max 0.1
+    with pytest.raises(ConfigError, match="update_ratio_min must be <"):
         validate_config(cfg)

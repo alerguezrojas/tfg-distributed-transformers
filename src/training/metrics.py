@@ -9,6 +9,22 @@ THRESHOLD_GRID: list[float] = [
 ]
 
 
+def grad_norm_value(model: torch.nn.Module, pre_clip=None) -> float | None:
+    """Global gradient norm of the step, for the per-batch metrics (``grad_norm_total``).
+
+    ``pre_clip`` is what ``clip_grad_norm_`` returned (the norm *before* clipping, so
+    clipping does not hide a spike); without clipping the norm is computed from the
+    ``.grad`` of the parameters (one device-to-host copy). Only call it when batch hooks
+    exist: it is an extra reduction otherwise unneeded. ``None`` if there is no gradient.
+    """
+    if pre_clip is not None:
+        return float(pre_clip)
+    norms = [p.grad.detach().float().norm() for p in model.parameters() if p.grad is not None]
+    if not norms:
+        return None
+    return torch.stack([n.cpu() for n in norms]).norm().item()
+
+
 def f1_score(preds: torch.Tensor, labels: torch.Tensor) -> float:
     """Macro-averaged F1 for multi-label classification."""
     tp = (preds & labels.bool()).sum(dim=0).float()

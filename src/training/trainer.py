@@ -73,6 +73,7 @@ class Trainer(BaseTrainer):
         self.mixup_alpha = mixup_alpha
         self._current_epoch: int = 0
         self._batch_hooks: list = []
+        self.last_grad_norm: float | None = None   # pre-clip norm of the last hooked batch
 
         # ── Numeric precision (the practical Tensor-core switch) ───────────────
         # fp32 -> CUDA cores; tf32/amp/bf16 -> Tensor cores. autocast/GradScaler
@@ -138,9 +139,12 @@ class Trainer(BaseTrainer):
                 logits = self.model(train_images)
                 loss = self.criterion(logits, train_labels)
             self._scaler.scale(loss).backward()
+            pre_clip = None
             if self.grad_clip is not None:
                 self._scaler.unscale_(self.optimizer)
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+                # Returns the norm before clipping: kept for `grad_norm_total` (alerts).
+                pre_clip = torch.nn.utils.clip_grad_norm_(self.model.parameters(),
+                                                          self.grad_clip)
             self._scaler.step(self.optimizer)
             self._scaler.update()
 
@@ -159,6 +163,8 @@ class Trainer(BaseTrainer):
             timing = timer.step_done(labels.shape[0])   # after the syncs above: real time
 
             if self._batch_hooks:
+                # Out of `batch_metrics` (its keys are a contract): read by the alerts.
+                self.last_grad_norm = m.grad_norm_value(self.model, pre_clip)
                 batch_metrics = {
                     "running_loss": total_loss / batch_idx,
                     "batch_loss": loss.item(),

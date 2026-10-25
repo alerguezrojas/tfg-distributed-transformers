@@ -14,6 +14,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   fuerzan cálculo por batch ni alteran el entrenamiento (test de invariancia). `JsonlEventSink`
   gana `subscribe` para observar los eventos que otros productores emiten. Contrato en
   `docs/inspeccion.md`.
+- Alertas: `grad_explosion` también sobre la norma total del gradiente antes del recorte
+  (`Trainer.last_grad_norm`, solo con *batch hooks*; los tres bucles), ignora los pasos que el
+  `GradScaler` salta, y el par (código, grupo) solo se da por emitido tras escribir el evento.
 - Histogramas de gradientes por grupo de capas (gradientes del último batch de cada época) en el
   evento `histograms`, que ahora lleva `kind: "weights" | "gradients"`.
 - `pytest.ini`: `tmp_path_retention_policy = failed` y `tmp_path_retention_count = 1`, para que

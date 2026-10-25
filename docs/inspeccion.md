@@ -147,7 +147,7 @@ cada hallazgo nuevo. **Contrato del evento** (esquema v1; los campos de abajo si
 | `nan_loss` | critical | La pérdida es NaN o infinita en un batch o en la media de la época (`group` `train` o `val`) | `epoch_end`; el batch hook si ya hay |
 | `loss_divergence` | warning | Pérdida de validación > 2 × la mejor de las épocas anteriores | `epoch_end` |
 | `overfitting` | warning | La de validación sube 3 épocas seguidas mientras la de train baja | `epoch_end` |
-| `grad_explosion` | warning | Norma del gradiente de un grupo > 100 × su mediana reciente (mínimo 5 muestras) | `layers` |
+| `grad_explosion` | warning | Norma del gradiente de un grupo (`group` = capa) o del modelo entero (`group` `total`) > 100 × su mediana reciente (mínimo 5 muestras). Un gradiente no finito con pérdida finita es un paso que el `GradScaler` (fp16) salta: se ignora | `layers`; norma total del batch hook |
 | `update_ratio_out_of_range` | warning | Ratio actualización/peso fuera de [1e-6, 1e-1] en 3 muestras seguidas | `layers` |
 | `dataloader_bound` | warning | `data_wait_frac` de la época > 0,3 | `epoch_end.train` |
 | `gpu_memory_high` | warning | Memoria usada > 95 % del total (`group` `gpu<N>`) | `system` |
@@ -158,14 +158,21 @@ Reglas de emisión:
 - Una alerta se emite **una vez por (`code`, `group`)** y se **re-arma** solo cuando la condición
   deja de cumplirse (una evaluación sin hallazgo para ese par). Mientras persiste no se repite.
   Una regla que afecta a muchos grupos (p. ej. ratio de actualización) emite un evento por grupo.
-- `grad_explosion` y `update_ratio_out_of_range` solo se evalúan si hay eventos `layers`
-  (`monitor.layers`); sin ellos no se emiten. `gpu_*` necesita el muestreo de sistema.
+- `update_ratio_out_of_range` y `grad_explosion` por capa solo se evalúan si hay eventos `layers`
+  (`monitor.layers`). `grad_explosion` con `group` `total` usa la norma global del gradiente
+  **antes del recorte** (`Trainer.last_grad_norm`, lo que devuelve `clip_grad_norm_`; sin
+  `grad_clip` se calcula, y solo si hay *batch hooks*), así que `grad_clip` no la oculta.
+  `gpu_*` necesita el muestreo de sistema.
+- **Las normas y los histogramas por capa son posteriores al recorte** (`grad_clip`): con el
+  recorte activo el gradiente por grupo está acotado y por eso la regla de explosión mira
+  también la norma total previa. Los histogramas de gradientes omiten los grupos con NaN/inf.
 - El NaN por batch usa el *batch hook* **solo si el `Trainer` ya tiene alguno** (monitor de
   batches o de capas): no fuerza cálculo por batch. Sin hooks se detecta al final de la época. Un
   run con NaN no se detiene: sigue o termina como lo haría sin alertas.
 - Los eventos `system` y `layers` llegan al `AlertMonitor` porque este se suscribe al sink
   (`JsonlEventSink.subscribe`); ni el muestreador ni el monitor de capas saben de alertas. Una
-  alerta de GPU sale desde el hilo del muestreador, siempre antes de `run_end`.
+  alerta de GPU sale desde el hilo del muestreador; que no aparezca después de `run_end` depende
+  de que el muestreador se pare a tiempo (espera de hasta 5 s en `on_fit_end`).
 - Todo error de una regla o de escritura se convierte en un aviso; nunca detiene el
   entrenamiento ni cambia ningún número (test de invariancia de pesos y de RNG).
 - Se cablea en rank 0 con el sink, también sin `--monitor`. `monitor.alerts.enabled: false` las

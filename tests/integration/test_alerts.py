@@ -39,7 +39,7 @@ def toy():
 
 
 def _train(tmp_path, monkeypatch, spec, monitor=None, layers=("confusion",), epochs=2,
-           seed=7):
+           seed=7, grad_clip=None):
     tmp_path.mkdir(parents=True, exist_ok=True)
     monkeypatch.chdir(tmp_path)
     random.seed(seed)
@@ -50,6 +50,8 @@ def _train(tmp_path, monkeypatch, spec, monitor=None, layers=("confusion",), epo
            "training": {"epochs": epochs, "batch_size": 8, "lr": 0.001, "log_batch_every": 1,
                         "mixup_alpha": 0.2, "label_smoothing": 0.1},
            "checkpoint": {"dir": str(tmp_path / "ckpt")}, "output": {"env": "test"}}
+    if grad_clip is not None:
+        cfg["training"]["grad_clip"] = grad_clip
     if monitor is not None:
         cfg["monitor"] = monitor
     trainer = (TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t")
@@ -80,7 +82,8 @@ def test_forced_nan_raises_a_critical_alert_and_the_run_is_unchanged(tmp_path, m
     nan = [a for a in _alerts(with_alerts)
            if a["code"] == "nan_loss" and a["group"] == "train"]
     assert len(nan) == 1                                    # once, not per batch / epoch
-    assert nan[0]["level"] == "critical" and nan[0]["epoch"] == 1
+    assert nan[0]["level"] == "critical"
+    assert nan[0]["epoch"] == 1
     assert nan[0]["batch"] is not None                      # batch-monitor: found in the batch
     assert nan[0]["value"] is None                          # NaN is not JSON
     assert set(nan[0]) >= {"type", "level", "code", "message", "epoch", "batch", "value",
@@ -95,7 +98,9 @@ def test_without_batch_hooks_the_epoch_loss_is_checked(tmp_path, monkeypatch, to
     _, events = _train(tmp_path, monkeypatch, spec)         # no batch-monitor, no layers
     (a,) = [a for a in _alerts(events)
             if a["code"] == "nan_loss" and a["group"] == "train"]
-    assert a["batch"] is None and a["epoch"] == 1 and a["level"] == "critical"
+    assert a["batch"] is None
+    assert a["epoch"] == 1
+    assert a["level"] == "critical"
     kinds = [e["type"] for e in events]
     assert "batch" not in kinds                             # nothing forced per batch
     assert kinds.index("alert") > kinds.index("epoch_end")
@@ -109,13 +114,15 @@ def test_alerts_do_not_change_the_training(tmp_path, monkeypatch, toy):
     rng_off, py_off = torch.get_rng_state(), random.getstate()
     # Thresholds that fire on this tiny run, so the alert paths really execute.
     on, events = _train(tmp_path / "on", monkeypatch, spec,
-                        monitor={**mon, "alerts": {"update_ratio_min": 1.0,
+                        monitor={**mon, "alerts": {"update_ratio_min": 1.0, "update_ratio_max": 2.0,
                                                    "update_ratio_patience": 1,
                                                    "data_wait_frac": 0.0}})
     assert _alerts(events)
     for (n1, p1), (n2, p2) in zip(off.model.named_parameters(), on.model.named_parameters()):
-        assert n1 == n2 and torch.equal(p1, p2), f"{n1} differs with alerts on"
-    assert torch.equal(rng_off, torch.get_rng_state()) and random.getstate() == py_off
+        assert n1 == n2, f"{n1} differs with alerts on"
+        assert torch.equal(p1, p2), f"{n1} differs with alerts on"
+    assert torch.equal(rng_off, torch.get_rng_state())
+    assert random.getstate() == py_off
 
 
 def test_healthy_run_has_no_alerts(tmp_path, monkeypatch, toy):
@@ -131,7 +138,8 @@ def test_gradient_histograms_are_emitted_next_to_the_weight_ones(tmp_path, monke
     assert [(h["epoch"], h["kind"]) for h in hists] == [
         (1, "weights"), (1, "gradients"), (2, "weights"), (2, "gradients")]
     for g in hists[2]["groups"] + hists[3]["groups"]:
-        assert len(g["edges"]) == 33 and len(g["counts"]) == 32
+        assert len(g["edges"]) == 33
+        assert len(g["counts"]) == 32
     grads = {g["name"]: g for g in hists[3]["groups"]}
     model = trainer
     while not hasattr(model, "model"):
@@ -146,3 +154,24 @@ def test_gradient_histograms_are_emitted_next_to_the_weight_ones(tmp_path, monke
     gmax = max(p.grad.max().item() for n, p in model.model.named_parameters()
                if layer_group(n) == name and p.grad is not None)
     assert grads[name]["edges"][-1] == pytest.approx(gmax, rel=1e-5)
+
+
+def test_the_alerts_see_the_norm_before_clipping(tmp_path, monkeypatch, toy):
+    spec = toy("toy_preclip")
+    trainer, _ = _train(tmp_path, monkeypatch, spec, layers=("confusion", "batch-monitor"),
+                        grad_clip=1e-6)
+    base = trainer
+    while not hasattr(base, "last_grad_norm"):
+        base = base._trainer
+    # Clipped to 1e-6, but the recorded norm is the one before clipping.
+    assert base.last_grad_norm > 1e-3
+    clipped = torch.nn.utils.clip_grad_norm_(base.model.parameters(), 1e9)
+    assert float(clipped) < 1e-5
+
+
+def test_without_hooks_no_gradient_norm_is_computed(tmp_path, monkeypatch, toy):
+    trainer, _ = _train(tmp_path, monkeypatch, toy("toy_nohook"))
+    base = trainer
+    while not hasattr(base, "last_grad_norm"):
+        base = base._trainer
+    assert base.last_grad_norm is None

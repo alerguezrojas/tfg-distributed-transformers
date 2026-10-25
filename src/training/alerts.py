@@ -43,6 +43,8 @@ ALERT_DEFAULTS: dict = {
 
 #: Samples of history a median-based rule needs before it can fire.
 _MIN_GRAD_HISTORY = 5
+#: ``group`` of the ``grad_explosion`` alerts about the whole model's gradient norm.
+TOTAL_GROUP = "total"
 _MIN_THROUGHPUT_HISTORY = 2
 
 
@@ -209,8 +211,9 @@ class AlertMonitor(TrainingListener):
     ``update_ratio_out_of_range`` are only evaluated if ``layers`` events exist.
     """
 
-    def __init__(self, sink, config: dict | None = None):
+    def __init__(self, sink, config: dict | None = None, grad_norm_source=None):
         self._sink = sink
+        self._grad_norm_source = grad_norm_source   # () -> pre-clip total grad norm
         self._cfg = {**ALERT_DEFAULTS, **(config or {})}
         self._lock = threading.RLock()      # system sampler thread vs. training thread
         self._active: set[tuple[str, str | None]] = set()
@@ -220,6 +223,7 @@ class AlertMonitor(TrainingListener):
         self._throughput: list[float] = []
         self._grads: dict[str, deque] = {}
         self._ratios: dict[str, deque] = {}
+        self._loss_finite: bool | None = None   # of the latest batch (None: no batch hook)
         self._warned = False
         self.emitted: list[dict] = []       # alerts written so far (for tests / summaries)
 
@@ -232,23 +236,24 @@ class AlertMonitor(TrainingListener):
                           RuntimeWarning, stacklevel=3)
 
     def _update(self, code: str, findings: list[Finding], epoch, batch=None,
-                rearm: bool = True) -> None:
-        """Emit the findings not already active for ``code``; with ``rearm``, forget the
-        active ones that are no longer among the findings (the condition cleared)."""
+                scope=lambda group: True) -> None:
+        """Emit the findings not already active for ``code``; forget (re-arm) the active
+        groups in ``scope`` that are no longer among the findings (condition cleared).
+        A pair is marked active only after its event was written, so a failed write is
+        retried on the next evaluation."""
         now = {f.group: f for f in findings}
         with self._lock:
-            if rearm:
-                self._active -= {key for key in self._active
-                                 if key[0] == code and key[1] not in now}
+            self._active -= {key for key in self._active
+                             if key[0] == code and key[1] not in now and scope(key[1])}
             for group, f in now.items():
                 if (code, group) in self._active:
                     continue
-                self._active.add((code, group))
                 fields = {"level": f.level, "code": f.code, "message": f.message,
                           "epoch": epoch, "batch": batch, "value": f.value,
                           "threshold": f.threshold, "group": f.group}
-                self.emitted.append(fields)
                 self._sink.emit("alert", **fields)
+                self._active.add((code, group))
+                self.emitted.append(fields)
 
     # ── TrainingListener ─────────────────────────────────────────────────────
 
@@ -286,13 +291,34 @@ class AlertMonitor(TrainingListener):
                 self._throughput.append(float(sps))
 
     def on_batch(self, epoch: int, batch_idx: int, n_batches: int, metrics: dict) -> None:
-        """Batch hook: NaN/inf loss in a batch. Unguarded by the Trainer, so it catches."""
+        """Batch hook: NaN/inf loss in a batch and spikes of the total gradient norm
+        (``grad_norm_source``: the norm before clipping). Unguarded by the Trainer, so it catches."""
         try:
-            f = check_nan_loss(metrics.get("batch_loss"), "train", f"batch {batch_idx}")
+            loss = metrics.get("batch_loss")
+            self._loss_finite = _finite(loss)
+            f = check_nan_loss(loss, "train", f"batch {batch_idx}")
             if f is not None:   # only adds: re-arming is decided at the end of the epoch
-                self._update("nan_loss", [f], self._epoch or epoch, batch_idx, rearm=False)
+                self._update("nan_loss", [f], self._epoch or epoch, batch_idx,
+                             scope=lambda group: False)
+            if self._grad_norm_source is not None:
+                self._total_grad(self._epoch or epoch, batch_idx, self._grad_norm_source())
         except Exception as exc:  # noqa: BLE001
             self._warn("batch rule failed", exc)
+
+    def _total_grad(self, epoch, batch_idx, norm) -> None:
+        if norm is None:
+            return
+        with self._lock:
+            if self._skipped_step(norm):
+                return
+            f = self._grad_finding(TOTAL_GROUP, norm)
+            self._update("grad_explosion", [f] if f else [], epoch, batch_idx,
+                         scope=lambda group: group == TOTAL_GROUP)
+
+    def _skipped_step(self, norm) -> bool:
+        """A non-finite gradient with a finite loss is a step the GradScaler skips (fp16
+        overflow): routine, not an explosion."""
+        return not _finite(norm) and self._loss_finite is True
 
     # ── Events from other producers (sink subscription) ──────────────────────
 
@@ -320,24 +346,31 @@ class AlertMonitor(TrainingListener):
             self._update("gpu_memory_high", [f for f in mem if f], epoch)
             self._update("gpu_temp_high", [f for f in temp if f], epoch)
 
-    def _layers(self, fields: dict) -> None:
+    def _grad_finding(self, name: str, norm) -> Finding | None:
+        """Explosion check of one group (caller holds the lock); updates its history."""
+        if self._skipped_step(norm):
+            return None
+        hist = self._grads.setdefault(name, deque(maxlen=int(self._cfg["grad_history"])))
+        finding = check_grad_explosion(name, norm, list(hist),
+                                       self._cfg["grad_explosion_factor"])
+        if _finite(norm):
+            hist.append(float(norm))
+        return finding
+
+    def _ratio_finding(self, name: str, ratio) -> Finding | None:
         cfg = self._cfg
+        patience = max(1, int(cfg["update_ratio_patience"]))
+        hist = self._ratios.setdefault(name, deque(maxlen=patience))
+        hist.append(ratio)
+        return check_update_ratio(name, list(hist), cfg["update_ratio_min"],
+                                  cfg["update_ratio_max"], patience)
+
+    def _layers(self, fields: dict) -> None:
         epoch, batch = fields.get("epoch"), fields.get("batch")
-        grads, ratios = [], []
         with self._lock:
-            for row in fields.get("groups") or []:
-                name = row.get("name")
-                norm = row.get("grad_norm")
-                hist = self._grads.setdefault(name, deque(maxlen=int(cfg["grad_history"])))
-                grads.append(check_grad_explosion(name, norm, list(hist),
-                                                  cfg["grad_explosion_factor"]))
-                if _finite(norm):
-                    hist.append(float(norm))
-                rhist = self._ratios.setdefault(
-                    name, deque(maxlen=max(1, int(cfg["update_ratio_patience"]))))
-                rhist.append(row.get("update_ratio"))
-                ratios.append(check_update_ratio(
-                    name, list(rhist), cfg["update_ratio_min"], cfg["update_ratio_max"],
-                    int(cfg["update_ratio_patience"])))
-            self._update("grad_explosion", [f for f in grads if f], epoch, batch)
+            rows = fields.get("groups") or []
+            grads = [self._grad_finding(r.get("name"), r.get("grad_norm")) for r in rows]
+            ratios = [self._ratio_finding(r.get("name"), r.get("update_ratio")) for r in rows]
+            self._update("grad_explosion", [f for f in grads if f], epoch, batch,
+                         scope=lambda group: group != TOTAL_GROUP)
             self._update("update_ratio_out_of_range", [f for f in ratios if f], epoch, batch)
