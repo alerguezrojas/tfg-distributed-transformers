@@ -249,12 +249,36 @@ ficheros.
 uv run paravit.py dashboard    # → http://localhost:8501
 ```
 
-Interfaz de solo lectura (el terminal ejecuta, la web analiza), con cinco secciones: **Overview**
-(indicadores globales, run activo, tabla de runs), **Run results** (curvas, métricas por clase,
+Interfaz de solo lectura (el terminal ejecuta, la web analiza), con seis secciones: **Overview**
+(indicadores globales, run activo, tabla de runs), **Live** (seguimiento de un entrenamiento en
+curso, ver más abajo), **Run results** (curvas, métricas por clase,
 confusiones, lotes y detalles del run activo), **Compare** (hasta 8 runs: aceleración frente a una
 referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
 del conjunto e importación de runs). Idioma inglés con vista opcional en español y modo oscuro.
+
+### Seguir un entrenamiento en directo (Live)
+
+Mientras un run entrena, el proceso principal añade eventos a
+`logs/<entorno>/…/events_<DDMMYYYY_HHMMSS>.jsonl`, junto al `train_*.log` del mismo run. La sección
+**Live** los lee de forma incremental (solo lo nuevo en cada vuelta) y muestra:
+
+- **Estado**: *Running*, *Completed*, *Early stopped*, *Failed* o *Stalled* (el run no ha terminado
+  pero el fichero lleva más de N minutos sin cambios; por defecto 10, configurable en la propia
+  sección), con el dataset, el modelo y la estrategia.
+- **Progreso y ETA**: épocas hechas frente a las planificadas. El ETA es la media del tiempo de
+  época por las épocas que faltan, así que es una cota superior si hay *early stopping*.
+- **Indicadores**: épocas hechas, mejor valor de la métrica de selección y la última loss, F1 y AUC
+  de validación (con su variación respecto a la época anterior).
+- **Curvas**: loss de train y validación, F1 y AUC de validación por época y, si el entrenamiento
+  registra batches, la loss por batch.
+- **Configuración y entorno** del run (versiones, equipo, dispositivos) en un desplegable.
+
+Se elige el run en la lista (por defecto, el activo más reciente), el interruptor **Live** activa o
+pausa el refresco automático y **Refresh every** fija el intervalo (2, 5, 10 o 30 s). Solo se vuelve
+a pintar el contenido de la sección, no el resto de la página. Si se lanza un entrenamiento con la
+sección ya abierta, pulsar **Refresh now** para que aparezca en la lista. La web no entrena ni
+toca la GPU: solo lee el fichero.
 
 ![Overview del cuadro de mandos](img/dashboard_overview.png)
 

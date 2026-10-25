@@ -15,6 +15,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - Auditoría de observabilidad (`docs/roadmap.md`) y revisión del sector en
   `docs/research/observabilidad_entrenamiento.md`: seguimiento en vivo, formato de eventos e
   interpretabilidad de ViT en imagen médica. Esquema v1 del flujo de eventos en `docs/eventos.md`.
+- Web: pestaña **Live** para seguir un entrenamiento en curso. Lee de forma incremental (por
+  desplazamiento de bytes) el flujo `logs/<env>/…/events_<sello>.jsonl` (esquema v1: `run_start`,
+  `epoch_start`, `batch`, `epoch_end`, `early_stop`, `run_end`) y muestra estado (running,
+  completed, early_stopped, failed, interrupted, stalled), progreso y ETA, KPIs, curvas por época, loss por
+  batch y la config y el entorno del run. Se refresca con `st.fragment(run_every=…)`, con
+  interruptor Live/Pause e intervalo de 2/5/10/30 s; la web sigue siendo solo de lectura. Lector
+  puro en `src/web/events_reader.py`; `RunInfo.events_path` asocia el JSONL al run por el sello.
 - MedMNIST con 3 semillas: media ± desviación en test (`docs/datasets/medmnist.md`). `--seed` en
   `train_single_gpu.py` (se escribe en el log) y `scripts/summarize_runs.py` para agregar los
   resultados de test de runs repetidos.
@@ -66,6 +73,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- Web: se eliminan `DashboardContext.refresh_interval` (nadie lo usaba) y los comentarios
+  engañosos sobre un refresco en vivo que no existía.
 - `eval.py` aplica a test el umbral elegido en **validación** (el del checkpoint, o ajustado sobre
   val en checkpoints antiguos); antes lo ajustaba sobre el propio test, lo que inflaba el "F1 con
   umbral óptimo". `--threshold-from test` mantiene el comportamiento anterior. El CSV de test

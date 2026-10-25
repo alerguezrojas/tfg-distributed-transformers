@@ -26,7 +26,8 @@ observabilidad (25/10/2026)" y en la fase 4.
   `scripts/summarize_runs.py`.
 - Predictor: perfilado automático de cualquier modelo de timm (fase 5, primer punto), revisado
   por el agente revisor y corregido.
-- Web: AUC de validación y filtro por dataset. Estado del arte sobre predicción del rendimiento
+- Web: AUC de validación y filtro por dataset; pestaña Live (seguimiento en tiempo real).
+  Estado del arte sobre predicción del rendimiento
   (`docs/research/`).
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
@@ -171,9 +172,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Una ficha por dataset en `docs/datasets/`.
 
 ### Fase 4 — Instrumentación, observabilidad e inferencia
-- [ ] Flujo de eventos `events_*.jsonl` (esquema v1 en [eventos.md](eventos.md)): inicio con
+- [x] Flujo de eventos `events_*.jsonl` (esquema v1 en [eventos.md](eventos.md)): inicio con
       configuración y huella del entorno, épocas, batches, parada temprana y fin (también si falla).
-- [ ] Web: pestaña *Live* que sigue un run en curso con lectura incremental del flujo.
+- [x] Web: pestaña *Live* que sigue un run en curso con lectura incremental del flujo.
 - [x] Limpieza de la deuda de las trazas (docstrings, `LayerHooksDecorator`, *batch hooks* con
       `batch-table`, dependencias).
 - [ ] Panel fijo de validación: probabilidades de un conjunto fijo de imágenes en cada época

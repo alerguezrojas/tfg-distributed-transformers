@@ -459,7 +459,7 @@ Igual que `train_cluster.yaml` más `label_smoothing: 0.1`, `mixup_alpha: 0.2`, 
 
 ## Dashboard web
 
-`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~220 líneas: page config + CSS + sidebar + dispatch) que monta el menú de iconos + las 5 páginas y delega en módulos `render(ctx)`. **Tema visual** en `.streamlit/config.toml` (primario azul #1A5276, toolbar mínima) — sin él Streamlit usa su rojo por defecto.
+`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~220 líneas: page config + CSS + sidebar + dispatch) que monta el menú de iconos + las 6 páginas y delega en módulos `render(ctx)`. **Tema visual** en `.streamlit/config.toml` (primario azul #1A5276, toolbar mínima) — sin él Streamlit usa su rojo por defecto.
 
 ```
 .streamlit/config.toml      # tema (primaryColor azul, toolbarMode minimal)
@@ -468,7 +468,7 @@ src/web/
   app.py                    # orquestador: page config + CSS + menú de iconos (streamlit-option-menu)
                             #   + selector de run activo + toggle claro/oscuro + dispatch a tabs/
   ui/
-    context.py              # DashboardContext (runs, selected_run, run, refresh_interval) → ctx
+    context.py              # DashboardContext (runs, selected_run, run) → ctx
     theme.py                # diseño: register_plotly_template(mode) + inject_css(mode) — modo
                             #   claro/oscuro (toggle en la sidebar); paleta COLORS/GOOD/WARN/BAD
     charts.py               # helpers Plotly + estilo: _show, _dl_csv, _metric_fig, _overlay_fig,
@@ -483,14 +483,18 @@ src/web/
     run/                    # paquete: Curves / Per-class / Confusions / Batch / Details (una fila de pestañas)
                             #   perclass.py = heatmap clases×(P/R/F1) + support (val); confusions.py = top
                             #   co-activación + matriz 19×19 (avanzado); curves.py = veredicto color-coded
+    live.py                 # Live: sigue un run en curso (events_*.jsonl) con st.fragment(run_every=…);
+                            #   estado/ETA, KPIs, curvas por época, loss por batch, config y entorno
     comparison.py           # Compare unificado: multiselect → resumen + speedup vs baseline + radar + energía + overlays
     benchmark/              # paquete: Estimate (predict.py, analítico) / Benchmark (report.py + ddp.py + study.py) / Estimate vs Benchmark vs Run (validate.py)
                             #   predict.py = formulario → headline + tabla fórmula tiempo + tabla fórmula memoria
                             #   + calidad + escalado 1→8 GPU + coste; validate.py = Compare vs runs; report.py + ddp.py + study.py
     data_models.py          # Import runs (subir zip / apuntar a carpeta → copia a logs/)
   run_import.py             # import_run_archive (zip) / import_run_folder / _dest_relpath (puro, testeable)
+  events_reader.py          # lector incremental de events_*.jsonl (EventsFollower, RunState) y
+                            # descubrimiento de runs activos; puro (sin Streamlit)
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
-                            # RunInfo con env, mode, model, precision (leída del log) y CSV paths;
+                            # RunInfo con env, mode, model, precision (leída del log), CSV paths y events_path;
                             # label compacto con tags [ddp]/[amp]/[deep] (defaults implícitos)
   log_parser.py             # parsea logs --trace simple y --trace deep → DataFrame (fallback)
   batch_parser.py           # lee batch_metrics_*.csv → DataFrame por batch
@@ -499,6 +503,13 @@ src/web/
   confusion_matrix_parser.py # lee confusion_matrix_*.csv → matriz numpy por epoch
   system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo con specs de GPU (usado por el predictor)
 ```
+
+**Pestaña Live.** Sigue un run en curso a partir de su flujo de eventos (`events_*.jsonl`, esquema
+en [eventos.md](eventos.md)). `EventsFollower` guarda el desplazamiento en bytes y solo lee lo
+añadido; descarta la última línea si no parsea y la reintenta. El estado (`running`, `completed`,
+`early_stopped`, `failed`, `interrupted`, `stalled`) sale de `run_end` o, sin él, de que el fichero
+lleve más de 3 minutos sin cambiar (un entrenamiento vivo escribe un `heartbeat` cada 30 s). Los
+tipos desconocidos o de versión mayor se ignoran. La web sigue siendo de solo lectura.
 
 **Motor analítico de predicción** (`src/performance_model.py`): **único motor** de predicción del proyecto. Predice tiempo/speedup/memoria/cuello/coste/**energía** **y calidad (F1)** de **cualquier** (estrategia, modelo, GPU, nº GPUs, dataset, batch, precisión) **sin benchmark** (fórmula maestra `T(n,π)`, estimación de `r_c/r_io/π` por specs, modelo de memoria/OOM). **Energía = potencia efectiva × tiempo** (29/06/26): `GpuSpec.train_power_w` calibrada de los logs `--fn energy` (T4 64W, V100 103W, RTX 3060 Ti 180W; resto = 0.65×TDP, `power_calibrated=False`), potencia independiente de precisión (AMP ahorra por *tiempo*), eval=0.9×train, `power_working_gpus` (single/heterogéneo=1, ddp/MP=n), MP×0.83 (idle de tubería); `predict()` también estima el tiempo de **eval** → total/epoch. Calibrado contra los datos reales de Kaggle (<10% en compute-bound). Expuesto en la pestaña **Estimate** (tiempo + memoria + **energía** + coste + calidad + puente `rc_measured`). Derivación en `docs/performance_model.md`.
 

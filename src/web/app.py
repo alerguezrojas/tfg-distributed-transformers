@@ -26,6 +26,7 @@ from src.web.tabs import (
     comparison,
     benchmark,
     dataset,
+    live,
 )
 
 # ── Page configuration ──────────────────────────────────────────────────────────
@@ -53,12 +54,15 @@ runs = _get_runs()
 # Single-level sidebar navigation (icon menu). Each entry renders one page
 # module full-width. Pages keep at most ONE row of tabs inside — never 3 levels.
 # System was removed: the live hardware monitor was not useful with the Kaggle
-# workflow, and "Import runs" now lives under "Data & runs".
-_NAV_KEYS = ["overview", "run", "compare", "benchmark", "data"]
-_NAV_LABELS = ["Overview", "Run results", "Compare", "Estimate/Benchmark", "Dataset"]
-_NAV_ICONS = ["house", "graph-up", "bar-chart-line", "speedometer2", "database"]
+# workflow, and "Import runs" now lives under "Data & runs". "Live" follows a
+# training in progress from its events_*.jsonl stream (it refreshes only its own
+# fragment; every other page is a snapshot of logs/ taken when it renders).
+_NAV_KEYS = ["overview", "live", "run", "compare", "benchmark", "data"]
+_NAV_LABELS = ["Overview", "Live", "Run results", "Compare", "Estimate/Benchmark", "Dataset"]
+_NAV_ICONS = ["house", "broadcast", "graph-up", "bar-chart-line", "speedometer2", "database"]
 _PAGES = {
     "overview": home.render,
+    "live": live.render,
     "run": run_tab.render,
     "compare": comparison.render,
     "benchmark": benchmark.render,
@@ -155,12 +159,9 @@ with st.sidebar:
         st.rerun()
 
 # ── Build shared context and render the selected page ───────────────────────────
-# (The refresh slider lives in System — Monitor/Live are the only consumers.)
-
 ctx = DashboardContext(
     runs=runs,
     selected_run=selected_run,
     run=run,
-    refresh_interval=10,
 )
 _PAGES.get(_page, home.render)(ctx)

@@ -18,8 +18,8 @@ pytest.importorskip("streamlit.testing.v1")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 APP = str(ROOT / "src" / "web" / "app.py")
-NAV_KEYS = ["overview", "run", "compare", "benchmark", "data"]
-PAGE_TITLES = {"overview": "## Overview", "run": "## Run results", "compare": "## Compare",
+NAV_KEYS = ["overview", "live", "run", "compare", "benchmark", "data"]
+PAGE_TITLES = {"overview": "## Overview", "live": "## Live", "run": "## Run results", "compare": "## Compare",
                "benchmark": "## Estimate / Benchmark", "data": "## Dataset"}
 
 _BEN_TS, _MED_TS = "17102026_100000", "17102026_110000"
