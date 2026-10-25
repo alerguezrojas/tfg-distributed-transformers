@@ -18,7 +18,8 @@ fire the per-layer table mid-epoch, which the standard `train_epoch` cannot
 expose. The deliberate consequence: in that mode the inner decorators'
 `train_epoch` is bypassed, so the metric reporters, `LayerHooksDecorator` and
 `@fn`-decorated `train_epoch` do NOT run (deep registers its own richer hooks and
-manages its own metrics; `PlottingDecorator` is fed via `_propagate_train_result`).
+manages its own metrics; `PlottingDecorator` is fed via `_propagate_train_result`
+and the Trainer's batch hooks, e.g. `BatchMonitorDecorator`, are called per batch).
 
 This is *by design*, not a leaky abstraction: in this codebase a "controller"
 (EpochController and its subclasses) is categorically different from an "aspect"
@@ -40,7 +41,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
-from src.training.metrics import f1_score, eta_str
+from src.training.metrics import f1_score, eta_str, precision
 from src.training.tasks import MultiLabelTask
 from src.models.vit import input_channels
 from src.training.augmentations import mixup_batch
@@ -307,6 +308,22 @@ class DeepTracingDecorator(TracingDecorator):
                 if not mixed:                            # skip blended batches
                     all_preds.append(preds.cpu())
                     all_labels.append(hard_labels.cpu())
+
+            # This loop replaces Trainer.train_epoch, so it must feed the Trainer's batch
+            # hooks too (BatchMonitorDecorator): same dict as Trainer.train_epoch.
+            batch_hooks = getattr(self._trainer, "_batch_hooks", None)
+            if batch_hooks:
+                preds_cpu, hard_labels_cpu = preds.cpu(), hard_labels.cpu()
+                batch_metrics = {
+                    "running_loss": total_loss / batch_idx,
+                    "batch_loss": loss.item(),
+                    "lr": optimizer.param_groups[0]["lr"],
+                    "batch_f1": f1_score(preds_cpu, hard_labels_cpu),
+                    "batch_acc": task.accuracy(preds_cpu, hard_labels_cpu),
+                    "batch_prec": precision(preds_cpu, hard_labels_cpu),
+                }
+                for hook in batch_hooks:
+                    hook(self._current_epoch, batch_idx, len(loader), batch_metrics)
 
             if batch_idx % self.log_every == 0:
                 self._log_layer_table(self._current_epoch, batch_idx, len(loader))

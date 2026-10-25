@@ -23,6 +23,9 @@
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
+- Limpieza de trazas (deuda de la auditoría): docstrings de `plot`/`confusion` al día,
+  `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
+  `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
 **En curso:** nada. Todo está integrado en `develop` y en `main` (PR #158, 17/10/2026).
 

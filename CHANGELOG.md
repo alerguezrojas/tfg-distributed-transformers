@@ -82,6 +82,18 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- `--trace deep` con `batch-table` ya alimenta a `--layers batch-monitor`: el bucle propio de
+  `DeepTracingDecorator` no llamaba a los batch hooks del `Trainer` y `batch_metrics_*.csv`
+  quedaba solo con la cabecera. Llama a los hooks con el mismo diccionario que
+  `Trainer.train_epoch`; ningún cálculo cambia (los tests de caracterización siguen igual).
+- Docstrings que afirmaban que `plot` y `confusion` guardan PNGs (`scripts/train_single_gpu.py`,
+  `ConfusionMatrixDecorator`, `PlottingDecorator`): `plot` solo acumula el histórico en memoria y
+  `confusion` escribe `perclass_metrics_*.csv` y `confusion_matrix_*.csv`.
+- `LayerHooksDecorator` escribe en el logger `trainer` si tiene handlers (como los decoradores
+  `@fn`) y en stdout si no; el texto es el mismo.
+- `psutil` declarado en las dependencias (lo importan `src/web/system_monitor.py` y las sondas del
+  benchmark; solo llegaba de forma transitiva vía `ipykernel`).
+- Tests de `LayerHooksDecorator`, de los metric reporters y de `batch-table` + `batch-monitor`.
 - El hook guardián de commits solo examina el mensaje del `git commit`: antes bloqueaba
   comandos que mencionaban "Co-Authored-By" en otro sitio (por ejemplo, el cuerpo de un PR).
 - Web: `use_container_width` (obsoleto en Streamlit) pasa a `width="stretch"`; la columna

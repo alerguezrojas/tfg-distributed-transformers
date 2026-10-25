@@ -19,9 +19,10 @@ Flags
 
 --layers [plot] [hooks] [confusion] [batch-monitor]
     Stackable aspect decorators:
-      plot         — PlottingDecorator: saves loss+F1 PNG to plots/ after each epoch
+      plot         — PlottingDecorator: keeps the train/val metric history in memory (no files)
       hooks        — LayerHooksDecorator: forward hooks on Linear layers every 5 epochs
-      confusion    — ConfusionMatrixDecorator: per-class F1/precision/recall bar charts
+      confusion    — ConfusionMatrixDecorator: per-class F1/precision/recall and confusion matrix
+                     as perclass_metrics_*.csv and confusion_matrix_*.csv (the web draws the charts)
       batch-monitor — BatchMonitorDecorator: batch-level loss CSV in logs/
 
 --fn [timing] [energy]

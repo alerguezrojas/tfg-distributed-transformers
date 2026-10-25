@@ -1,7 +1,8 @@
-"""PlottingDecorator — acumula métricas train/val para exposición a la web.
+"""PlottingDecorator — acumula en memoria el histórico de métricas train/val.
 
-Ya no genera PNGs — el dashboard web genera gráficas interactivas desde los CSVs.
-Mantiene el histórico en memoria para que DeepTracingDecorator pueda propagar
+No escribe ningún fichero (ni PNGs ni CSVs): las curvas del dashboard web salen de
+epoch_metrics_*.csv, que escribe el controlador de trazas. El histórico queda en
+``_history`` (claves ``train_*`` / ``val_*``) y DeepTracingDecorator le propaga los
 resultados de train cuando gestiona el bucle directamente.
 """
 
@@ -14,10 +15,10 @@ from src.training.decorators.base import TrainerDecorator
 
 
 class PlottingDecorator(TrainerDecorator):
-    """Aspecto: acumula métricas y las expone al stack de decoradores.
+    """Aspecto: acumula en memoria las métricas numéricas de train y val.
 
-    Ya no escribe PNGs — el dashboard Streamlit genera las curvas de forma
-    interactiva a partir de epoch_metrics_*.csv.
+    No escribe ficheros: el dashboard Streamlit dibuja las curvas a partir de
+    epoch_metrics_*.csv.
 
     El parámetro output_path se mantiene por compatibilidad con el Builder
     pero no se usa.
