@@ -9,6 +9,8 @@
 | [datasets/](datasets/) | Una ficha por dataset soportado ([BigEarthNet-S2](datasets/bigearthnet.md)) |
 | [roadmap.md](roadmap.md) | Plan de trabajo posterior al TFG y su **estado actual** |
 | [flujo_ia.md](flujo_ia.md) | Cómo se trabaja con IA: agentes, skills, hooks, permisos y controles |
+| [eventos.md](eventos.md) | Esquema del flujo de eventos de cada run (`events_*.jsonl`): contrato entre el entrenamiento y la web |
+| [research/observabilidad_entrenamiento.md](research/observabilidad_entrenamiento.md) | Seguimiento en vivo, formatos de eventos e interpretabilidad de ViT en imagen médica: qué usa el sector y qué encaja aquí |
 | [research/estado_del_arte_prediccion.md](research/estado_del_arte_prediccion.md) | Trabajo relacionado sobre predicción del rendimiento del entrenamiento (tiempo, memoria, energía, escalado) y dónde encaja el predictor |
 | [resultados_tfg.md](resultados_tfg.md) | Resultados experimentales hasta la entrega (histórico) |
 | [historial_tfg.md](historial_tfg.md) | Bitácora del desarrollo hasta `v1.0-tfg` (congelada) |

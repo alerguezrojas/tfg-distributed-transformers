@@ -6,8 +6,16 @@
 
 ## Estado actual
 
-> Actualizado el 17/10/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 25/10/2026. Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
+
+**Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
+multi-dataset, MedMNIST y el trabajo con agentes de IA. **El tutor enviará el dataset médico
+concreto** en el que centrar el trabajo; hasta entonces, MedMNIST sirve de banco de pruebas y el
+diseño debe seguir admitiendo datasets nuevos sin tocar el entrenamiento. Pidió además **analizar
+con más detalle la inferencia en las trazas**, para ver en tiempo real las decisiones del modelo
+durante el entrenamiento, posiblemente desde la web. Auditoría y plan en "Auditoría de
+observabilidad (25/10/2026)" y en la fase 4.
 
 **Hecho:**
 - Fases 1 (higiene) y 2 (abstracción de dataset y tarea, verificada en GPU con las cuatro
@@ -24,14 +32,22 @@
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
 
-**En curso:** nada. Todo está integrado en `develop` y en `main` (PR #158, 17/10/2026).
+**En curso (fase 4, observabilidad):**
+- Flujo de eventos estructurado (`events_*.jsonl`), la base común de la vista en vivo y de las
+  medidas del predictor ([esquema](eventos.md)).
+- Pestaña *Live* de la web, que sigue un entrenamiento en curso leyendo ese flujo.
+- Limpieza de la deuda de las trazas: docstrings que prometían PNG, `LayerHooksDecorator` sin
+  logger, un posible fallo de los *batch hooks* con `--inspect batch-table` y `psutil` sin declarar.
 
-**Siguiente paso recomendado:** fase 4, instrumentación y registro de medidas. Su objetivo es
-medir el tiempo de espera del DataLoader y la potencia por GPU, en un esquema estándar, para
-validar el ángulo más prometedor del artículo: tiempo y energía según el régimen (cómputo o I/O).
-Los cuatro MedMNIST, BigEarthNet y su subset ya dan perfiles de I/O muy distintos para probarlo.
+**Siguiente paso recomendado:** el panel fijo de validación (probabilidades por época de un
+conjunto fijo de imágenes), las predicciones por muestra en test con calibración y curvas ROC/PR,
+y después `paravit predict` y `paravit explain` (Grad-CAM). Orden y motivos en la auditoría.
 
 **Decisiones pendientes del autor o del tutor:**
+- **El dataset médico definitivo** (lo enviará el tutor). Si fuera de segmentación, detección o
+  3D, haría falta ampliar la tarea y el modelo (ver los límites en
+  [datasets/README.md](datasets/README.md)).
+- Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
 - Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
@@ -79,6 +95,40 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 6. **Solo estimaciones puntuales**, sin intervalos de incertidumbre.
 7. **El prior de calidad (F1)** no se transfiere a otros datasets.
 
+## Auditoría de observabilidad (25/10/2026)
+
+Petición del tutor: ver con detalle qué decide el modelo durante el entrenamiento, en tiempo real
+y desde la web. Inventario del código y revisión del sector en
+[`research/observabilidad_entrenamiento.md`](research/observabilidad_entrenamiento.md).
+
+**Diagnóstico:**
+
+1. **No se guarda nada por muestra.** Las predicciones de validación se reducen a métricas
+   globales, por clase y a la matriz de confusión; `eval.py` tampoco guarda predicciones por
+   imagen. No hay forma de ver *qué* imágenes falla el modelo ni con qué confianza.
+2. **No hay inferencia fuera del entrenamiento.** No existe un comando para clasificar imágenes
+   sueltas ni para explicar una predicción (Grad-CAM, *attention rollout*).
+3. **Todo es texto y CSV, sin formato estructurado.** La web reconstruye cada run con
+   expresiones regulares sobre el log; las claves en español son un contrato frágil.
+4. **La web no es "en vivo".** Lee los ficheros al interactuar o cuando caduca la caché (30-60 s);
+   `refresh_interval` está definido pero nadie lo usa, y el monitor del sistema se retiró.
+5. **Deuda menor:** docstrings que prometen PNG que no se generan, `LayerHooksDecorator` que solo
+   imprime por consola, decoradores sin tests, `tensorboard` declarado y sin uso, y `psutil`
+   usado y sin declarar.
+
+**Decisión de diseño:** un único **flujo de eventos** (`events_*.jsonl`, solo rank 0, una línea
+por evento y versionado) como fuente estructurada de cada run. Sirve a la vez para la vista en
+vivo, para el análisis por muestra (eventos de panel) y para las medidas de la fase 4
+(espera del DataLoader, potencia por GPU). Convive con los logs actuales, que siguen siendo el
+contrato con la web existente. Los exportadores a TensorBoard o MLflow, si llegan, serán otros
+consumidores del mismo flujo. W&B y ClearML se descartan por licencia e infraestructura.
+
+**Orden:** (1) flujo de eventos y vista *Live*; (2) panel fijo de validación, predicciones por
+muestra en test, calibración (ECE) y ROC/PR, con su pestaña en la web; (3) `paravit predict`;
+(4) `paravit explain` con Grad-CAM fuera del bucle medido (los mapas se generan en el terminal y
+la web solo los muestra). Lo que dependa del tipo de problema se resuelve en la `Task`, de modo
+que funcione con cualquier dataset, incluido el que envíe el tutor.
+
 ## Fases
 
 ### Fase 1 — Higiene (en curso)
@@ -119,9 +169,20 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
 - [ ] Una ficha por dataset en `docs/datasets/`.
 
-### Fase 4 — Instrumentación y registro de medidas
+### Fase 4 — Instrumentación, observabilidad e inferencia
+- [ ] Flujo de eventos `events_*.jsonl` (esquema v1 en [eventos.md](eventos.md)): inicio con
+      configuración y huella del entorno, épocas, batches, parada temprana y fin (también si falla).
+- [ ] Web: pestaña *Live* que sigue un run en curso con lectura incremental del flujo.
+- [ ] Limpieza de la deuda de las trazas (docstrings, `LayerHooksDecorator`, *batch hooks* con
+      `batch-table`, dependencias).
+- [ ] Panel fijo de validación: probabilidades de un conjunto fijo de imágenes en cada época
+      (eventos `panel`) para ver cómo evolucionan las decisiones del modelo.
+- [ ] Predicciones por muestra en test (`eval.py --save-predictions`), calibración (ECE, diagrama
+      de fiabilidad), curvas ROC/PR y peores errores, con su pestaña en la web.
+- [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.
+- [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
 - [ ] Esquema estándar de cada medida: huella de hardware y software, configuración, throughput
-      estable, pico de VRAM, potencia y **espera del DataLoader** (un decorador nuevo).
+      estable, pico de VRAM, potencia y **espera del DataLoader** (nuevos eventos del flujo).
 - [ ] Script de barrido con sondas cortas (N pasos en régimen estable) para muchas configuraciones.
 - [ ] Entorno portable para HPC (contenedor Apptainer) y plantillas Slurm multinodo.
 
