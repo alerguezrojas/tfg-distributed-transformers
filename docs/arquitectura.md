@@ -239,6 +239,13 @@ guardan (float16 incluido). Una clase sin positivos o sin negativos da NaN, nunc
 Los tests usan un generador de directorios sintéticos
 (`tests/fixtures/make_inspect_fixture.py`) que cumple exactamente el contrato.
 
+La página **Inspector** de la web (`src/web/tabs/inspector/`, un módulo por vista) la consume:
+`src/web/inspector_data.py` reúne los helpers puros (tablas de muestras, matrices de capas,
+superposición de Grad-CAM, descubrimiento de runs) y `EventsFollower` guarda, acotados, los
+eventos `system`, `layers`, `histograms`, `monitor_start` e `inspection`. Solo la vista elegida
+se calcula en cada refresco. `tests/fixtures/make_inspector_run.py` genera un run completo
+(eventos + `inspect_<ts>/`) para los tests.
+
 ---
 
 ## CLI unificado (`paravit`)

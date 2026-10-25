@@ -7,7 +7,8 @@ Streamlit, no torch, no GPU — the web only reads.
 
 Schema v1 (every line carries ``v``, ``type`` and ``time``): ``run_start``,
 ``epoch_start``, ``batch``, ``epoch_end``, ``early_stop``, ``heartbeat``, ``run_end``
-(docs/eventos.md). Unknown
+(docs/eventos.md) and the inspection events ``system``, ``monitor_start``, ``inspection``,
+``layers`` and ``histograms`` (docs/inspeccion.md), which the "Inspector" page reads. Unknown
 types, and lines from a newer schema version, are ignored so an older dashboard
 keeps working with a newer trainer.
 """
@@ -28,6 +29,10 @@ SUPPORTED_VERSION = 1
 MAX_BATCHES = 2000                  # per-batch events kept in memory (most recent)
 DEFAULT_STALLED_AFTER_S = 180.0     # no run_end and no writes for this long → stalled
                                     # (a live trainer writes a heartbeat every 30 s)
+MAX_SYSTEM = 5000                   # ``system`` samples kept (every few seconds → hours)
+MAX_LAYERS = 4000                   # ``layers`` events kept (most recent)
+MAX_HISTOGRAMS = 200                # epochs with weight histograms kept (most recent)
+MAX_INSPECTIONS = 1000
 _TAIL_BYTES = 8192                  # how much of the file end is scanned for run_end
 
 # Derived run states.
@@ -60,6 +65,12 @@ class RunState:
     current_epoch: int | None = None        # from the latest epoch_start
     planned_epochs: int | None = None
     early_stop: dict[str, Any] | None = None
+    # Inspection events (docs/inspeccion.md): bounded, most recent kept.
+    systems: deque = field(default_factory=lambda: deque(maxlen=MAX_SYSTEM))
+    layers: deque = field(default_factory=lambda: deque(maxlen=MAX_LAYERS))
+    histograms: dict[int, dict[str, Any]] = field(default_factory=dict)   # epoch → event
+    inspections: deque = field(default_factory=lambda: deque(maxlen=MAX_INSPECTIONS))
+    monitor_start: dict[str, Any] | None = None
     run_end: dict[str, Any] | None = None
     last_event_time: float | None = None    # "time" field of the latest event
     mtime: float | None = None              # file mtime, set by the follower
@@ -91,6 +102,20 @@ class RunState:
             self.run_end = ev
         elif kind == "heartbeat":
             pass                                # only proves the trainer is alive
+        elif kind == "system":
+            self.systems.append(ev)
+        elif kind == "layers":
+            self.layers.append(ev)
+        elif kind == "histograms":
+            epoch = _as_int(ev.get("epoch"), None)
+            if epoch is not None:
+                self.histograms[epoch] = ev     # one per epoch: the latest wins
+                while len(self.histograms) > MAX_HISTOGRAMS:
+                    del self.histograms[min(self.histograms)]
+        elif kind == "monitor_start":
+            self.monitor_start = ev
+        elif kind == "inspection":
+            self.inspections.append(ev)
         else:
             self.n_ignored += 1                 # unknown type: forward compatibility
             return
