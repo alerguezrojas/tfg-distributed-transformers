@@ -229,8 +229,9 @@ class Trainer(BaseTrainer):
         found = self.task.search_threshold(probs, hard)
         if found is not None:
             result["_optimal_threshold"], result["_f1_at_optimal_threshold"] = found
-        # Raw tensors for ConfusionMatrixDecorator (consumed there, stripped before
-        # checkpoint) and the probabilities DDPTrainer gathers across ranks.
+        # Raw tensors for ConfusionMatrixDecorator and the prediction monitor (private
+        # "_" keys never reach the checkpoint or the logs) and the probabilities
+        # DDPTrainer gathers across ranks.
         result.update({"_preds": preds, "_labels": hard, "_probs": probs})
         return result
 

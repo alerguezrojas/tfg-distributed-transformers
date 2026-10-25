@@ -136,10 +136,19 @@ En DDP, `val_probs` sale de las probabilidades ya reunidas de todos los ranks (e
 del dataset, pero cada fila está alineada con su `val_targets`; puede haber duplicados del relleno
 del `DistributedSampler`).
 
-**Grad-CAM:** ViT/DeiT, sobre la salida del último bloque (tokens de parche, sin los de prefijo);
+**Grad-CAM:** ViT/DeiT, sobre la entrada de la atención del último bloque (`norm1`, tokens de
+parche sin los de prefijo: con cabeza de token CLS, la salida del último bloque no llega a los
+*logits* y su gradiente es cero);
 CNN, sobre el último mapa de activación 4D. Se calcula con `torch.autograd.grad` respecto a la
-activación, así que no toca los `.grad` de los parámetros. Modelos sin capa compatible o
-paralelismo de modelo: sin `cam` (y se avisa una vez).
+activación, así que no toca los `.grad` de los parámetros. Funciona también con paralelismo de
+modelo (los *hooks* van en el último bloque, en la segunda GPU), Swin (NHWC), ConvNeXt y
+EfficientNet. Modelos sin capa compatible: sin `cam` (se avisa una vez); si Grad-CAM falla, se
+desactiva y el resto de la captura se sigue guardando.
+
+El monitor necesita el flujo de eventos: con `--trace off` no se activa (y se avisa). Las
+`probs` del subconjunto se calculan con la misma precisión (autocast) que la validación. El
+monitor de capas registra un *batch hook*, así que el `Trainer` calcula sus métricas por batch en
+cada paso (trabajo pequeño en CPU; no cambia ningún número).
 
 ## Análisis en la web (`src/analysis/`, puro: NumPy, sin torch)
 

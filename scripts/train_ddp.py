@@ -46,6 +46,9 @@ from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Distributed training (DDP)")
+    parser.add_argument("--monitor", action="store_true",
+                        help="Prediction/layer monitor: per-sample predictions, embeddings, "
+                             "Grad-CAM and layer stats every epoch (docs/inspeccion.md)")
     parser.add_argument("--config", type=str, default="configs/train_cluster.yaml")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
     parser.add_argument("--model", type=str, help="Override model name (any timm ID)")
@@ -186,6 +189,8 @@ def main():
     if args.batch_log_every is not None:
         builder = builder.with_batch_log_every(args.batch_log_every)
 
+    if args.monitor:
+        builder = builder.with_monitor()
     trainer = builder.build()
 
     if rank == 0:

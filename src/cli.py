@@ -59,7 +59,7 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     precision: str | None = None, layers: list[str] | None = None,
                     fn: list[str] | None = None, n_gpus: int = 2, nnodes: int = 1,
                     node_rank: int = 0, master_addr: str = "localhost",
-                    master_port: int = 29500) -> list[str]:
+                    master_port: int = 29500, monitor: bool = False) -> list[str]:
     """Build the exact command for a training strategy.
 
     single / model-parallel run a plain script; ddp / heterogeneous run under
@@ -74,6 +74,8 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
     if epochs:
         common += ["--epochs", str(epochs)]
     common += ["--trace", trace]                      # every script accepts --trace
+    if monitor:
+        common += ["--monitor"]                       # every script accepts --monitor
     layers_fn = []
     if layers:
         layers_fn += ["--layers", *layers]
@@ -204,13 +206,16 @@ def train(
     node_rank: int = typer.Option(0, help="This node's rank (multi-node)."),
     master_addr: str = typer.Option("localhost", help="Rendez-vous host (multi-node)."),
     master_port: int = typer.Option(29500, help="Rendez-vous port (multi-node)."),
+    monitor: bool = typer.Option(False, "--monitor",
+                                 help="Per-sample predictions, embeddings, Grad-CAM and "
+                                      "layer stats every epoch (see the web Inspector)."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Launch a training run with the chosen distribution strategy."""
     cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
                           precision=precision, layers=_csv(layers), fn=_csv(fn), n_gpus=n_gpus,
                           nnodes=nnodes, node_rank=node_rank, master_addr=master_addr,
-                          master_port=master_port)
+                          master_port=master_port, monitor=monitor)
     _run(cmd, dry_run)
 
 
