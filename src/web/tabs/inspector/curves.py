@@ -2,6 +2,8 @@
 the evolution of the macro AUC / AP across epochs."""
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -14,6 +16,8 @@ from src.web.inspector_stats import (
 )
 from src.web.tabs.inspector._common import InspectorCtx, _mtime, fmt, need_monitor
 from src.web.ui.charts import _show
+
+_MACRO_AUC, _MACRO_AP = "Macro AUC", "Macro AP"
 
 FULL, SUBSET = "Full validation set", "Monitored subset"
 
@@ -76,9 +80,9 @@ def render(c: InspectorCtx) -> None:
     out = _curves(str(c.inspect_dir), c.epoch, mt, source, probs, targets)
 
     k = st.columns(4)
-    k[0].metric("Macro AUC", fmt(out["macro"]["auc"]))
+    k[0].metric(_MACRO_AUC, fmt(out["macro"]["auc"]))
     k[1].metric("Micro AUC", fmt(out["micro"]["roc"]["auc"]))
-    k[2].metric("Macro AP", fmt(out["macro"]["ap"]))
+    k[2].metric(_MACRO_AP, fmt(out["macro"]["ap"]))
     k[3].metric("Micro AP", fmt(out["micro"]["pr"]["ap"]))
     if c.task == "multiclass":
         st.caption("Multiclass: one-vs-rest curves per class.")
@@ -166,12 +170,12 @@ def _ci_section(c: InspectorCtx, source: str, mt: float, probs, targets,
         return None, 0
     use = 0.5 if thr is None else thr
     ci = _macro_ci(str(c.inspect_dir), c.epoch, mt, source, c.task, use, n_boot, probs, targets)
-    labels = {"auc": "Macro AUC", "ap": "Macro AP", "f1": "Macro F1",
+    labels = {"auc": _MACRO_AUC, "ap": _MACRO_AP, "f1": "Macro F1",
               "sensitivity": "Sensitivity", "specificity": "Specificity", "accuracy": "Accuracy"}
     cols = st.columns(len(labels))
     for col, (key, label) in zip(cols, labels.items()):
         v = ci[key]
-        finite = v["lo"] == v["lo"] and v["hi"] == v["hi"]
+        finite = not (math.isnan(v["lo"]) or math.isnan(v["hi"]))
         col.metric(label, fmt(v["estimate"]), delta=f"[{v['lo']:.3f}, {v['hi']:.3f}]" if finite
                    else None, delta_color="off")
     where = "at the argmax decision" if thr is None else f"at threshold {use:.2f}"
@@ -215,14 +219,14 @@ def _evolution(c: InspectorCtx, source: str) -> None:
             continue
         o = _curves(str(c.inspect_dir), e, _mtime(c.inspect_dir / f"epoch_{e:03d}.npz"),
                     source, *a)
-        rows.append({"epoch": e, "Macro AUC": o["macro"]["auc"], "Macro AP": o["macro"]["ap"]})
+        rows.append({"epoch": e, _MACRO_AUC: o["macro"]["auc"], _MACRO_AP: o["macro"]["ap"]})
     st.markdown("##### Evolution")
     if len(rows) < 2:
         st.caption("Needs at least two inspected epochs.")
         return
     df = pd.DataFrame(rows)
     fig = go.Figure()
-    for col in ("Macro AUC", "Macro AP"):
+    for col in (_MACRO_AUC, _MACRO_AP):
         fig.add_trace(go.Scatter(x=df["epoch"], y=df[col], mode="lines+markers", name=col))
     fig.update_layout(height=300, xaxis_title="epoch", yaxis_title="score", hovermode="x unified")
     fig.update_xaxes(dtick=1)

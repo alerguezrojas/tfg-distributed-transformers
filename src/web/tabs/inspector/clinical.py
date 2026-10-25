@@ -7,6 +7,8 @@ the point marked. Multiclass is one-vs-rest on the probability of the chosen cla
 """
 from __future__ import annotations
 
+import math
+
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -91,7 +93,7 @@ def render(c: InspectorCtx) -> None:
     cols = st.columns(len(POINT_METRICS))
     for col, m in zip(cols, POINT_METRICS):
         v = r["metrics"][m]
-        finite = v["lo"] == v["lo"] and v["hi"] == v["hi"]
+        finite = not (math.isnan(v["lo"]) or math.isnan(v["hi"]))
         col.metric(_LABELS[m], fmt(v["estimate"]), help=_HELP[m],
                    delta=f"[{v['lo']:.3f}, {v['hi']:.3f}]" if finite else None, delta_color="off")
     obs, used = r["prevalence"]["observed"], r["prevalence"]["used"]
