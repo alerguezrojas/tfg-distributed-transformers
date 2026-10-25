@@ -5,6 +5,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Web, Inspector: vistas clínicas. **Curves** con intervalos de confianza *bootstrap* (macro y por
+  clase; 200/1000/2000 remuestras, semilla fija, cacheados); nueva vista **Clinical** (umbral
+  manual, óptimo de validación, sensibilidad objetivo o Youden; sensibilidad, especificidad, VPP,
+  VPN, F1 y 2×2 con IC, prevalencia editable, ROC con el punto); **Calibration** con pendiente,
+  intercepto, ECE adaptativa y por clase; **Subgroups** (solo con el `groups.npz` opcional,
+  documentado en `docs/inspeccion.md`, `load_groups` en `src/analysis/io.py`); **Alerts** y banner
+  de alertas en Inspector y Live a partir de los eventos `alert` (con `group`); selector
+  pesos/gradientes en **Layers** (`histograms.kind`). Helpers en `src/web/inspector_stats.py`.
 - `paravit report <run>` (`src/reporting/`): informe HTML autocontenido de un run (un solo
   fichero, plotly.js una vez, imágenes en base64) con resumen y entorno, curvas de entrenamiento,
   rendimiento y GPU, alertas, evaluación con IC95 *bootstrap* (semilla anotada), ROC/PR, calibración

@@ -45,7 +45,7 @@ def _loss(task: str, p: np.ndarray, y: np.ndarray) -> np.ndarray:
 def make_inspect_fixture(out_dir, ts: str = "25102026_120000", task: str = "multilabel",
                          m: int = 48, c: int = 5, n_val: int = 200, epochs=(1, 2, 3),
                          dim: int = 16, thumb: int = 8, n_panel: int = 4, cam_hw: int = 4,
-                         seed: int = 0) -> Path:
+                         seed: int = 0, with_groups: bool = False) -> Path:
     """Create ``<out_dir>/inspect_<ts>/`` and return its path."""
     if task not in TASKS:
         raise ValueError(f"unknown task {task!r}; available: {list(TASKS)}")
@@ -66,6 +66,16 @@ def make_inspect_fixture(out_dir, ts: str = "25102026_120000", task: str = "mult
         classes=np.array([f"class_{i}" for i in range(c)]),
         task=np.array(task),
     )
+
+    if with_groups:
+        # Optional groups.npz (docs/inspeccion.md): one (M,) array per variable, aligned with
+        # the monitor set.
+        np.savez_compressed(
+            d / "groups.npz",
+            sex=np.where(rng.random(m) < 0.5, "F", "M"),
+            age=rng.integers(20, 90, m),
+            centre=np.array(["A", "B", "C"])[rng.integers(0, 3, m)],
+        )
 
     y_val = _targets(rng, task, n_val, c)
     centres = rng.normal(0.0, 1.0, (c if task != "binary" else 2, dim))

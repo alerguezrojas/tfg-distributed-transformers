@@ -40,14 +40,14 @@ def _banded_scale(lo: float, hi: float) -> list:
 
 def render(c: InspectorCtx) -> None:
     state = c.state
-    if state is None or not (state.layers or state.histograms):
+    if state is None or not (state.layers or state.histograms or state.grad_histograms):
         st.info("No per-layer statistics in this run. " + LAYERS_HINT)
         return
     if state.layers:
         _heatmaps(state)
     else:
         st.info("No gradient / weight statistics (no `layers` events). " + LAYERS_HINT)
-    if state.histograms:
+    if state.histograms or state.grad_histograms:
         st.markdown("---")
         _histograms(c)
 
@@ -92,9 +92,17 @@ def _heatmaps(state) -> None:
 
 
 def _histograms(c: InspectorCtx) -> None:
-    hist = c.state.histograms
+    # ``histograms`` events carry kind "weights" (default) or "gradients".
+    available = {k: h for k, h in (("Weights", c.state.histograms),
+                                   ("Gradients", c.state.grad_histograms)) if h}
+    if len(available) > 1:
+        kind = st.radio("Histogram of", list(available), horizontal=True, key="insp_hist_kind")
+    else:
+        kind = next(iter(available))
+    hist = available[kind]
+    noun = kind.lower().removesuffix("s")
     epochs = sorted(hist)
-    st.markdown("##### Weight histograms")
+    st.markdown(f"##### {noun.capitalize()} histograms")
     default = c.epoch if c.epoch in hist else epochs[-1]
     if len(epochs) > 1:
         epoch = st.select_slider("Epoch", epochs, value=default, key="insp_layers_epoch")
@@ -112,7 +120,7 @@ def _histograms(c: InspectorCtx) -> None:
     with left:
         fig = go.Figure(go.Bar(x=centers, y=counts, width=np.diff(edges)))
         fig.update_layout(height=320, title={"text": f"{group}, epoch {epoch}"},
-                          xaxis_title="weight value", yaxis_title="count")
+                          xaxis_title=f"{noun} value", yaxis_title="count")
         _show(fig, "insp_hist_bar")
     with right:
         ridge = go.Figure()
@@ -129,7 +137,7 @@ def _histograms(c: InspectorCtx) -> None:
                                        line={"width": 0}, showlegend=False, hoverinfo="skip"))
             ridge.add_trace(go.Scatter(x=ctr, y=base + h[1] / peak, mode="lines", fill="tonexty",
                                        name=f"epoch {e}", line={"width": 1}))
-        ridge.update_layout(height=320, title={"text": f"{group}: weights by epoch"},
-                            xaxis_title="weight value", yaxis={"showticklabels": False},
+        ridge.update_layout(height=320, title={"text": f"{group}: {kind.lower()} by epoch"},
+                            xaxis_title=f"{noun} value", yaxis={"showticklabels": False},
                             showlegend=False)
         _show(ridge, "insp_hist_ridge")
