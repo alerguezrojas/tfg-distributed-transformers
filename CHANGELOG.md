@@ -5,6 +5,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Diagrama genérico del patrón Factory (`docs/diagramas/multidataset/factory.puml`), junto a los
+  de Strategy y Registry.
 - Alertas (`src/training/alerts.py`): reglas puras y un `AlertMonitor` que escribe eventos `alert`
   (`level` warning/critical, `code`, `message`, `epoch`, `batch`, `value`, `threshold`, `group`)
   para `nan_loss`, `loss_divergence`, `overfitting`, `grad_explosion`,
