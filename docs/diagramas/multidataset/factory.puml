@@ -1,0 +1,33 @@
+@startuml
+!include style.iuml
+class Cliente {
+  + preparar(config)
+}
+class "crear(nombre)" as Fabrica <<fábrica>> {
+  - tabla nombre → clase:
+  "A" → ProductoA
+  "B" → ProductoB
+  "C" → ProductoC
+}
+abstract class Producto <<abstract>> {
+  + operar()
+}
+class ProductoA
+class ProductoB
+class ProductoC
+Cliente --> Fabrica : 1. crear("B")
+Fabrica ..> Producto : 2. crea un ProductoB
+Cliente --> Producto : 3. usa
+Producto <|-- ProductoA
+Producto <|-- ProductoB
+Producto <|-- ProductoC
+note right of Fabrica
+  Es la única parte del
+  programa que conoce las
+  clases A, B y C.
+end note
+note left of Cliente
+  Solo da un nombre (texto)
+  y recibe un Producto.
+end note
+@enduml
