@@ -86,8 +86,9 @@ def public_metrics(metrics: Mapping) -> dict:
 
 
 def _best(value: float) -> float | None:
-    """The loop starts ``best`` at -1 (no epoch yet); report that as null."""
-    return None if value is None or value < 0 else value
+    """The loop starts ``best`` at -1 (no epoch yet); report that as null. Values in
+    (-1, 0) are real (a QWK below chance agreement)."""
+    return None if value is None or value <= -1.0 else value
 
 
 def _git_commit() -> str | None:

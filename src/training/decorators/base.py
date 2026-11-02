@@ -8,6 +8,7 @@ Two abstract levels:
                       ``add_listener`` and receive the run lifecycle events.
 """
 
+import math
 import time
 import warnings
 
@@ -139,9 +140,12 @@ class EpochController(TrainerDecorator):
             val_m = self.eval_epoch(val_loader)
             epoch_times.append(time.time() - t0)
 
-            is_best = self._selection_value(val_m) > best_f1
+            value = self._selection_value(val_m)
+            # An undefined metric (NaN: e.g. QWK/AUC on a one-class split) never beats
+            # the best, but the first epoch is still saved so there is a checkpoint.
+            is_best = value > best_f1 or (epoch == 1 and math.isnan(value))
             if is_best:
-                best_f1 = self._selection_value(val_m)
+                best_f1 = best_f1 if math.isnan(value) else value
                 epochs_no_improve = 0
                 metrics_clean = {k: v for k, v in val_m.items() if not k.startswith("_")}
                 # Keep the threshold tuned on VALIDATION with the checkpoint, so the

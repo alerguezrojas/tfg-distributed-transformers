@@ -35,15 +35,16 @@ class TimmClassifier(nn.Module):
         self.in_chans = in_chans
         self.img_size = img_size or DEFAULT_IMG_SIZE
 
-        # Only pass img_size when set: some timm families do not accept the kwarg.
-        extra = {"img_size": img_size} if img_size else {}
-        self.backbone = timm.create_model(
-            model_name,
-            pretrained=pretrained,
-            num_classes=0,  # Remove the original classification head
-            in_chans=in_chans,
-            **extra,
-        )
+        kwargs = {"pretrained": pretrained, "num_classes": 0,  # drop timm's own head
+                  "in_chans": in_chans}
+        if img_size:
+            try:
+                self.backbone = timm.create_model(model_name, img_size=img_size, **kwargs)
+            except TypeError:
+                # CNN families take no img_size kwarg: they accept any input side.
+                self.backbone = timm.create_model(model_name, **kwargs)
+        else:
+            self.backbone = timm.create_model(model_name, **kwargs)
 
         embed_dim = self.backbone.num_features
 

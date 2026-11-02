@@ -145,3 +145,25 @@ class TestImgSize:
     def test_validator_accepts_positive_int(self):
         validate_config(_cfg("bigearthnet", model={"img_size": 512}) |
                         {"data": {"root": "/r", "metadata": "/m.parquet"}})
+
+
+class TestReviewFixes:
+    def test_cnn_ignores_img_size(self):
+        from src.models.vit import build_model, input_size
+        model = build_model("resnet18", num_classes=2, pretrained=False, img_size=96)
+        assert input_size(model) == 96
+        assert model(torch.randn(1, 3, 96, 96)).shape == (1, 2)
+
+    def test_benchmark_batches_use_the_model_side(self):
+        from src.benchmark.benchmarker import Benchmarker
+        from src.models.vit import build_model
+        model = build_model("vit_tiny_patch16_224", num_classes=2, pretrained=False,
+                            img_size=64)
+        bench = Benchmarker(model, torch.device("cpu"), num_classes=2)
+        x, _ = bench._make_batches(2)[0]
+        assert x.shape[-2:] == (64, 64)
+
+    def test_negative_best_is_reported(self):
+        from src.training.events import _best
+        assert _best(-0.03) == pytest.approx(-0.03)
+        assert _best(-1.0) is None and _best(None) is None

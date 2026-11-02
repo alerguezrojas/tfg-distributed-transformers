@@ -7,7 +7,7 @@ from pathlib import Path
 import torch
 
 from src.data.registry import dataset_spec_from_config
-from src.models.vit import build_model
+from src.models.vit import DEFAULT_IMG_SIZE, build_model
 from src.benchmark.value_objects import BenchmarkReport
 from src.benchmark.model_analyzer import ModelAnalyzer
 from src.benchmark.probes import HardwareProbe, DiskProbe, DatasetProfiler
@@ -60,13 +60,16 @@ class BenchmarkChecker:
         # Input channels / classes / loss come from the dataset in the config
         # (BigEarthNet when there is no config): the synthetic batches match it.
         self._spec = dataset_spec_from_config(self._config)
+        # Input side the training uses (model.img_size); 224 when unset.
+        self._img_size = (self._config.get("model") or {}).get("img_size")
         self._task = self._spec.make_task()
 
     def run(self) -> BenchmarkReport:
         print(f"Cargando modelo {self._model_name}...")
         model = build_model(model_name=self._model_name, pretrained=False,
                             num_classes=self._spec.num_classes,
-                            in_chans=self._spec.in_channels)
+                            in_chans=self._spec.in_channels,
+                            img_size=self._img_size)
 
         hw_probe = HardwareProbe()
         model_info = ModelAnalyzer(model, self._model_name, self._device).analyze()
@@ -208,7 +211,8 @@ class BenchmarkChecker:
         """Loader sintético de respaldo si el dataset no está disponible."""
         from torch.utils.data import DataLoader, TensorDataset
         n = batch_size * (self._study_steps + 25)
-        x = torch.randn(n, self._spec.in_channels, 224, 224)
+        side = self._img_size or DEFAULT_IMG_SIZE
+        x = torch.randn(n, self._spec.in_channels, side, side)
         y = self._task.random_targets(n, self._spec.num_classes)
         return DataLoader(TensorDataset(x, y), batch_size=batch_size, shuffle=True)
 

@@ -16,7 +16,9 @@ class Benchmarker:
     def __init__(self, model: nn.Module, device: torch.device, precision: str = "fp32",
                  num_classes: int = 19, in_chans: int = 3, task=None):
         from src import precision as precision_mod
+        from src.models.vit import input_size
         self._model = model.to(device)
+        self._side = input_size(model)   # model.img_size (224 by default)
         self._device = device
         self._num_classes = num_classes
         self._in_chans = in_chans
@@ -70,7 +72,8 @@ class Benchmarker:
     def _make_batches(self, batch_size: int):
         n = self.N_WARMUP + self.N_MEASURE
         return [
-            (torch.randn(batch_size, self._in_chans, 224, 224), self._targets(batch_size))
+            (torch.randn(batch_size, self._in_chans, self._side, self._side),
+             self._targets(batch_size))
             for _ in range(n)
         ]
 
