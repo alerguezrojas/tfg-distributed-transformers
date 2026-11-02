@@ -60,6 +60,7 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
+from src.training.losses import configured_loss_name
 from src.training.builder import TrainingSessionBuilder
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
@@ -228,7 +229,7 @@ def main():
     # Registrar la configuración en el log (visible en la web → Información)
     _bs = cfg["training"]["batch_size"]
     _prec = cfg["training"].get("precision", "fp32")
-    _loss = str(cfg["training"].get("loss", "bce")).lower()
+    _loss = configured_loss_name(cfg["training"], spec.make_task())
     if _loss == "focal":
         _loss = f"focal(g={cfg['training'].get('focal_gamma', 2.0)})"
     elif cfg["training"].get("pos_weight") is not None:

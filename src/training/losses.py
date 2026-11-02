@@ -86,3 +86,12 @@ def build_criterion(train_cfg: dict, pos_weight: torch.Tensor | None = None,
         focal_gamma=train_cfg.get("focal_gamma", 2.0),
         focal_alpha=train_cfg.get("focal_alpha", -1.0),
     )
+
+
+def configured_loss_name(train_cfg: dict, task) -> str:
+    """Name of the loss in effect: ``training.loss`` or, if unset, the task's default.
+
+    Used for the ``loss=`` label of the log's ``Configuración:`` line, so it matches
+    what :func:`build_criterion` really builds ('ce' for multiclass, 'bce' otherwise).
+    """
+    return str(train_cfg.get("loss") or task.default_loss).lower()

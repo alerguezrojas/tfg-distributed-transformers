@@ -89,3 +89,16 @@ def test_reporter_uses_logger_instead_of_stdout(capsys, caplog):
         _epoch(rep)
     assert capsys.readouterr().out == ""
     assert "train=0.5000  val=0.2500" in caplog.text
+
+
+def test_precision_recall_reporter_emits_qwk_and_auc(capsys):
+    rep = PrecisionRecallReporter(_Fake(val={"precision": 0.6, "qwk": 0.7216, "auc": 0.9}))
+    rep.eval_epoch(None)
+    assert capsys.readouterr().out == (
+        f"  {'precision':<14} val=0.6000\n  {'qwk':<14} val=0.7216\n"
+        f"  {'auc':<14} val=0.9000\n")
+
+
+def test_qwk_line_does_not_break_log_parser():
+    from src.web.log_parser import _SIMPLE_METRIC
+    assert _SIMPLE_METRIC.search(f"  {'qwk':<14} val=0.7216") is None
