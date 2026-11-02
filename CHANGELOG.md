@@ -5,6 +5,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Roadmap: el dataset del tutor es PANDA (biopsias de próstata, grado ISUP); estado de la
+  descarga, primer prototipo de mosaicos y decisiones pendientes.
 - Diagrama genérico del patrón Factory (`docs/diagramas/multidataset/factory.puml`), junto a los
   de Strategy y Registry.
 - Alertas (`src/training/alerts.py`): reglas puras y un `AlertMonitor` que escribe eventos `alert`
