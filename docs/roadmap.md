@@ -28,6 +28,8 @@ preparación: mosaico de los 16 tiles de 256 px con más tejido del nivel 4× (1
 tejido, <1 s por biopsia). Se presenta al tutor el 03/11/2026.
 
 **Hecho:**
+- PANDA, parte de datos (PR `feat/dataset-panda`): script de mosaicos, partición fija, ficha
+  `panda`, config y docs. Falta `model.img_size`, QWK y `groups.npz`.
 - Fases 1 (higiene) y 2 (abstracción de dataset y tarea, verificada en GPU con las cuatro
   estrategias).
 - Fase 3, primer bloque: MedMNIST (cuatro datasets médicos) con **3 semillas**. DermaMNIST y
@@ -198,6 +200,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
       referencias oficiales; Breast y Chest, dentro del rango ([ficha](datasets/medmnist.md)).
 - [ ] **PANDA** (dataset del tutor, 02/11/2026): preparación offline a mosaicos, partición propia,
       ficha, config, métrica QWK y subgrupos por centro.
+  - [x] Preparación a mosaicos, partición 70/15/15, ficha y config (`docs/datasets/panda.md`).
+  - [ ] `model.img_size` para timm (entrada de 512), métrica QWK y `groups.npz` con `data_provider`.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).

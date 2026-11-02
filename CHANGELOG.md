@@ -5,6 +5,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Dataset PANDA (`panda`, multiclase ordinal ISUP 0-5, QWK, 512 px): ficha y lector (`src/data/panda.py`), mosaicos de
+  tiles con más tejido (`src/data/wsi.py`, puro NumPy), `scripts/prepare_panda.py` (idempotente,
+  paralelo, tolerante a TIFF ilegibles, `--make-splits`), partición 70/15/15 estratificada por
+  centro y grado (semilla 42, por biopsia), `configs/train_panda.yaml`, ficha
+  `docs/datasets/panda.md` y dependencias `tifffile` e `imagecodecs`. El Dataset expone
+  `data_provider` para el futuro `groups.npz`. La ficha declara clases ordenadas (QWK y
+  `select_by: qwk`) y el config entrena a 512 px (`model.img_size`). La partición ordena cada
+  estrato por una huella `sha256(semilla:id)`, estable si se quitan unas pocas biopsias.
 - Clases ordenadas: `DatasetSpec.ordinal` (solo multiclase) añade el kappa cuadrático ponderado
   (`metrics.quadratic_weighted_kappa`, `qwk`) a las métricas de la tarea, la columna `val_qwk` del
   CSV por época (NaN en los demás datasets), `select_by: qwk` y la línea `QWK` de `eval.py`. La

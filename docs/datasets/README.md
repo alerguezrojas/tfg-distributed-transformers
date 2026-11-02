@@ -12,6 +12,7 @@ anteriores siguen funcionando sin cambios.
 | `medmnist_derma` | multiclase | 7 | 3 | [medmnist.md](medmnist.md) |
 | `medmnist_path` | multiclase | 9 | 3 | [medmnist.md](medmnist.md) |
 | `medmnist_chest` | multi-etiqueta | 14 | 1 | [medmnist.md](medmnist.md) |
+| `panda` | multiclase | 6 | 3 | [panda.md](panda.md) |
 
 ## Qué decide la ficha y qué decide la tarea
 

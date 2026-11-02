@@ -57,6 +57,13 @@ Cada `.yaml` describe **un escenario** (modelo, dataset, hardware, estrategia). 
 | `train_demo_ddp.yaml` | 2 GPU (NCCL) | Paralelismo de **datos** — speedup positivo real (Kaggle 2×T4). |
 | `train_model_parallel_kaggle.yaml` | 2 GPU | Paralelismo de **modelo** — no acelera, pero permite modelos que no caben en 1 GPU (Kaggle 2×T4). |
 
+## Otros datasets (`data.name`)
+
+| Config | Dataset | Para qué |
+|---|---|---|
+| `medmnist_*_local.yaml` | MedMNIST (breast, chest, derma, path) | Baselines de MedMNIST con vit_tiny en local ([ficha](../docs/datasets/medmnist.md)). |
+| `train_panda.yaml` | PANDA (ISUP 0-5) | Biopsias de próstata como mosaicos de 1024 px reescalados a 512 ([ficha](../docs/datasets/panda.md)). Requiere preparar los mosaicos con `scripts/prepare_panda.py`. |
+
 ---
 
 > Sugerencia: usa `uv run tfg.py menu` → el menú lista estos configs para elegir sin recordar nombres.
