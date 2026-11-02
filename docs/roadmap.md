@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 02/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 02/11/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
@@ -27,9 +27,17 @@ riesgo de que el modelo aprenda el centro (comprobarlo con *Subgroups*). Descarg
 preparación: mosaico de los 16 tiles de 256 px con más tejido del nivel 4× (1024 px, 80-90 % de
 tejido, <1 s por biopsia). Se presenta al tutor el 03/11/2026.
 
+**Decisión (02/11/2026, el autor la delega):** primero **mosaico + multiclase con QWK** a 512 px
+(no toca el entrenamiento; es el enfoque de los ganadores de Kaggle). Después, pérdida ordinal; MIL
+queda como mejora si el mosaico se queda corto; los modelos de base de patología (UNI,
+CTransPath) se descartan porque apenas entrenan el ViT. Se usan las 10.616 biopsias; la limpieza
+de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/panda.md).
+
 **Hecho:**
-- PANDA, parte de datos (PR `feat/dataset-panda`): script de mosaicos, partición fija, ficha
-  `panda`, config y docs. Falta `model.img_size`, QWK y `groups.npz`.
+- PANDA (PRs #179-#182, revisados por el agente revisor): estado del arte
+  (`docs/research/panda.md`), script de mosaicos, partición fija 70/15/15 estable por huella,
+  ficha `panda` ordinal, config a 512 px con `select_by: qwk`. Núcleo: `DatasetSpec.ordinal` + QWK
+  (`val_qwk`) y `model.img_size` (cuatro estrategias, `eval.py`, benchmark). Falta `groups.npz`.
 - Fases 1 (higiene) y 2 (abstracción de dataset y tarea, verificada en GPU con las cuatro
   estrategias).
 - Fase 3, primer bloque: MedMNIST (cuatro datasets médicos) con **3 semillas**. DermaMNIST y
@@ -65,22 +73,20 @@ tejido, <1 s por biopsia). Se presenta al tutor el 03/11/2026.
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** descarga de PANDA al SSD e informe del estado del arte sobre PANDA
-(`docs/research/panda.md`). El resto está integrado en `develop` (aún no en `main`: `develop → main` cuando el
+**En curso:** descarga de PANDA al SSD (zip de 193 GB, ~11,7 MB/s). El resto está integrado en
+`develop` (aún no en `main`: `develop → main` cuando el
 autor lo valide).
 
-**Siguiente paso recomendado:** tras la reunión del 03/11, añadir PANDA: script de
-preparación offline (mosaicos), partición propia train/val/test estratificada por centro y grado
-(el test de Kaggle está oculto), ficha y config, métrica QWK (kappa cuadrático, la oficial) y
-`groups.npz` con `data_provider` para *Subgroups*. Pendientes de la fase 4: predicciones por muestra en **test** (`eval.py
+**Siguiente paso recomendado:** al terminar la descarga, descomprimir, generar los mosaicos y
+`splits.csv` (`scripts/prepare_panda.py --make-splits`), entrenar una línea base corta
+(`configs/train_panda.yaml`) y que el monitor escriba `groups.npz` con `data_provider` para
+*Subgroups* (sesgo de centro). Pendientes de la fase 4: predicciones por muestra en **test** (`eval.py
 --save-predictions`, para que el informe use test y no validación), `paravit predict`/`explain`
 con la prueba de cordura de Grad-CAM, y la agregación por semilla en *Compare*.
 
 **Decisiones pendientes del autor o del tutor:**
-- **Cómo preparar PANDA:** mosaico de tiles (sin tocar el entrenamiento) frente a modelos que
-  miren muchos tiles por biopsia (MIL); resolución del mosaico según la máquina (en la GPU local de
-  8 GB, 384-512 px); tarea multiclase u ordinal. Preguntar por la preparación y los resultados del
-  TFG previo que usó PANDA.
+- Pedir la preparación y los resultados del TFG previo que usó PANDA (referencia para compararse).
+- Máquina para entrenar PANDA a más resolución (Verode o las máquinas nuevas).
 - Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
@@ -201,7 +207,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] **PANDA** (dataset del tutor, 02/11/2026): preparación offline a mosaicos, partición propia,
       ficha, config, métrica QWK y subgrupos por centro.
   - [x] Preparación a mosaicos, partición 70/15/15, ficha y config (`docs/datasets/panda.md`).
-  - [ ] `model.img_size` para timm (entrada de 512), métrica QWK y `groups.npz` con `data_provider`.
+  - [x] `model.img_size` para timm (entrada de 512) y métrica QWK (`ordinal=True`, `select_by: qwk`).
+  - [ ] Mosaicos y `splits.csv` del dataset completo y línea base a 512 px.
+  - [ ] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
