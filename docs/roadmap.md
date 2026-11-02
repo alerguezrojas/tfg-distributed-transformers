@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 02/11/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 02/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
@@ -34,6 +34,13 @@ CTransPath) se descartan porque apenas entrenan el ViT. Se usan las 10.616 biops
 de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/panda.md).
 
 **Hecho:**
+- **PANDA, línea base (02/11/2026):** dataset descargado y descomprimido (412 GB en el SSD), mosaicos
+  de las 10.616 biopsias (0 errores, 8 GB) y partición 7.433/1.593/1.590. ViT-S a 512 px en la
+  RTX 3060 Ti local (82 s/época, parada en la época 14): **QWK 0,781 en test** (0,814 en
+  validación), exactitud 0,609, 88 % a un grado o menos; por centro, 0,745 (Karolinska) y 0,760
+  (Radboud). Sobreajusta desde la época 5. Detalle en [datasets/panda.md](datasets/panda.md).
+  PR #184: la línea `Configuración:` dice la pérdida real de la tarea y el log muestra `qwk`/`auc`
+  por época.
 - PANDA (PRs #179-#182, revisados por el agente revisor): estado del arte
   (`docs/research/panda.md`), script de mosaicos, partición fija 70/15/15 estable por huella,
   ficha `panda` ordinal, config a 512 px con `select_by: qwk`. Núcleo: `DatasetSpec.ordinal` + QWK
@@ -73,14 +80,14 @@ de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/pa
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** descarga de PANDA al SSD (zip de 193 GB, ~11,7 MB/s). El resto está integrado en
-`develop` (aún no en `main`: `develop → main` cuando el
-autor lo valide).
+**En curso:** nada en marcha. Todo está integrado en `develop` (aún no en `main`: `develop → main`
+cuando el autor lo valide).
 
-**Siguiente paso recomendado:** al terminar la descarga, descomprimir, generar los mosaicos y
-`splits.csv` (`scripts/prepare_panda.py --make-splits`), entrenar una línea base corta
-(`configs/train_panda.yaml`) y que el monitor escriba `groups.npz` con `data_provider` para
-*Subgroups* (sesgo de centro). Pendientes de la fase 4: predicciones por muestra en **test** (`eval.py
+**Siguiente paso recomendado:** que el monitor escriba `groups.npz` con `data_provider` para ver el
+sesgo de centro en *Subgroups*, y mejorar la línea base de PANDA (QWK 0,78): pérdida ordinal,
+aumentos de color (tinción distinta por centro) y más resolución o más tiles (otra máquina).
+Menores: el aviso de array NumPy no escribible en `src/data/panda.py:103` y que el validador exige
+`epochs > warmup_epochs` (para una prueba de 1 época hay que bajar `warmup_epochs`). Pendientes de la fase 4: predicciones por muestra en **test** (`eval.py
 --save-predictions`, para que el informe use test y no validación), `paravit predict`/`explain`
 con la prueba de cordura de Grad-CAM, y la agregación por semilla en *Compare*.
 
@@ -208,7 +215,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
       ficha, config, métrica QWK y subgrupos por centro.
   - [x] Preparación a mosaicos, partición 70/15/15, ficha y config (`docs/datasets/panda.md`).
   - [x] `model.img_size` para timm (entrada de 512) y métrica QWK (`ordinal=True`, `select_by: qwk`).
-  - [ ] Mosaicos y `splits.csv` del dataset completo y línea base a 512 px.
+  - [x] Mosaicos y `splits.csv` del dataset completo y línea base a 512 px (QWK 0,781 en test).
   - [ ] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).

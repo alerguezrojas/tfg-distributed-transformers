@@ -5,6 +5,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- PANDA, línea base (02/11/2026): mosaicos del dataset completo y primer entrenamiento a 512 px
+  (ViT-S, RTX 3060 Ti): QWK 0,781 en test, 0,745/0,760 por centro. Run y tabla en
+  `docs/datasets/panda.md`.
 - Dataset PANDA (`panda`, multiclase ordinal ISUP 0-5, QWK, 512 px): ficha y lector (`src/data/panda.py`), mosaicos de
   tiles con más tejido (`src/data/wsi.py`, puro NumPy), `scripts/prepare_panda.py` (idempotente,
   paralelo, tolerante a TIFF ilegibles, `--make-splits`), partición 70/15/15 estratificada por

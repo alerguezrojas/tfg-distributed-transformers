@@ -44,6 +44,8 @@ uv run python scripts/prepare_panda.py --root /media/alejandro/SSD/datasets/pand
   TIFF ilegibles o ausentes se anotan en `<out>/errors.csv` y el proceso sigue.
 - Parámetros: `--level 1 --tile 256 --n-tiles 16` (`n-tiles` debe ser un cuadrado perfecto).
 - Medido sobre dos biopsias de muestra: 0,2 s por biopsia, con un 79-90 % de tejido en el mosaico.
+- Dataset completo (02/11/2026, 16 núcleos, `--workers 8`): 10.616 mosaicos, 0 errores, 8 GB,
+  0,38 s por biopsia y 77 % de tejido de media. `splits.csv`: 7.433 / 1.593 / 1.590.
 - La lógica (relleno, tiles, selección por tejido, montaje) está en `src/data/wsi.py`, sin torch.
 
 ## Partición
@@ -74,6 +76,29 @@ primer lote.
 **Subgrupos por centro:** el Dataset expone `data_provider` (y `groups()`) por muestra. El monitor
 aún no escribe `groups.npz` ([inspeccion.md](../inspeccion.md)); cuando lo haga, la vista
 *Subgroups* podrá medir si el modelo aprende el centro.
+
+## Línea base (02/11/2026)
+
+Primer entrenamiento, sin ajustes: `configs/train_panda.yaml` (ViT-S/16 preentrenado, 512 px,
+batch 16, lr 0,0001, semilla 42, `select_by: qwk`) con `--precision amp --monitor` en la RTX 3060 Ti
+local. 82 s por época; parada temprana en la época 14 (paciencia 5). Run:
+`logs/local/panda/single/vit_small_patch16_224/*_02112026_214728`.
+
+| Partición | QWK | Exactitud | F1 macro | AUC macro | ±1 grado |
+|---|---|---|---|---|---|
+| Validación (mejor época, la 9) | 0,814 | 0,613 | 0,585 | 0,888 | — |
+| Test (checkpoint de la época 9) | **0,781** | 0,609 | 0,578 | 0,887 | 0,880 |
+| Test, solo Karolinska (816) | 0,745 | 0,623 | — | — | — |
+| Test, solo Radboud (774) | 0,760 | 0,594 | — | — | — |
+
+- Los fallos se concentran en el grado vecino; el grado 5 se confunde con el 4 (31 %).
+- El QWK de cada centro es menor que el global: parte del global puede venir de que los centros
+  tienen distribuciones de grado distintas (sesgo de centro, ver Riesgos).
+- La pérdida de validación sube desde la época 5 mientras el QWK se aplana en ~0,80: sobreajuste.
+- Referencias: patólogos en hospitales externos 0,86-0,87 y ganadores de Kaggle 0,94
+  ([research/panda.md](../research/panda.md)).
+- El QWK por centro se calculó con un script temporal sobre el checkpoint; cuando el monitor
+  escriba `groups.npz`, saldrá en la vista *Subgroups*.
 
 ## Riesgos
 
