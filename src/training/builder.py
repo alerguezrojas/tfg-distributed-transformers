@@ -197,6 +197,7 @@ class TrainingSessionBuilder:
                 split_block=mp_split,
                 in_chans=spec.in_channels,
                 dropout=dropout,
+                img_size=cfg["model"].get("img_size"),
             )
         else:
             model = build_model(
@@ -205,6 +206,7 @@ class TrainingSessionBuilder:
                 pretrained=cfg["model"].get("pretrained", True),
                 in_chans=spec.in_channels,
                 dropout=dropout,
+                img_size=cfg["model"].get("img_size"),
             )
 
         # ── Optimizer ────────────────────────────────────────────────────────

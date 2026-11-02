@@ -308,3 +308,17 @@ def test_select_by_picks_the_checkpoint(tmp_path, select_by, best_epochs):
     assert stub.saved_epochs == best_epochs
     import pandas as pd
     assert pd.read_csv(csv_path)["val_auc"].tolist() == [0.9, 0.8, 0.7]
+
+
+def test_select_by_qwk_and_undefined_first_epoch(tmp_path):
+    from src.training.decorators import TracingDecorator
+    nan = float("nan")
+    # Epoch 1 has an undefined QWK (NaN) but is saved anyway; it never blocks later ones.
+    script = [{"f1": 0.1, "auc": 0.5, "qwk": nan}, {"f1": 0.2, "auc": 0.6, "qwk": -0.05},
+              {"f1": 0.3, "auc": 0.7, "qwk": 0.4}, {"f1": 0.4, "auc": 0.8, "qwk": 0.3}]
+    stub = _ScriptedTrainer(script)
+    csv_path = tmp_path / "epochs.csv"
+    TracingDecorator(stub, select_metric="qwk", epoch_csv=csv_path).fit(None, None, epochs=4)
+    assert stub.saved_epochs == [1, 2, 3]
+    import pandas as pd
+    assert pd.read_csv(csv_path)["val_qwk"].tolist()[1:] == [-0.05, 0.4, 0.3]

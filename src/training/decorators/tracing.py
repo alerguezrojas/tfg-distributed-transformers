@@ -31,7 +31,7 @@ class TracingDecorator(EpochController):
     _CSV_COLS = [
         "epoch", "train_loss", "val_loss", "train_f1", "val_f1",
         "train_acc", "val_acc", "val_prec", "val_rec",
-        "epoch_time_s", "val_auc",
+        "epoch_time_s", "val_auc", "val_qwk",
     ]
 
     def __init__(
@@ -97,6 +97,8 @@ class TracingDecorator(EpochController):
                 "val_rec": round(val_m.get("recall", float("nan")), 6),
                 "epoch_time_s": round(epoch_times[-1], 2) if epoch_times else float("nan"),
                 "val_auc": round(val_m.get("auc", float("nan")), 6),
+                # Only ordinal datasets (graded classes) compute it; NaN otherwise.
+                "val_qwk": round(val_m.get("qwk", float("nan")), 6),
             }
             with open(self._epoch_csv, "a", newline="") as f:
                 csv.DictWriter(f, fieldnames=self._CSV_COLS).writerow(row)

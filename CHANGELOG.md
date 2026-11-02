@@ -5,6 +5,17 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Clases ordenadas: `DatasetSpec.ordinal` (solo multiclase) añade el kappa cuadrático ponderado
+  (`metrics.quadratic_weighted_kappa`, `qwk`) a las métricas de la tarea, la columna `val_qwk` del
+  CSV por época (NaN en los demás datasets), `select_by: qwk` y la línea `QWK` de `eval.py`. La
+  tarea sigue llamándose `multiclass` aguas abajo (inspección, web).
+- `model.img_size`: el *backbone* de timm se construye para otro lado de entrada (p. ej. 512 px
+  para los mosaicos de PANDA) en las cuatro estrategias y en `eval.py`; los resúmenes de torchinfo
+  usan ese tamaño (`input_size`), igual que el benchmark (modelo y lotes sintéticos). Con CNNs la
+  clave se ignora al construir (aceptan cualquier tamaño). Sin la clave, el comportamiento no cambia.
+- Selección del mejor checkpoint: una métrica indefinida (NaN) en la primera época ya no deja el run
+  sin checkpoint, y un mejor valor negativo (QWK por debajo del azar) se informa en los eventos en
+  vez de salir como *n/a*.
 - Revisión bibliográfica del dataset PANDA (`docs/research/panda.md`): formato, licencia, métrica,
   soluciones ganadoras, ViT, problemas conocidos e implicaciones para el proyecto.
 - Roadmap: el dataset del tutor es PANDA (biopsias de próstata, grado ISUP); estado de la
