@@ -22,7 +22,9 @@ anteriores siguen funcionando sin cambios.
 - el tipo de tarea;
 - las claves obligatorias del bloque `data:` del YAML;
 - cómo se lee cada split y con qué transformaciones;
-- opcionalmente, el recuento de positivos por clase, que habilita `pos_weight: auto`.
+- opcionalmente, el recuento de positivos por clase, que habilita `pos_weight: auto`;
+- opcionalmente, si las clases están ordenadas (`ordinal=True`, solo multiclase: un grado de
+  cáncer). Añade el kappa cuadrático ponderado (`qwk`) a las métricas y permite `select_by: qwk`.
 
 **La tarea** (`src/training/tasks.py`) dice cómo se aprende y se mide ese tipo de problema:
 

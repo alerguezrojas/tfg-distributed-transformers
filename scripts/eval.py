@@ -174,6 +174,7 @@ def main():
         num_classes=spec.num_classes,
         pretrained=False,
         in_chans=spec.in_channels,
+        img_size=cfg["model"].get("img_size"),
     )
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state_dict"])
@@ -229,6 +230,8 @@ def main():
     print(f"  Precision(t=0.50) : {prec_05:.4f}")
     print(f"  Recall   (t=0.50) : {rec_05:.4f}")
     print(f"  AUC (macro)       : {auc:.4f}")
+    if "qwk" in agg:                         # ordinal datasets (a grade): PANDA's metric
+        print(f"  QWK (cuadrático)  : {agg['qwk']:.4f}")
     if task.searches_threshold:
         note = "  (aviso: ajustado sobre el propio test, optimista)" if source == "test" else ""
         print(f"  Threshold         : {best_t:.2f} (de {source}){note}")

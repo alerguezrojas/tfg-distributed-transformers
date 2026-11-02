@@ -5,12 +5,23 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
-- Dataset PANDA (`panda`, multiclase ISUP 0-5): ficha y lector (`src/data/panda.py`), mosaicos de
+- Dataset PANDA (`panda`, multiclase ordinal ISUP 0-5, QWK, 512 px): ficha y lector (`src/data/panda.py`), mosaicos de
   tiles con más tejido (`src/data/wsi.py`, puro NumPy), `scripts/prepare_panda.py` (idempotente,
   paralelo, tolerante a TIFF ilegibles, `--make-splits`), partición 70/15/15 estratificada por
   centro y grado (semilla 42, por biopsia), `configs/train_panda.yaml`, ficha
   `docs/datasets/panda.md` y dependencias `tifffile` e `imagecodecs`. El Dataset expone
   `data_provider` para el futuro `groups.npz`.
+- Clases ordenadas: `DatasetSpec.ordinal` (solo multiclase) añade el kappa cuadrático ponderado
+  (`metrics.quadratic_weighted_kappa`, `qwk`) a las métricas de la tarea, la columna `val_qwk` del
+  CSV por época (NaN en los demás datasets), `select_by: qwk` y la línea `QWK` de `eval.py`. La
+  tarea sigue llamándose `multiclass` aguas abajo (inspección, web).
+- `model.img_size`: el *backbone* de timm se construye para otro lado de entrada (p. ej. 512 px
+  para los mosaicos de PANDA) en las cuatro estrategias y en `eval.py`; los resúmenes de torchinfo
+  usan ese tamaño (`input_size`), igual que el benchmark (modelo y lotes sintéticos). Con CNNs la
+  clave se ignora al construir (aceptan cualquier tamaño). Sin la clave, el comportamiento no cambia.
+- Selección del mejor checkpoint: una métrica indefinida (NaN) en la primera época ya no deja el run
+  sin checkpoint, y un mejor valor negativo (QWK por debajo del azar) se informa en los eventos en
+  vez de salir como *n/a*.
 - Revisión bibliográfica del dataset PANDA (`docs/research/panda.md`): formato, licencia, métrica,
   soluciones ganadoras, ViT, problemas conocidos e implicaciones para el proyecto.
 - Roadmap: el dataset del tutor es PANDA (biopsias de próstata, grado ISUP); estado de la

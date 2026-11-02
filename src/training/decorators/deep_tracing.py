@@ -43,7 +43,7 @@ from torch.utils.data import DataLoader
 from src.training.base_trainer import BaseTrainer
 from src.training.metrics import f1_score, eta_str, grad_norm_value, precision
 from src.training.tasks import MultiLabelTask
-from src.models.vit import input_channels
+from src.models.vit import input_channels, input_size
 from src.training.augmentations import mixup_batch
 from src.training.decorators.tracing import TracingDecorator
 from src.training.throughput import StepTimer
@@ -376,7 +376,8 @@ class DeepTracingDecorator(TracingDecorator):
         model = self._trainer.model
         try:
             self._emit("=== Arquitectura del modelo (torchinfo) ===")
-            stats = summary(model, input_size=(1, input_channels(model), 224, 224),
+            side = input_size(model)
+            stats = summary(model, input_size=(1, input_channels(model), side, side),
                             verbose=0, device=self._trainer.device)
             for line in str(stats).splitlines():
                 self._emit(line)

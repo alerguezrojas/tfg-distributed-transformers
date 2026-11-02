@@ -151,7 +151,13 @@ class BinaryTask(MultiLabelTask):
 
 
 class MultiClassTask(Task):
-    """Exactly one class per sample (e.g. lesion type) — softmax over the classes."""
+    """Exactly one class per sample (e.g. lesion type) — softmax over the classes.
+
+    ``ordinal=True`` marks classes whose order means something (e.g. a cancer
+    grade): the metrics then add the quadratic weighted kappa (``"qwk"``). The
+    loss and the predictions are the plain multi-class ones, so the task keeps
+    the name ``"multiclass"`` everywhere downstream (inspection files, web).
+    """
 
     name = "multiclass"
     sigmoid_outputs = False
@@ -159,6 +165,15 @@ class MultiClassTask(Task):
     default_loss = "ce"
 
     _CE_ALIASES = ("ce", "cross_entropy", "crossentropy")
+
+    def __init__(self, ordinal: bool = False):
+        self.ordinal = ordinal
+
+    def metrics(self, preds, hard):
+        result = super().metrics(preds, hard)
+        if self.ordinal:
+            result["qwk"] = m.quadratic_weighted_kappa(preds, hard)
+        return result
 
     def build_criterion(self, loss=None, *, pos_weight=None,
                         focal_gamma=2.0, focal_alpha=-1.0) -> nn.Module:
@@ -197,9 +212,16 @@ TASKS: dict[str, type[Task]] = {
 }
 
 
-def get_task(name: str) -> Task:
-    """Task instance by name ('multilabel' | 'binary' | 'multiclass')."""
+def get_task(name: str, ordinal: bool = False) -> Task:
+    """Task instance by name ('multilabel' | 'binary' | 'multiclass');
+    ``ordinal`` (ordered classes) only applies to 'multiclass'."""
     try:
-        return TASKS[name]()
+        cls = TASKS[name]
     except KeyError:
         raise ValueError(f"unknown task {name!r}; available: {sorted(TASKS)}") from None
+    if ordinal:
+        if cls is not MultiClassTask:
+            raise ValueError(f"ordinal classes are only supported for the multiclass "
+                             f"task, not {name!r}")
+        return MultiClassTask(ordinal=True)
+    return cls()
