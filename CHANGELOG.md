@@ -202,6 +202,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- La línea `Configuración:` del log muestra la pérdida real de la tarea cuando el YAML no define `training.loss`
+  (`ce` en multiclase, antes `bce`), con el helper `configured_loss_name`.
+- `PrecisionRecallReporter` imprime también `qwk` (datasets ordinales) y `auc` por época; el parser de la web ignora
+  esas líneas.
 - `--trace deep` con `batch-table` ya alimenta a `--layers batch-monitor`: el bucle propio de
   `DeepTracingDecorator` no llamaba a los batch hooks del `Trainer` y `batch_metrics_*.csv`
   quedaba solo con la cabecera. Llama a los hooks con el mismo diccionario que
