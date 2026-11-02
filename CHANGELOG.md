@@ -5,6 +5,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Dataset PANDA (`panda`, multiclase ISUP 0-5): ficha y lector (`src/data/panda.py`), mosaicos de
+  tiles con más tejido (`src/data/wsi.py`, puro NumPy), `scripts/prepare_panda.py` (idempotente,
+  paralelo, tolerante a TIFF ilegibles, `--make-splits`), partición 70/15/15 estratificada por
+  centro y grado (semilla 42, por biopsia), `configs/train_panda.yaml`, ficha
+  `docs/datasets/panda.md` y dependencias `tifffile` e `imagecodecs`. El Dataset expone
+  `data_provider` para el futuro `groups.npz`.
 - Revisión bibliográfica del dataset PANDA (`docs/research/panda.md`): formato, licencia, métrica,
   soluciones ganadoras, ViT, problemas conocidos e implicaciones para el proyecto.
 - Roadmap: el dataset del tutor es PANDA (biopsias de próstata, grado ISUP); estado de la

@@ -6,7 +6,7 @@
 | [arquitectura.md](arquitectura.md) | Cómo está construido: modelo, decoradores, CLI, DDP, benchmark, artefactos, dashboard |
 | [performance_model.md](performance_model.md) | Derivación y validación del predictor analítico (tiempo, memoria, energía) |
 | [infraestructura.md](infraestructura.md) | Máquinas, clúster VERODE, lanzamiento por entorno, errores conocidos |
-| [datasets/](datasets/) | Una ficha por dataset soportado ([BigEarthNet-S2](datasets/bigearthnet.md)) |
+| [datasets/](datasets/) | Una ficha por dataset soportado ([BigEarthNet-S2](datasets/bigearthnet.md), [MedMNIST](datasets/medmnist.md), [PANDA](datasets/panda.md)) |
 | [roadmap.md](roadmap.md) | Plan de trabajo posterior al TFG y su **estado actual** |
 | [flujo_ia.md](flujo_ia.md) | Cómo se trabaja con IA: agentes, skills, hooks, permisos y controles |
 | [inspeccion.md](inspeccion.md) | Qué captura la inspección del entrenamiento (sistema, rendimiento, predicciones por muestra, Grad-CAM, capas) y en qué formato |
