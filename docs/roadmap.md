@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 25/10/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 02/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
@@ -16,6 +16,16 @@ diseño debe seguir admitiendo datasets nuevos sin tocar el entrenamiento. Pidi�
 con más detalle la inferencia en las trazas**, para ver en tiempo real las decisiones del modelo
 durante el entrenamiento, posiblemente desde la web. Auditoría y plan en "Auditoría de
 observabilidad (25/10/2026)" y en la fase 4.
+
+**Dataset del tutor (02/11/2026): PANDA** (*Prostate cANcer graDe Assessment*, Kaggle 2020;
+Radboud y Karolinska): 10.616 biopsias de próstata (WSI `.tiff` de tres niveles, 1×/4×/16×,
+~25-33 k px de alto a ~0,45-0,49 µm/px) con grado ISUP 0-5 y el hospital de origen. Licencia
+CC BY-NC-SA 4.0. Karolinska concentra los grados bajos y Radboud los altos, y tiñen distinto:
+riesgo de que el modelo aprenda el centro (comprobarlo con *Subgroups*). Descarga en
+`/media/alejandro/SSD/datasets/panda/` (zip de 193 GB; `uvx --with six kaggle competitions download
+-c prostate-cancer-grade-assessment`, token en `~/.kaggle/access_token`). Primer prototipo de
+preparación: mosaico de los 16 tiles de 256 px con más tejido del nivel 4× (1024 px, 80-90 % de
+tejido, <1 s por biopsia). Se presenta al tutor el 03/11/2026.
 
 **Hecho:**
 - Fases 1 (higiene) y 2 (abstracción de dataset y tarea, verificada en GPU con las cuatro
@@ -53,19 +63,22 @@ observabilidad (25/10/2026)" y en la fase 4.
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** nada. Todo está integrado en `develop` (aún no en `main`: `develop → main` cuando el
+**En curso:** descarga de PANDA al SSD e informe del estado del arte sobre PANDA
+(`docs/research/panda.md`). El resto está integrado en `develop` (aún no en `main`: `develop → main` cuando el
 autor lo valide).
 
-**Siguiente paso recomendado:** con el dataset del tutor, registrar su ficha y, si trae
-metadatos (sexo, edad, centro), que el monitor escriba `groups.npz` para la vista *Subgroups* y el
-informe. Pendientes de la fase 4: predicciones por muestra en **test** (`eval.py
+**Siguiente paso recomendado:** tras la reunión del 03/11, añadir PANDA: script de
+preparación offline (mosaicos), partición propia train/val/test estratificada por centro y grado
+(el test de Kaggle está oculto), ficha y config, métrica QWK (kappa cuadrático, la oficial) y
+`groups.npz` con `data_provider` para *Subgroups*. Pendientes de la fase 4: predicciones por muestra en **test** (`eval.py
 --save-predictions`, para que el informe use test y no validación), `paravit predict`/`explain`
 con la prueba de cordura de Grad-CAM, y la agregación por semilla en *Compare*.
 
 **Decisiones pendientes del autor o del tutor:**
-- **El dataset médico definitivo** (lo enviará el tutor). Si fuera de segmentación, detección o
-  3D, haría falta ampliar la tarea y el modelo (ver los límites en
-  [datasets/README.md](datasets/README.md)).
+- **Cómo preparar PANDA:** mosaico de tiles (sin tocar el entrenamiento) frente a modelos que
+  miren muchos tiles por biopsia (MIL); resolución del mosaico según la máquina (en la GPU local de
+  8 GB, 384-512 px); tarea multiclase u ordinal. Preguntar por la preparación y los resultados del
+  TFG previo que usó PANDA.
 - Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
@@ -183,6 +196,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
       MedMNIST lo usan.
 - [x] Repeticiones (3 semillas) y AUC en validación para MedMNIST: Derma y Path superan a todas las
       referencias oficiales; Breast y Chest, dentro del rango ([ficha](datasets/medmnist.md)).
+- [ ] **PANDA** (dataset del tutor, 02/11/2026): preparación offline a mosaicos, partición propia,
+      ficha, config, métrica QWK y subgrupos por centro.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
