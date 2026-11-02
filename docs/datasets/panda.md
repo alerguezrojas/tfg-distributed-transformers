@@ -50,7 +50,11 @@ uv run python scripts/prepare_panda.py --root /media/alejandro/SSD/datasets/pand
 
 `--make-splits` escribe `<root>/splits.csv` (`image_id`, `split`): **70/15/15 estratificada por
 (centro, grado ISUP)**, semilla 42, determinista y independiente del orden de las filas. Deja
-fuera los ids de `errors.csv`. `train.csv` **no trae identificador de paciente**, así que la
+fuera los ids de `errors.csv`. Dentro de cada estrato las biopsias se ordenan por una huella
+(`sha256` de la semilla y el id) y se corta: el sitio de cada biopsia no depende de las demás, así
+que quitar unas pocas (TIFF ilegibles) solo mueve las que quedan junto a un corte, en vez de
+rebarajar todo el estrato. Aun así, **un modelo se evalúa con el mismo `splits.csv` con el que se
+entrenó**. `train.csv` **no trae identificador de paciente**, así que la
 partición es **por biopsia**: si un paciente aportó varias, pueden caer en train y test a la vez
 y el resultado saldría algo inflado. Es una limitación conocida del dataset público.
 
@@ -62,8 +66,10 @@ y el resultado saldría algo inflado. Es una limitación conocida del dataset p�
 histología no tiene orientación). Claves de `data:`: `root` (obligatoria, con `train.csv`),
 y opcionales `mosaics`, `splits` e `image_size`. Config de ejemplo: `configs/train_panda.yaml`.
 
-Con `image_size: 512` falta que el ViT acepte esa entrada (`model.img_size` de timm); ese soporte
-va aparte. Con 224 funciona ya.
+La ficha declara las clases **ordenadas** (`ordinal=True`): las métricas incluyen el kappa
+cuadrático ponderado (columna `val_qwk`) y el config elige el checkpoint con `select_by: qwk`.
+`model.img_size` debe coincidir con `data.image_size` (512 en el config); si no, timm falla en el
+primer lote.
 
 **Subgrupos por centro:** el Dataset expone `data_provider` (y `groups()`) por muestra. El monitor
 aún no escribe `groups.npz` ([inspeccion.md](../inspeccion.md)); cuando lo haga, la vista
@@ -76,4 +82,5 @@ aún no escribe `groups.npz` ([inspeccion.md](../inspeccion.md)); cuando lo haga
   *Subgroups*.
 - **Etiquetas ruidosas:** el grado ISUP de entrenamiento tiene discrepancias conocidas entre
   patólogos; ni el techo ni la comparación con la literatura son exactos.
-- **Métrica:** la oficial es el kappa cuadrático ponderado (QWK); aún no está implementada.
+- **Métrica:** la oficial es el kappa cuadrático ponderado (QWK). De momento se entrena como
+  multiclase (entropía cruzada) y se mide el QWK; una pérdida ordinal queda como mejora.

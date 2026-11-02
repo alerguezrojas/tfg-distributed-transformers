@@ -3,7 +3,8 @@
 10 616 prostate biopsies (whole-slide images from Radboud and Karolinska) graded
 ISUP 0-5. The raw TIFFs (25-33 k px) are turned offline into one 1024 px mosaic per
 biopsy by ``scripts/prepare_panda.py`` (see :mod:`src.data.wsi`), which also writes a
-fixed ``splits.csv``; this module only reads those mosaics. Multiclass task.
+fixed ``splits.csv``; this module only reads those mosaics. Multiclass task with
+ordered classes (``ordinal=True``: the ISUP grade), so the QWK metric is computed.
 
 Config keys: ``data.root`` (folder with ``train.csv``; required) and optional
 ``data.mosaics`` (default ``<root>/mosaics_l1_16x256``), ``data.splits`` (default
@@ -18,6 +19,7 @@ Details and licence: docs/datasets/panda.md.
 """
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 
 import numpy as np
@@ -48,19 +50,19 @@ def make_splits(labels: pd.DataFrame, fractions=SPLIT_FRACTIONS,
     """Fixed train/val/test partition, stratified by (data_provider, isup_grade).
 
     ``labels`` is ``train.csv`` (``image_id``, ``data_provider``, ``isup_grade``).
-    Each stratum is sorted by id, shuffled with ``seed`` and cut at the given
-    fractions, so the result does not depend on row order and is reproducible.
+    Each stratum is ordered by a hash of ``seed`` and the id, then cut at the given
+    fractions. The order of one id never depends on the others, so the result does
+    not depend on row order and is stable: dropping a few ids (unreadable TIFFs)
+    only moves the biopsies next to a cut, instead of reshuffling the stratum.
     The partition is **per biopsy**: PANDA gives no patient id. Returns
     ``image_id, split`` sorted by id.
     """
     if abs(sum(fractions) - 1.0) > 1e-9:
         raise ValueError(f"split fractions must add up to 1, got {fractions}")
-    rng = np.random.default_rng(seed)
     parts = []
     for _, group in sorted(labels.groupby(["data_provider", "isup_grade"]),
                            key=lambda kv: kv[0]):
-        ids = np.array(sorted(group["image_id"]))
-        rng.shuffle(ids)
+        ids = np.array(sorted(group["image_id"], key=lambda i: _split_key(seed, i)))
         n = len(ids)
         n_train = round(n * fractions[0])
         n_val = round(n * fractions[1])
@@ -68,6 +70,10 @@ def make_splits(labels: pd.DataFrame, fractions=SPLIT_FRACTIONS,
         parts.append(pd.DataFrame({"image_id": ids, "split": split}))
     out = pd.concat(parts, ignore_index=True)
     return out.sort_values("image_id", ignore_index=True)
+
+
+def _split_key(seed: int, image_id: str) -> str:
+    return hashlib.sha256(f"{seed}:{image_id}".encode()).hexdigest()
 
 
 # ── Dataset ───────────────────────────────────────────────────────────────────
@@ -174,4 +180,5 @@ PANDA = register_dataset(DatasetSpec(
     build=_build,
     transforms=get_transforms,
     class_counts=class_counts,
+    ordinal=True,
 ))

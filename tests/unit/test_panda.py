@@ -124,6 +124,17 @@ class TestSplits:
         pd.testing.assert_frame_equal(a, b)
         assert not a.equals(panda.make_splits(labels, seed=7))
 
+    def test_stable_when_a_few_ids_are_dropped(self):
+        # Review of PR #181: with a shared RNG, dropping one id reshuffled ~260 biopsies.
+        labels = _labels(200)
+        full = panda.make_splits(labels).set_index("image_id")["split"]
+        dropped = labels["image_id"].iloc[[0, 500]]
+        part = panda.make_splits(labels[~labels["image_id"].isin(dropped)])
+        moved = (part.set_index("image_id")["split"] != full.loc[part["image_id"]].values).sum()
+        assert moved <= 4                    # only neighbours of a cut in the two strata
+        assert not (part.set_index("image_id")["split"].eq("train")
+                    & full.loc[part["image_id"]].eq("test").values).any()
+
     def test_tiny_strata_do_not_crash(self):
         labels = pd.DataFrame({"image_id": ["a", "b"], "data_provider": ["radboud", "radboud"],
                                "isup_grade": [0, 5]})
@@ -154,6 +165,7 @@ class TestSpecAndDataset:
     def test_registered(self):
         spec = get_dataset_spec("panda")
         assert spec.task == "multiclass" and spec.in_channels == 3
+        assert spec.ordinal and spec.make_task().ordinal
         assert spec.classes == tuple(f"ISUP {g}" for g in range(6))
         assert spec.required_keys == ("root",)
 
