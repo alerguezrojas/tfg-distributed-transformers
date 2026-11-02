@@ -14,6 +14,7 @@
 | [research/inventario_herramientas_observabilidad.md](research/inventario_herramientas_observabilidad.md) | Inventario funcionalidad a funcionalidad de W&B, TensorBoard, Comet, Aim, ClearML, FiftyOne, Lightning y otras: qué muestran, matriz comparativa, requisitos de imagen médica y lista priorizada para el proyecto |
 | [research/observabilidad_entrenamiento.md](research/observabilidad_entrenamiento.md) | Seguimiento en vivo, formatos de eventos e interpretabilidad de ViT en imagen médica: qué usa el sector y qué encaja aquí |
 | [research/estado_del_arte_prediccion.md](research/estado_del_arte_prediccion.md) | Trabajo relacionado sobre predicción del rendimiento del entrenamiento (tiempo, memoria, energía, escalado) y dónde encaja el predictor |
+| [research/panda.md](research/panda.md) | Dataset PANDA (biopsias de próstata, ISUP 0-5): formato, licencia, métrica QWK, soluciones ganadoras, ViT, sesgo de centro y cómo encajarlo en el proyecto |
 | [resultados_tfg.md](resultados_tfg.md) | Resultados experimentales hasta la entrega (histórico) |
 | [historial_tfg.md](historial_tfg.md) | Bitácora del desarrollo hasta `v1.0-tfg` (congelada) |
 | [class_diagram.svg](class_diagram.svg) | Diagrama de clases (fuente: `class_diagram.puml`) |

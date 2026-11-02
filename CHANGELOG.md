@@ -5,6 +5,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Revisión bibliográfica del dataset PANDA (`docs/research/panda.md`): formato, licencia, métrica,
+  soluciones ganadoras, ViT, problemas conocidos e implicaciones para el proyecto.
 - Roadmap: el dataset del tutor es PANDA (biopsias de próstata, grado ISUP); estado de la
   descarga, primer prototipo de mosaicos y decisiones pendientes.
 - Diagrama genérico del patrón Factory (`docs/diagramas/multidataset/factory.puml`), junto a los
