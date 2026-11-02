@@ -40,7 +40,13 @@ hay **3 niveles cargables con reducción 1, 4 y 16** y los lados miden típicame
 40.000 píxeles. Otras fuentes coinciden en el nivel 0: unos 20.000 x 20.000 x 3, a 20x y
 0,5 µm/píxel [8][11][12]; el tamaño total sin comprimir es de unos 347 GB según [8]. Los factores
 reales pueden diferir ligeramente de 4 y 16 y es mejor leerlos del fichero (`level_downsamples`).
-**Pendiente de comprobar sobre un TIFF real** del disco local: niveles, dimensiones y factores.
+**Comprobado sobre dos TIFF reales** (02/11/2026, `tifffile`): un Radboud ISUP 4
+(`0018ae58…`, nivel 0 de 25.344 × 5.888) y un Karolinska ISUP 1 (`003046e2…`, 33.024 × 23.552).
+Ambos tienen exactamente 3 niveles con reducción 1, 4 y 16, teselas JPEG y resolución de
+~0,49 µm/px (Radboud) y ~0,45 µm/px (Karolinska) según la etiqueta `XResolution`. El tejido
+ocupa solo el 5-17 % del nivel más reducido. Las máscaras tienen los mismos tres niveles; el canal
+0 de la máscara Radboud toma los valores {0, 1, 2, 4} y el de la Karolinska {0, 1, 2},
+coherente con la tabla siguiente.
 
 **Máscaras (`train_label_masks`).** Una por imagen, con sufijo `_mask.tiff`; no todas las imágenes
 tienen máscara y pueden contener errores [8]. Los valores dependen del centro (descripción de
@@ -241,8 +247,8 @@ preprocesado con el del entrenamiento.
 ## 7. Qué no se ha podido verificar
 
 - La página de datos y las reglas de Kaggle, los *notebooks* y las discusiones de las soluciones:
-  Kaggle bloquea la lectura automática. Los niveles TIFF (1, 4, 16), el tamaño típico y los valores
-  de las máscaras vienen de una fuente secundaria [9]; el nivel 0 a 20x y 0,5 µm/px de [8], [11] y [12].
+  Kaggle bloquea la lectura automática. Los niveles TIFF (1, 4, 16) y los valores de las máscaras
+  se han comprobado sobre dos ficheros reales (sección 1), pero no sobre todo el conjunto; el tamaño típico viene de [9]; el nivel 0 a 20x y 0,5 µm/px de [8], [11] y [12].
 - Nombre, tamaño y licencia de los conjuntos de tiles ya preparados en Kaggle.
 - Métodos suplementarios del artículo (generación de máscaras, escáner por centro).
 - Resultados de TransMIL y HIPT en PANDA, y la optimización de umbrales como técnica de los equipos.
