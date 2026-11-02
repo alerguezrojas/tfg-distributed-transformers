@@ -201,6 +201,7 @@ model:
   pretrained: true
   num_classes: 19                       # opcional: sale del dataset (si se pone, debe coincidir)
   dropout: 0.3
+  img_size: 512                         # opcional: lado de entrada del ViT (por defecto 224)
 training:
   epochs: 30
   batch_size: 64                        # por GPU en DDP
@@ -210,6 +211,7 @@ training:
   llrd_decay: 0.75                      # learning rate por capas (solo ViT/DeiT/Swin)
   grad_clip: 1.0
   early_stopping_patience: 10
+  select_by: f1                         # mejor checkpoint: f1 | f1_optimal | auc | qwk
   label_smoothing: 0.1                  # regularización opcional
   mixup_alpha: 0.2
 checkpoint:
@@ -222,6 +224,11 @@ Configs incluidos: `train.yaml` / `train_v3.yaml` (local), `train_cluster*.yaml`
 `train_demo_single.yaml` / `train_demo_ddp.yaml` (estudio comparable sobre el subconjunto),
 `train_model_parallel_kaggle.yaml`, `train_heterogeneous_ddp*.yaml` y la pareja
 `train_cluster_focal.yaml` / `train_cluster_bce.yaml` (pérdidas para clases raras).
+
+`model.img_size` construye el *backbone* de timm para otro tamaño de entrada (timm adapta los
+*position embeddings* preentrenados); el dataset debe entregar imágenes de ese lado. `select_by: qwk`
+(kappa cuadrático ponderado, columna `val_qwk` del CSV) solo vale para datasets con clases
+ordenadas (`ordinal=True` en su ficha, p. ej. un grado de cáncer).
 
 Las claves de `data:` dependen del dataset elegido con `data.name`. Los datasets disponibles y
 cómo añadir uno nuevo están en [`datasets/README.md`](datasets/README.md).

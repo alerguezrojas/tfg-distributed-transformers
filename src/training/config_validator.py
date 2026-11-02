@@ -87,6 +87,10 @@ def _check_model(model: dict, spec: DatasetSpec | None, errors: list) -> None:
         elif spec is not None and nc != spec.num_classes:
             errors.append(f"model.num_classes={nc} does not match dataset {spec.name!r} "
                           f"({spec.num_classes} classes); omit it to use the dataset's")
+    if model.get("img_size") is not None:
+        size = model["img_size"]
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            errors.append(f"model.img_size must be a positive integer, got {size!r}")
     if "dropout" in model:
         d = model["dropout"]
         if not isinstance(d, (int, float)) or not (0.0 <= float(d) < 1.0):
@@ -164,9 +168,12 @@ def _check_model_selection(train: dict, spec: DatasetSpec | None, errors: list) 
     if "select_by" not in train:
         return
     sb = str(train["select_by"]).lower()
-    if sb not in ("f1", "f1_optimal", "auc"):
-        errors.append(f"training.select_by must be 'f1', 'f1_optimal' or 'auc', "
+    if sb not in ("f1", "f1_optimal", "auc", "qwk"):
+        errors.append(f"training.select_by must be 'f1', 'f1_optimal', 'auc' or 'qwk', "
                       f"got {train['select_by']!r}")
+    elif sb == "qwk" and spec is not None and not spec.ordinal:
+        errors.append(f"training.select_by: qwk needs ordered (graded) classes, which "
+                      f"dataset {spec.name!r} does not declare; use 'f1' or 'auc'")
     elif sb == "f1_optimal" and spec is not None and not spec.make_task().searches_threshold:
         errors.append(f"training.select_by: f1_optimal needs a tunable threshold, which "
                       f"the {spec.task} task of {spec.name!r} does not have; use 'f1'")

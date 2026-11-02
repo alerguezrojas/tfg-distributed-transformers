@@ -78,6 +78,30 @@ def roc_auc_macro(probs: torch.Tensor, hard: torch.Tensor) -> float:
     return sum(aucs) / len(aucs) if aucs else float("nan")
 
 
+def quadratic_weighted_kappa(preds: torch.Tensor, hard: torch.Tensor) -> float:
+    """Cohen's kappa with quadratic weights between one-hot predictions and targets
+    (N × C) whose class columns are ORDERED (e.g. ISUP grade 0-5, the PANDA metric).
+
+    Disagreeing by k grades costs k²/(C-1)². 1 = perfect, 0 = chance agreement.
+    NaN when undefined (fewer than two classes, or both raters constant on the
+    same class, so the expected disagreement is zero).
+    """
+    num_classes = hard.shape[1]
+    if num_classes < 2 or hard.shape[0] == 0:
+        return float("nan")
+    y_pred, y_true = preds.argmax(dim=1), hard.argmax(dim=1)
+    observed = torch.zeros(num_classes, num_classes, dtype=torch.float64)
+    observed.index_put_((y_true, y_pred), torch.ones(len(y_true), dtype=torch.float64),
+                        accumulate=True)
+    expected = torch.outer(observed.sum(dim=1), observed.sum(dim=0)) / observed.sum()
+    grades = torch.arange(num_classes, dtype=torch.float64)
+    weights = (grades[:, None] - grades[None, :]) ** 2 / (num_classes - 1) ** 2
+    denom = (weights * expected).sum()
+    if denom.item() <= 0.0:
+        return float("nan")
+    return (1.0 - (weights * observed).sum() / denom).item()
+
+
 def _average_ranks(x: torch.Tensor) -> torch.Tensor:
     """1-based ranks of ``x``; tied values share the mean of their ranks (vectorized)."""
     sorted_x, order = torch.sort(x)

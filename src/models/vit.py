@@ -4,6 +4,9 @@ import torch.nn as nn
 import torch.optim
 
 
+DEFAULT_IMG_SIZE = 224
+
+
 class TimmClassifier(nn.Module):
     """Any timm backbone + a ``Dropout → Linear`` classification head.
 
@@ -11,6 +14,8 @@ class TimmClassifier(nn.Module):
     them. ``num_classes`` and ``in_chans`` come from the dataset spec (BigEarthNet:
     19 classes, 3 channels). Supports ViT, DeiT, Swin, ResNet, EfficientNet and any
     other timm model; with ``in_chans != 3`` timm adapts the pretrained stem.
+    ``img_size`` (e.g. 512) builds the backbone for that input side; timm resizes
+    the pretrained position embeddings. ``None`` keeps the model's default (224).
     """
 
     # Model families whose backbone exposes `.blocks` and `.patch_embed` → LLRD-compatible
@@ -23,16 +28,21 @@ class TimmClassifier(nn.Module):
         pretrained: bool = True,
         dropout: float = 0.1,
         in_chans: int = 3,
+        img_size: int | None = None,
     ):
         super().__init__()
         self.model_name = model_name
         self.in_chans = in_chans
+        self.img_size = img_size or DEFAULT_IMG_SIZE
 
+        # Only pass img_size when set: some timm families do not accept the kwarg.
+        extra = {"img_size": img_size} if img_size else {}
         self.backbone = timm.create_model(
             model_name,
             pretrained=pretrained,
             num_classes=0,  # Remove the original classification head
             in_chans=in_chans,
+            **extra,
         )
 
         embed_dim = self.backbone.num_features
@@ -66,6 +76,13 @@ def input_channels(model: nn.Module, default: int = 3) -> int:
     return getattr(model, "in_chans", default)
 
 
+def input_size(model: nn.Module, default: int = DEFAULT_IMG_SIZE) -> int:
+    """Input side (pixels) of a (possibly DDP- or pipeline-wrapped) TimmClassifier."""
+    for attr in ("module", "base"):          # DistributedDataParallel / ModelParallelViT
+        model = getattr(model, attr, model)
+    return getattr(model, "img_size", default)
+
+
 # Backward-compatible aliases (names used before multi-dataset support)
 BigEarthModel = TimmClassifier
 BigEarthViT = TimmClassifier
@@ -77,6 +94,7 @@ def build_model(
     pretrained: bool = True,
     in_chans: int = 3,
     dropout: float = 0.1,
+    img_size: int | None = None,
 ) -> TimmClassifier:
     """Instantiate and return the model (``dropout`` = rate before the head)."""
     return TimmClassifier(
@@ -85,6 +103,7 @@ def build_model(
         pretrained=pretrained,
         dropout=dropout,
         in_chans=in_chans,
+        img_size=img_size,
     )
 
 

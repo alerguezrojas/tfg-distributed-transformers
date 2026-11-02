@@ -70,13 +70,14 @@ class EpochController(TrainerDecorator):
         # it). Applied identically to every arm, the comparison stays clean.
         #   "auc"        → Val macro ROC AUC: threshold-free, the right choice when
         #                  classes are so rare that F1@0.5 stays near zero.
+        #   "qwk"        → Val quadratic weighted kappa (ordinal datasets: a grade).
         self._select_metric = select_metric
         self._listeners: list[TrainingListener] = []
 
     @property
     def _best_label(self) -> str:
         """Name of the selection metric in log messages (F1 keeps the old wording)."""
-        return "AUC" if self._select_metric == "auc" else "F1"
+        return {"auc": "AUC", "qwk": "QWK"}.get(self._select_metric, "F1")
 
     def _selection_value(self, val_m: dict) -> float:
         """Value used to decide 'is this the best epoch so far?'."""
@@ -84,6 +85,8 @@ class EpochController(TrainerDecorator):
             return val_m.get("_f1_at_optimal_threshold", val_m["f1"])
         if self._select_metric == "auc":
             return val_m["auc"]
+        if self._select_metric == "qwk":
+            return val_m["qwk"]
         return val_m["f1"]
 
     def add_listener(self, listener: TrainingListener) -> None:
