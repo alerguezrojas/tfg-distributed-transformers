@@ -211,10 +211,12 @@ puede ocupar decenas de MB. Ficheros NumPy comprimidos (`np.savez_compressed`):
 | `val_targets` | `(N, C)` uint8 | Etiquetas reales alineadas con `val_probs` |
 | `threshold` | `()` float32 | Umbral óptimo de validación de la época (o 0,5) |
 
-**`groups.npz`** (opcional; *previsto: lo escribirá el monitor cuando el dataset exponga
-metadatos*; hoy la web lo lee si existe, p. ej. escrito a mano o con otro script). Una clave por
+**`groups.npz`** (opcional; lo escribe el monitor cuando el dataset de validación expone un método
+`groups()` que devuelve `{variable: vector por muestra}`, también si llega envuelto en `Subset`;
+PANDA expone `data_provider`. Si no, la web lo lee si existe, p. ej. escrito a mano). Una clave por
 variable de agrupación (sexo, centro, edad...), cada una un vector 1-D de `M` valores **alineado
-con `monitor_set.npz`** (la fila `i` es la muestra `i` del subconjunto):
+con `monitor_set.npz`** (la fila `i` es la muestra `i` del subconjunto: el monitor indexa cada
+variable con los mismos `indices`):
 
 | Clave | Forma y tipo | Significado |
 |---|---|---|

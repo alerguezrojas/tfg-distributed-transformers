@@ -66,16 +66,32 @@ y el resultado saldría algo inflado. Es una limitación conocida del dataset p�
 `data.image_size`** (512 por defecto) y devuelve la imagen normalizada y un objetivo *one-hot*
 `(6,)`. En entrenamiento aplica giros horizontales y verticales y rotaciones de 90° (la
 histología no tiene orientación). Claves de `data:`: `root` (obligatoria, con `train.csv`),
-y opcionales `mosaics`, `splits` e `image_size`. Config de ejemplo: `configs/train_panda.yaml`.
+y opcionales `mosaics`, `splits`, `image_size`, `color_jitter` y `providers` (abajo). Config de ejemplo: `configs/train_panda.yaml`.
 
 La ficha declara las clases **ordenadas** (`ordinal=True`): las métricas incluyen el kappa
 cuadrático ponderado (columna `val_qwk`) y el config elige el checkpoint con `select_by: qwk`.
 `model.img_size` debe coincidir con `data.image_size` (512 en el config); si no, timm falla en el
 primer lote.
 
-**Subgrupos por centro:** el Dataset expone `data_provider` (y `groups()`) por muestra. El monitor
-aún no escribe `groups.npz` ([inspeccion.md](../inspeccion.md)); cuando lo haga, la vista
-*Subgroups* podrá medir si el modelo aprende el centro.
+**Subgrupos por centro:** el Dataset expone `data_provider` (y `groups()`) por muestra. Con
+`--monitor`, el monitor escribe `groups.npz` ([inspeccion.md](../inspeccion.md)) alineado con el
+subconjunto monitorizado, y la vista *Subgroups* mide si el modelo rinde distinto en cada centro.
+
+**Aumentos de color (`data.color_jitter`):** la tinción H&E varía entre hospitales y escáneres
+(Tellez et al., 2019). Con `color_jitter: s` (número ≥ 0; 0 = desactivado, por defecto), el split
+`train` aplica `ColorJitter(brillo=s, contraste=s, saturación=s, matiz=s/4)` sobre el tensor en
+[0, 1], antes de normalizar; val y test no cambian. Con 0 el resultado es idéntico al anterior.
+Config: `configs/train_panda_color.yaml` (`color_jitter: 0.2`). Como la fábrica de transformaciones
+solo recibe el split, `_build` reconstruye ahí la cadena de train con la intensidad del config.
+
+**Generalización entre centros (`data.providers`):** diccionario opcional con claves
+`train`/`val`/`test` y, de valor, una lista de centros (`karolinska`, `radboud`). Filtra la
+partición de `splits.csv` (no la rehace); un split sin clave usa todos los centros, y
+`class_counts` (y por tanto `pos_weight: auto`) respeta el filtro. Un nombre de centro o de split
+desconocido da un error claro. Experimento: entrenar en un hospital y evaluar en el otro, con
+`configs/train_panda_radboud.yaml` (train/val Radboud, test Karolinska) y
+`configs/train_panda_karolinska.yaml` (al revés); la caída de QWK respecto al test mixto mide la
+sensibilidad al centro.
 
 ## Línea base (02/11/2026)
 
