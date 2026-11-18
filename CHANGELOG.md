@@ -5,6 +5,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Evaluación en test más clínica: `eval --save-predictions RUTA.npz` guarda probabilidades,
+  objetivos, umbral, clases, tarea y variables de grupo por muestra (`save_predictions` /
+  `load_predictions` en `src/analysis/io.py`); si el dataset expone `groups()` imprime n, exactitud,
+  F1, AUC (y QWK) por grupo, y en tareas ordinales una tabla de cortes «grado ≥ k» con sensibilidad,
+  especificidad, VPP, VPN y AUC (`src/analysis/clinical.py`). Las líneas anteriores de `eval.py` no
+  cambian (las secciones nuevas van después).
 - PANDA, línea base (02/11/2026): mosaicos del dataset completo y primer entrenamiento a 512 px
   (ViT-S, RTX 3060 Ti): QWK 0,781 en test, 0,745/0,760 por centro. Run y tabla en
   `docs/datasets/panda.md`.

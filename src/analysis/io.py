@@ -94,3 +94,50 @@ def load_groups(directory, n: int | None = None) -> dict[str, np.ndarray] | None
             raise ValueError(f"groups.npz: {name!r} has shape {arr.shape}; expected ({n},)")
         out[name] = arr
     return out
+
+
+# ── Test-set predictions (``scripts/eval.py --save-predictions``) ──────────────
+
+_GROUP_PREFIX = "group__"
+
+
+@dataclass
+class Predictions:
+    """Contents of the ``.npz`` written by ``eval.py --save-predictions``."""
+    probs: np.ndarray            # (N, C) float32
+    targets: np.ndarray          # (N, C) uint8
+    threshold: float
+    classes: list[str]
+    task: str                    # multilabel | binary | multiclass
+    ordinal: bool
+    groups: dict[str, np.ndarray]    # {variable: (N,)}; empty if the dataset has none
+
+
+def save_predictions(path, probs, targets, threshold: float, classes, task: str,
+                     ordinal: bool = False, groups: dict | None = None) -> Path:
+    """Write the per-sample test predictions; group variables go under ``group__<name>``."""
+    probs, targets = np.asarray(probs, dtype=np.float32), np.asarray(targets)
+    if probs.shape != targets.shape or probs.ndim != 2:
+        raise ValueError(f"probs {probs.shape} and targets {targets.shape} must be (N, C) and equal")
+    arrays = {}
+    for name, arr in (groups or {}).items():
+        arr = np.asarray(arr)
+        if arr.shape != (probs.shape[0],):
+            raise ValueError(f"group {name!r} has shape {arr.shape}; expected ({probs.shape[0]},)")
+        arrays[_GROUP_PREFIX + name] = arr
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, probs=probs, targets=(targets > 0.5).astype(np.uint8),
+                        threshold=np.float32(threshold), classes=np.asarray(list(classes), dtype=str),
+                        task=np.asarray(task), ordinal=np.asarray(bool(ordinal)), **arrays)
+    return path
+
+
+def load_predictions(path) -> Predictions:
+    """Read an ``.npz`` written by :func:`save_predictions`."""
+    d = _read(Path(path), ("probs", "targets", "threshold", "classes", "task"))
+    return Predictions(
+        probs=d["probs"], targets=d["targets"], threshold=float(d["threshold"]),
+        classes=[str(c) for c in d["classes"]], task=str(d["task"]),
+        ordinal=bool(d["ordinal"]) if "ordinal" in d else False,
+        groups={k[len(_GROUP_PREFIX):]: v for k, v in d.items() if k.startswith(_GROUP_PREFIX)})
