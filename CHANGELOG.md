@@ -12,6 +12,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - El `PredictionMonitor` escribe `groups.npz` cuando el dataset de validación expone `groups()`
   (también envuelto en `Subset`), alineado con `monitor_set.npz`: la vista *Subgroups* ya tiene
   datos en PANDA (variable `data_provider`).
+- Revisión sobre medición clínica del cáncer de próstata (`docs/research/medicion_clinica_prostata.md`):
+  grado Gleason/ISUP, variabilidad entre patólogos, métricas de los modelos de IA con cifras publicadas y
+  lista de requisitos para un dataset clínico nuevo.
 - PANDA, línea base (02/11/2026): mosaicos del dataset completo y primer entrenamiento a 512 px
   (ViT-S, RTX 3060 Ti): QWK 0,781 en test, 0,745/0,760 por centro. Run y tabla en
   `docs/datasets/panda.md`.
