@@ -166,6 +166,60 @@ def test_multilabel_vit_with_gradcam_and_threshold(tmp_path, monkeypatch, toy):
     assert not [e for e in _events(log_dir) if e["type"] in ("layers", "histograms")]
 
 
+class _Grouped(_Labelled):
+    """A val set that exposes per-sample metadata (duck-typed ``groups()``)."""
+
+    def groups(self):
+        n = len(self)
+        return {"centre": np.array(["x" if i % 3 else "y" for i in range(n)]),
+                "age": np.arange(n) * 2}
+
+
+def test_monitor_writes_groups_aligned_with_monitor_set(tmp_path, monkeypatch, toy):
+    base = _build(3, 3, "multiclass")
+    spec = register_dataset(DatasetSpec(
+        name="toy_groups", description="synthetic", classes=("a", "b", "c"),
+        task="multiclass", in_channels=3, required_keys=(), transforms=lambda split: None,
+        build=lambda cfg, split, t: _Grouped(*base(cfg, split, t).tensors)))
+    try:
+        _, log_dir = _train(tmp_path, monkeypatch, spec,
+                            monitor={"enabled": True, "samples": 10})
+    finally:
+        registry._REGISTRY.pop("toy_groups", None)
+    inspect = log_dir / "inspect_t"
+    idx = np.load(inspect / "monitor_set.npz")["indices"]
+    g = np.load(inspect / "groups.npz")
+    assert g["centre"].shape == (10,) and g["age"].shape == (10,)
+    assert g["age"].tolist() == (idx * 2).tolist()                # row i = sample idx[i]
+    assert g["centre"].tolist() == ["x" if i % 3 else "y" for i in idx]
+
+
+def test_no_groups_file_without_groups_method(tmp_path, monkeypatch, toy):
+    spec = toy("toy_nogroups", ("a", "b", "c"), "multiclass")
+    _, log_dir = _train(tmp_path, monkeypatch, spec, monitor={"enabled": True, "samples": 10})
+    assert not (log_dir / "inspect_t" / "groups.npz").exists()
+
+
+def test_dataset_groups_looks_through_subset():
+    from torch.utils.data import Subset
+
+    from src.training.monitor import dataset_groups
+    ds = _Grouped(torch.zeros(6, 1), torch.zeros(6, 2))
+    assert dataset_groups(Subset(ds, [4, 1, 2]))["age"].tolist() == [8, 2, 4]
+    assert dataset_groups(Subset(Subset(ds, [5, 3, 0]), [2, 0]))["age"].tolist() == [0, 10]
+    assert dataset_groups(Subset(TensorDataset(torch.zeros(3, 1)), [0])) is None
+
+
+def test_dataset_groups_rejects_misaligned_variable():
+    from src.training.monitor import dataset_groups
+
+    class Bad(_Labelled):
+        def groups(self):
+            return {"centre": np.array(["x"])}
+    with pytest.raises(ValueError, match="expected"):
+        dataset_groups(Bad(torch.zeros(4, 1), torch.zeros(4, 2)))
+
+
 def _small_vit(monkeypatch):
     import timm
     real = timm.create_model

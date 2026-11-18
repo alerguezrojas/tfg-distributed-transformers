@@ -199,3 +199,110 @@ class TestSpecAndDataset:
         (panda_root / panda.DEFAULT_MOSAIC_DIR / "a1.jpg").unlink()
         with pytest.raises(FileNotFoundError, match="prepare_panda"):
             get_dataset_spec("panda").dataset({"root": str(panda_root)}, "train")
+
+
+@pytest.fixture
+def panda_two_centres(tmp_path):
+    """Both centres in every split: ids r*/k* by centre, 2 per split and centre."""
+    rows = []
+    for split in panda.SPLITS:
+        for centre, tag in (("radboud", "r"), ("karolinska", "k")):
+            for g in (1, 3):
+                rows.append((f"{tag}{split}{g}", centre, g, split))
+    meta = pd.DataFrame(rows, columns=["image_id", "data_provider", "isup_grade", "split"])
+    meta[["image_id", "data_provider", "isup_grade"]].assign(gleason_score="x").to_csv(
+        tmp_path / "train.csv", index=False)
+    meta[["image_id", "split"]].to_csv(tmp_path / "splits.csv", index=False)
+    mosaics = tmp_path / panda.DEFAULT_MOSAIC_DIR
+    mosaics.mkdir()
+    for i in meta["image_id"]:
+        Image.fromarray(np.full((32, 32, 3), 128, np.uint8)).save(mosaics / f"{i}.jpg")
+    return tmp_path
+
+
+class TestColorJitter:
+    def test_default_is_the_same_pipeline(self, panda_root):
+        spec = get_dataset_spec("panda")
+        plain = spec.dataset({"root": str(panda_root), "image_size": 16}, "train")
+        zero = spec.dataset({"root": str(panda_root), "image_size": 16, "color_jitter": 0}, "train")
+        assert len(plain.transform.transforms) == len(zero.transform.transforms) == 5
+        torch.manual_seed(0)
+        a = plain[0][0]
+        torch.manual_seed(0)
+        assert torch.equal(a, zero[0][0])
+
+    def test_train_gets_jitter_before_normalize(self, panda_root):
+        from torchvision import transforms
+        ds = get_dataset_spec("panda").dataset(
+            {"root": str(panda_root), "image_size": 16, "color_jitter": 0.2}, "train")
+        steps = ds.transform.transforms
+        assert isinstance(steps[-2], transforms.ColorJitter)
+        assert isinstance(steps[-1], transforms.Normalize)
+        assert steps[-2].brightness == pytest.approx((0.8, 1.2))
+        assert steps[-2].hue == pytest.approx((-0.05, 0.05))
+        assert ds[0][0].shape == (3, 16, 16)
+
+    def test_changes_the_image_only_in_train(self, panda_root):
+        spec = get_dataset_spec("panda")
+        cfg = {"root": str(panda_root), "image_size": 16, "color_jitter": 0.4}
+        val = spec.dataset(cfg, "val")
+        assert len(val.transform.transforms) == 2          # ToTensor + Normalize
+        train = spec.dataset(cfg, "train")
+        torch.manual_seed(1)
+        a = train[0][0]
+        torch.manual_seed(1)
+        plain = spec.dataset({"root": str(panda_root), "image_size": 16}, "train")[0][0]
+        assert not torch.equal(a, plain)
+
+    @pytest.mark.parametrize("bad", [-0.1, "0.2", None, True])
+    def test_invalid_value(self, panda_root, bad):
+        with pytest.raises(ValueError, match="color_jitter"):
+            get_dataset_spec("panda").dataset(
+                {"root": str(panda_root), "color_jitter": bad}, "train")
+
+
+class TestProviders:
+    def test_filters_each_split(self, panda_two_centres):
+        spec = get_dataset_spec("panda")
+        cfg = {"root": str(panda_two_centres), "image_size": 16,
+               "providers": {"train": ["radboud"], "test": ["karolinska"]}}
+        train, val, test = (spec.dataset(cfg, s) for s in panda.SPLITS)
+        assert set(train.data_provider) == {"radboud"} and len(train) == 2
+        assert len(val) == 4                                   # no key: every centre
+        assert set(test.data_provider) == {"karolinska"} and len(test) == 2
+
+    def test_no_providers_is_unchanged(self, panda_two_centres):
+        ds = get_dataset_spec("panda").dataset({"root": str(panda_two_centres)}, "train")
+        assert len(ds) == 4
+
+    def test_class_counts_respect_the_filter(self, panda_two_centres):
+        spec = get_dataset_spec("panda")
+        cfg = {"root": str(panda_two_centres), "providers": {"train": ["karolinska"]}}
+        counts, n = spec.class_counts(cfg, "train")
+        assert n == 2 and counts.tolist() == [0, 1, 0, 1, 0, 0]
+        assert spec.class_counts(cfg, "val")[1] == 4
+
+    @pytest.mark.parametrize("providers, msg", [
+        ({"train": ["hamburgo"]}, "unknown centre"),
+        ({"validation": ["radboud"]}, "unknown split"),
+        ({"train": []}, "non-empty"),
+        (["radboud"], "mapping"),
+    ])
+    def test_invalid(self, panda_two_centres, providers, msg):
+        cfg = {"root": str(panda_two_centres), "providers": providers}
+        with pytest.raises(ValueError, match=msg):
+            get_dataset_spec("panda").dataset(cfg, "train")
+        with pytest.raises(ValueError, match=msg):
+            get_dataset_spec("panda").class_counts(cfg, "train")
+
+    def test_shipped_configs_are_consistent(self):
+        import yaml
+        root = Path(__file__).parent.parent.parent / "configs"
+        base = yaml.safe_load((root / "train_panda.yaml").read_text())
+        for name, tr, te in (("radboud", "radboud", "karolinska"),
+                             ("karolinska", "karolinska", "radboud")):
+            cfg = yaml.safe_load((root / f"train_panda_{name}.yaml").read_text())
+            assert cfg["data"].pop("providers") == {"train": [tr], "val": [tr], "test": [te]}
+            assert cfg == base
+        color = yaml.safe_load((root / "train_panda_color.yaml").read_text())
+        assert color["data"].pop("color_jitter") == 0.2 and color == base

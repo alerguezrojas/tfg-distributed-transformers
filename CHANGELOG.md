@@ -5,6 +5,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- PANDA: `data.color_jitter` (aumentos de color solo en train, `ColorJitter` con hue = s/4;
+  0 = desactivado, idéntico a antes), `data.providers` (filtra la partición por centro y split,
+  para entrenar en un hospital y evaluar en el otro; `class_counts` lo respeta) y las configs
+  `train_panda_color.yaml`, `train_panda_radboud.yaml` y `train_panda_karolinska.yaml`.
+- El `PredictionMonitor` escribe `groups.npz` cuando el dataset de validación expone `groups()`
+  (también envuelto en `Subset`), alineado con `monitor_set.npz`: la vista *Subgroups* ya tiene
+  datos en PANDA (variable `data_provider`).
 - Revisión sobre medición clínica del cáncer de próstata (`docs/research/medicion_clinica_prostata.md`):
   grado Gleason/ISUP, variabilidad entre patólogos, métricas de los modelos de IA con cifras publicadas y
   lista de requisitos para un dataset clínico nuevo.
