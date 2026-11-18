@@ -146,6 +146,12 @@ def test_eval_optional_flags():
     assert "--model vit_tiny_patch16_224" in s
     assert "--metadata meta.parquet" in s
     assert "--max-batches 10" in s
+    assert "--save-predictions" not in s
+
+
+def test_eval_save_predictions():
+    cmd = build_eval_cmd("ckpt.pt", "c.yaml", save_predictions="logs/pred.npz")
+    assert "--save-predictions logs/pred.npz" in _join(cmd)
 
 
 # ── runs summary ─────────────────────────────────────────────────────────────────

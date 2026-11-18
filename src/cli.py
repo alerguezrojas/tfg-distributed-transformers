@@ -137,7 +137,8 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
 def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
                    split: str = "test", output: str | None = None,
                    metadata: str | None = None, batch_size: int | None = None,
-                   max_batches: int | None = None) -> list[str]:
+                   max_batches: int | None = None,
+                   save_predictions: str | None = None) -> list[str]:
     """Build the eval.py command (held-out evaluation)."""
     cmd = [sys.executable, "scripts/eval.py", "--checkpoint", checkpoint,
            "--config", config, "--split", split]
@@ -151,6 +152,8 @@ def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
         cmd += ["--batch-size", str(batch_size)]
     if max_batches:
         cmd += ["--max-batches", str(max_batches)]
+    if save_predictions:
+        cmd += ["--save-predictions", save_predictions]
     return cmd
 
 
@@ -423,11 +426,14 @@ def eval(
     metadata: Optional[str] = typer.Option(None, help="Override metadata.parquet."),
     batch_size: Optional[int] = typer.Option(None, help="Batch size."),
     max_batches: Optional[int] = typer.Option(None, help="Stop after N batches (sanity)."),
+    save_predictions: Optional[str] = typer.Option(
+        None, "--save-predictions", help=".npz path for the per-sample predictions."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Evaluate a checkpoint on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
-                         metadata=metadata, batch_size=batch_size, max_batches=max_batches)
+                         metadata=metadata, batch_size=batch_size, max_batches=max_batches,
+                         save_predictions=save_predictions)
     _run(cmd, dry_run)
 
 

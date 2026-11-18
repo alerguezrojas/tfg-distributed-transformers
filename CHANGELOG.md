@@ -5,6 +5,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Evaluación en test más clínica: `eval --save-predictions RUTA.npz` guarda probabilidades,
+  objetivos, umbral, clases, tarea y variables de grupo por muestra (`save_predictions` /
+  `load_predictions` en `src/analysis/io.py`); si el dataset expone `groups()` imprime n, exactitud,
+  F1, AUC (y QWK) por grupo, y en tareas ordinales una tabla de cortes «grado ≥ k» con sensibilidad,
+  especificidad, VPP, VPN y AUC (`src/analysis/clinical.py`). Las líneas anteriores de `eval.py` no
+  cambian (las secciones nuevas van después).
 - PANDA: `data.color_jitter` (aumentos de color solo en train, `ColorJitter` con hue = s/4;
   0 = desactivado, idéntico a antes), `data.providers` (filtra la partición por centro y split,
   para entrenar en un hospital y evaluar en el otro; `class_counts` lo respeta) y las configs
