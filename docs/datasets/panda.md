@@ -124,4 +124,5 @@ local. 82 s por época; parada temprana en la época 14 (paciencia 5). Run:
 - **Etiquetas ruidosas:** el grado ISUP de entrenamiento tiene discrepancias conocidas entre
   patólogos; ni el techo ni la comparación con la literatura son exactos.
 - **Métrica:** la oficial es el kappa cuadrático ponderado (QWK). De momento se entrena como
-  multiclase (entropía cruzada) y se mide el QWK; una pérdida ordinal queda como mejora.
+  multiclase (entropía cruzada) y se mide el QWK; la pérdida ordinal `ce_emd`
+  (`configs/train_panda_ordinal.yaml`) tiene en cuenta el orden de los grados.

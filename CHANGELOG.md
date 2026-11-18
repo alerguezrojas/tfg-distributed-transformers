@@ -5,6 +5,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Pérdida ordinal `ce_emd` para clases ordenadas (`DatasetSpec.ordinal`): entropía cruzada +
+  `training.emd_weight` × EMD al cuadrado entre la distribución predicha y la real (Hou et al.
+  2017), compatible con mixup y suavizado; misma cabeza y predicción. Config
+  `configs/train_panda_ordinal.yaml`. El builder pasa a `build_criterion` la tarea de la ficha
+  (antes la reconstruía por nombre y perdía `ordinal`).
 - Evaluación en test más clínica: `eval --save-predictions RUTA.npz` guarda probabilidades,
   objetivos, umbral, clases, tarea y variables de grupo por muestra (`save_predictions` /
   `load_predictions` en `src/analysis/io.py`); si el dataset expone `groups()` imprime n, exactitud,
