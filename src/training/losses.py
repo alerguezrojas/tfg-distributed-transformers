@@ -22,6 +22,8 @@ class frequencies behind ``pos_weight: auto`` come from the dataset spec
 """
 from __future__ import annotations
 
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -89,8 +91,8 @@ class CrossEntropyEMDLoss(nn.Module):
 
     def __init__(self, emd_weight: float = 1.0):
         super().__init__()
-        if emd_weight < 0:
-            raise ValueError(f"emd_weight must be >= 0, got {emd_weight}")
+        if not math.isfinite(emd_weight) or emd_weight < 0:
+            raise ValueError(f"emd_weight must be a finite number >= 0, got {emd_weight}")
         self.emd_weight = float(emd_weight)
         self._ce = nn.CrossEntropyLoss()
 

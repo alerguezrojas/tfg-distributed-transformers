@@ -10,6 +10,8 @@ Usage (called automatically by TrainingSessionBuilder.build()):
 
 from __future__ import annotations
 
+import math
+
 from src.data.registry import available_datasets, dataset_name_from_config, get_dataset_spec
 from src.data.spec import DatasetSpec
 
@@ -188,8 +190,9 @@ def _check_loss(train: dict, spec: DatasetSpec | None, errors: list) -> None:
 
     if "emd_weight" in train:
         w = train["emd_weight"]
-        if isinstance(w, bool) or not isinstance(w, (int, float)) or w < 0:
-            errors.append(f"training.emd_weight must be a number >= 0, got {w!r}")
+        if (isinstance(w, bool) or not isinstance(w, (int, float))
+                or not math.isfinite(w) or w < 0):
+            errors.append(f"training.emd_weight must be a finite number >= 0, got {w!r}")
         elif str(train.get("loss") or "").lower() != "ce_emd":
             errors.append("training.emd_weight only applies to loss: ce_emd")
 

@@ -72,9 +72,10 @@ class TestCrossEntropyEMDLoss:
         CrossEntropyEMDLoss()(logits, _onehot([0, 2, 4, 5])).backward()
         assert torch.isfinite(logits.grad).all()
 
-    def test_negative_weight_rejected(self):
+    @pytest.mark.parametrize("bad", [-1.0, float("nan"), float("inf")])
+    def test_bad_weight_rejected(self, bad):
         with pytest.raises(ValueError, match="emd_weight"):
-            CrossEntropyEMDLoss(-1.0)
+            CrossEntropyEMDLoss(bad)
 
 
 class TestTaskAndFactory:
@@ -131,15 +132,25 @@ def graded_dataset():
     registry._REGISTRY.pop(spec.name, None)
 
 
+@pytest.fixture
+def unordered_dataset():
+    spec = register_dataset(DatasetSpec(
+        name="unordered_loss_test", description="toy", classes=("a", "b", "c"),
+        task="multiclass", in_channels=3, required_keys=(),
+        build=lambda cfg, split, tf: None, transforms=lambda split: None))
+    yield spec
+    registry._REGISTRY.pop(spec.name, None)
+
+
 class TestValidator:
     def test_accepts_ce_emd_on_graded_classes(self, graded_dataset):
         validate_config(_cfg(graded_dataset.name, {"loss": "ce_emd", "emd_weight": 0.5}))
 
-    def test_rejects_ce_emd_without_order(self):
-        with pytest.raises(ConfigError, match="ce_emd"):
-            validate_config(_cfg("bigearthnet", {"loss": "ce_emd"}))
+    def test_rejects_ce_emd_without_order(self, unordered_dataset):
+        with pytest.raises(ConfigError, match="ordered"):
+            validate_config(_cfg(unordered_dataset.name, {"loss": "ce_emd"}))
 
-    @pytest.mark.parametrize("bad", [-1.0, "1", True])
+    @pytest.mark.parametrize("bad", [-1.0, "1", True, float("nan"), float("inf")])
     def test_rejects_bad_weight(self, graded_dataset, bad):
         with pytest.raises(ConfigError, match="emd_weight"):
             validate_config(_cfg(graded_dataset.name, {"loss": "ce_emd", "emd_weight": bad}))

@@ -232,6 +232,8 @@ def main():
     _loss = configured_loss_name(cfg["training"], spec.make_task())
     if _loss == "focal":
         _loss = f"focal(g={cfg['training'].get('focal_gamma', 2.0)})"
+    elif _loss == "ce_emd":
+        _loss = f"ce_emd(w={cfg['training'].get('emd_weight', 1.0)})"
     elif cfg["training"].get("pos_weight") is not None:
         _loss = "bce+pos_weight"
     logging.getLogger("trainer").info(

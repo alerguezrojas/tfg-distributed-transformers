@@ -37,8 +37,12 @@ anteriores siguen funcionando sin cambios.
 
 Con clases ordenadas, `ce_emd` suma a la entropía cruzada la distancia EMD al cuadrado entre la
 distribución predicha y la real (Hou et al., 2017): equivocarse por varios grados cuesta más que
-por uno, como en el kappa cuadrático. El peso del término es `training.emd_weight` (1,0 por
-defecto). La salida y la predicción (la clase más probable) no cambian.
+por uno, como en el kappa cuadrático. Exactamente, para cada imagen,
+`CE + w · Σ_k (F_pred(k) − F_real(k))²`, con `F` las distribuciones acumuladas y la suma sobre
+las C clases sin normalizar (va de 0 a C−1); `w` es `training.emd_weight` (1,0 por defecto). La
+salida y la predicción (la clase más probable) no cambian. La pérdida de `eval.py` y la del
+monitor por imagen siguen siendo la entropía cruzada, así que la `val_loss` de un run `ce_emd`
+no se compara con la de un run `ce` (el QWK, el F1 y la selección del checkpoint sí).
 
 Las etiquetas viajan siempre como tensores `float` de forma `(N, C)`: multi-hot en
 multi-etiqueta, one-hot en multiclase y `(N, 1)` en binaria. Así el mixup, los trainers y
