@@ -212,6 +212,26 @@ def per_sample_loss(logits: torch.Tensor, targets: torch.Tensor,
     return F.cross_entropy(logits, targets, reduction="none")
 
 
+def dataset_groups(dataset) -> dict[str, np.ndarray] | None:
+    """Per-sample grouping variables of a dataset (duck typing: a ``groups()`` method
+    returning ``{name: (len(dataset),) array}``), looking through ``Subset`` wrappers.
+    ``None`` if the dataset does not expose them."""
+    if isinstance(dataset, Subset):
+        inner = dataset_groups(dataset.dataset)
+        if inner is None:
+            return None
+        idx = np.asarray(dataset.indices, dtype=np.int64)
+        return {k: np.asarray(v)[idx] for k, v in inner.items()}
+    fn = getattr(dataset, "groups", None)
+    if not callable(fn):
+        return None
+    groups = {k: np.asarray(v) for k, v in fn().items()}
+    for k, v in groups.items():
+        if v.ndim != 1 or len(v) != len(dataset):
+            raise ValueError(f"groups()[{k!r}] has shape {v.shape}; expected ({len(dataset)},)")
+    return groups or None
+
+
 # ── Prediction monitor ────────────────────────────────────────────────────────
 
 class PredictionMonitor(TrainingListener):
@@ -283,12 +303,24 @@ class PredictionMonitor(TrainingListener):
             self.dir / "monitor_set.npz", indices=self._indices, targets=target_np,
             thumbs=np.concatenate(thumbs), panel=self._panel,
             classes=np.array(self._classes, dtype=str), task=np.array(self._task.name))
+        self._save_groups()
         self._sink.emit("monitor_start", dir=self._rel(self.dir),
                         samples=len(self._indices), panel=len(self._panel),
                         classes=self._classes,
                         full_val=len(self._val) * len(self._classes)
                         <= int(self._cfg["full_val_max"]),
                         embedding_dim=head.in_features if head is not None else None)
+
+    def _save_groups(self) -> None:
+        """``groups.npz``: the dataset's grouping variables at the monitored indices, so
+        row i is sample i of ``monitor_set.npz`` (only if the dataset has ``groups()``)."""
+        try:
+            groups = dataset_groups(self._val)
+            if groups is not None:
+                np.savez_compressed(self.dir / "groups.npz",
+                                    **{k: v[self._indices] for k, v in groups.items()})
+        except Exception as exc:  # noqa: BLE001 — the monitor goes on without groups
+            self._warn("groups.npz", exc)
 
     def on_epoch_end(self, epoch, epochs, train_m, val_m, best, is_best, epoch_time_s):
         if self._indices is None:

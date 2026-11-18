@@ -159,6 +159,17 @@ uv run paravit.py eval --checkpoint checkpoints/verode/checkpoint_epoch_007.pt -
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
 agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
 
+Tras las métricas agregadas y por clase, `eval` añade (solo si procede):
+
+- **Métricas por grupo** (`── Metrics by group: <variable> ──`): si el dataset expone `groups()`
+  (PANDA: el centro, `data_provider`), `n`, exactitud, F1 macro, AUC macro y QWK (si es ordinal)
+  de cada valor.
+- **Cortes clínicos** (`── Clinical cut-offs ──`): en tareas ordinales, sensibilidad, especificidad,
+  VPP, VPN y AUC de «grado ≥ k» para cada k (puntuación `P(grado ≥ k)`, regla `argmax ≥ k`). En
+  PANDA, `≥ ISUP 1` es «hay cáncer» y `≥ ISUP 2` «cáncer clínicamente significativo».
+- `--save-predictions RUTA.npz` guarda probabilidades, objetivos, umbral, clases, tarea y grupos
+  por muestra para rehacer análisis sin reinferir (formato en [`inspeccion.md`](inspeccion.md)).
+
 En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbral **elegido en
 validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
 que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce

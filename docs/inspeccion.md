@@ -211,10 +211,12 @@ puede ocupar decenas de MB. Ficheros NumPy comprimidos (`np.savez_compressed`):
 | `val_targets` | `(N, C)` uint8 | Etiquetas reales alineadas con `val_probs` |
 | `threshold` | `()` float32 | Umbral óptimo de validación de la época (o 0,5) |
 
-**`groups.npz`** (opcional; *previsto: lo escribirá el monitor cuando el dataset exponga
-metadatos*; hoy la web lo lee si existe, p. ej. escrito a mano o con otro script). Una clave por
+**`groups.npz`** (opcional; lo escribe el monitor cuando el dataset de validación expone un método
+`groups()` que devuelve `{variable: vector por muestra}`, también si llega envuelto en `Subset`;
+PANDA expone `data_provider`. Si no, la web lo lee si existe, p. ej. escrito a mano). Una clave por
 variable de agrupación (sexo, centro, edad...), cada una un vector 1-D de `M` valores **alineado
-con `monitor_set.npz`** (la fila `i` es la muestra `i` del subconjunto):
+con `monitor_set.npz`** (la fila `i` es la muestra `i` del subconjunto: el monitor indexa cada
+variable con los mismos `indices`):
 
 | Clave | Forma y tipo | Significado |
 |---|---|---|
@@ -257,6 +259,27 @@ cada paso (trabajo pequeño en CPU; no cambia ningún número).
 | `project_2d(embeddings, method="pca")` | Proyección 2D (PCA siempre; UMAP si `umap-learn` está instalado) |
 | `worst_errors(probs, targets, loss, task, k)` | Las *k* muestras con mayor pérdida y sus etiquetas |
 | `load_groups(dir, n=None)` | Lee el `groups.npz` opcional (`None` si no existe; `ValueError` si una variable no tiene `n` entradas) |
+| `clinical_cutoffs(probs, targets, class_names)` | Tareas ordinales: para cada corte «grado ≥ k» (puntuación `P(grado ≥ k)`, regla `argmax ≥ k`), sensibilidad, especificidad, VPP, VPN y AUC |
+| `group_summary(probs, targets, task, groups, threshold, ordinal)` | `n`, exactitud, F1 macro, AUC macro (y QWK si es ordinal) de cada valor de cada variable de grupo |
+| `save_predictions(...)` / `load_predictions(path)` | Escribe y lee el `.npz` de predicciones en test (ver abajo) |
+
+### Predicciones en test (`--save-predictions`)
+
+`paravit.py eval ... --save-predictions logs/.../pred_test.npz` (o `scripts/eval.py`) guarda, en el
+orden del split evaluado, lo necesario para rehacer cualquier análisis sin volver a inferir:
+
+| Clave | Forma y tipo | Significado |
+|---|---|---|
+| `probs` | `(N, C)` float32 | Probabilidades (sigmoide o *softmax* según la tarea) |
+| `targets` | `(N, C)` uint8 | Etiquetas duras alineadas con `probs` |
+| `threshold` | `()` float32 | Umbral de decisión usado (0,5 si la tarea no lo busca) |
+| `classes` | `(C,)` cadenas | Nombres de clase, en el orden de las columnas |
+| `task` | `()` cadena | `multilabel`, `binary` o `multiclass` |
+| `ordinal` | `()` bool | Clases ordenadas (columnas = grados crecientes) |
+| `group__<nombre>` | `(N,)` cadenas o números | Variables de grupo, solo si el dataset expone `groups()` (PANDA: `data_provider`) |
+
+`src.analysis.io.load_predictions(path)` lo lee (`Predictions`). Con `--max-batches` el fichero
+contiene solo las muestras evaluadas.
 
 ### Estadística para publicación
 
