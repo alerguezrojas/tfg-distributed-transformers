@@ -5,6 +5,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- PANDA: `data.color_jitter` (aumentos de color solo en train, `ColorJitter` con hue = s/4;
+  0 = desactivado, idéntico a antes), `data.providers` (filtra la partición por centro y split,
+  para entrenar en un hospital y evaluar en el otro; `class_counts` lo respeta) y las configs
+  `train_panda_color.yaml`, `train_panda_radboud.yaml` y `train_panda_karolinska.yaml`.
+- El `PredictionMonitor` escribe `groups.npz` cuando el dataset de validación expone `groups()`
+  (también envuelto en `Subset`), alineado con `monitor_set.npz`: la vista *Subgroups* ya tiene
+  datos en PANDA (variable `data_provider`).
 - PANDA, línea base (02/11/2026): mosaicos del dataset completo y primer entrenamiento a 512 px
   (ViT-S, RTX 3060 Ti): QWK 0,781 en test, 0,745/0,760 por centro. Run y tabla en
   `docs/datasets/panda.md`.
