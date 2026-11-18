@@ -5,6 +5,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Pérdida ordinal `ce_emd` para clases ordenadas (`DatasetSpec.ordinal`): entropía cruzada +
+  `training.emd_weight` × EMD al cuadrado entre la distribución predicha y la real (Hou et al.
+  2017), compatible con mixup y suavizado; misma cabeza y predicción. Config
+  `configs/train_panda_ordinal.yaml`. El builder pasa a `build_criterion` la tarea de la ficha
+  (antes la reconstruía por nombre y perdía `ordinal`).
 - PANDA, línea base (02/11/2026): mosaicos del dataset completo y primer entrenamiento a 512 px
   (ViT-S, RTX 3060 Ti): QWK 0,781 en test, 0,745/0,760 por centro. Run y tabla en
   `docs/datasets/panda.md`.

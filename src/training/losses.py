@@ -10,6 +10,11 @@ operate element-wise on targets in [0, 1]:
   • ``FocalLoss`` (Lin et al. 2017, multi-label variant) — down-weights easy
     examples via ``(1-p_t)^gamma`` so the loss focuses on the hard, rare ones.
 
+For multi-class tasks with ordered classes (a cancer grade) there is also
+``CrossEntropyEMDLoss`` (``loss: ce_emd``): cross-entropy plus the squared Earth
+Mover's Distance between the predicted and the target class distributions (Hou et
+al. 2017), so predicting a grade several steps away costs more than a neighbour.
+
 ``build_criterion`` is a pure factory selected by ``training.loss`` in the config;
 which losses are valid depends on the task (see :mod:`src.training.tasks`). The
 class frequencies behind ``pos_weight: auto`` come from the dataset spec
@@ -21,7 +26,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from src.training.tasks import get_task
+from src.training.tasks import Task, get_task
 
 
 class FocalLoss(nn.Module):
@@ -60,6 +65,39 @@ class FocalLoss(nn.Module):
         return loss
 
 
+def squared_emd(logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    """Per-sample squared Earth Mover's Distance between ``softmax(logits)`` and
+    ``targets`` (N, C) over ORDERED classes: ``sum_k (CDF_pred(k) - CDF_target(k))^2``.
+
+    The targets may be soft (one-hot, mixup blends, label smoothing). Moving
+    probability mass by d classes costs ~d, so far-off grades are penalized more
+    than neighbours; the value is in [0, C-1]. Computed in float32 (stable under AMP).
+    """
+    probs = torch.softmax(logits.float(), dim=1)
+    diff = torch.cumsum(probs, dim=1) - torch.cumsum(targets.float(), dim=1)
+    return (diff ** 2).sum(dim=1)
+
+
+class CrossEntropyEMDLoss(nn.Module):
+    """Cross-entropy + ``emd_weight`` x squared EMD, for ordered classes.
+
+    The cross-entropy keeps the usual per-class training signal and the EMD term
+    (Hou, Yu & Samaras, 2017, arXiv:1611.05916) adds the order of the classes, the
+    same idea as the quadratic weighted kappa used to evaluate graded problems.
+    Same head and predictions as plain multi-class (argmax).
+    """
+
+    def __init__(self, emd_weight: float = 1.0):
+        super().__init__()
+        if emd_weight < 0:
+            raise ValueError(f"emd_weight must be >= 0, got {emd_weight}")
+        self.emd_weight = float(emd_weight)
+        self._ce = nn.CrossEntropyLoss()
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        return self._ce(logits, targets) + self.emd_weight * squared_emd(logits, targets).mean()
+
+
 def pos_weight_from_counts(pos_counts: torch.Tensor, n_samples: int,
                            clamp_max: float = 100.0) -> torch.Tensor:
     """BCE pos_weight per class = #negatives / #positives, clamped.
@@ -74,17 +112,22 @@ def pos_weight_from_counts(pos_counts: torch.Tensor, n_samples: int,
 
 
 def build_criterion(train_cfg: dict, pos_weight: torch.Tensor | None = None,
-                    task: str = "multilabel") -> nn.Module:
+                    task: str | Task = "multilabel") -> nn.Module:
     """Factory: pick the loss from ``training.loss`` for the given task.
 
     Multi-label / binary: 'bce' (default, optionally with ``pos_weight``) | 'focal'.
-    Multi-class: 'ce' (default).
+    Multi-class: 'ce' (default); with ordered classes also 'ce_emd'
+    (``training.emd_weight``, default 1.0). ``task`` is a task name or a
+    :class:`Task` instance — pass the dataset's own task (``spec.make_task()``) so
+    that its ordered classes are known.
     """
-    return get_task(task).build_criterion(
+    task_obj = task if isinstance(task, Task) else get_task(task)
+    return task_obj.build_criterion(
         train_cfg.get("loss"),
         pos_weight=pos_weight,
         focal_gamma=train_cfg.get("focal_gamma", 2.0),
         focal_alpha=train_cfg.get("focal_alpha", -1.0),
+        emd_weight=train_cfg.get("emd_weight", 1.0),
     )
 
 

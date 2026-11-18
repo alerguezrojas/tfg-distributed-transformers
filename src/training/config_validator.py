@@ -186,6 +186,13 @@ def _check_loss(train: dict, spec: DatasetSpec | None, errors: list) -> None:
         except ValueError as exc:
             errors.append(f"training.loss: {exc}")
 
+    if "emd_weight" in train:
+        w = train["emd_weight"]
+        if isinstance(w, bool) or not isinstance(w, (int, float)) or w < 0:
+            errors.append(f"training.emd_weight must be a number >= 0, got {w!r}")
+        elif str(train.get("loss") or "").lower() != "ce_emd":
+            errors.append("training.emd_weight only applies to loss: ce_emd")
+
     if "pos_weight" not in train:
         return
     pw = train["pos_weight"]

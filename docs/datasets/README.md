@@ -24,7 +24,8 @@ anteriores siguen funcionando sin cambios.
 - cómo se lee cada split y con qué transformaciones;
 - opcionalmente, el recuento de positivos por clase, que habilita `pos_weight: auto`;
 - opcionalmente, si las clases están ordenadas (`ordinal=True`, solo multiclase: un grado de
-  cáncer). Añade el kappa cuadrático ponderado (`qwk`) a las métricas y permite `select_by: qwk`.
+  cáncer). Añade el kappa cuadrático ponderado (`qwk`) a las métricas y permite `select_by: qwk`
+  y la pérdida ordinal `ce_emd`.
 
 **La tarea** (`src/training/tasks.py`) dice cómo se aprende y se mide ese tipo de problema:
 
@@ -32,7 +33,12 @@ anteriores siguen funcionando sin cambios.
 |---|---|---|---|---|---|
 | `multilabel` | BigEarthNet, radiografías de tórax | sigmoide por clase | `bce` (por defecto), `focal` | media por etiqueta | sí |
 | `binary` | ¿hay tumor? | una sigmoide | `bce` (por defecto), `focal` | media por etiqueta | sí |
-| `multiclass` | tipo de lesión de piel | softmax | `ce` (por defecto) | acierto exacto | no |
+| `multiclass` | tipo de lesión de piel | softmax | `ce` (por defecto); con clases ordenadas, también `ce_emd` | acierto exacto | no |
+
+Con clases ordenadas, `ce_emd` suma a la entropía cruzada la distancia EMD al cuadrado entre la
+distribución predicha y la real (Hou et al., 2017): equivocarse por varios grados cuesta más que
+por uno, como en el kappa cuadrático. El peso del término es `training.emd_weight` (1,0 por
+defecto). La salida y la predicción (la clase más probable) no cambian.
 
 Las etiquetas viajan siempre como tensores `float` de forma `(N, C)`: multi-hot en
 multi-etiqueta, one-hot en multiclase y `(N, 1)` en binaria. Así el mixup, los trainers y

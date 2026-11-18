@@ -45,8 +45,13 @@ class Task(ABC):
     def build_criterion(self, loss: str | None = None, *,
                         pos_weight: torch.Tensor | None = None,
                         focal_gamma: float = 2.0,
-                        focal_alpha: float = -1.0) -> nn.Module:
-        """Loss module for ``training.loss`` (None → the task default)."""
+                        focal_alpha: float = -1.0,
+                        emd_weight: float = 1.0) -> nn.Module:
+        """Loss module for ``training.loss`` (None → the task default).
+
+        ``emd_weight`` only applies to the ordinal ``ce_emd`` loss of a multi-class
+        task with ordered classes; the other losses ignore it.
+        """
 
     @abstractmethod
     def smooth_targets(self, targets: torch.Tensor, eps: float) -> torch.Tensor:
@@ -104,7 +109,7 @@ class MultiLabelTask(Task):
     _BCE_ALIASES = ("bce", "bcewithlogits", "bce_with_logits")
 
     def build_criterion(self, loss=None, *, pos_weight=None,
-                        focal_gamma=2.0, focal_alpha=-1.0) -> nn.Module:
+                        focal_gamma=2.0, focal_alpha=-1.0, emd_weight=1.0) -> nn.Module:
         from src.training.losses import FocalLoss
         kind = str(loss or self.default_loss).lower()
         if kind in self._BCE_ALIASES:
@@ -154,9 +159,11 @@ class MultiClassTask(Task):
     """Exactly one class per sample (e.g. lesion type) — softmax over the classes.
 
     ``ordinal=True`` marks classes whose order means something (e.g. a cancer
-    grade): the metrics then add the quadratic weighted kappa (``"qwk"``). The
-    loss and the predictions are the plain multi-class ones, so the task keeps
-    the name ``"multiclass"`` everywhere downstream (inspection files, web).
+    grade): the metrics then add the quadratic weighted kappa (``"qwk"``) and the
+    ``ce_emd`` loss becomes available (cross-entropy plus a squared Earth Mover's
+    Distance term that makes errors by several grades cost more). The predictions
+    stay the plain multi-class ones, so the task keeps the name ``"multiclass"``
+    everywhere downstream (inspection files, web).
     """
 
     name = "multiclass"
@@ -165,6 +172,7 @@ class MultiClassTask(Task):
     default_loss = "ce"
 
     _CE_ALIASES = ("ce", "cross_entropy", "crossentropy")
+    _ORDINAL_LOSSES = ("ce_emd",)
 
     def __init__(self, ordinal: bool = False):
         self.ordinal = ordinal
@@ -176,14 +184,21 @@ class MultiClassTask(Task):
         return result
 
     def build_criterion(self, loss=None, *, pos_weight=None,
-                        focal_gamma=2.0, focal_alpha=-1.0) -> nn.Module:
+                        focal_gamma=2.0, focal_alpha=-1.0, emd_weight=1.0) -> nn.Module:
         kind = str(loss or self.default_loss).lower()
-        if kind not in self._CE_ALIASES:
+        if kind in self._ORDINAL_LOSSES and not self.ordinal:
+            raise ValueError(f"loss {kind!r} needs ordered (graded) classes; this "
+                             f"{self.name} task has unordered classes (use 'ce')")
+        if kind not in self._CE_ALIASES + self._ORDINAL_LOSSES:
+            valid = "'ce' or 'ce_emd'" if self.ordinal else "'ce'"
             raise ValueError(f"loss {kind!r} is not valid for a {self.name} task "
-                             f"(use 'ce')")
+                             f"(use {valid})")
         if pos_weight is not None:
             raise ValueError("pos_weight applies to sigmoid (multi-label/binary) "
                              "tasks only")
+        if kind == "ce_emd":
+            from src.training.losses import CrossEntropyEMDLoss
+            return CrossEntropyEMDLoss(emd_weight=emd_weight)
         # Soft (one-hot / mixed / smoothed) probability targets are supported.
         return nn.CrossEntropyLoss()
 

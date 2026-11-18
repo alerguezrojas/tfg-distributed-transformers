@@ -553,7 +553,8 @@ class TrainingSessionBuilder:
                 pos_weight = torch.tensor(
                     pos_weight_cfg, dtype=torch.float32, device=self._device
                 )
-        criterion = build_criterion(train_cfg, pos_weight=pos_weight, task=spec.task)
+        # The spec's own task, so that ordered classes (ce_emd) are known.
+        criterion = build_criterion(train_cfg, pos_weight=pos_weight, task=spec.make_task())
         if loss_kind == "focal" and self._hetero_local_batch_size is None:
             print(f"  [loss] focal (gamma={train_cfg.get('focal_gamma', 2.0)}, "
                   f"alpha={train_cfg.get('focal_alpha', -1.0)})")
