@@ -9,12 +9,17 @@ ordered classes (``ordinal=True``: the ISUP grade), so the QWK metric is compute
 Config keys: ``data.root`` (folder with ``train.csv``; required) and optional
 ``data.mosaics`` (default ``<root>/mosaics_l1_16x256``), ``data.splits`` (default
 ``<root>/splits.csv``) and ``data.image_size`` (default 512: the mosaic is resized
-inside the Dataset, since the transform factory only receives the split).
+inside the Dataset, since the transform factory only receives the split),
+``data.color_jitter`` (float >= 0, default 0 = off: train-only brightness/contrast/
+saturation jitter of that strength, hue = s/4, to cope with the H&E stain varying between
+centres; Tellez et al. 2019) and ``data.providers`` (``{split: [centres]}`` with keys
+``train``/``val``/``test``: keeps only those centres of the existing partition, for the
+cross-centre generalisation experiment; a split without key uses every centre).
 
 ``train.csv`` carries no patient id, so the split is per biopsy (see
 :func:`make_splits`). The reader exposes each sample's ``data_provider`` (the
 centre) as ``PandaDataset.data_provider`` / :meth:`PandaDataset.groups`: the hook for
-the Subgroups view (``groups.npz``, docs/inspeccion.md) once the monitor writes it.
+the Subgroups view (``groups.npz``, docs/inspeccion.md), which the monitor writes.
 Details and licence: docs/datasets/panda.md.
 """
 from __future__ import annotations
@@ -39,6 +44,7 @@ SPLIT_SEED = 42
 DEFAULT_MOSAIC_DIR = "mosaics_l1_16x256"
 MOSAIC_EXT = ".jpg"
 DEFAULT_IMAGE_SIZE = 512
+PROVIDERS = ("karolinska", "radboud")
 
 _IMAGENET_MEAN, _IMAGENET_STD = [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]
 
@@ -84,13 +90,17 @@ class PandaDataset(Dataset):
 
     def __init__(self, root: str | Path, split: str = "train", transform=None,
                  image_size: int = DEFAULT_IMAGE_SIZE, mosaics: str | Path | None = None,
-                 splits: str | Path | None = None):
+                 splits: str | Path | None = None,
+                 providers: list[str] | tuple[str, ...] | None = None):
         if split not in SPLITS:
             raise ValueError(f"split must be one of {SPLITS}, got {split!r}")
         root = Path(root).expanduser()
         self.mosaic_dir = Path(mosaics).expanduser() if mosaics else root / DEFAULT_MOSAIC_DIR
         meta = _read_meta(root, splits)
-        meta = meta[meta["split"] == split].sort_values("image_id", ignore_index=True)
+        meta = meta[meta["split"] == split]
+        if providers is not None:
+            meta = meta[meta["data_provider"].isin(providers)]
+        meta = meta.sort_values("image_id", ignore_index=True)
         missing = [i for i in meta["image_id"] if not self._path(i).exists()]
         if missing:
             raise FileNotFoundError(
@@ -100,7 +110,7 @@ class PandaDataset(Dataset):
         self.image_ids: list[str] = meta["image_id"].tolist()
         #: Centre of each sample ('karolinska' | 'radboud'), aligned with the samples.
         self.data_provider: list[str] = meta["data_provider"].tolist()
-        grades = torch.as_tensor(meta["isup_grade"].to_numpy(), dtype=torch.long)
+        grades = torch.as_tensor(meta["isup_grade"].to_numpy().copy(), dtype=torch.long)
         self.targets = torch.nn.functional.one_hot(grades, len(CLASSES)).float()
         self.image_size = image_size
         self.transform = transform
@@ -135,18 +145,21 @@ class RandomRot90:
         return torch.rot90(img, int(torch.randint(0, 4, (1,))), dims=(-2, -1))
 
 
-def get_transforms(split: str) -> transforms.Compose:
-    """Train: flips and 90-degree rotations (histology has no orientation); every
-    split: ImageNet normalization. The resize is done by the Dataset."""
+def get_transforms(split: str, color_jitter: float = 0.0) -> transforms.Compose:
+    """Train: flips and 90-degree rotations (histology has no orientation) and, if
+    ``color_jitter`` > 0, colour jitter on the [0, 1] tensor; every split: ImageNet
+    normalization. The resize is done by the Dataset."""
     normalize = transforms.Normalize(mean=_IMAGENET_MEAN, std=_IMAGENET_STD)
     if split == "train":
-        return transforms.Compose([
-            transforms.ToTensor(),
-            transforms.RandomHorizontalFlip(),
-            transforms.RandomVerticalFlip(),
-            RandomRot90(),
-            normalize,
-        ])
+        steps = [transforms.ToTensor(),
+                 transforms.RandomHorizontalFlip(),
+                 transforms.RandomVerticalFlip(),
+                 RandomRot90()]
+        if color_jitter > 0:
+            s = color_jitter
+            steps.append(transforms.ColorJitter(brightness=s, contrast=s, saturation=s,
+                                                hue=min(s / 4, 0.5)))
+        return transforms.Compose([*steps, normalize])
     return transforms.Compose([transforms.ToTensor(), normalize])
 
 
@@ -156,16 +169,56 @@ def _read_meta(root: Path, splits: str | Path | None) -> pd.DataFrame:
     return pd.read_csv(root / "train.csv").merge(pd.read_csv(splits_path), on="image_id")
 
 
+def _color_jitter(data_cfg: dict) -> float:
+    value = data_cfg.get("color_jitter", 0.0)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < 0:
+        raise ValueError(f"data.color_jitter must be a number >= 0, got {value!r}")
+    return float(value)
+
+
+def _providers(data_cfg: dict, split: str) -> list[str] | None:
+    """Centres to keep in ``split`` (``data.providers``), or None for all of them."""
+    cfg = data_cfg.get("providers")
+    if cfg is None:
+        return None
+    if not isinstance(cfg, dict):
+        raise ValueError(f"data.providers must be a mapping split -> centres, got {cfg!r}")
+    unknown = sorted(set(cfg) - set(SPLITS))
+    if unknown:
+        raise ValueError(f"data.providers: unknown split(s) {unknown}; use {SPLITS}")
+    if split not in cfg:
+        return None
+    centres = cfg[split]
+    if isinstance(centres, str):
+        centres = [centres]
+    if not isinstance(centres, (list, tuple)) or not centres:
+        raise ValueError(f"data.providers.{split} must be a non-empty list of centres")
+    bad = sorted({str(c) for c in centres} - set(PROVIDERS))
+    if bad:
+        raise ValueError(f"data.providers.{split}: unknown centre(s) {bad}; use {PROVIDERS}")
+    return list(centres)
+
+
 def _build(data_cfg: dict, split: str, transform) -> PandaDataset:
+    jitter = _color_jitter(data_cfg)
+    if jitter > 0 and split == "train":
+        # The factory only gets the split: the jitter strength lives in the config, so
+        # the train pipeline is rebuilt here with it (same steps as the default).
+        transform = get_transforms(split, jitter)
     return PandaDataset(data_cfg["root"], split, transform,
                         image_size=int(data_cfg.get("image_size", DEFAULT_IMAGE_SIZE)),
-                        mosaics=data_cfg.get("mosaics"), splits=data_cfg.get("splits"))
+                        mosaics=data_cfg.get("mosaics"), splits=data_cfg.get("splits"),
+                        providers=_providers(data_cfg, split))
 
 
 def class_counts(data_cfg: dict, split: str = "train") -> tuple[torch.Tensor, int]:
     """Biopsies per ISUP grade and total of a split (reads the CSVs, no image)."""
     meta = _read_meta(Path(data_cfg["root"]).expanduser(), data_cfg.get("splits"))
-    grades = meta.loc[meta["split"] == split, "isup_grade"].to_numpy()
+    meta = meta[meta["split"] == split]
+    providers = _providers(data_cfg, split)
+    if providers is not None:
+        meta = meta[meta["data_provider"].isin(providers)]
+    grades = meta["isup_grade"].to_numpy()
     counts = np.bincount(grades, minlength=len(CLASSES))
     return torch.as_tensor(counts, dtype=torch.float32), int(len(grades))
 
