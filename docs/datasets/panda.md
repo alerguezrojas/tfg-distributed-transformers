@@ -113,14 +113,66 @@ local. 82 s por época; parada temprana en la época 14 (paciencia 5). Run:
 - La pérdida de validación sube desde la época 5 mientras el QWK se aplana en ~0,80: sobreajuste.
 - Referencias: patólogos en hospitales externos 0,86-0,87 y ganadores de Kaggle 0,94
   ([research/panda.md](../research/panda.md)).
-- El QWK por centro se calculó con un script temporal sobre el checkpoint; cuando el monitor
-  escriba `groups.npz`, saldrá en la vista *Subgroups*.
+- El QWK por centro se calculó con un script temporal sobre el checkpoint; ahora lo da
+  `eval.py` (tabla por grupo) y la vista *Subgroups* (`groups.npz`).
+
+## Mejoras y generalización entre hospitales (18-19/11/2026)
+
+Mismas condiciones que la línea base (ViT-S/16, 512 px, semilla 42, `--precision amp --monitor`,
+RTX 3060 Ti). Cada run se evalúa en test con el checkpoint de su mejor época de validación y
+`eval --save-predictions`; las tablas salen de esas predicciones (`src/analysis/clinical.py`).
+**Una sola semilla por variante:** el intervalo de la última columna es un *bootstrap* emparejado
+del test (2000 remuestreos de biopsias, misma semilla de remuestreo) y solo recoge la variación del
+test, no la de entrenar de nuevo.
+
+| Modelo (config) | Run | Mejor época | QWK test | Exactitud | ±1 grado | AUC | Karolinska | Radboud | ΔQWK frente a la base [IC 95 %] |
+|---|---|---|---|---|---|---|---|---|---|
+| Base (`train_panda.yaml`) | `02112026_214728` | 9 | 0,781 | 0,609 | 0,880 | 0,887 | 0,745 | 0,760 | — |
+| Ordinal (`train_panda_ordinal.yaml`) | `18112026_203820` | 13 | 0,807 | 0,644 | 0,886 | 0,892 | 0,774 | 0,784 | +0,025 [+0,003; +0,048] |
+| Color (`train_panda_color.yaml`) | `18112026_215618` | 7 | 0,787 | 0,637 | 0,884 | 0,889 | 0,764 | 0,755 | +0,005 [−0,018; +0,031] |
+| Ordinal + color (`train_panda_ordinal_color.yaml`) | `19112026_145034` | 15 | **0,812** | 0,654 | 0,889 | 0,896 | 0,764 | 0,802 | +0,031 [+0,007; +0,056] |
+
+- **La pérdida ordinal es la mejora real**: el intervalo excluye el 0, sola o con color.
+- **El color no aporta nada medible**: frente a la ordinal sola, ordinal + color da +0,005
+  [−0,017; +0,028]. Además, el `ColorJitter` (sobre todo el tono) va en CPU, a ~0,2 s por imagen
+  de 512² y núcleo, y alarga la época de 82 s a ~200 s, aun con `num_workers: 14` (la máquina tiene
+  8 núcleos físicos).
+- En ordinal + color la mejor época es la última (15): podría ganar algo con más épocas.
+
+**Cortes clínicos en test** (`eval.py`, tareas ordinales; sensibilidad y especificidad con la
+clase predicha, AUC con la probabilidad acumulada de grado ≥ k):
+
+| Modelo | ISUP ≥ 1 sens. | ISUP ≥ 1 espec. | ISUP ≥ 1 AUC | ISUP ≥ 2 sens. | ISUP ≥ 2 espec. | ISUP ≥ 2 AUC |
+|---|---|---|---|---|---|---|
+| Base | 0,924 | 0,718 | 0,938 | 0,849 | 0,856 | 0,927 |
+| Ordinal | 0,908 | 0,841 | 0,950 | 0,847 | 0,875 | 0,935 |
+| Color | 0,899 | 0,838 | 0,944 | 0,801 | 0,914 | 0,929 |
+| Ordinal + color | 0,899 | 0,871 | 0,952 | 0,838 | 0,909 | 0,933 |
+
+Referencia: Bulten et al. (2020), a resolución completa, AUC 0,99 (ISUP ≥ 1) y 0,98 (ISUP ≥ 2) en
+su test ([research/medicion_clinica_prostata.md](../research/medicion_clinica_prostata.md)).
+
+**Entrenar en un hospital y medir en el otro** (`data.providers`, pérdida base, sin color; el
+test del propio hospital se evalúa con un YAML que solo cambia `providers` de test):
+
+| Entrenado con (run) | Train / val | QWK en su hospital | QWK en el otro |
+|---|---|---|---|
+| Radboud (`19112026_154325`) | 3612 / 774 | 0,810 | 0,547 (Karolinska) |
+| Karolinska (`19112026_155555`) | 3821 / 819 | 0,754 | 0,374 (Radboud) |
+
+- En su hospital rinden como el modelo base entrenado con los dos (0,760 y 0,745), con la mitad
+  de datos. En el otro, el QWK cae 0,26 y 0,38 puntos.
+- La caída mezcla tres causas que este experimento no separa: tinción y escáner, distribución de
+  grados (Karolinska, bajos; Radboud, altos) y criterio de etiquetado de cada centro.
+- Consecuencia para un dataset clínico nuevo: no basta con el modelo entrenado en PANDA; hay que
+  ajustarlo con datos del hospital y medirlo por separado en ellos.
 
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen
   distinto. Un modelo puede acertar por el color y no por el patrón; hay que revisarlo con
-  *Subgroups*.
+  *Subgroups*. Confirmado (19/11/2026): entrenado en un solo hospital, el QWK cae 0,26-0,38 en
+  el otro (ver la sección anterior).
 - **Etiquetas ruidosas:** el grado ISUP de entrenamiento tiene discrepancias conocidas entre
   patólogos; ni el techo ni la comparación con la literatura son exactos.
 - **Métrica:** la oficial es el kappa cuadrático ponderado (QWK). De momento se entrena como

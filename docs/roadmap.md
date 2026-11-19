@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 02/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 19/11/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
@@ -33,7 +33,28 @@ queda como mejora si el mosaico se queda corto; los modelos de base de patologí
 CTransPath) se descartan porque apenas entrenan el ViT. Se usan las 10.616 biopsias; la limpieza
 de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/panda.md).
 
+**Reunión con el tutor del 20/11/2026:** informe con las mejoras de PANDA, medidas clínicas,
+generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset del médico (fuera
+del repo, en la carpeta de reuniones del autor).
+
 **Hecho:**
+- **PANDA, mejoras y generalización (18-19/11/2026, PRs #186-#189):**
+  - Pérdida ordinal `ce_emd` (entropía cruzada + EMD², revisada por el agente revisor): **QWK 0,807
+    en test** (+0,025 [+0,003; +0,048] frente a la base, *bootstrap* emparejado del test).
+    Ordinal + color: **0,812** (+0,031 [+0,007; +0,056]), el mejor. El color solo: 0,787, sin
+    mejora medible, y multiplica por 2,5 el tiempo por época (el `ColorJitter` va en CPU). Una semilla
+    por variante.
+  - Cortes clínicos del mejor modelo: ISUP ≥ 1, sensibilidad 0,90 / especificidad 0,87 / AUC
+    0,95; ISUP ≥ 2, 0,84 / 0,91 / 0,93.
+  - Entrenado en un solo hospital, el QWK cae en el otro: Radboud 0,81 → Karolinska 0,55;
+    Karolinska 0,75 → Radboud 0,37. Tablas en [datasets/panda.md](datasets/panda.md).
+  - Código: `data.color_jitter` y `data.providers` en PANDA, `groups.npz` del monitor (vista
+    *Subgroups*), `eval --save-predictions` con tablas por grupo y cortes «grado ≥ k»
+    (`src/analysis/clinical.py`), y la revisión de medición clínica con la lista para un dataset
+    clínico ([research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
+  - Infraestructura local: `/home` (59 GB) se llenó con los checkpoints. `checkpoints/local` y
+    `checkpoints/runs` son ahora enlaces al SSD (ignorados por git), y los entrenamientos largos se
+    lanzan como servicio de usuario con `nice`.
 - **PANDA, línea base (02/11/2026):** dataset descargado y descomprimido (412 GB en el SSD), mosaicos
   de las 10.616 biopsias (0 errores, 8 GB) y partición 7.433/1.593/1.590. ViT-S a 512 px en la
   RTX 3060 Ti local (82 s/época, parada en la época 14): **QWK 0,781 en test** (0,814 en
@@ -44,7 +65,7 @@ de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/pa
 - PANDA (PRs #179-#182, revisados por el agente revisor): estado del arte
   (`docs/research/panda.md`), script de mosaicos, partición fija 70/15/15 estable por huella,
   ficha `panda` ordinal, config a 512 px con `select_by: qwk`. Núcleo: `DatasetSpec.ordinal` + QWK
-  (`val_qwk`) y `model.img_size` (cuatro estrategias, `eval.py`, benchmark). Falta `groups.npz`.
+  (`val_qwk`) y `model.img_size` (cuatro estrategias, `eval.py`, benchmark).
 - Fases 1 (higiene) y 2 (abstracción de dataset y tarea, verificada en GPU con las cuatro
   estrategias).
 - Fase 3, primer bloque: MedMNIST (cuatro datasets médicos) con **3 semillas**. DermaMNIST y
@@ -83,15 +104,19 @@ de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/pa
 **En curso:** nada en marcha. Todo está integrado en `develop` (aún no en `main`: `develop → main`
 cuando el autor lo valide).
 
-**Siguiente paso recomendado:** que el monitor escriba `groups.npz` con `data_provider` para ver el
-sesgo de centro en *Subgroups*, y mejorar la línea base de PANDA (QWK 0,78): pérdida ordinal,
-aumentos de color (tinción distinta por centro) y más resolución o más tiles (otra máquina).
-Menores: el aviso de array NumPy no escribible en `src/data/panda.py:103` y que el validador exige
-`epochs > warmup_epochs` (para una prueba de 1 época hay que bajar `warmup_epochs`). Pendientes de la fase 4: predicciones por muestra en **test** (`eval.py
---save-predictions`, para que el informe use test y no validación), `paravit predict`/`explain`
-con la prueba de cordura de Grad-CAM, y la agregación por semilla en *Compare*.
+**Siguiente paso recomendado:** según lo que se decida en la reunión del 20/11. Por orden:
+(1) repetir base y ordinal con 3 semillas (las diferencias de 0,005 están dentro del ruido de una
+semilla); (2) ver si la ordinal, el color o la normalización de tinción (Macenko) reducen la caída
+entre hospitales; (3) más resolución o más tiles en otra máquina; (4) Grad-CAM frente a las
+máscaras de PANDA. Técnicos: aumentos de color en GPU, que cada run guarde solo el mejor checkpoint
+y el último en una carpeta propia con fecha (hoy van todos a la misma y la cola los mueve a mano),
+el aviso de array NumPy no escribible en `src/data/panda.py` y que el validador exige
+`epochs > warmup_epochs`. Pendientes de la fase 4: `paravit predict`/`explain` con la prueba de
+cordura de Grad-CAM y la agregación por semilla en *Compare*.
 
 **Decisiones pendientes del autor o del tutor:**
+- Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
+  [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
 - Pedir la preparación y los resultados del TFG previo que usó PANDA (referencia para compararse).
 - Máquina para entrenar PANDA a más resolución (Verode o las máquinas nuevas).
 - Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
@@ -216,7 +241,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] Preparación a mosaicos, partición 70/15/15, ficha y config (`docs/datasets/panda.md`).
   - [x] `model.img_size` para timm (entrada de 512) y métrica QWK (`ordinal=True`, `select_by: qwk`).
   - [x] Mosaicos y `splits.csv` del dataset completo y línea base a 512 px (QWK 0,781 en test).
-  - [ ] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal.
+  - [x] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal (QWK 0,807).
+  - [x] Aumentos de color y entrenamiento por hospital (generalización entre centros).
+  - [ ] Tres semillas de las variantes principales y normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
@@ -236,8 +263,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Análisis de la inspección en CPU: paquete puro `src/analysis/` (curvas, umbrales,
       calibración, confusión, cartografía, flips, peores errores, proyección 2D y lector de
       `inspect_<ts>/`); la web los muestra en la página *Inspector*.
-- [ ] Predicciones por muestra en test (`eval.py --save-predictions`), calibración (ECE, diagrama
-      de fiabilidad), curvas ROC/PR y peores errores, con su pestaña en la web.
+- [x] Predicciones por muestra en test (`eval.py --save-predictions`) con métricas por grupo y
+      cortes clínicos; calibración, curvas ROC/PR y peores errores ya los da el Inspector.
+- [ ] Que la web lea las predicciones de test (`test_preds.npz`) además del panel de validación.
 - [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.
 - [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
 - Segunda ola, según el [inventario del sector](research/inventario_herramientas_observabilidad.md)
@@ -245,8 +273,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] Intervalos de confianza *bootstrap*, calibración completa (pendiente, intercepto, ECE por
         clase), punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN) y métricas
         por subgrupo: cálculo en `src/analysis/` y vistas *Curves*, *Clinical*, *Calibration* y
-        *Subgroups* del Inspector (esta última lee un `groups.npz` opcional); falta que el monitor
-        lo escriba cuando el dataset del tutor aporte metadatos.
+        *Subgroups* del Inspector (lee el `groups.npz` que escribe el monitor; en PANDA, el
+        hospital).
   - [x] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, sobreajuste, gradientes
         fuera de rango, cuello de I/O, GPU al límite, caída de throughput): evento `alert`
         (`src/training/alerts.py`); lado web hecho (banner en Live e Inspector, vista

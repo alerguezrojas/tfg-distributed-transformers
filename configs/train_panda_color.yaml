@@ -8,7 +8,7 @@ data:
   name: panda
   root: "/media/alejandro/SSD/datasets/panda"   # train.csv, splits.csv y mosaics_l1_16x256/
   image_size: 512
-  num_workers: 4
+  num_workers: 14        # el ColorJitter (sobre todo el tono) va en CPU, ~0,2 s por imagen y núcleo
   color_jitter: 0.2     # brillo/contraste/saturación 0.2 y matiz 0.05, solo en train (tinción H&E)
 
 model:

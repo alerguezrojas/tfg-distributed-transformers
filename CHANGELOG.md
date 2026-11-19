@@ -5,6 +5,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- PANDA, mejoras y generalización entre hospitales (18-19/11/2026): pérdida ordinal QWK 0,807 en
+  test y ordinal + color 0,812 (IC *bootstrap* del test frente a la base sin el 0); el color solo,
+  0,787, sin mejora medible. Cortes clínicos del mejor modelo (ISUP ≥ 1 y ≥ 2) y entrenamiento en un
+  hospital evaluado en el otro (QWK 0,81 → 0,55 y 0,75 → 0,37). Runs en `logs/local/panda/` y
+  tablas en `docs/datasets/panda.md`.
 - Pérdida ordinal `ce_emd` para clases ordenadas (`DatasetSpec.ordinal`): entropía cruzada +
   `training.emd_weight` × EMD al cuadrado entre la distribución predicha y la real (Hou et al.
   2017), compatible con mixup y suavizado; misma cabeza y predicción. Config
@@ -198,6 +203,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- `.gitignore`: `checkpoints/runs` y `checkpoints/local` (copias de checkpoints y predicciones de
+  test por run; en el equipo local son enlaces al SSD). Las configs de PANDA con color usan
+  `num_workers: 14`, que es como se entrenaron.
 - Web: se eliminan `DashboardContext.refresh_interval` (nadie lo usaba) y los comentarios
   engañosos sobre un refresco en vivo que no existía.
 - `eval.py` aplica a test el umbral elegido en **validación** (el del checkpoint, o ajustado sobre
