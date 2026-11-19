@@ -136,7 +136,8 @@ test, no la de entrenar de nuevo.
 - **El color no aporta nada medible**: frente a la ordinal sola, ordinal + color da +0,005
   [−0,017; +0,028]. Además, el `ColorJitter` (sobre todo el tono) va en CPU, a ~0,2 s por imagen
   de 512² y núcleo, y alarga la época de 82 s a ~200 s, aun con `num_workers: 14` (la máquina tiene
-  8 núcleos físicos).
+  8 núcleos físicos). Los dos runs con color se lanzaron con `num_workers: 14`; las configs
+  se quedan en 4, como la base, para que cada variante cambie una sola cosa.
 - En ordinal + color la mejor época es la última (15): podría ganar algo con más épocas.
 
 **Cortes clínicos en test** (`eval.py`, tareas ordinales; sensibilidad y especificidad con la

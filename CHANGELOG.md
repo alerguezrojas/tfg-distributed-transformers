@@ -204,8 +204,7 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Cambiado
 - `.gitignore`: `checkpoints/runs` y `checkpoints/local` (copias de checkpoints y predicciones de
-  test por run; en el equipo local son enlaces al SSD). Las configs de PANDA con color usan
-  `num_workers: 14`, que es como se entrenaron.
+  test por run; en el equipo local son enlaces al SSD).
 - Web: se eliminan `DashboardContext.refresh_interval` (nadie lo usaba) y los comentarios
   engañosos sobre un refresco en vivo que no existía.
 - `eval.py` aplica a test el umbral elegido en **validación** (el del checkpoint, o ajustado sobre
