@@ -1,5 +1,9 @@
 # Model checkpoints — exclude large .pt files
 checkpoints/**/*.pt
+# Per-run copies of checkpoints and test predictions (checkpoints/runs/<run>/), local only.
+# No trailing slash: on this machine runs/ and local/ are symlinks to the SSD.
+/checkpoints/runs
+/checkpoints/local
 
 # Training PNGs — el dashboard web genera gráficas interactivas desde los CSVs
 # Los PNGs ya no se generan durante el entrenamiento; si quedan locales, no los rastreamos
