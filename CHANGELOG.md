@@ -5,11 +5,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
-- PANDA, mejoras y generalización entre hospitales (18-19/11/2026): pérdida ordinal QWK 0,807 en
-  test y ordinal + color 0,812 (IC *bootstrap* del test frente a la base sin el 0); el color solo,
-  0,787, sin mejora medible. Cortes clínicos del mejor modelo (ISUP ≥ 1 y ≥ 2) y entrenamiento en un
-  hospital evaluado en el otro (QWK 0,81 → 0,55 y 0,75 → 0,37). Runs en `logs/local/panda/` y
-  tablas en `docs/datasets/panda.md`.
+- PANDA, mejoras y generalización entre hospitales (18-19/11/2026, 14 runs): con tres semillas,
+  base 0,794 ± 0,012 y pérdida ordinal 0,802 ± 0,009 de QWK en test, sin mejora clara (con una
+  sola semilla parecía +0,025); el color tampoco mejora. Cortes clínicos (ISUP ≥ 1 y ≥ 2) y
+  entrenamiento en un hospital evaluado en el otro (QWK 0,81 → 0,55 y 0,75 → 0,37; ni la ordinal
+  ni el color evitan la caída). Runs en `logs/local/panda/` y tablas en `docs/datasets/panda.md`.
 - Pérdida ordinal `ce_emd` para clases ordenadas (`DatasetSpec.ordinal`): entropía cruzada +
   `training.emd_weight` × EMD al cuadrado entre la distribución predicha y la real (Hou et al.
   2017), compatible con mixup y suavizado; misma cabeza y predicción. Config

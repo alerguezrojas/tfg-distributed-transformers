@@ -118,12 +118,30 @@ local. 82 s por época; parada temprana en la época 14 (paciencia 5). Run:
 
 ## Mejoras y generalización entre hospitales (18-19/11/2026)
 
-Mismas condiciones que la línea base (ViT-S/16, 512 px, semilla 42, `--precision amp --monitor`,
-RTX 3060 Ti). Cada run se evalúa en test con el checkpoint de su mejor época de validación y
+Mismas condiciones que la línea base (ViT-S/16, 512 px, `--precision amp --monitor`, RTX 3060 Ti).
+Cada run se evalúa en test con el checkpoint de su mejor época de validación y
 `eval --save-predictions`; las tablas salen de esas predicciones (`src/analysis/clinical.py`).
-**Una sola semilla por variante:** el intervalo de la última columna es un *bootstrap* emparejado
-del test (2000 remuestreos de biopsias, misma semilla de remuestreo) y solo recoge la variación del
-test, no la de entrenar de nuevo.
+
+**Conclusión (con tres semillas): ni la pérdida ordinal ni el color mejoran el QWK de forma
+clara a 512 px.** Con una sola semilla la ordinal parecía mejorar +0,025 con un intervalo
+*bootstrap* del test que excluía el 0. Ese intervalo solo recoge la variación del test, no la de
+volver a entrenar, y al repetir la ventaja desapareció. Desde ahora cada comparación se hace con
+tres semillas.
+
+**Base frente a ordinal, tres semillas** (`training.seed` 42, 43 y 44; el resto, igual):
+
+| Variante | Runs (semillas 42, 43, 44) | QWK test por semilla | Media ± desv. | Exactitud media | ±1 grado medio |
+|---|---|---|---|---|---|
+| Base (`train_panda.yaml`) | `02112026_214728`, `19112026_172712`, `19112026_181517` | 0,781 · 0,804 · 0,797 | 0,794 ± 0,012 | 0,636 | 0,884 |
+| Ordinal (`train_panda_ordinal.yaml`) | `18112026_203820`, `19112026_175114`, `19112026_183927` | 0,807 · 0,809 · 0,792 | 0,802 ± 0,009 | 0,633 | 0,887 |
+
+- Ordinal − base por semilla: +0,025, +0,005 y −0,005 (media +0,008). *Bootstrap* emparejado del
+  test por semilla: [+0,003; +0,048], [−0,013; +0,022] y [−0,027; +0,017].
+- La desviación entre semillas de la base (0,012) es del orden de la diferencia: a esta
+  resolución el límite parece estar en la entrada (16 tiles reducidos a la mitad), no en la pérdida.
+
+**Primera ronda, una semilla (42)** (la última columna es el *bootstrap* emparejado del test,
+2000 remuestreos de biopsias):
 
 | Modelo (config) | Run | Mejor época | QWK test | Exactitud | ±1 grado | AUC | Karolinska | Radboud | ΔQWK frente a la base [IC 95 %] |
 |---|---|---|---|---|---|---|---|---|---|
@@ -132,7 +150,8 @@ test, no la de entrenar de nuevo.
 | Color (`train_panda_color.yaml`) | `18112026_215618` | 7 | 0,787 | 0,637 | 0,884 | 0,889 | 0,764 | 0,755 | +0,005 [−0,018; +0,031] |
 | Ordinal + color (`train_panda_ordinal_color.yaml`) | `19112026_145034` | 15 | **0,812** | 0,654 | 0,889 | 0,896 | 0,764 | 0,802 | +0,031 [+0,007; +0,056] |
 
-- **La pérdida ordinal es la mejora real**: el intervalo excluye el 0, sola o con color.
+- Con una semilla, la ordinal y la ordinal + color parecían mejorar (intervalo sin el 0); las
+  semillas 43 y 44 no lo confirman (tabla anterior).
 - **El color no aporta nada medible**: frente a la ordinal sola, ordinal + color da +0,005
   [−0,017; +0,028]. Además, el `ColorJitter` (sobre todo el tono) va en CPU, a ~0,2 s por imagen
   de 512² y núcleo, y alarga la época de 82 s a ~200 s, aun con `num_workers: 14` (la máquina tiene
@@ -141,7 +160,15 @@ test, no la de entrenar de nuevo.
 - En ordinal + color la mejor época es la última (15): podría ganar algo con más épocas.
 
 **Cortes clínicos en test** (`eval.py`, tareas ordinales; sensibilidad y especificidad con la
-clase predicha, AUC con la probabilidad acumulada de grado ≥ k):
+clase predicha, AUC con la probabilidad acumulada de grado ≥ k). Media de las tres semillas:
+
+| Variante (3 semillas) | ISUP ≥ 1 sens. | ISUP ≥ 1 espec. | ISUP ≥ 1 AUC | ISUP ≥ 2 sens. | ISUP ≥ 2 espec. | ISUP ≥ 2 AUC |
+|---|---|---|---|---|---|---|
+| Base | 0,913 | 0,781 | 0,941 | 0,824 | 0,889 | 0,930 |
+| Ordinal | 0,902 | 0,828 | 0,945 | 0,810 | 0,904 | 0,931 |
+
+La ordinal sube la especificidad de ISUP ≥ 1 (0,78 → 0,83) con casi la misma sensibilidad. Por
+run, semilla 42:
 
 | Modelo | ISUP ≥ 1 sens. | ISUP ≥ 1 espec. | ISUP ≥ 1 AUC | ISUP ≥ 2 sens. | ISUP ≥ 2 espec. | ISUP ≥ 2 AUC |
 |---|---|---|---|---|---|---|
@@ -153,16 +180,25 @@ clase predicha, AUC con la probabilidad acumulada de grado ≥ k):
 Referencia: Bulten et al. (2020), a resolución completa, AUC 0,99 (ISUP ≥ 1) y 0,98 (ISUP ≥ 2) en
 su test ([research/medicion_clinica_prostata.md](../research/medicion_clinica_prostata.md)).
 
-**Entrenar en un hospital y medir en el otro** (`data.providers`, pérdida base, sin color; el
-test del propio hospital se evalúa con un YAML que solo cambia `providers` de test):
+**Entrenar en un hospital y medir en el otro** (`data.providers`, una semilla, la 42; el test del
+propio hospital se evalúa con un YAML que solo cambia `providers` de test; las variantes ordinal y
+color son `train_panda_{radboud,karolinska}.yaml` con `loss: ce_emd` o `data.color_jitter: 0.2`):
 
-| Entrenado con (run) | Train / val | QWK en su hospital | QWK en el otro |
-|---|---|---|---|
-| Radboud (`19112026_154325`) | 3612 / 774 | 0,810 | 0,547 (Karolinska) |
-| Karolinska (`19112026_155555`) | 3821 / 819 | 0,754 | 0,374 (Radboud) |
+| Entrenado con | Variante (run) | Train / val | QWK en su hospital | QWK en el otro |
+|---|---|---|---|---|
+| Radboud | Base (`19112026_154325`) | 3612 / 774 | 0,810 | 0,547 (Karolinska) |
+| Radboud | Ordinal (`19112026_190023`) | 3612 / 774 | 0,813 | 0,479 |
+| Radboud | Color (`19112026_192633`) | 3612 / 774 | 0,809 | 0,510 |
+| Karolinska | Base (`19112026_155555`) | 3821 / 819 | 0,754 | 0,374 (Radboud) |
+| Karolinska | Ordinal (`19112026_191255`) | 3821 / 819 | 0,740 | 0,381 |
+| Karolinska | Color (`19112026_195324`) | 3821 / 819 | 0,759 | 0,451 |
 
 - En su hospital rinden como el modelo base entrenado con los dos (0,760 y 0,745), con la mitad
   de datos. En el otro, el QWK cae 0,26 y 0,38 puntos.
+- Ni la ordinal ni el color evitan la caída. El color ayuda de Karolinska a Radboud (+0,08) y
+  empeora en el sentido contrario (−0,04); con una semilla no se separa del azar.
+- La literatura ve lo mismo: Radboud → Karolinska 0,247 ± 0,138 (Gustafsson y Rantalainen, UNI +
+  ABMIL) y 0,240-0,364 (Nishio et al. 2023) ([research/panda.md](../research/panda.md)).
 - La caída mezcla tres causas que este experimento no separa: tinción y escáner, distribución de
   grados (Karolinska, bajos; Radboud, altos) y criterio de etiquetado de cada centro.
 - Consecuencia para un dataset clínico nuevo: no basta con el modelo entrenado en PANDA; hay que
