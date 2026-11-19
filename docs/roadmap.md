@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 19/11/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 19/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
@@ -39,15 +39,18 @@ del repo, en la carpeta de reuniones del autor).
 
 **Hecho:**
 - **PANDA, mejoras y generalización (18-19/11/2026, PRs #186-#189):**
-  - Pérdida ordinal `ce_emd` (entropía cruzada + EMD², revisada por el agente revisor): **QWK 0,807
-    en test** (+0,025 [+0,003; +0,048] frente a la base, *bootstrap* emparejado del test).
-    Ordinal + color: **0,812** (+0,031 [+0,007; +0,056]), el mejor. El color solo: 0,787, sin
-    mejora medible, y multiplica por 2,5 el tiempo por época (el `ColorJitter` va en CPU). Una semilla
-    por variante.
-  - Cortes clínicos del mejor modelo: ISUP ≥ 1, sensibilidad 0,90 / especificidad 0,87 / AUC
-    0,95; ISUP ≥ 2, 0,84 / 0,91 / 0,93.
+  - **Con tres semillas, ni la pérdida ordinal `ce_emd` ni los aumentos de color mejoran el QWK
+    de forma clara a 512 px.** Base 0,794 ± 0,012 y ordinal 0,802 ± 0,009 en test (ordinal −
+    base por semilla: +0,025, +0,005 y −0,005). Con una sola semilla la ordinal parecía mejorar
+    (intervalo *bootstrap* del test sin el 0): ese intervalo no recoge la variación del
+    entrenamiento, así que desde ahora se compara con tres semillas. El color (una semilla) no
+    mejora y multiplica por 2,5 el tiempo por época (el `ColorJitter` va en CPU).
+  - Cortes clínicos (media de 3 semillas, ordinal): ISUP ≥ 1, sensibilidad 0,90 / especificidad
+    0,83 / AUC 0,95; ISUP ≥ 2, 0,81 / 0,90 / 0,93. La ordinal sube la especificidad de ISUP ≥ 1
+    (0,78 → 0,83).
   - Entrenado en un solo hospital, el QWK cae en el otro: Radboud 0,81 → Karolinska 0,55;
-    Karolinska 0,75 → Radboud 0,37. Tablas en [datasets/panda.md](datasets/panda.md).
+    Karolinska 0,75 → Radboud 0,37. Ni la ordinal ni el color lo evitan (una semilla). La
+    literatura ve la misma caída. Tablas en [datasets/panda.md](datasets/panda.md).
   - Código: `data.color_jitter` y `data.providers` en PANDA, `groups.npz` del monitor (vista
     *Subgroups*), `eval --save-predictions` con tablas por grupo y cortes «grado ≥ k»
     (`src/analysis/clinical.py`), y la revisión de medición clínica con la lista para un dataset
@@ -105,10 +108,13 @@ del repo, en la carpeta de reuniones del autor).
 cuando el autor lo valide).
 
 **Siguiente paso recomendado:** según lo que se decida en la reunión del 20/11. Por orden:
-(1) repetir base y ordinal con 3 semillas (las diferencias de 0,005 están dentro del ruido de una
-semilla); (2) ver si la ordinal, el color o la normalización de tinción (Macenko) reducen la caída
-entre hospitales; (3) más resolución o más tiles en otra máquina; (4) Grad-CAM frente a las
-máscaras de PANDA. Técnicos: aumentos de color en GPU, que cada run guarde solo el mejor checkpoint
+(1) **más resolución** o más tiles (es lo que más puede mejorar: los ganadores usaban 4-9 veces
+más píxeles por biopsia). El predictor estima que a 1.024 px ViT-S con lote 16 necesita 8,7 GB y
+no cabe en la RTX 3060 Ti; hace falta otra máquina o DDP. Además, a 512 px predijo 101 s por época
+frente a 82 s medidos: es una medida para validar el predictor fuera de BigEarthNet.
+(2) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro centro y medir cuántas
+hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
+(Macenko). (3) Grad-CAM frente a las máscaras de PANDA. Toda comparación, con 3 semillas. Técnicos: aumentos de color en GPU, que cada run guarde solo el mejor checkpoint
 y el último en una carpeta propia con fecha (hoy van todos a la misma y la cola los mueve a mano),
 el aviso de array NumPy no escribible en `src/data/panda.py` y que el validador exige
 `epochs > warmup_epochs`. Pendientes de la fase 4: `paravit predict`/`explain` con la prueba de
@@ -241,9 +247,10 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] Preparación a mosaicos, partición 70/15/15, ficha y config (`docs/datasets/panda.md`).
   - [x] `model.img_size` para timm (entrada de 512) y métrica QWK (`ordinal=True`, `select_by: qwk`).
   - [x] Mosaicos y `splits.csv` del dataset completo y línea base a 512 px (QWK 0,781 en test).
-  - [x] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal (QWK 0,807).
+  - [x] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal (sin mejora clara con 3 semillas).
   - [x] Aumentos de color y entrenamiento por hospital (generalización entre centros).
-  - [ ] Tres semillas de las variantes principales y normalización de tinción.
+  - [x] Tres semillas de base y ordinal; ordinal y color entrenando en un solo hospital.
+  - [ ] Más resolución (otra máquina), adaptación a otro hospital y normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
