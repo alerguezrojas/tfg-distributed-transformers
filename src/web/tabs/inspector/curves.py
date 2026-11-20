@@ -14,7 +14,7 @@ from src.analysis.thresholds import threshold_sweep
 from src.web.inspector_stats import (
     DEFAULT_SEED, N_BOOT_CHOICES, ci_column, ci_note, class_ci, macro_ci,
 )
-from src.web.tabs.inspector._common import InspectorCtx, _mtime, fmt, need_monitor
+from src.web.tabs.inspector._common import InspectorCtx, fmt, need_monitor
 from src.web.ui.charts import _show
 
 _MACRO_AUC, _MACRO_AP = "Macro AUC", "Macro AP"
@@ -61,6 +61,9 @@ def _class_ci(dir_str: str, epoch: int, mtime: float, source: str, task: str, th
 def source_choice(c: InspectorCtx, key: str) -> str | None:
     """Full-validation arrays when the selected epoch has them (the default), else the subset."""
     d = c.epoch_data()
+    if c.is_test:
+        st.caption(f"Computed on the **test set** ({len(d.probs):,} samples) saved by `eval`.")
+        return SUBSET
     if d is not None and d.val_probs is not None and d.val_targets is not None:
         n = len(d.val_probs)
         return st.radio("Data", [FULL, SUBSET], horizontal=True, key=key,
@@ -76,8 +79,8 @@ def render(c: InspectorCtx) -> None:
         return
     source = source_choice(c, "insp_curves_source")
     probs, targets = arrays(c, c.epoch, source)
-    mt = _mtime(c.inspect_dir / f"epoch_{c.epoch:03d}.npz")
-    out = _curves(str(c.inspect_dir), c.epoch, mt, source, probs, targets)
+    mt = c.epoch_mtime(c.epoch)
+    out = _curves(c.key, c.epoch, mt, source, probs, targets)
 
     k = st.columns(4)
     k[0].metric(_MACRO_AUC, fmt(out["macro"]["auc"]))
@@ -115,11 +118,12 @@ def render(c: InspectorCtx) -> None:
         _show(fig, "insp_pr")
 
     st.markdown("---")
-    sweep = _sweep(str(c.inspect_dir), c.epoch, mt, source, c.task, probs, targets)
+    sweep = _sweep(c.key, c.epoch, mt, source, c.task, probs, targets)
     thr = _threshold_section(c, sweep)
     cis, n_boot = _ci_section(c, source, mt, probs, targets, thr)
     _class_table(c, out, probs, targets, thr, cis, n_boot)
-    _evolution(c, source)
+    if not c.is_test:       # a single evaluation: nothing to follow over epochs
+        _evolution(c, source)
 
 
 def _add_curve(fig: go.Figure, curve: dict, x: str, y: str, name: str, dash: str | None = None):
@@ -149,7 +153,8 @@ def _threshold_section(c: InspectorCtx, sweep: dict) -> float | None:
     default = float(round(d.threshold, 2)) if d.threshold is not None else best["threshold"]
     return st.slider("Threshold for the table below", 0.05, 0.95, min(max(default, 0.05), 0.95),
                      0.05, key="insp_curves_thr",
-                     help="Defaults to the epoch's validation-optimal threshold.")
+                     help="Defaults to the threshold recorded with the data (the "
+                          "validation-optimal one).")
 
 
 def _ci_section(c: InspectorCtx, source: str, mt: float, probs, targets,
@@ -169,7 +174,7 @@ def _ci_section(c: InspectorCtx, source: str, mt: float, probs, targets,
         st.caption("Intervals off: the numbers are point estimates.")
         return None, 0
     use = 0.5 if thr is None else thr
-    ci = _macro_ci(str(c.inspect_dir), c.epoch, mt, source, c.task, use, n_boot, probs, targets)
+    ci = _macro_ci(c.key, c.epoch, mt, source, c.task, use, n_boot, probs, targets)
     labels = {"auc": _MACRO_AUC, "ap": _MACRO_AP, "f1": "Macro F1",
               "sensitivity": "Sensitivity", "specificity": "Specificity", "accuracy": "Accuracy"}
     cols = st.columns(len(labels))
@@ -183,7 +188,7 @@ def _ci_section(c: InspectorCtx, source: str, mt: float, probs, targets,
                "AUC and AP do not depend on a threshold.")
     if not per_class:
         return None, n_boot
-    return _class_ci(str(c.inspect_dir), c.epoch, mt, source, c.task, use, n_boot, probs,
+    return _class_ci(c.key, c.epoch, mt, source, c.task, use, n_boot, probs,
                      targets), n_boot
 
 
@@ -217,7 +222,7 @@ def _evolution(c: InspectorCtx, source: str) -> None:
         a = arrays(c, e, source)
         if a is None:
             continue
-        o = _curves(str(c.inspect_dir), e, _mtime(c.inspect_dir / f"epoch_{e:03d}.npz"),
+        o = _curves(c.key, e, c.epoch_mtime(e),
                     source, *a)
         rows.append({"epoch": e, _MACRO_AUC: o["macro"]["auc"], _MACRO_AP: o["macro"]["ap"]})
     st.markdown("##### Evolution")

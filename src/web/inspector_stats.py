@@ -216,6 +216,14 @@ def point_frame(report: dict[str, Any]) -> pd.DataFrame:
                                    for k in POINT_METRICS]})
 
 
+def cutoffs_frame(rows: Sequence[dict[str, Any]]) -> pd.DataFrame:
+    """Table of the ordinal "grade >= k" cut-offs of ``analysis.clinical.clinical_cutoffs``."""
+    cols = {"label": "Cut-off", "n_pos": "n+", "n_neg": "n-", "sensitivity": "Sensitivity",
+            "specificity": "Specificity", "ppv": "PPV", "npv": "NPV", "auc": "AUC"}
+    df = pd.DataFrame(list(rows), columns=list(cols)).rename(columns=cols)
+    return df.round({c: 3 for c in ("Sensitivity", "Specificity", "PPV", "NPV", "AUC")})
+
+
 # ── Calibration ─────────────────────────────────────────────────────────────────
 
 _SLOPE_TOL = 0.1       # |slope - 1| treated as "close to 1" when there is no standard error

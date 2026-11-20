@@ -32,11 +32,14 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.analysis.clinical import clinical_cutoffs, group_summary
-from src.analysis.io import save_predictions
+from src.analysis.io import default_predictions_path, save_predictions
 from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
 from src.training.tasks import MultiLabelTask, Task
+
+
+AUTO_PATH = "@auto"     # value of --save-predictions given without a path
 
 
 def parse_args():
@@ -57,10 +60,12 @@ def parse_args():
                         help="Override metadata.parquet path (e.g. a demo subset)")
     parser.add_argument("--max-batches", type=int, default=None,
                         help="Stop after N batches (quick sanity check)")
-    parser.add_argument("--save-predictions", type=str, default=None, metavar="PATH",
+    parser.add_argument("--save-predictions", type=str, nargs="?", const=AUTO_PATH,
+                        default=None, metavar="PATH",
                         help=".npz path to save the per-sample probabilities, targets, "
                              "threshold, classes, task and group variables (format in "
-                             "docs/inspeccion.md)")
+                             "docs/inspeccion.md). Without a path it goes to the run's log "
+                             "folder as test_preds_<ts>.npz, which the web Inspector reads")
     parser.add_argument("--threshold-from", choices=["checkpoint", "val", "test"],
                         default="checkpoint",
                         help="Where the decision threshold is tuned: 'checkpoint' (the one "
@@ -305,9 +310,11 @@ def main():
     if ordinal:
         print_clinical_cutoffs(probs_np, hard_np, spec.classes)
     if args.save_predictions:
-        save_predictions(args.save_predictions, probs_np, hard_np, best_t, spec.classes,
-                         task.name, ordinal, groups)
-        print(f"\nPredicciones guardadas en: {args.save_predictions}")
+        target = (default_predictions_path(args.checkpoint)
+                  if args.save_predictions == AUTO_PATH else args.save_predictions)
+        save_predictions(target, probs_np, hard_np, best_t, spec.classes, task.name, ordinal,
+                         groups)
+        print(f"\nPredicciones guardadas en: {target}")
 
     # ── Save CSV ──────────────────────────────────────────────────────────────
     if args.output:

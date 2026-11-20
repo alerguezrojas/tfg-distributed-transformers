@@ -12,11 +12,12 @@ import math
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.analysis.clinical import clinical_cutoffs
 from src.web.inspector_stats import (
     CRITERIA, DEFAULT_SEED, N_BOOT_CHOICES, POINT_METRICS, ci_note, clinical_report,
-    confusion_2x2, point_frame,
+    confusion_2x2, cutoffs_frame, point_frame,
 )
-from src.web.tabs.inspector._common import InspectorCtx, _mtime, fmt, need_monitor
+from src.web.tabs.inspector._common import InspectorCtx, fmt, need_monitor
 from src.web.tabs.inspector.curves import arrays, source_choice
 from src.web.ui.charts import _show
 
@@ -51,7 +52,9 @@ def _controls(c: InspectorCtx, targets, names: list[str]):
                         key="insp_clin_thr")
     elif criterion == "validation":
         thr = float(d.threshold)
-        st.caption(f"Threshold {thr:.3f}: the validation-optimal one recorded by the run "
+        st.caption(f"Threshold {thr:.3f}: the one recorded by `eval` with the predictions."
+                   if c.is_test else
+                   f"Threshold {thr:.3f}: the validation-optimal one recorded by the run "
                    "(chosen on the full validation set).")
     elif criterion == "sensitivity":
         target = st.select_slider("Sensitivity at least", SENS_TARGETS, value=0.90,
@@ -72,6 +75,18 @@ def _controls(c: InspectorCtx, targets, names: list[str]):
     return cls, criterion, thr, target, prev, n_boot
 
 
+def _ordinal_cutoffs(c: InspectorCtx) -> None:
+    """«grade >= k» table of an ordinal task (test predictions only: it needs ordered classes)."""
+    if not (c.is_test and c.ordinal and c.n_classes > 1):
+        return
+    st.markdown("##### Cut-offs «grade ≥ k»")
+    rows = clinical_cutoffs(c.test.probs, c.test.targets, c.classes)
+    st.dataframe(cutoffs_frame(rows), hide_index=True, width="stretch")
+    st.caption("Each cut turns the ordered classes into one binary question: the rule is "
+               "`argmax ≥ k` and the score for the AUC is P(grade ≥ k). Sensitivity, specificity, "
+               "PPV and NPV use the prevalence of this data.")
+
+
 def render(c: InspectorCtx) -> None:
     if not need_monitor(c):
         return
@@ -82,11 +97,12 @@ def render(c: InspectorCtx) -> None:
         st.caption("Multiclass: one class against the rest, thresholding the probability of the "
                    "chosen class (not the argmax).")
     cls, criterion, thr, target, prev, n_boot = _controls(c, targets, names)
-    mt = _mtime(c.inspect_dir / f"epoch_{c.epoch:03d}.npz")
-    r = _report(str(c.inspect_dir), c.epoch, mt, source, cls, criterion, thr, target, prev,
+    mt = c.epoch_mtime(c.epoch)
+    r = _report(c.key, c.epoch, mt, source, cls, criterion, thr, target, prev,
                 n_boot, probs, targets)
     if not r["ok"]:
         st.info(r["reason"])
+        _ordinal_cutoffs(c)
         return
 
     st.markdown(f"##### {names[cls]} at threshold {r['threshold']:.3f}")
@@ -131,3 +147,4 @@ def render(c: InspectorCtx) -> None:
         _show(fig, "insp_clin_roc")
     st.caption("Fix the threshold on validation data and apply it unchanged to test: choosing it "
                "on the same data it is evaluated on makes the figures optimistic.")
+    _ordinal_cutoffs(c)

@@ -138,7 +138,8 @@ def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
                    split: str = "test", output: str | None = None,
                    metadata: str | None = None, batch_size: int | None = None,
                    max_batches: int | None = None,
-                   save_predictions: str | None = None) -> list[str]:
+                   save_predictions: str | None = None,
+                   save_predictions_auto: bool = False) -> list[str]:
     """Build the eval.py command (held-out evaluation)."""
     cmd = [sys.executable, "scripts/eval.py", "--checkpoint", checkpoint,
            "--config", config, "--split", split]
@@ -154,6 +155,8 @@ def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
         cmd += ["--max-batches", str(max_batches)]
     if save_predictions:
         cmd += ["--save-predictions", save_predictions]
+    elif save_predictions_auto:
+        cmd += ["--save-predictions"]       # no path: eval.py picks the run's log folder
     return cmd
 
 
@@ -428,12 +431,17 @@ def eval(
     max_batches: Optional[int] = typer.Option(None, help="Stop after N batches (sanity)."),
     save_predictions: Optional[str] = typer.Option(
         None, "--save-predictions", help=".npz path for the per-sample predictions."),
+    save_predictions_auto: bool = typer.Option(
+        False, "--save-predictions-auto",
+        help="Save the predictions as test_preds_<ts>.npz in the run's log folder "
+             "(the web Inspector reads them)."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Evaluate a checkpoint on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
-                         save_predictions=save_predictions)
+                         save_predictions=save_predictions,
+                         save_predictions_auto=save_predictions_auto)
     _run(cmd, dry_run)
 
 

@@ -12,9 +12,13 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.analysis.io import EpochData, MonitorSet, load_epoch, load_groups, load_monitor_set
+from src.analysis.io import (
+    EpochData, MonitorSet, Predictions, load_epoch, load_groups, load_monitor_set,
+)
 from src.web.events_reader import RunState
-from src.web.inspector_data import outcome_card
+from src.web.inspector_data import (
+    load_test_predictions, outcome_card, predictions_as_epoch,
+)
 from src.web.ui.charts import _show
 
 MONITOR_HINT = ("Enable the prediction monitor to record this: `--monitor` in the training "
@@ -77,6 +81,19 @@ def load_monitor(inspect_dir: Path | None) -> MonitorSet | None:
     return _cached_monitor(str(inspect_dir), _mtime(inspect_dir / "monitor_set.npz"))
 
 
+@st.cache_data(show_spinner=False, max_entries=4)
+def _cached_test(path_str: str, root_str: str, mtime: float) -> Predictions | None:
+    try:
+        return load_test_predictions(Path(path_str), Path(root_str))
+    except Exception:           # outside logs/, half-written .npz, missing keys…
+        return None
+
+
+def load_test_cached(path: Path, root: Path) -> Predictions | None:
+    """``test_preds_<ts>.npz`` (only from inside ``logs/``), cached by (path, mtime)."""
+    return _cached_test(str(path), str(root), _mtime(path))
+
+
 def load_epoch_cached(inspect_dir: Path, epoch: int) -> EpochData | None:
     return _cached_epoch(str(inspect_dir), epoch,
                          _mtime(inspect_dir / f"epoch_{epoch:03d}.npz"))
@@ -96,6 +113,42 @@ class InspectorCtx:
     task: str = "multilabel"
     classes: list[str] = field(default_factory=list)
     groups: dict[str, np.ndarray] | None = None     # groups.npz: variable → (M,) labels
+    test: Predictions | None = None         # set: the context is the test set of `eval`
+    test_path: Path | None = None
+    ordinal: bool = False                   # test predictions of an ordinal task
+    _test_epoch: EpochData | None = field(default=None, repr=False)
+
+    @classmethod
+    def from_test(cls, pred: Predictions, path: Path, state: RunState | None = None
+                  ) -> "InspectorCtx":
+        """Context over the test predictions: one pseudo-epoch (0) in place of the monitor."""
+        monitor, epoch = predictions_as_epoch(pred)
+        ctx = cls(state=state, inspect_dir=None, monitor=monitor, epochs=[0], epoch=0,
+                  task=pred.task, classes=list(pred.classes), groups=pred.groups or None,
+                  test=pred, test_path=path, ordinal=pred.ordinal)
+        ctx._test_epoch = epoch
+        return ctx
+
+    @property
+    def is_test(self) -> bool:
+        return self.test is not None
+
+    @property
+    def key(self) -> str:
+        """Identity of the data source for the caches (arrays are not hashed)."""
+        return str(self.test_path if self.is_test else self.inspect_dir)
+
+    def epoch_mtime(self, epoch: int) -> float:
+        if self.is_test:
+            return _mtime(self.test_path)
+        return _mtime(self.inspect_dir / f"epoch_{epoch:03d}.npz")
+
+    def groups_mtime(self) -> float:
+        return _mtime(self.test_path) if self.is_test else _mtime(self.inspect_dir / "groups.npz")
+
+    @property
+    def epoch_label(self) -> str:
+        return "test set" if self.is_test else f"epoch {self.epoch}"
 
     @property
     def n_classes(self) -> int:
@@ -107,6 +160,8 @@ class InspectorCtx:
 
     def epoch_data(self, epoch: int | None = None) -> EpochData | None:
         epoch = self.epoch if epoch is None else epoch
+        if self.is_test:
+            return self._test_epoch
         if self.inspect_dir is None or epoch is None:
             return None
         return load_epoch_cached(self.inspect_dir, epoch)

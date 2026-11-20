@@ -38,6 +38,10 @@ generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset d
 del repo, en la carpeta de reuniones del autor).
 
 **Hecho:**
+- **El Inspector lee las predicciones de test (20/11/2026):** `eval --save-predictions` sin ruta
+  guarda `test_preds_<ts>.npz` en la carpeta de logs del run (sello deducido del checkpoint) y la
+  web ofrece la fuente «Test (eval)» en Curves, Clinical (con cortes «grado ≥ k»), Calibration y
+  Subgroups. Solo se abren ficheros de `logs/`.
 - **PANDA, mejoras y generalización (18-19/11/2026, PRs #186-#189):**
   - **Con tres semillas, ni la pérdida ordinal `ce_emd` ni los aumentos de color mejoran el QWK
     de forma clara a 512 px.** Base 0,794 ± 0,012 y ordinal 0,802 ± 0,009 en test (ordinal −
@@ -272,7 +276,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
       `inspect_<ts>/`); la web los muestra en la página *Inspector*.
 - [x] Predicciones por muestra en test (`eval.py --save-predictions`) con métricas por grupo y
       cortes clínicos; calibración, curvas ROC/PR y peores errores ya los da el Inspector.
-- [ ] Que la web lea las predicciones de test (`test_preds.npz`) además del panel de validación.
+- [x] Que la web lea las predicciones de test (`test_preds_<ts>.npz`) además del panel de validación:
+      selector «Validation / Test» en el Inspector (Curves, Clinical con cortes «grado ≥ k»,
+      Calibration y Subgroups).
 - [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.
 - [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
 - Segunda ola, según el [inventario del sector](research/inventario_herramientas_observabilidad.md)

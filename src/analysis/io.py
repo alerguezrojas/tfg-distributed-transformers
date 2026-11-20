@@ -6,6 +6,7 @@ that are absent come back as ``None``.
 """
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -141,3 +142,84 @@ def load_predictions(path) -> Predictions:
         classes=[str(c) for c in d["classes"]], task=str(d["task"]),
         ordinal=bool(d["ordinal"]) if "ordinal" in d else False,
         groups={k[len(_GROUP_PREFIX):]: v for k, v in d.items() if k.startswith(_GROUP_PREFIX)})
+
+
+# ── Where the test predictions live (``test_preds_<ts>.npz`` in the run's log folder) ──────────
+
+#: Stamp format of the run artefacts (``tipo_DDMMYYYY_HHMMSS.{log,csv}``).
+TS_FORMAT = "%d%m%Y_%H%M%S"
+_TRAIN_LOG = re.compile(r"^train_(\d{8}_\d{6})\.log$")
+_TEST_PREDS = re.compile(r"^test_preds_(\d{8}_\d{6})\.npz$")
+
+
+def _parse_ts(ts: str) -> datetime | None:
+    """Run stamp as a datetime (DDMMYYYY_HHMMSS, or the legacy YYYYMMDD_HHMMSS)."""
+    for fmt in (TS_FORMAT, "%Y%m%d_%H%M%S"):
+        try:
+            return datetime.strptime(ts, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def run_dir_of_checkpoint(checkpoint) -> Path | None:
+    """Log folder of the run a checkpoint belongs to, or ``None`` if it cannot be deduced.
+
+    Checkpoints live in ``<checkpoint.dir>/<env>/<run_subdir>/`` and the logs of the same run in
+    ``logs/<env>/<run_subdir>/`` (``TrainingSessionBuilder``), so the folder is the checkpoint's
+    own with the ``checkpoints`` component swapped for ``logs``.
+    """
+    parts = Path(checkpoint).parent.parts
+    if "checkpoints" not in parts:
+        return None
+    i = len(parts) - 1 - parts[::-1].index("checkpoints")      # the innermost one
+    return Path(*parts[:i], "logs", *parts[i + 1:])
+
+
+def run_stamp_for(run_dir, checkpoint_mtime: float | None = None) -> str | None:
+    """Stamp of the run in ``run_dir`` that wrote a checkpoint: the latest ``train_<ts>.log`` that
+    started before the checkpoint was saved (the latest overall without a modification time).
+
+    Checkpoint names repeat from run to run in the same folder, so the modification time is what
+    tells which run wrote it. ``None`` if the folder has no training log.
+    """
+    d = Path(run_dir)
+    runs = []
+    if d.is_dir():
+        runs = sorted((t, m.group(1)) for f in d.iterdir()
+                      if (m := _TRAIN_LOG.match(f.name)) and (t := _parse_ts(m.group(1))))
+    if checkpoint_mtime is not None:
+        before = [r for r in runs if r[0].timestamp() <= checkpoint_mtime]
+        runs = before or runs
+    return runs[-1][1] if runs else None
+
+
+def default_predictions_path(checkpoint, now: datetime | None = None) -> Path:
+    """Where ``eval --save-predictions`` (no path) writes: ``<run log folder>/test_preds_<ts>.npz``.
+
+    The folder and the stamp are those of the run that trained the checkpoint (see
+    :func:`run_dir_of_checkpoint` and :func:`run_stamp_for`). If either cannot be deduced (a
+    checkpoint outside ``checkpoints/``, a folder without training log) the file goes to
+    ``logs/`` (next to the checkpoint's own folder name when known) with the stamp of the
+    evaluation.
+    """
+    ckpt = Path(checkpoint)
+    run_dir = run_dir_of_checkpoint(ckpt)
+    stamp = None
+    if run_dir is not None:
+        try:
+            mtime = ckpt.stat().st_mtime
+        except OSError:
+            mtime = None
+        stamp = run_stamp_for(run_dir, mtime)
+    return (run_dir or Path("logs")) / (
+        f"test_preds_{stamp or (now or datetime.now()).strftime(TS_FORMAT)}.npz")
+
+
+def list_test_predictions(root) -> list[tuple[str, Path]]:
+    """Every ``test_preds_<ts>.npz`` under ``<root>/logs`` as ``(stamp, path)``."""
+    logs = Path(root) / "logs"
+    if not logs.is_dir():
+        return []
+    return [(m.group(1), f) for f in sorted(logs.rglob("test_preds_*.npz"))
+            if (m := _TEST_PREDS.match(f.name))]

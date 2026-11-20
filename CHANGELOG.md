@@ -5,6 +5,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- El Inspector de la web lee las predicciones de test: si el run tiene `test_preds_<ts>.npz`,
+  ofrece la fuente «Test (eval)» junto a «Validation (monitor)» en Curves, Clinical, Calibration y
+  Subgroups; en tareas ordinales, Clinical muestra la tabla de cortes «grado ≥ k». `eval
+  --save-predictions` sin ruta (`--save-predictions-auto` en `paravit.py eval`) guarda ese fichero
+  en la carpeta de logs del run con su sello, deducido del checkpoint (o el de la evaluación si no
+  se puede). La web solo abre ficheros dentro de `logs/` y carga el `.npz` con `allow_pickle=False`.
 - PANDA, mejoras y generalización entre hospitales (18-19/11/2026, 14 runs): con tres semillas,
   base 0,794 ± 0,012 y pérdida ordinal 0,802 ± 0,009 de QWK en test, sin mejora clara (con una
   sola semilla parecía +0,025); el color tampoco mejora. Cortes clínicos (ISUP ≥ 1 y ≥ 2) y

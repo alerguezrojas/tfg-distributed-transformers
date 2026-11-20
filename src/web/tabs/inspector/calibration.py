@@ -9,7 +9,7 @@ from src.analysis.calibration import (
     adaptive_ece, calibration, calibration_curve_stats, per_class_calibration,
 )
 from src.web.inspector_stats import calibration_class_table, interpret_citl, interpret_slope
-from src.web.tabs.inspector._common import InspectorCtx, _mtime, fmt, need_monitor
+from src.web.tabs.inspector._common import InspectorCtx, fmt, need_monitor
 from src.web.tabs.inspector.curves import arrays, source_choice
 from src.web.ui.charts import _show
 
@@ -48,15 +48,15 @@ def render(c: InspectorCtx) -> None:
         a = arrays(c, epoch, source)
         if a is None:
             return None
-        return _calibration(str(c.inspect_dir), epoch,
-                            _mtime(c.inspect_dir / f"epoch_{epoch:03d}.npz"), source, c.task,
+        return _calibration(c.key, epoch,
+                            c.epoch_mtime(epoch), source, c.task,
                             bins, *a)
 
     out = cal(c.epoch)
     a = arrays(c, c.epoch, source)
-    mt = _mtime(c.inspect_dir / f"epoch_{c.epoch:03d}.npz")
-    stats = _slope(str(c.inspect_dir), c.epoch, mt, source, c.task, *a)
-    extra = _extra(str(c.inspect_dir), c.epoch, mt, source, c.task, bins, *a)
+    mt = c.epoch_mtime(c.epoch)
+    stats = _slope(c.key, c.epoch, mt, source, c.task, *a)
+    extra = _extra(c.key, c.epoch, mt, source, c.task, bins, *a)
     k = st.columns(3)
     k[0].metric("ECE", fmt(out["ece"], "{:.4f}"), help="Expected calibration error "
                 "(Guo et al., 2017): bin-size-weighted gap between confidence and accuracy.")
@@ -101,7 +101,7 @@ def render(c: InspectorCtx) -> None:
                              hovertemplate="accuracy %{y:.3f}<br>mean confidence "
                                            "%{customdata[1]:.3f}<br>n=%{customdata[0]}"
                                            "<extra></extra>"))
-        fig.update_layout(height=360, title={"text": f"Reliability diagram (epoch {c.epoch})"},
+        fig.update_layout(height=360, title={"text": f"Reliability diagram ({c.epoch_label})"},
                           xaxis_title="Confidence", yaxis_title="Accuracy",
                           xaxis_range=[0, 1], yaxis_range=[0, 1.02])
         _show(fig, "insp_reliability")
@@ -123,10 +123,12 @@ def render(c: InspectorCtx) -> None:
         o = cal(e)
         ae = arrays(c, e, source)
         if o is not None and ae is not None:
-            sl = _slope(str(c.inspect_dir), e, _mtime(c.inspect_dir / f"epoch_{e:03d}.npz"),
+            sl = _slope(c.key, e, c.epoch_mtime(e),
                         source, c.task, *ae)
             rows.append({"epoch": e, "ECE": o["ece"], "MCE": o["mce"], "Brier": o["brier"],
                          "Slope": sl["slope"]})
+    if c.is_test:           # a single evaluation: nothing to follow over epochs
+        return
     st.markdown("##### Evolution")
     if len(rows) < 2:
         st.caption("Needs at least two inspected epochs.")
