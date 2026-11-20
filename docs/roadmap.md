@@ -104,8 +104,7 @@ del repo, en la carpeta de reuniones del autor).
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** nada en marcha. Todo está integrado en `develop` (aún no en `main`: `develop → main`
-cuando el autor lo valide).
+**En curso:** versión 1.1.0 (20/11/2026): todo lo anterior pasa de `develop` a `main`.
 
 **Siguiente paso recomendado:** según lo que se decida en la reunión del 20/11. Por orden:
 (1) **más resolución** o más tiles (es lo que más puede mejorar: los ganadores usaban 4-9 veces
