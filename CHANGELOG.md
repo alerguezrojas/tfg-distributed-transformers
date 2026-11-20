@@ -54,7 +54,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   color y resolución.
 
 ### Corregido
-- **Checkpoints DDP sin el prefijo `module.`**: `Trainer` guardaba el `state_dict` del envoltorio DDP, así que `scripts/eval.py` no podía cargar ningún checkpoint entrenado con DDP (falló en los tres runs de Kaggle del 20/11). Ahora se guardan los pesos del modelo suelto y la carga (evaluación y reanudación) acepta los checkpoints antiguos con prefijo.
+- **Checkpoints DDP y de paralelismo de modelo cargables en `eval.py`**: `Trainer` guardaba el
+  `state_dict` del envoltorio (prefijos `module.` de DDP y `base.` de `ModelParallelViT`), así que
+  `scripts/eval.py` no cargaba esos checkpoints (falló en los tres runs de Kaggle del 20/11). Ahora
+  se guardan los pesos del clasificador suelto y la carga (evaluación y reanudación) acepta los
+  checkpoints antiguos con prefijo. El kernel de Kaggle copia solo los logs que escribe.
 - `--epochs 1` ya no falla con los configs que traen `warmup_epochs: 1`: si `--epochs` deja
   `epochs <= warmup_epochs`, se baja `warmup_epochs` a `epochs - 1` (mínimo 0) y se avisa por el log.
   Un YAML con esa combinación sigue fallando en el validador.
@@ -77,7 +81,6 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   1.67 porque lo exige pillow 13). torch se queda en 2.11 hasta validar 2.13 en las GPU.
 - El job `audit` de la CI pasa a bloquear: cero avisos salvo cuatro aceptados con su motivo en
   `ci.yml` (torch.jit, que no se usa, y dos de setuptools al construir paquetes).
-
 
 ## [1.1.0] - 2026-11-20
 

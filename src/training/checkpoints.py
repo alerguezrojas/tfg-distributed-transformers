@@ -31,21 +31,31 @@ def atomic_save(state: dict, path: Path) -> None:
         raise
 
 
-_WRAPPER_PREFIX = "module."
+_WRAPPER_PREFIXES = ("module.", "base.")   # DDP/DataParallel, ModelParallelViT
 
 
-def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
-    """El modelo de verdad bajo ``DistributedDataParallel``/``DataParallel``: sus pesos se
-    guardan sin el prefijo ``module.`` y cargan igual en una o varias GPU."""
+def unwrap_ddp(model: torch.nn.Module) -> torch.nn.Module:
+    """El módulo bajo ``DistributedDataParallel``/``DataParallel`` (o el propio modelo)."""
     wrappers = (torch.nn.parallel.DistributedDataParallel, torch.nn.DataParallel)
     return model.module if isinstance(model, wrappers) else model
 
 
+def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
+    """El clasificador de verdad bajo DDP y bajo ``ModelParallelViT`` (su atributo ``base``):
+    sus pesos se guardan sin prefijo y cargan igual en una GPU, en DDP o en dos etapas."""
+    model = unwrap_ddp(model)
+    return getattr(model, "base", model)
+
+
 def strip_wrapper_prefix(state_dict: dict) -> dict:
-    """Quita ``module.`` de las claves si **todas** lo llevan: los checkpoints DDP anteriores
-    al arreglo guardaban el ``state_dict`` del envoltorio y no cargaban en un modelo suelto."""
-    if state_dict and all(k.startswith(_WRAPPER_PREFIX) for k in state_dict):
-        return {k[len(_WRAPPER_PREFIX):]: v for k, v in state_dict.items()}
+    """Quita ``module.`` y ``base.`` de las claves mientras **todas** lo lleven: los
+    checkpoints DDP y de paralelismo de modelo anteriores al arreglo guardaban el
+    ``state_dict`` del envoltorio y no cargaban en un modelo suelto."""
+    while state_dict:
+        prefix = next((p for p in _WRAPPER_PREFIXES if all(k.startswith(p) for k in state_dict)), None)
+        if prefix is None:
+            break
+        state_dict = {k[len(prefix):]: v for k, v in state_dict.items()}
     return state_dict
 
 

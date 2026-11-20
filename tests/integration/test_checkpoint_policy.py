@@ -261,3 +261,26 @@ def test_strip_prefix_only_when_every_key_has_it():
     assert strip_wrapper_prefix(mixed) is mixed
     assert strip_wrapper_prefix({"module.a": 1, "module.b": 2}) == {"a": 1, "b": 2}
     assert strip_wrapper_prefix({}) == {}
+    assert strip_wrapper_prefix({"module.base.a": 1}) == {"a": 1}   # DDP sobre dos etapas
+
+
+def _tiny():
+    from src.models.vit import TimmClassifier
+    return TimmClassifier("vit_tiny_patch16_224", num_classes=N_CLASSES, pretrained=False)
+
+
+def test_model_parallel_checkpoint_loads_in_a_plain_classifier(tmp_path):
+    """ModelParallelViT guarda los pesos de su ``base``: eval.py los carga en el modelo suelto."""
+    from src.models.model_parallel import ModelParallelViT
+    mp = ModelParallelViT(_tiny(), devices=["cpu", "cpu"], split_block=6)
+    tr = Trainer(mp, torch.optim.AdamW(mp.parameters(), lr=1e-3), None, torch.device("cpu"),
+                 checkpoint_dir=str(tmp_path))
+    tr.save_checkpoint(1, {})
+    state = torch.load(tmp_path / "best.pt", weights_only=True)["model_state_dict"]
+    assert not any(k.startswith(("base.", "module.")) for k in state)
+    _tiny().load_state_dict(state)
+    old = {f"base.{k}": v for k, v in state.items()}          # checkpoint anterior al arreglo
+    _tiny().load_state_dict(strip_wrapper_prefix(old))
+    atomic_save({"epoch": 1, "model_state_dict": old,
+                 "optimizer_state_dict": tr.optimizer.state_dict()}, tmp_path / "old.pt")
+    tr.load_checkpoint(tmp_path / "old.pt")
