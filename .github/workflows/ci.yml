@@ -49,16 +49,18 @@ jobs:
       - name: Run test suite
         run: uv run pytest -q
 
-  # Auditoría de dependencias con vulnerabilidades conocidas (base OSV/PyPI).
-  # No bloquea el PR (continue-on-error): el lock arrastra avisos de herramientas de desarrollo
-  # (jupyter, gitpython...) que se van resolviendo con los PR de Dependabot. Cuando el listado
-  # esté limpio, quitar `continue-on-error` para que bloquee.
-  # Ignorar un aviso concreto y justificado: añadir `--ignore-vuln GHSA-xxxx-xxxx-xxxx`
-  # (una vez por aviso) a la línea de pip-audit, con un comentario del motivo.
+  # Auditoría de dependencias con vulnerabilidades conocidas (base OSV/PyPI). Bloquea el PR.
+  # Avisos aceptados (cada uno con su motivo; revisar al actualizar torch):
+  #   GHSA-rrmf-rvhw-rf47 (CVE-2025-3000, torch): corrupción de memoria en torch.jit.script;
+  #     el proyecto no usa torch.jit. Se corrige en torch 2.13: pendiente de validar en las GPU
+  #     (local y Verode) antes de subir torch.
+  #   GHSA-xmj3-9gf7-h52w y PYSEC-2026-3447 (setuptools < 83/84, lo fija torch): fallos al
+  #     instalar ruedas antiguas en Windows y al aplicar MANIFEST.in al construir paquetes; aquí
+  #     no se construyen paquetes ni se instala en Windows.
+  # Ignorar otro aviso: añadir `--ignore-vuln <ID>` con su motivo en este comentario.
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -69,4 +71,7 @@ jobs:
         run: uv export --frozen --no-hashes --no-emit-project --no-annotate > requirements-audit.txt
 
       - name: pip-audit
-        run: uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip
+        run: >-
+          uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip
+          --ignore-vuln GHSA-rrmf-rvhw-rf47 --ignore-vuln PYSEC-2025-194
+          --ignore-vuln GHSA-xmj3-9gf7-h52w --ignore-vuln PYSEC-2026-3447
