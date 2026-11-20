@@ -97,6 +97,15 @@ def best_checkpoint(name: str) -> Path | None:
     return (best or found or [None])[-1]
 
 
+def copy_new_logs(src: Path, dst: Path, since: float) -> None:
+    """Copy the files written by this kernel (mtime >= ``since``), not the committed history."""
+    for f in src.rglob("*"):
+        if f.is_file() and f.stat().st_mtime >= since:
+            target = dst / f.relative_to(src)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(f, target)
+
+
 def main() -> None:
     src = find_mosaics()
     digest = hashlib.md5((src / "splits.csv").read_bytes()).hexdigest()
@@ -111,6 +120,7 @@ def main() -> None:
     for name in ("train.csv", "splits.csv", MOSAICS):
         (ROOT / name).symlink_to(src / name)
     os.chdir(REPO)
+    start = time.time()               # logs older than this came with the clone: not copied
     timings = []
     for name, base, overrides in EXPERIMENTS:
         cfg = write_config(name, base, overrides)
@@ -137,8 +147,7 @@ def main() -> None:
             writer = csv.DictWriter(f, fieldnames=list(timings[0]))
             writer.writeheader()
             writer.writerows(timings)
-        if (REPO / "logs").is_dir():
-            shutil.copytree(REPO / "logs", OUT / "logs", dirs_exist_ok=True)
+        copy_new_logs(REPO / "logs", OUT / "logs", since=start)
     print(open(OUT / "timings.csv").read(), flush=True)
 
 

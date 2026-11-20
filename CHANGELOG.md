@@ -54,6 +54,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   color y resolución.
 
 ### Corregido
+- **Checkpoints DDP y de paralelismo de modelo cargables en `eval.py`**: `Trainer` guardaba el
+  `state_dict` del envoltorio (prefijos `module.` de DDP y `base.` de `ModelParallelViT`), así que
+  `scripts/eval.py` no cargaba esos checkpoints (falló en los tres runs de Kaggle del 20/11). Ahora
+  se guardan los pesos del clasificador suelto y la carga (evaluación y reanudación) acepta los
+  checkpoints antiguos con prefijo. El kernel de Kaggle copia solo los logs que escribe.
 - `--epochs 1` ya no falla con los configs que traen `warmup_epochs: 1`: si `--epochs` deja
   `epochs <= warmup_epochs`, se baja `warmup_epochs` a `epochs - 1` (mínimo 0) y se avisa por el log.
   Un YAML con esa combinación sigue fallando en el validador.

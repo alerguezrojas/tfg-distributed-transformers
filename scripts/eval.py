@@ -36,7 +36,7 @@ from src.analysis.io import default_predictions_path, save_predictions
 from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
-from src.training.checkpoints import resolve_checkpoint
+from src.training.checkpoints import resolve_checkpoint, strip_wrapper_prefix
 from src.training.tasks import MultiLabelTask, Task
 
 
@@ -245,7 +245,7 @@ def main():
     # ── Build model ───────────────────────────────────────────────────────────
     model = build_eval_model(cfg, model_name, spec)
     ckpt = torch.load(resolve_checkpoint(args.checkpoint), map_location=device, weights_only=True)
-    model.load_state_dict(ckpt["model_state_dict"])
+    model.load_state_dict(strip_wrapper_prefix(ckpt["model_state_dict"]))
     model = model.to(device)
     resumed_epoch = ckpt.get("epoch", "?")
     print(f"Epoch      : {resumed_epoch}")

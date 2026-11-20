@@ -11,7 +11,8 @@ from torch.utils.data import DataLoader
 
 from src import precision as precision_mod
 from src.training.base_trainer import BaseTrainer
-from src.training.checkpoints import BEST_NAME, DEFAULT_KEEP, LAST_NAME, atomic_save, resolve_checkpoint
+from src.training.checkpoints import (BEST_NAME, DEFAULT_KEEP, LAST_NAME, atomic_save,
+                                      resolve_checkpoint, strip_wrapper_prefix, unwrap_model)
 from src.training import metrics as m
 from src.training.augmentations import mixup_batch
 from src.training.tasks import MultiLabelTask, Task
@@ -267,7 +268,7 @@ class Trainer(BaseTrainer):
     def _checkpoint_state(self, epoch: int, metrics: dict) -> dict:
         state = {
             "epoch": epoch,
-            "model_state_dict": self.model.state_dict(),
+            "model_state_dict": unwrap_model(self.model).state_dict(),   # sin "module." de DDP
             "optimizer_state_dict": self.optimizer.state_dict(),
             "metrics": {k: v for k, v in metrics.items() if not k.startswith("_")},
         }
@@ -284,7 +285,7 @@ class Trainer(BaseTrainer):
         """
         ckpt = torch.load(resolve_checkpoint(path, prefer="last"), map_location=self.device,
                           weights_only=True)
-        self.model.load_state_dict(ckpt["model_state_dict"])
+        unwrap_model(self.model).load_state_dict(strip_wrapper_prefix(ckpt["model_state_dict"]))
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in ckpt and self.scheduler is not None:
             self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])

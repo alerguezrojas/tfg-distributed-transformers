@@ -52,14 +52,14 @@ def monitor_config(cfg: dict) -> dict:
 def forward_module(model: nn.Module) -> nn.Module:
     """The callable to run inference with: DDP is unwrapped (a DDP forward on rank 0
     alone could issue collectives); a pipeline wrapper is kept (it places tensors)."""
-    from torch.nn.parallel import DistributedDataParallel
-    return model.module if isinstance(model, DistributedDataParallel) else model
+    from src.training.checkpoints import unwrap_ddp
+    return unwrap_ddp(model)
 
 
 def core_classifier(model: nn.Module) -> nn.Module:
     """The TimmClassifier inside DDP / ModelParallelViT wrappers (for hooks)."""
-    model = forward_module(model)
-    return getattr(model, "base", model)
+    from src.training.checkpoints import unwrap_model
+    return unwrap_model(model)
 
 
 def last_linear(model: nn.Module) -> nn.Linear | None:
