@@ -14,6 +14,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from src.web.run_meta import MetricInfo, RunMeta, load_run_meta, metric_info
+
 _TIMESTAMP_RE = re.compile(r"(\d{8}_\d{6})")
 _PRECISION_RE = re.compile(r"precision=(fp32|tf32|amp|bf16)")
 
@@ -69,6 +71,12 @@ class RunInfo:
     perclass_csv_path: Path | None = None
     # Live-events stream (events_*.jsonl, written by rank 0 while training).
     events_path: Path | None = None
+    # Run manifest (run_<ts>.json, docs/eventos.md): dataset, task, metric, config.
+    manifest_path: Path | None = None
+    # What the run is (src/web/run_meta.py), read once by discover_runs.
+    meta: RunMeta | None = None
+    # Show seconds in the label: set when two runs would otherwise share one.
+    label_seconds: bool = False
     # Held-out test-set results (from scripts/eval.py). Keyed by folder, not
     # timestamp — eval CSVs are named by loss/config (test_bce.csv …), so all
     # test_*.csv in the run's folder are offered against runs of that model.
@@ -93,7 +101,7 @@ class RunInfo:
             date = f"{ts[:2]}/{ts[2:4]}/{ts[4:8]}"
         else:                      # legacy YYYYMMDD
             date = f"{ts[6:8]}/{ts[4:6]}/{ts[:4]}"
-        time_str = f"{ts[9:11]}:{ts[11:13]}"
+        time_str = f"{ts[9:11]}:{ts[11:13]}" + (f":{ts[13:15]}" if self.label_seconds else "")
         parts = [f"{date} {time_str}", f"[{self.env}]"]
         if self.dataset != _DEFAULT_DATASET:
             parts.append(f"[{self.dataset}]")
@@ -106,7 +114,36 @@ class RunInfo:
             parts.append(f"[{self.precision}]")
         if self.trace_mode == "deep":
             parts.append("[deep]")
-        return " ".join(parts)
+        return " · ".join([" ".join(parts), *self._tags()])
+
+    def _tags(self, with_seed: bool = True) -> list[str]:
+        return self.meta.tags(with_seed=with_seed) if self.meta else []
+
+    @property
+    def group_label(self) -> str:
+        """Label of the runs that differ only in the seed: no date, no seed."""
+        parts = [f"[{self.env}]"]
+        if self.dataset != _DEFAULT_DATASET:
+            parts.append(f"[{self.dataset}]")
+        if self.model:
+            parts.append(self.model.replace("_patch16_224", ""))
+        if self.mode != "single":
+            parts.append(f"[{self.mode}]")
+        if self.precision and self.precision != "fp32":
+            parts.append(f"[{self.precision}]")
+        return " · ".join([" ".join(parts), *self._tags(with_seed=False)])
+
+    @property
+    def seed_group_key(self) -> tuple:
+        """Equal for runs that differ at most in the seed (never shared by a run that
+        does not record its seed)."""
+        extra = self.meta.group_key(self.timestamp) if self.meta else ("single", self.timestamp)
+        return (self.env, self.dataset, self.model, self.mode, self.trace_mode, *extra)
+
+    @property
+    def main_metric(self) -> MetricInfo:
+        """The run's main metric (QWK for PANDA, AUC for MedMNIST, F1 otherwise)."""
+        return self.meta.metric if self.meta else metric_info(None, self.dataset)
 
 
 def _env_mode_model_from_path(log_path: Path, logs_root: Path) -> tuple[str, str, str, str]:
@@ -177,6 +214,11 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
         if m and m.group(1) in runs and runs[m.group(1)].events_path is None:
             runs[m.group(1)].events_path = jsonl_path
 
+    for json_path in logs_root.rglob("run_*.json"):
+        m = _TIMESTAMP_RE.search(json_path.stem)
+        if m and m.group(1) in runs and runs[m.group(1)].manifest_path is None:
+            runs[m.group(1)].manifest_path = json_path
+
     for csv_path in logs_root.rglob("confusion_matrix_*.csv"):
         m = _TIMESTAMP_RE.search(csv_path.stem)
         if m and m.group(1) in runs and runs[m.group(1)].confusion_matrix_csv_path is None:
@@ -193,7 +235,19 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
         if found:
             r.test_csv_paths = sorted(found)
 
-    return sorted(runs.values(), key=lambda r: r.sort_key, reverse=True)
+    for r in runs.values():
+        r.meta = load_run_meta(r)
+    ordered = sorted(runs.values(), key=lambda r: r.sort_key, reverse=True)
+    # The label is the run's key in the web: two runs of the same minute and settings
+    # get their seconds so they stay distinguishable.
+    seen: dict[str, list[RunInfo]] = {}
+    for r in ordered:
+        seen.setdefault(r.label, []).append(r)
+    for twins in seen.values():
+        if len(twins) > 1:
+            for r in twins:
+                r.label_seconds = True
+    return ordered
 
 
 def filter_runs(runs: list[RunInfo], env: str | None = None,

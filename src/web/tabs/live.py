@@ -25,7 +25,7 @@ _DEFAULT_INTERVAL_S = 5
 _DEFAULT_STALLED_MIN = 3
 _FOLLOWERS_KEY = "_live_followers"
 _NO_VALUE = "—"
-_METRIC_NAMES = {"f1": "F1", "f1_optimal": "F1 (optimal thr.)", "auc": "AUC"}
+_METRIC_NAMES = {"f1": "F1", "f1_optimal": "F1 (optimal thr.)", "auc": "AUC", "qwk": "QWK"}
 
 # Streamlit colored-text names per derived state.
 _STATUS_STYLE = {
@@ -109,9 +109,10 @@ def _kpis(state: RunState, rows: list[dict]) -> None:
     metric = state.select_metric
     cols[1].metric(f"Best {_METRIC_NAMES.get(metric, metric)}" if metric else "Best metric",
                    _fmt(state.best))
+    # The third score is the run's own main metric when it is the QWK (ordinal runs).
+    third = ("Val QWK", "val_qwk", False) if metric == "qwk" else ("Val AUC", "val_auc", False)
     for col, (label, key, inverse) in zip(cols[2:5], (
-            ("Val loss", "val_loss", True), ("Val F1", "val_f1", False),
-            ("Val AUC", "val_auc", False))):
+            ("Val loss", "val_loss", True), ("Val F1", "val_f1", False), third)):
         d = _delta(rows, key)
         col.metric(label, _fmt(val.get(key[4:])),
                    delta=None if d is None else f"{d:+.4f}",
@@ -129,9 +130,11 @@ def _curves(rows: list[dict]) -> None:
         _show(_metric_fig(df, "train_loss", "val_loss", "Loss per epoch", "Loss", height=280),
               "live_loss")
     with right:
-        if "val_f1" in df.columns or "val_auc" in df.columns:
-            _show(_metric_fig(df, "val_f1", "val_auc", "Validation F1 / AUC", "Score",
-                              name_train="Val F1", name_val="Val AUC", height=280),
+        second, name2 = (("val_qwk", "QWK") if "val_qwk" in df.columns
+                         and df["val_qwk"].notna().any() else ("val_auc", "AUC"))
+        if "val_f1" in df.columns or second in df.columns:
+            _show(_metric_fig(df, "val_f1", second, f"Validation F1 / {name2}", "Score",
+                              name_train="Val F1", name_val=f"Val {name2}", height=280),
                   "live_scores")
 
 

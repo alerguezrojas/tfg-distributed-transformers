@@ -15,6 +15,8 @@ from src.web.dataset_stats import (
 from src.web.benchmark_parser import parse_benchmark_csv
 from src.web.log_parser import parse_log
 from src.web.perclass_parser import parse_perclass_csv
+from src.web.dataset_view import inspect_dir_of
+from src.web.run_meta import MetricInfo, resolve_metric
 from src.web.run_registry import RunInfo, discover_benchmark_csvs, discover_runs
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -229,6 +231,40 @@ def _best_metric(df: pd.DataFrame, col: str) -> tuple[float, int] | None:
         return None
     row = valid.loc[valid[col].idxmax()]
     return float(row[col]), int(row["epoch"])
+
+
+def _run_metric(run, df: pd.DataFrame) -> MetricInfo:
+    """Main metric of ``run`` (QWK for PANDA, AUC for MedMNIST, F1 for BigEarthNet) —
+    macro F1 when its epoch table does not have that column."""
+    return resolve_metric(run.main_metric, df)
+
+
+def _scope_dataset(run) -> str | None:
+    """Dataset the dataset-specific panels are about: the sidebar's dataset filter if set,
+    else the dataset of the active run."""
+    chosen = st.session_state.get("run_dataset_filter", "All")
+    if chosen and chosen != "All":
+        return chosen
+    return run.dataset if run is not None else None
+
+
+def _scope_run(runs, selected_run, scope: str | None):
+    """The run the dataset panels read: the active one if it is of the scope dataset,
+    else the newest run of that dataset that has inspection files (or any)."""
+    if selected_run is not None and selected_run.dataset == scope:
+        return selected_run
+    of_scope = [r for r in runs if r.dataset == scope]
+    return next((r for r in of_scope if inspect_dir_of(r)), of_scope[0] if of_scope else None)
+
+
+def _loss_label(run) -> str:
+    """'BCE', 'CE', 'CE + EMD' … of the run's loss ('Loss' when unknown)."""
+    return run.meta.loss_label if getattr(run, "meta", None) else "Loss"
+
+
+def _fmt_span(seconds: float) -> str:
+    """Short duration: '1.4 s', '12.5 min' (an epoch can last seconds or many minutes)."""
+    return f"{seconds:.1f} s" if seconds < 60 else f"{seconds / 60:.1f} min"
 
 
 def _throughput_col(df: pd.DataFrame) -> str | None:
