@@ -2,6 +2,7 @@
 
 | Documento | Para qué |
 |---|---|
+| [primeros_pasos.md](primeros_pasos.md) | Incorporación paso a paso: instalar, primer entrenamiento, mapa del código, protocolo para comparar modelos y licencias. Las normas de trabajo, en [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | [guia_de_uso.md](guia_de_uso.md) | Manual de usuario: instalación, CLI, configs, estrategias, web, solución de problemas |
 | [arquitectura.md](arquitectura.md) | Cómo está construido: modelo, decoradores, CLI, DDP, benchmark, artefactos, dashboard |
 | [performance_model.md](performance_model.md) | Derivación y validación del predictor analítico (tiempo, memoria, energía) |

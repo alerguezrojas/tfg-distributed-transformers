@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Vulnerabilidad de seguridad
+    url: https://github.com/alerguezrojas/tfg-distributed-transformers/security/advisories/new
+    about: No abran una incidencia pública. Usen el aviso privado de seguridad (ver SECURITY.md).
