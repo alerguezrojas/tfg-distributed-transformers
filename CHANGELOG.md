@@ -4,6 +4,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Seguridad
+
+- setuptools 81 → 84.2.1 (cierra GHSA-xmj3-9gf7-h52w y GHSA-h35f-9h28-mq5c / PYSEC-2026-3447): la
+  auditoría de la CI ya no ignora ningún aviso. Comprobado con torch 2.15, tensorboard 2.20 y la
+  suite. `uv.lock` recoge la versión 1.2.0 del proyecto.
+
 ## [1.2.0] - 2026-11-20
 
 ### Añadido
