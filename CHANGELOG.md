@@ -19,6 +19,14 @@ monitor de predicciones e *Inspector* en la web), evaluación clínica en test y
 de modelos de timm en el predictor.
 
 ### Añadido
+- El Inspector de la web lee las predicciones de test: si el run tiene `test_preds_<ts>.npz`,
+  ofrece la fuente «Test (eval)» junto a «Validation (monitor)» en Curves, Clinical, Calibration y
+  Subgroups; en tareas ordinales, Clinical muestra la tabla de cortes «grado ≥ k». `eval
+  --save-predictions` sin ruta (`--save-predictions-auto` en `paravit.py eval`) guarda ese fichero
+  en la carpeta de logs del run con su sello, deducido del checkpoint con la estructura del
+  *builder* (`checkpoint.dir` y `output.env`; carpeta con sello o `checkpoint_epoch_*.pt` antiguos, con
+  aviso si es ambiguo) o el de la evaluación si no se puede. El `.npz` guarda `threshold_source` y la
+  web avisa si el umbral se eligió sobre el propio test. La web solo abre ficheros dentro de `logs/` y carga el `.npz` con `allow_pickle=False`.
 - Seguridad y calidad del repositorio: `SECURITY.md` (aviso privado de GitHub, alcance y reglas),
   Dependabot semanal agrupado (`uv` y `github-actions`, hacia `develop`), análisis CodeQL de Python
   (`.github/workflows/codeql.yml`), `permissions: contents: read` y `concurrency` en CI, job

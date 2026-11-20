@@ -172,6 +172,9 @@ Tras las métricas agregadas y por clase, `eval` añade (solo si procede):
   PANDA, `≥ ISUP 1` es «hay cáncer» y `≥ ISUP 2` «cáncer clínicamente significativo».
 - `--save-predictions RUTA.npz` guarda probabilidades, objetivos, umbral, clases, tarea y grupos
   por muestra para rehacer análisis sin reinferir (formato en [`inspeccion.md`](inspeccion.md)).
+  Sin ruta (`scripts/eval.py --save-predictions`; en `paravit.py`, `--save-predictions-auto`) lo
+  guarda en la carpeta de logs del run como `test_preds_<ts>.npz`, con el sello del run, y el
+  Inspector de la web lo ofrece como fuente «Test (eval)».
 
 En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbral **elegido en
 validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
@@ -287,6 +290,7 @@ Cada run escribe, bajo `logs/<entorno>/<estrategia>/<modelo>/`:
 | `events_*.jsonl` | Flujo de eventos del run ([esquema](eventos.md)): lo que lee la pestaña *Live* |
 | `inspect_<fecha>/` | Con `--monitor`: predicciones por imagen, *embeddings* y Grad-CAM por época ([formato](inspeccion.md)); no se versiona |
 | `test_*.csv` | Resultado de la evaluación en test (si se ejecutó `eval`) |
+| `test_preds_<fecha>.npz` | Predicciones por muestra en test (`eval --save-predictions`); el Inspector las lee |
 
 Los pesos van a `checkpoints/<env>/[<dataset>/]<modo>/<modelo>/<DDMMYYYY_HHMMSS>/` (fuera de git): una
 carpeta por run, con el mismo sello que sus logs. Por defecto solo se conservan `best.pt` (mejor época
@@ -380,6 +384,11 @@ como a posteriori. Un selector elige la vista; las vistas por época usan un des
 - **Alerts**: lista cronológica de las alertas de salud del entrenamiento (NaN, divergencia, sobreajuste,
   gradientes, cuello de I/O, GPU). Las activas salen como banner (rojo = crítica, ámbar = aviso) en la
   cabecera del Inspector y de Live.
+
+Si el run tiene `test_preds_<ts>.npz` (de `eval --save-predictions`), arriba aparece un selector de
+fuente, «Validation (monitor)» o «Test (eval)». En test funcionan *Curves*, *Clinical*,
+*Calibration* y *Subgroups* sobre las predicciones de la evaluación; en tareas ordinales, *Clinical*
+añade la tabla de cortes «grado ≥ k».
 
 Cada vista indica cómo activar los datos que le faltan (`--monitor`, `monitor.layers: true`…). Solo
 se calcula la vista elegida y los `.npz` se cachean por ruta y fecha de modificación.

@@ -17,6 +17,9 @@ from typing import Any, Iterable
 import numpy as np
 import pandas as pd
 
+from src.analysis.io import (
+    EpochData, MonitorSet, Predictions, list_test_predictions, load_predictions,
+)
 from src.web.events_reader import DEFAULT_STALLED_AFTER_S, discover_event_files
 from src.web.run_registry import (
     _TIMESTAMP_RE, RunInfo, _env_mode_model_from_path, timestamp_sort_key,
@@ -44,6 +47,7 @@ class InspectorRun:
     events_path: Path | None = None
     inspect_dir: Path | None = None
     active: bool = False
+    test_preds: Path | None = None      # test_preds_<ts>.npz of `eval --save-predictions`
 
 
 def _label(ts: str, path: Path, logs_root: Path) -> str:
@@ -75,9 +79,39 @@ def discover_inspector_runs(root: Path, now: float | None = None,
             out[(m.group(1), d.parent)] = InspectorRun(
                 timestamp=m.group(1), label=_label(m.group(1), d / "monitor_set.npz", logs_root),
                 inspect_dir=d)
+    for ts, path in list_test_predictions(root):
+        run = out.get((ts, path.parent))
+        if run is None:         # a run evaluated on test whose events / inspection are not here
+            run = out[(ts, path.parent)] = InspectorRun(
+                timestamp=ts, label=_label(ts, path, logs_root))
+        run.test_preds = path
     runs = sorted(out.values(), key=lambda r: timestamp_sort_key(r.timestamp), reverse=True)
     runs.sort(key=lambda r: not r.active)       # stable: active first
     return runs
+
+
+def load_test_predictions(path: Path, root: Path) -> Predictions:
+    """Read a ``test_preds_<ts>.npz``, but only from inside ``<root>/logs`` (the web never opens
+    anything else; ``.npz`` is loaded with ``allow_pickle=False`` by ``load_predictions``)."""
+    resolved, logs = Path(path).resolve(), (Path(root) / "logs").resolve()
+    if not resolved.is_relative_to(logs):
+        raise ValueError(f"{path} is outside {logs}: refusing to open it")
+    return load_predictions(resolved)
+
+
+def predictions_as_epoch(pred: Predictions) -> tuple[MonitorSet, EpochData]:
+    """The monitor-set and epoch view of test predictions, so the sub-views that only need
+    probabilities and targets (Curves, Clinical, Calibration, Subgroups) run unchanged on them.
+
+    One pseudo-epoch (0); ``loss`` is not recorded by ``eval`` (zeros) and there are no
+    thumbnails, embeddings or Grad-CAM, so the views that need them are not offered.
+    """
+    n = pred.probs.shape[0]
+    monitor = MonitorSet(indices=np.arange(n, dtype=np.int64), targets=pred.targets,
+                         classes=list(pred.classes), task=pred.task)
+    epoch = EpochData(epoch=0, probs=pred.probs, loss=np.zeros(n, dtype=np.float32),
+                      threshold=pred.threshold)
+    return monitor, epoch
 
 
 def resolve_inspect_dir(events_path: Path | None, monitor_start: dict[str, Any] | None,
