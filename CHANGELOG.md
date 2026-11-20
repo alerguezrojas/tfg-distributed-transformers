@@ -4,6 +4,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Añadido
+- Entrenamiento en Kaggle (2 × T4): kernels en `kaggle/` para generar los mosaicos de PANDA desde
+  los datos de la competición y para entrenar con DDP y evaluar en test una lista de experimentos
+  (`timings.csv` para contrastar el predictor). La partición se comprueba por md5 contra la local.
+  `scripts/kaggle_push.sh` rellena el usuario de Kaggle al lanzar, para no publicarlo en el repo.
+
 ### Seguridad
 - Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,
   starlette, urllib3, jupyter-server, jupyterlab, mistune, filelock y otras; streamlit sube a

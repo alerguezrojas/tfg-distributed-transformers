@@ -73,15 +73,21 @@ def deep_update(base: dict, extra: dict) -> dict:
     return base
 
 
-def write_config(name: str, base: str, overrides: dict) -> Path:
+def build_config(repo: Path, name: str, base: str, overrides: dict) -> dict:
+    """The YAML of one experiment: the repo config + COMMON + its overrides (pure, tested)."""
     import yaml
-    cfg = yaml.safe_load((REPO / base).read_text())
+    cfg = yaml.safe_load((repo / base).read_text())
     deep_update(cfg, COMMON)
     deep_update(cfg, overrides)
     cfg["data"]["root"] = str(ROOT)
     cfg.setdefault("checkpoint", {})["dir"] = f"/tmp/ckpt/{name}"
+    return cfg
+
+
+def write_config(name: str, base: str, overrides: dict) -> Path:
+    import yaml
     path = REPO / "configs" / f"_kaggle_{name}.yaml"
-    path.write_text(yaml.safe_dump(cfg, sort_keys=False))
+    path.write_text(yaml.safe_dump(build_config(REPO, name, base, overrides), sort_keys=False))
     return path
 
 
