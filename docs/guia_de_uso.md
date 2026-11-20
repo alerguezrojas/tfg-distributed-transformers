@@ -287,6 +287,7 @@ Cada run escribe, bajo `logs/<entorno>/<estrategia>/<modelo>/`:
 | `perclass_metrics_*.csv` | Precisión/exhaustividad/F1 de cada clase por época |
 | `confusion_matrix_*.csv` | Matriz de co-activación 19×19 por época |
 | `batch_metrics_*.csv` | Pérdida, F1 y learning rate por lote |
+| `run_<fecha>.json` | Manifiesto del run (dataset, tarea, métrica principal, config completa y comando; unos KB, se versiona): lo que lee la web para saber de qué va el run ([esquema](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)) |
 | `events_*.jsonl` | Flujo de eventos del run ([esquema](eventos.md)): lo que lee la pestaña *Live* |
 | `inspect_<fecha>/` | Con `--monitor`: predicciones por imagen, *embeddings* y Grad-CAM por época ([formato](inspeccion.md)); no se versiona |
 | `test_*.csv` | Resultado de la evaluación en test (si se ejecutó `eval`) |
@@ -319,10 +320,41 @@ uv run paravit.py dashboard    # → http://localhost:8501
 Interfaz de solo lectura (el terminal ejecuta, la web analiza), con siete secciones: **Overview**
 (indicadores globales, run activo, tabla de runs), **Live** (seguimiento de un entrenamiento en
 curso, ver más abajo), **Inspector** (análisis a fondo de un run, ver más abajo), **Run results** (curvas, métricas por clase,
-confusiones, lotes y detalles del run activo), **Compare** (hasta 8 runs: aceleración frente a una
-referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
+confusiones, lotes y detalles del run activo), **Compare** (hasta 12 runs de un mismo dataset:
+aceleración frente a una referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
 del conjunto e importación de runs). Idioma inglés con vista opcional en español y modo oscuro.
+
+**La web conoce el dataset y la métrica de cada run.** Los metadatos salen del manifiesto del run
+(`run_*.json`), de los eventos o de la línea `Configuración:` del log, por ese orden
+([detalle](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)). Con ellos:
+
+- **Etiqueta del run:** además de fecha, entorno, dataset, modelo y precisión, añade solo lo que
+  no es el valor por defecto: `· ce_emd · seed 43 · train: karolinska · color 0.2 · 512px`
+  (pérdida, semilla distinta de 42, hospital, aumentos de color, resolución distinta de 224). Así
+  dos runs se distinguen en la barra lateral, en las tablas y en *Compare*.
+- **Métrica principal por run** (la de `select_by`; si falta, la del dataset): **QWK** en PANDA,
+  **AUC** en MedMNIST y **F1** en BigEarthNet. Overview, Run results y Compare usan su nombre y
+  su valor, dibujan su curva (también `val_qwk`) y rotulan la pérdida real (BCE, CE, CE + EMD).
+  Los indicadores del Overview (mejor resultado, época más rápida) son del dataset del filtro
+  lateral o, si es «All», del run activo, y nunca mezclan F1 con QWK. Si el CSV de un run antiguo
+  no tiene la columna (p. ej. `val_auc`), se usa F1.
+- **Paneles por dataset:** solo se muestran los del dataset en curso. BigEarthNet conserva los
+  suyos (reparto, desequilibrio de clases, un parche por clase). Los demás tienen una vista
+  genérica con lo que hay en `logs/`: tarea, clases (y si son ordenadas), tamaños de train y val
+  del run, hospitales (`data.providers`), la distribución de clases de la validación y miniaturas
+  del panel fijo del monitor (ambas salen de `inspect_<fecha>/`; si el run no lo tiene, la web lo
+  dice y no inventa nada).
+- **Compare** trabaja con un dataset cada vez (selector arriba) y **agrupa los runs que solo
+  difieren en la semilla**: una fila por configuración con *media ± desviación típica muestral*
+  de la métrica principal, la época del mejor valor, el valor final, el AUC y las épocas; las
+  curvas por época se dibujan como media con una banda de ±1 desviación (con las épocas a las que
+  llegan menos runs por parada temprana, cada punto promedia los runs que llegaron). El
+  interruptor «Aggregate runs that differ only in the seed» las desactiva. Dos runs son «solo
+  semilla distinta» si coinciden en dataset, modelo, estrategia, entorno, pérdida, hospitales,
+  color, resolución, lote, lr, épocas y precisión; un run que no registra su semilla nunca se
+  agrupa. La tabla pone la métrica justo después del nombre del run y añade columnas de semillas,
+  hospitales, color y resolución; el radar usa las métricas que registraron los runs.
 
 ### Seguir un entrenamiento en directo (Live)
 
