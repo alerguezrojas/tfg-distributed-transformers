@@ -5,6 +5,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- PANDA a 1024 px en Kaggle (2 × T4, DDP): control a 512 px igual que en local (0,801 frente a
+  0,794 ± 0,012) y base a 1024 px con QWK 0,821 en test, el mejor run hasta ahora (una semilla; la
+  ordinal a 1024 da 0,806). Logs en `logs/kaggle/panda/`, tablas en `docs/datasets/panda.md` y
+  contraste del predictor en `docs/performance_model.md` (subestima el tiempo en T4: −40 % a 512,
+  −16 % a 1024).
+- Kernel de entrenamiento de Kaggle por lotes (`BATCHES`/`BATCH` en `kaggle/panda_train/run.py`);
+  lote `seeds_1024` con las semillas 43 y 44 de la base a 1024 px.
 - `--seed` y `--data-root` en `paravit train` y en todos los scripts de entrenamiento (DDP,
   heterogéneo y paralelismo de modelo; antes solo en el de una GPU), con la sobrescritura de la
   config en un único sitio (`src/training/config_overrides.py`). El menú los ofrece en las opciones

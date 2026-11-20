@@ -7,7 +7,7 @@ imágenes. Cada carpeta de aquí es un *kernel* (script) de Kaggle:
 | Carpeta | Máquina | Qué hace | Salida |
 |---|---|---|---|
 | `panda_mosaicos/` | CPU | Mosaicos de las 10.616 biopsias (nivel 1, 16 trozos de 256 px) y `splits.csv`, con la misma receta que `scripts/prepare_panda.py` en local | `mosaics_l1_16x256/`, `splits.csv`, `train.csv` |
-| `panda_train/` | 2 × T4 | Entrena con DDP la lista `EXPERIMENTS` de `run.py` y evalúa cada uno en test con `--save-predictions` | `results/<nombre>/`, `logs/`, `timings.csv` |
+| `panda_train/` | 2 × T4 | Entrena con DDP el lote `BATCH` de `BATCHES` en `run.py` y evalúa cada uno en test con `--save-predictions` | `results/<nombre>/`, `logs/kaggle/` (solo lo que escribe el kernel), `timings.csv` |
 
 `panda_train` usa como entrada la salida de `panda_mosaicos`, que solo hay que ejecutar una vez.
 El `md5` de `splits.csv` sale en el log y debe coincidir con el local
@@ -35,7 +35,13 @@ repo; `scripts/kaggle_push.sh` lo rellena en una copia temporal con el usuario d
 - Mismas condiciones que en local salvo lo que se quiera medir: lote global 16 (8 por GPU),
   semilla del YAML, `--precision amp --monitor`. El experimento `panda_ddp_512` es el control
   que comprueba que Kaggle con DDP reproduce los resultados locales a 512 px.
-- Los resultados se descargan, se copian sus logs a `logs/kaggle/` y se documentan en la ficha
-  del dataset (`docs/datasets/panda.md`), igual que los runs locales.
+- Cada envío ejecuta un lote (`BATCH`). Una sesión dura como mucho 12 h y un run a 1024 px tarda
+  ~2,9 h, así que caben tres o cuatro. Los lotes ya ejecutados se quedan en `BATCHES` como registro
+  de lo que se lanzó, y los nombres no se repiten entre lotes.
+- Los resultados se descargan (`kaggle kernels output <usuario>/paravit-panda-train -p <dir del
+  SSD>`), se copian sus logs a `logs/kaggle/` (con `scripts/backfill_run_manifests.py` para los
+  manifiestos) y se documentan en la ficha del dataset (`docs/datasets/panda.md`), igual que los
+  runs locales. Si la evaluación en test falla, se repite en local con el `best.pt` descargado y
+  la config de `results/<nombre>/config.yaml` cambiando `data.root`.
 - `timings.csv` guarda el tiempo real de cada entrenamiento para contrastar el predictor
   (`paravit estimate`), separando la calibración de la validación.

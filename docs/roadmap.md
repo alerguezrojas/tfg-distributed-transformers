@@ -6,8 +6,22 @@
 
 ## Estado actual
 
-> Actualizado el 20/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 20/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
+
+**PANDA a 1.024 px en Kaggle (20/11/2026):** primera tanda en 2 × T4 con DDP (lote global 16,
+como en local). El control a 512 px da 0,801 en test, dentro de la variación de las tres semillas
+locales (0,794 ± 0,012): Kaggle y la máquina local son comparables. A 1.024 px la base da
+**0,821** (mejor run hasta ahora; sube en los dos hospitales y la sensibilidad de ISUP ≥ 2 pasa de
+0,76 a 0,86), pero la ordinal a 1.024 se queda en 0,806, igual que a 512. Con una semilla no se
+puede afirmar que la resolución mejore (frente al 512 de Kaggle, +0,021 [−0,005; +0,048]); **en
+curso**, las semillas 43 y 44 de la base a 1.024 px en Kaggle (~6 h). Cada run a 1.024 tarda
+~2,9 h. El predictor subestima el tiempo en T4 (−40 % a 512, −16 % a 1.024): las T4 trabajan
+limitadas por potencia (reloj mediano 960 MHz frente a 1.590). Tablas en
+[datasets/panda.md](datasets/panda.md#resolución-1024-px-en-kaggle-20112026) y
+[performance_model.md](performance_model.md). La evaluación en test falló en Kaggle porque los
+checkpoints DDP guardaban el prefijo `module.` (PR #214, corregido también para el paralelismo de
+modelo); los tres modelos se evaluaron después en la GPU local.
 
 **Web multi-dataset (20/11/2026):** el panel conoce el dataset y la métrica de cada run (QWK en
 PANDA, AUC en MedMNIST, F1 en BigEarthNet), con etiquetas que distinguen semilla, pérdida, hospital,
@@ -47,6 +61,11 @@ generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset d
 del repo, en la carpeta de reuniones del autor).
 
 **Hecho:**
+- **Versión 1.1.0 en `main` (20/11/2026)**, con etiqueta y release: seguridad (secret scanning,
+  Dependabot, CodeQL, auditoría bloqueante, gitleaks, ramas protegidas), torch 2.15, checkpoints por
+  run (`best.pt`/`last.pt`, escritura atómica), registro de backbones no timm (`hf:`, I-JEPA, sonda
+  lineal), guía para colaboradores, web multi-dataset, `--seed`/`--data-root` en todos los scripts
+  y kernels de Kaggle (`kaggle/`). Lo posterior está en `develop` (sección *Unreleased*).
 - **El Inspector lee las predicciones de test (20/11/2026):** `eval --save-predictions` sin ruta
   guarda `test_preds_<ts>.npz` en la carpeta de logs del run (sello deducido del checkpoint) y la
   web ofrece la fuente «Test (eval)» en Curves, Clinical (con cortes «grado ≥ k»), Calibration y
@@ -117,25 +136,25 @@ del repo, en la carpeta de reuniones del autor).
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** versión 1.1.0 (20/11/2026): todo lo anterior pasa de `develop` a `main`.
+**En curso:** semillas 43 y 44 de PANDA base a 1.024 px en Kaggle (lote `seeds_1024` de
+`kaggle/panda_train/run.py`). Al terminar: descargar la salida, evaluar si hiciera falta
+(`results/<nombre>/test_preds.npz`), comparar con las tres semillas a 512 y documentarlo.
 
-**Siguiente paso recomendado:** según lo que se decida en la reunión del 20/11. Por orden:
-(1) **más resolución** o más tiles (es lo que más puede mejorar: los ganadores usaban 4-9 veces
-más píxeles por biopsia). El predictor estima que a 1.024 px ViT-S con lote 16 necesita 8,7 GB y
-no cabe en la RTX 3060 Ti; hace falta otra máquina o DDP. Además, a 512 px predijo 101 s por época
-frente a 82 s medidos: es una medida para validar el predictor fuera de BigEarthNet.
+**Siguiente paso recomendado:** (1) **cerrar la pregunta de la resolución** con las tres semillas
+a 1.024 px. Si mejora, rehacer a 1.024 la prueba entre hospitales y probar más tiles por biopsia;
+si no, el límite no está en los píxeles y toca MIL o limpiar etiquetas ruidosas.
 (2) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro centro y medir cuántas
 hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
-(Macenko). (3) Grad-CAM frente a las máscaras de PANDA. Toda comparación, con 3 semillas. Técnicos: aumentos de color en GPU, que cada run guarde solo el mejor checkpoint
-y el último en una carpeta propia con fecha (hoy van todos a la misma y la cola los mueve a mano),
-el aviso de array NumPy no escribible en `src/data/panda.py`. Pendientes de la fase 4: `paravit predict`/`explain` con la prueba de
-cordura de Grad-CAM. La agregación por semilla en *Compare* ya está hecha (20/11/2026).
+(Macenko). (3) Grad-CAM frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 a alta
+resolución (limitación por potencia, lotes pequeños por GPU). Toda comparación, con 3 semillas.
+Técnicos: aumentos de color en GPU, el aviso de array NumPy no escribible en `src/data/panda.py`,
+Grad-CAM del monitor sin memoria a 1.024 px en la T4 (aviso, no detiene el run). Pendientes de la
+fase 4: `paravit predict`/`explain` con la prueba de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
 - Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
   [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
 - Pedir la preparación y los resultados del TFG previo que usó PANDA (referencia para compararse).
-- Máquina para entrenar PANDA a más resolución (Verode o las máquinas nuevas).
 - Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).

@@ -31,15 +31,27 @@ MOSAICS = "mosaics_l1_16x256"
 SPLITS_MD5 = "76dcfaff305092dbe98b8387df19a894"   # splits.csv of the local runs (same partition)
 
 
-def res(size: int) -> dict:
-    return {"data": {"image_size": size}, "model": {"img_size": size}}
+def res(size: int, seed: int = 42) -> dict:
+    return {"data": {"image_size": size}, "model": {"img_size": size}, "training": {"seed": seed}}
 
 
-EXPERIMENTS = [
-    ("panda_ddp_512", "configs/train_panda.yaml", res(512)),           # control: Kaggle = local?
-    ("panda_ddp_1024", "configs/train_panda.yaml", res(1024)),
-    ("panda_ordinal_ddp_1024", "configs/train_panda_ordinal.yaml", res(1024)),
-]
+# One batch per kernel run (a session lasts at most 12 h; a 1024-px run takes ~2.9 h on 2x T4).
+# The finished batches stay here as the record of what was run; BATCH picks the next one.
+BATCHES = {
+    # 20/11/2026: Kaggle = local at 512 (control) and the first look at 1024.
+    "resolution": [
+        ("panda_ddp_512", "configs/train_panda.yaml", res(512)),
+        ("panda_ddp_1024", "configs/train_panda.yaml", res(1024)),
+        ("panda_ordinal_ddp_1024", "configs/train_panda_ordinal.yaml", res(1024)),
+    ],
+    # 20/11/2026 (2nd): seeds 43 and 44 of the base at 1024 (seed 42 gave 0.821 vs 0.794 +- 0.012).
+    "seeds_1024": [
+        ("panda_ddp_1024_s43", "configs/train_panda.yaml", res(1024, 43)),
+        ("panda_ddp_1024_s44", "configs/train_panda.yaml", res(1024, 44)),
+    ],
+}
+BATCH = "seeds_1024"
+EXPERIMENTS = BATCHES[BATCH]
 COMMON = {
     "data": {"num_workers": 4},
     "training": {"batch_size": 8},                                     # per GPU -> global 16
