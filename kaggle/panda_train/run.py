@@ -14,6 +14,7 @@ Each experiment is ``(name, base config in configs/, overrides)``. The global ba
 Pushed with ``scripts/kaggle_push.sh kaggle/panda_train`` (see ``kaggle/README.md``).
 """
 import csv
+import hashlib
 import os
 import shutil
 import subprocess
@@ -27,6 +28,7 @@ REPO = Path("/tmp/repo")
 ROOT = Path("/tmp/panda")
 OUT = Path("/kaggle/working")
 MOSAICS = "mosaics_l1_16x256"
+SPLITS_MD5 = "76dcfaff305092dbe98b8387df19a894"   # splits.csv of the local runs (same partition)
 
 
 def res(size: int) -> dict:
@@ -91,7 +93,11 @@ def best_checkpoint(name: str) -> Path | None:
 
 def main() -> None:
     src = find_mosaics()
-    print(f"mosaics: {src}", flush=True)
+    digest = hashlib.md5((src / "splits.csv").read_bytes()).hexdigest()
+    n_mosaics = sum(1 for _ in (src / MOSAICS).glob("*.jpg"))
+    print(f"mosaics: {src} ({n_mosaics} jpg) | splits.csv md5 {digest}", flush=True)
+    if digest != SPLITS_MD5:
+        raise SystemExit("splits.csv differs from the local one: the runs would not be comparable")
     sh("git", "clone", "--depth", "1", "--branch", REF, REPO_URL, str(REPO))
     sh(sys.executable, "-m", "pip", "install", "-q", "timm", "nvidia-ml-py", "torchinfo")
     sh("nvidia-smi")
