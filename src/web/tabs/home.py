@@ -11,17 +11,20 @@ from src.web.dataset_stats import (
     CLASS_NAMES, SPLIT_SIZES, class_distribution_approximate,
 )
 
-_BEST_VAL_F1 = "Best Val F1"
-_VAL_F1_CURVE = "Val F1 curve"
+_BEST = "Best val"
+_CURVE = "Val curve"
 
 from src.web.ui.charts import (
     COLORS, _show, _dl_csv, _base_layout, _CLASS_GROUPS,
 )
+from src.web.run_registry import _DEFAULT_DATASET
+from src.web.ui import dataset_panels
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (
     _load_df, _get_benchmark_csvs,
     _load_class_distribution, _class_gallery,
     _safe_max, _safe_val_at_best, _dur_str,
+    _run_metric, _scope_dataset, _scope_run, _loss_label, _fmt_span,
 )
 
 # Where the BigEarthNet-S2 metadata / patches live (local SSD or Verode NFS). If
@@ -42,12 +45,16 @@ def render(ctx: DashboardContext) -> None:
     selected_run = ctx.selected_run
     st.markdown("## Overview")
 
-    # ── One pass over the runs (stats + per-run val_f1 curve + epoch time) ──────
-    best_f1_global = float("-inf")
-    best_run_label = "—"
-    best_run_df = pd.DataFrame()
+    # The dataset the dataset-specific panels are about: the sidebar filter, else the
+    # active run's. Metrics are never mixed across datasets: each run is read with ITS
+    # main metric (QWK for PANDA, AUC for MedMNIST, F1 for BigEarthNet).
+    scope = _scope_dataset(selected_run)
+    scope_run = _scope_run(runs, selected_run, scope)
+
+    # ── One pass over the runs (stats + per-run main-metric curve + epoch time) ──
+    best_by_ds: dict[str, tuple] = {}     # dataset → (metric, value, label)
+    scope_epoch_s: list[float] = []       # mean epoch time of each run of the scope dataset
     total_gpu_h = 0.0
-    fastest_min = float("inf")
     total_energy_wh = 0.0
     benchmark_csvs_home = _get_benchmark_csvs()
     curve_by_label: dict[str, list[float]] = {}
@@ -57,16 +64,19 @@ def render(ctx: DashboardContext) -> None:
         try:
             df_r = _load_df(str(r.log_path),
                             str(r.epoch_csv_path) if r.epoch_csv_path else None)
-            if not df_r.empty and "val_f1" in df_r.columns:
-                curve_by_label[r.label] = df_r["val_f1"].dropna().round(4).tolist()
-                run_best = _safe_max(df_r["val_f1"])
-                if not pd.isna(run_best) and run_best > best_f1_global:
-                    best_f1_global, best_run_label, best_run_df = run_best, r.label, df_r
+            metric = _run_metric(r, df_r)
+            if not df_r.empty and metric.column in df_r.columns:
+                curve_by_label[r.label] = df_r[metric.column].dropna().round(4).tolist()
+                run_best = _safe_max(df_r[metric.column])
+                if not pd.isna(run_best) and (
+                        r.dataset not in best_by_ds or run_best > best_by_ds[r.dataset][1]):
+                    best_by_ds[r.dataset] = (metric, run_best, r.label)
             if not df_r.empty and "epoch_time" in df_r.columns and df_r["epoch_time"].notna().any():
                 secs = float(df_r["epoch_time"].dropna().sum())
                 total_gpu_h += secs / 3600
                 gpu_secs_by_env[r.env] = gpu_secs_by_env.get(r.env, 0.0) + secs
-                fastest_min = min(fastest_min, float(df_r["epoch_time"].dropna().mean()) / 60)
+                if r.dataset == scope:
+                    scope_epoch_s.append(float(df_r["epoch_time"].dropna().mean()))
             for _c in ("energy_train_wh", "energy_eval_wh"):
                 if _c in df_r.columns and df_r[_c].notna().any():
                     total_energy_wh += float(df_r[_c].dropna().sum())
@@ -75,24 +85,32 @@ def render(ctx: DashboardContext) -> None:
 
     n_models = len({r.model for r in runs if r.model})
     n_envs = len({r.env for r in runs})
+    n_scope = sum(1 for r in runs if r.dataset == scope)
+    best_scope = best_by_ds.get(scope)
 
     # ── Compact KPI strip (one dense row) ───────────────────────────────────────
     _kpi_strip([
-        ("Runs", str(len(runs))),
-        (_BEST_VAL_F1, f"{best_f1_global:.3f}" if best_f1_global > float("-inf") else "—"),
-        ("Fastest epoch", f"{fastest_min:.1f} min" if fastest_min < float("inf") else "—"),
+        ("Runs" if n_scope == len(runs) else "Runs (shown / all)",
+         f"{n_scope} / {len(runs)}" if scope and n_scope != len(runs) else str(len(runs))),
+        (f"Best val {best_scope[0].name}" if best_scope else "Best val metric",
+         f"{best_scope[1]:.3f}" if best_scope else "—"),
+        ("Fastest epoch", _fmt_span(min(scope_epoch_s)) if scope_epoch_s else "—"),
         ("GPU time", f"{total_gpu_h:.0f} h"),
         ("Energy", f"{total_energy_wh:.0f} Wh" if total_energy_wh else "—"),
         ("Models", str(n_models)),
         ("Environments", str(n_envs)),
         ("Benchmark", str(len(benchmark_csvs_home))),
     ])
+    if scope:
+        st.caption(f"Runs, best result and fastest epoch refer to **{scope}** (the sidebar's "
+                   "dataset filter, else the active run's dataset); the rest to all runs.")
 
-    # ── Row 1: varied charts — a time bar, the dataset split (pie) and the class
-    #          imbalance treemap. Three different chart types, colourful summary ──
+    # ── Row 1: GPU time + two panels about the dataset of the scope. BigEarthNet has
+    #          its own (split pie, class-imbalance treemap); any other dataset gets the
+    #          generic ones built from the run's logs ──────────────────────────────
+    is_ben = scope == _DEFAULT_DATASET
     meta = next((p for p in _META_CANDIDATES if Path(p).exists()), None)
     root = next((p for p in _ROOT_CANDIDATES if Path(p).exists()), None)
-    dist = _dataset_dist(meta)
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -101,41 +119,64 @@ def render(ctx: DashboardContext) -> None:
             _time_by_env_bars(gpu_secs_by_env)
     with c2:
         with st.container(border=True):
-            st.caption("Dataset split — train / val / test")
-            _split_pie()
+            if is_ben:
+                st.caption("Dataset split — train / val / test")
+                _split_pie()
+            else:
+                st.caption(f"Class mix — {scope} validation set")
+                dataset_panels.class_mix(scope_run, key="ov_class_mix")
     with c3:
         with st.container(border=True):
-            st.caption("Class imbalance — tile area = patches")
-            _class_treemap(dist)
+            if is_ben:
+                st.caption("Class imbalance — tile area = patches")
+                _class_treemap(_dataset_dist(meta))
+            else:
+                st.caption("Best result per dataset")
+                _best_by_dataset(best_by_ds, runs)
 
-    # ── Row 2: active-run card (with mini F1/loss curves) + sample patches ───────
+    # ── Row 2: active-run card (with mini metric/loss curves) + sample images ───────
     a_left, a_right = st.columns([1.4, 1])
     with a_left:
         with st.container(border=True):
-            _df_active = best_run_df
-            _title = best_run_label
-            if selected_run is not None and selected_run.label in curve_by_label:
+            _df_active = pd.DataFrame()
+            if selected_run is not None:
                 try:
                     _df_active = _load_df(
                         str(selected_run.log_path),
                         str(selected_run.epoch_csv_path) if selected_run.epoch_csv_path else None)
-                    _title = selected_run.label
                 except Exception:
                     pass
-            st.caption(f"Active run — {_title}")
-            if not _df_active.empty and "val_f1" in _df_active.columns:
-                _run_highlight(_df_active)
+            st.caption(f"Active run — {selected_run.label if selected_run else '—'}")
+            if selected_run is not None and not _df_active.empty and \
+                    _run_metric(selected_run, _df_active).column in _df_active.columns:
+                _run_highlight(_df_active, selected_run)
             else:
                 st.info("No metrics for this run.")
     with a_right:
         with st.container(border=True):
-            st.caption("Sample Sentinel-2 patches — RGB proxy")
-            _photo_strip(meta, root)
+            if is_ben:
+                st.caption("Sample Sentinel-2 patches — RGB proxy")
+                _photo_strip(meta, root)
+            else:
+                st.caption(f"Examples — {scope}, from the monitor's fixed panel")
+                dataset_panels.example_strip(scope_run)
 
     # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
-    st.caption("Click a row to make that run active. Dataset & import: **Dataset** section.")
+    st.caption("Click a row to make that run active. Each run is scored with its own main "
+               "metric (column *Metric*). Dataset & import: **Dataset** section.")
     _all_runs_table(runs, curve_by_label)
+
+
+def _best_by_dataset(best_by_ds: dict, runs) -> None:
+    """Small table: for each dataset, its main metric and the best validation value."""
+    rows = [{"Dataset": ds, "Runs": sum(1 for r in runs if r.dataset == ds),
+             "Metric": m.name, "Best": round(v, 4)}
+            for ds, (m, v, _lbl) in sorted(best_by_ds.items())]
+    if not rows:
+        st.info("No metrics yet.")
+        return
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch", height=145)
 
 
 def _dataset_dist(meta):
@@ -272,12 +313,12 @@ def _kpi_strip(items: list[tuple[str, str]]) -> None:
     st.markdown(f"<div class='kpi-strip'>{cells}</div>", unsafe_allow_html=True)
 
 
-def _run_highlight(df: pd.DataFrame, compact: bool = False) -> None:
-    """Metric strip + a one-line verdict (card body). With ``compact=False`` it
-    also draws the two mini F1/loss curves; the Overview uses ``compact=True`` to
-    fit one screen — the full curves live in Run results."""
-    best_f1 = _safe_max(df["val_f1"])
-    best_ep = _safe_val_at_best(df, "val_f1", "epoch")
+def _run_highlight(df: pd.DataFrame, run) -> None:
+    """Metric strip, the two mini curves (main metric and loss) and a one-line verdict
+    (card body). Names and values follow the run's own main metric and loss."""
+    metric = _run_metric(run, df)
+    best = _safe_max(df[metric.column])
+    best_ep = _safe_val_at_best(df, metric.column, "epoch")
     dur = (_dur_str(df["epoch_time"].dropna().sum())
            if "epoch_time" in df.columns and df["epoch_time"].notna().any() else "—")
     thr = (_safe_max(df["f1_at_threshold"])
@@ -285,69 +326,76 @@ def _run_highlight(df: pd.DataFrame, compact: bool = False) -> None:
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Epochs", len(df))
-    m2.metric(_BEST_VAL_F1, f"{best_f1:.4f}" if not pd.isna(best_f1) else "—")
+    m2.metric(f"Best val {metric.name}", f"{best:.4f}" if not pd.isna(best) else "—")
     m3.metric("Best epoch", int(best_ep) if best_ep is not None else "—")
     m4.metric("Duration", dur)
-    if thr is not None:
+    if thr is not None and metric.key == "f1":
         st.caption(f"F1 at the optimal threshold: {thr:.4f}")
 
-    if not compact:
-        cc1, cc2 = st.columns(2)
-        with cc1:
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        fig = go.Figure()
+        train_col = f"train_{metric.key}"      # only F1 has a train-side value
+        if train_col in df.columns:
+            fig.add_trace(go.Scatter(x=df["epoch"], y=df[train_col], name="Train",
+                                     line={"color": COLORS[0], "width": 2}))
+        fig.add_trace(go.Scatter(x=df["epoch"], y=df[metric.column], name="Val",
+                                 line={"color": COLORS[1], "width": 2}))
+        fig.update_layout(**_base_layout(108, metric.long_name), xaxis_title="Epoch",
+                          yaxis_title=metric.name)
+        _show(fig, "hub_metric")
+    with cc2:
+        if "val_loss" in df.columns:
             fig = go.Figure()
-            if "train_f1" in df.columns:
-                fig.add_trace(go.Scatter(x=df["epoch"], y=df["train_f1"], name="Train",
+            if "train_loss" in df.columns:
+                fig.add_trace(go.Scatter(x=df["epoch"], y=df["train_loss"], name="Train",
                                          line={"color": COLORS[0], "width": 2}))
-            fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_f1"], name="Val",
-                                     line={"color": COLORS[1], "width": 2}))
-            fig.update_layout(**_base_layout(108, "F1 (macro)"), xaxis_title="Epoch", yaxis_title="F1")
-            _show(fig, "hub_f1")
-        with cc2:
-            if "val_loss" in df.columns:
-                fig = go.Figure()
-                if "train_loss" in df.columns:
-                    fig.add_trace(go.Scatter(x=df["epoch"], y=df["train_loss"], name="Train",
-                                             line={"color": COLORS[0], "width": 2}))
-                fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_loss"], name="Val",
-                                         line={"color": COLORS[3], "width": 2}))
-                fig.update_layout(**_base_layout(108, "Loss (BCE)"), xaxis_title="Epoch", yaxis_title="Loss")
-                _show(fig, "hub_loss")
+            fig.add_trace(go.Scatter(x=df["epoch"], y=df["val_loss"], name="Val",
+                                     line={"color": COLORS[3], "width": 2}))
+            fig.update_layout(**_base_layout(108, f"Loss ({_loss_label(run)})"),
+                              xaxis_title="Epoch", yaxis_title="Loss")
+            _show(fig, "hub_loss")
 
-    # One-line verdict: overfitting gap at the best epoch.
-    if "train_f1" in df.columns and best_ep is not None and not pd.isna(best_f1):
-        _tr = df.loc[df["epoch"] == best_ep, "train_f1"]
-        if not _tr.empty:
-            gap = float(_tr.iloc[0]) - float(best_f1)
-            note = " — overfitting" if gap > 0.1 else ""
-            st.caption(f"Best Val F1 {best_f1:.3f} at epoch {int(best_ep)} · "
-                       f"train–val gap {gap:+.2f}{note}")
+    # One-line verdict: overfitting gap at the best epoch (in F1, the only train-side metric).
+    if "train_f1" in df.columns and "val_f1" in df.columns and not pd.isna(best):
+        ep_f1 = _safe_val_at_best(df, "val_f1", "epoch")
+        f1_best = _safe_max(df["val_f1"])
+        _tr = df.loc[df["epoch"] == ep_f1, "train_f1"] if ep_f1 is not None else []
+        gap = float(_tr.iloc[0]) - float(f1_best) if len(_tr) else None
+        note = " — overfitting" if gap is not None and gap > 0.1 else ""
+        gap_txt = f" · train–val F1 gap {gap:+.2f}{note}" if gap is not None else ""
+        st.caption(f"Best val {metric.name} {best:.3f} at epoch "
+                   f"{int(best_ep) if best_ep is not None else '—'}{gap_txt}")
 
 
 def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
-    """Runs table with a wandb-style Val F1 sparkline column."""
+    """Runs table with a wandb-style sparkline of each run's own main metric."""
     rows = []
     for r in runs[:40]:
         try:
             df_r = _load_df(str(r.log_path),
                             str(r.epoch_csv_path) if r.epoch_csv_path else None)
-            if df_r.empty or "val_f1" not in df_r.columns:
+            metric = _run_metric(r, df_r)
+            if df_r.empty or metric.column not in df_r.columns:
                 continue
-            best_f1 = _safe_max(df_r["val_f1"])
-            if pd.isna(best_f1):
+            best = _safe_max(df_r[metric.column])
+            if pd.isna(best):
                 continue
-            best_ep = _safe_val_at_best(df_r, "val_f1", "epoch")
+            best_ep = _safe_val_at_best(df_r, metric.column, "epoch")
             dur_s = df_r["epoch_time"].dropna().sum() if "epoch_time" in df_r.columns else float("nan")
             energy_wh = (df_r["energy_eval_wh"].sum()
                          if "energy_eval_wh" in df_r.columns and df_r["energy_eval_wh"].notna().any()
                          else None)
             rows.append({
                 "Run": r.label,
-                _VAL_F1_CURVE: curve_by_label.get(r.label, []),
+                "Dataset": r.dataset,
+                "Metric": metric.name,
+                _CURVE: curve_by_label.get(r.label, []),
+                _BEST: round(best, 4),
                 "Mode": r.mode,
                 "Precision": r.precision or "fp32",
                 "Env": r.env,
                 "Epochs": len(df_r),
-                _BEST_VAL_F1: round(best_f1, 4),
                 "Best epoch": int(best_ep) if best_ep is not None else None,
                 "Duration": _dur_str(dur_s) if not pd.isna(dur_s) else "—",
                 "Eval Wh": round(energy_wh) if energy_wh else None,
@@ -360,7 +408,6 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
         return
 
     ov_df = pd.DataFrame(rows)
-    _f1 = ov_df[_BEST_VAL_F1]
     # Bounded height: ~8 rows are visible, the rest scroll *inside* the table so
     # the page itself stays within one screen (no page scroll on the Overview).
     _table_h = min(34 + 30 * len(ov_df), 160)
@@ -369,11 +416,11 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
         width="stretch", hide_index=True, height=_table_h,
         on_select="rerun", selection_mode="single-row", key="runs_table",
         column_config={
-            _VAL_F1_CURVE: st.column_config.LineChartColumn(
-                _VAL_F1_CURVE, y_min=0.0, y_max=float(_f1.max()) + 0.05, width="medium"),
-            _BEST_VAL_F1: st.column_config.ProgressColumn(
-                _BEST_VAL_F1, min_value=0.0, max_value=float(_f1.max()) + 1e-9,
-                format="%.4f"),
+            "Run": st.column_config.TextColumn("Run", width="large"),
+            _CURVE: st.column_config.LineChartColumn(
+                _CURVE, y_min=0.0, y_max=1.0, width="medium"),
+            _BEST: st.column_config.ProgressColumn(
+                _BEST, min_value=0.0, max_value=1.0, format="%.4f"),
         },
     )
     # Clicking a row makes that run active across the whole dashboard. We act
@@ -386,5 +433,4 @@ def _all_runs_table(runs, curve_by_label: dict[str, list[float]]) -> None:
             st.session_state["_last_table_row"] = chosen
             st.session_state["run_label"] = chosen
             st.rerun()
-    _dl_csv(ov_df.drop(columns=[_VAL_F1_CURVE]), "runs_summary.csv", "Download runs table")
-
+    _dl_csv(ov_df.drop(columns=[_CURVE]), "runs_summary.csv", "Download runs table")

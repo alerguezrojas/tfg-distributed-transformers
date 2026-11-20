@@ -38,7 +38,8 @@ def _per_class(ctx: DashboardContext) -> None:
     # for runs already trained without retraining. It tells whether a low F1 is on
     # a rare class or a real failure. The counts come from the full validation
     # split, scaled down to this run's actual val size when it used a subset.
-    meta = _dataset_meta_path()
+    # The support counts are BigEarthNet's: other datasets' classes would not match them.
+    meta = _dataset_meta_path() if run.dataset == "bigearthnet" else None
     support_full = _load_val_support(meta) if meta else None
     cfg = _run_config(str(run.log_path))
     try:

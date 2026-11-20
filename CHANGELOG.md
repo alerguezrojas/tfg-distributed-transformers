@@ -31,10 +31,33 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   `model.pooling`, y Grad-CAM funciona con `freeze_backbone`. La línea `Configuración:` añade
   `freeze_backbone=` y `backbone=`; la validación del predictor ignora las sondas lineales.
 
+- La web conoce el dataset y la métrica de cada run. Cada entrenamiento escribe un manifiesto
+  `run_<ts>.json` (lo de `run_start` más el comando; unos KB, se versiona) por el mismo observador
+  que los eventos, y `scripts/backfill_run_manifests.py` lo genera para los runs viejos (de sus
+  eventos o de la línea `Configuración:`; se ejecutó sobre `logs/`). El evento `run_start` gana
+  `ordinal`. Un lector común (`src/web/run_meta.py`) saca dataset, tarea, métrica principal,
+  pérdida, semilla, hospital, color y resolución del manifiesto, de los eventos o del log.
+- Etiquetas de run que distinguen semilla, pérdida, hospital, color y resolución
+  (`… vit_small [amp] · ce_emd · seed 43 · train: karolinska · color 0.2 · 512px`), con los
+  segundos si dos runs coincidirían; la barra lateral las muestra enteras.
+- Overview, Run results y Compare usan la métrica principal de cada run (QWK en PANDA, AUC en
+  MedMNIST, F1 en BigEarthNet), con su curva (incluida `val_qwk`) y la pérdida real en los títulos.
+  Los indicadores del Overview son por dataset. Los paneles de BigEarthNet solo salen para este
+  dataset; los demás tienen una vista genérica (tarea, clases, tamaños, hospitales, distribución de
+  clases y miniaturas del panel del monitor, si el run guardó `inspect_*`).
+- *Compare* agrupa los runs que solo difieren en la semilla: media ± desviación en la tabla y curvas
+  con banda; trabaja con un dataset cada vez, hasta 12 runs, con columnas de semilla, hospital,
+  color y resolución.
+
 ### Corregido
 - Documentación desfasada: el recuento de pruebas del README y de la guía de uso (411 → más de 1.200),
   el tiempo de la batería en `AGENTS.md` (~10 s → ~1,5 min) y la ruta de los logs en el mapa del código
   (lleva el dataset).
+- «Fastest epoch» del Overview marcaba 0,0 min porque mezclaba datasets (MedMNIST tarda ~1,4 s por
+  época): ahora es del dataset en curso y se muestra en segundos si dura menos de un minuto.
+- Los soportes por clase de BigEarthNet ya no se aplican a runs de otro dataset (Per-class) y la
+  descripción de Confusions deja de decir «19 clases» fuera de BigEarthNet. La vista *Live* nombra
+  el QWK.
 
 ### Seguridad
 - torch 2.11 → 2.15 (torchvision 0.29, CUDA 13.2), que corrige CVE-2025-3000. Validado en la

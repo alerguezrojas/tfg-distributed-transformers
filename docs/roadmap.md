@@ -6,8 +6,17 @@
 
 ## Estado actual
 
-> Actualizado el 19/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 20/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
+
+**Web multi-dataset (20/11/2026):** el panel conoce el dataset y la métrica de cada run (QWK en
+PANDA, AUC en MedMNIST, F1 en BigEarthNet), con etiquetas que distinguen semilla, pérdida, hospital,
+color y resolución, paneles de dataset solo para el dataset en curso y *Compare* con agregación por
+semilla (media ± desviación y banda). Cada run escribe un manifiesto `run_<ts>.json` (se versiona,
+a diferencia de los eventos) y `scripts/backfill_run_manifests.py` lo genera para los viejos
+([esquema](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)). Los manifiestos de los runs
+anteriores están en `logs/`; los de PANDA salen de sus eventos y los demás, de la línea
+`Configuración:`.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
 multi-dataset, MedMNIST y el trabajo con agentes de IA. **El tutor enviará el dataset médico
@@ -121,7 +130,7 @@ hacen falta (lo que habrá que hacer con el dataset del médico); normalización
 y el último en una carpeta propia con fecha (hoy van todos a la misma y la cola los mueve a mano),
 el aviso de array NumPy no escribible en `src/data/panda.py` y que el validador exige
 `epochs > warmup_epochs`. Pendientes de la fase 4: `paravit predict`/`explain` con la prueba de
-cordura de Grad-CAM y la agregación por semilla en *Compare*.
+cordura de Grad-CAM. La agregación por semilla en *Compare* ya está hecha (20/11/2026).
 
 **Decisiones pendientes del autor o del tutor:**
 - Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
@@ -303,7 +312,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [ ] Prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo et al. 2018).
   - [x] Informe exportable de un run (HTML) con la lista TRIPOD+AI: `paravit report`;
         falta CLAIM y los subgrupos (dependen de los metadatos del dataset del tutor).
-  - [ ] Agregación por semilla en la comparación de runs (media y banda).
+  - [x] Agregación por semilla en la comparación de runs (media y banda): *Compare* agrupa los
+        runs que solo difieren en la semilla (`src/web/seed_agg.py`).
   - [ ] Métricas por *rank* en DDP (rezagados; cómputo frente a comunicación).
   - [ ] Duplicados y fuga entre particiones (hash/embeddings; por paciente).
   - [ ] Perfil puntual con `torch.profiler` (traza Perfetto) y exportador opcional a TensorBoard.

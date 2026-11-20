@@ -87,20 +87,45 @@ def _metric_fig(
     return fig
 
 
-def _overlay_fig(
-    dfs: list[tuple[str, pd.DataFrame]],
-    col: str, title: str, y_label: str,
-    height: int = 340,
+def _hex_rgba(color: str, alpha: float) -> str:
+    """'#rrggbb' → 'rgba(r,g,b,alpha)' (fill of the seed bands)."""
+    c = color.lstrip("#")
+    return f"rgba({int(c[0:2], 16)},{int(c[2:4], 16)},{int(c[4:6], 16)},{alpha})"
+
+
+def _overlay_series_fig(
+    series: list, col: str, title: str, y_label: str, height: int = 340,
 ) -> go.Figure:
+    """One line per series; a series of several seeds is its per-epoch mean with a ±1 std
+    band (``seed_agg.curve_band``), a single run its own curve."""
+    from src.web.seed_agg import curve_band
     fig = go.Figure()
     n_series = 0
-    for i, (label, df) in enumerate(dfs):
-        if col in df.columns and df[col].notna().any():
-            n_series += 1
-            fig.add_trace(go.Scatter(
-                x=df["epoch"], y=df[col], name=label, mode=_LINES_MARKERS,
-                line={"color": COLORS[i % len(COLORS)]},
-            ))
+    for i, s in enumerate(series):
+        color = COLORS[i % len(COLORS)]
+        if s.n == 1:
+            df = s.dfs[0]
+            if col in df.columns and df[col].notna().any():
+                n_series += 1
+                fig.add_trace(go.Scatter(x=df["epoch"], y=df[col], name=s.label,
+                                         mode=_LINES_MARKERS, line={"color": color}))
+            continue
+        band = curve_band(s.dfs, col)
+        if band.empty or not band["mean"].notna().any():
+            continue
+        n_series += 1
+        fig.add_trace(go.Scatter(                     # invisible upper edge, then the fill
+            x=band["epoch"], y=band["hi"], mode="lines", line={"width": 0},
+            showlegend=False, hoverinfo="skip", legendgroup=s.label))
+        fig.add_trace(go.Scatter(
+            x=band["epoch"], y=band["lo"], mode="lines", line={"width": 0},
+            fill="tonexty", fillcolor=_hex_rgba(color, 0.18), showlegend=False,
+            hoverinfo="skip", legendgroup=s.label))
+        fig.add_trace(go.Scatter(
+            x=band["epoch"], y=band["mean"], name=s.label, mode=_LINES_MARKERS,
+            line={"color": color}, legendgroup=s.label, customdata=band[["std", "n"]],
+            hovertemplate="epoch %{x}<br>mean %{y:.4f} ± %{customdata[0]:.4f} "
+                          "(n=%{customdata[1]})<extra>%{fullData.name}</extra>"))
     # Many runs with long labels: legend below the plot (one row per run), and the
     # figure grows so the plot area keeps its size. Overrides the template's
     # top-right legend, which only fits a couple of short series.
@@ -109,7 +134,7 @@ def _overlay_fig(
         title={"text": title}, xaxis_title="Epoch", yaxis_title=y_label,
         height=height + legend_px, margin={"b": 60 + legend_px},
         legend={"orientation": "h", "yanchor": "top", "y": -0.18, "xanchor": "left", "x": 0,
-                    "font": {"size": 11}},
+                "font": {"size": 11}},
     )
     return fig
 

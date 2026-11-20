@@ -1,0 +1,36 @@
+{
+  "v": 1,
+  "type": "run_manifest",
+  "source": "log",
+  "run_id": "17102026_163312",
+  "dataset": "medmnist_breast",
+  "task": "binary",
+  "classes": [
+    "malignant"
+  ],
+  "model": "vit_tiny_patch16_224",
+  "mode": "single",
+  "config": {
+    "data": {
+      "name": "medmnist_breast"
+    },
+    "model": {
+      "name": "vit_tiny_patch16_224"
+    },
+    "training": {
+      "epochs": 30,
+      "lr": 0.0001,
+      "seed": 44,
+      "precision": "fp32",
+      "batch_size": 128,
+      "loss": "bce"
+    },
+    "output": {
+      "env": "local"
+    }
+  },
+  "epochs": 30,
+  "n_train": 546,
+  "n_val": 78,
+  "ordinal": false
+}

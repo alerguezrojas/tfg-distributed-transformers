@@ -1,0 +1,42 @@
+{
+  "v": 1,
+  "type": "run_manifest",
+  "source": "log",
+  "run_id": "17102026_164017",
+  "dataset": "medmnist_derma",
+  "task": "multiclass",
+  "classes": [
+    "actinic keratoses and intraepithelial carcinoma",
+    "basal cell carcinoma",
+    "benign keratosis-like lesions",
+    "dermatofibroma",
+    "melanoma",
+    "melanocytic nevi",
+    "vascular lesions"
+  ],
+  "model": "vit_tiny_patch16_224",
+  "mode": "single",
+  "config": {
+    "data": {
+      "name": "medmnist_derma"
+    },
+    "model": {
+      "name": "vit_tiny_patch16_224"
+    },
+    "training": {
+      "epochs": 15,
+      "lr": 0.0001,
+      "seed": 44,
+      "precision": "fp32",
+      "batch_size": 128,
+      "loss": "bce"
+    },
+    "output": {
+      "env": "local"
+    }
+  },
+  "epochs": 15,
+  "n_train": 7007,
+  "n_val": 1003,
+  "ordinal": false
+}
