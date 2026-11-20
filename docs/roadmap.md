@@ -215,6 +215,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Ramas remotas ya mergeadas eliminadas (solo quedan `main` y `develop`).
 - [x] `AGENTS.md` + `CLAUDE.md` mínimo + `CHANGELOG.md`; el antiguo `CLAUDE.md` repartido en `docs/`.
 - [ ] (Opcional) Integración con Zenodo para tener un DOI de cada release.
+- [x] Seguridad del repo: `SECURITY.md`, Dependabot, CodeQL, auditoría de dependencias en CI y gitleaks en pre-commit (PR pendiente de merge: el lock tiene ~250 avisos en dependencias, a resolver con Dependabot).
 
 ### Fase 2 — Abstracción dataset/tarea (hecha, 17/10/2026)
 - [x] `DatasetSpec` (clases, canales, tarea, lector, transforms) + registro elegible con `data.name`.

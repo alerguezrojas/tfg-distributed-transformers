@@ -17,6 +17,10 @@ repos:
       - id: check-merge-conflict
       - id: check-added-large-files
         args: ["--maxkb=2000"]       # evita subir checkpoints o datasets por error
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks                 # tokens (Kaggle, HF...) y claves en el diff preparado
   - repo: local
     hooks:
       - id: sin-atribucion-ia

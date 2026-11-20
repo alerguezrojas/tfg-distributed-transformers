@@ -10,6 +10,15 @@ name: CI
     branches: [main, develop]
   pull_request:
 
+# Mínimos privilegios: ningún job de este workflow escribe en el repo.
+permissions:
+  contents: read
+
+# Un push nuevo al mismo PR/rama cancela la ejecución anterior.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
     runs-on: ubuntu-latest
@@ -39,3 +48,25 @@ jobs:
 
       - name: Run test suite
         run: uv run pytest -q
+
+  # Auditoría de dependencias con vulnerabilidades conocidas (base OSV/PyPI).
+  # No bloquea el PR (continue-on-error): el lock arrastra avisos de herramientas de desarrollo
+  # (jupyter, gitpython...) que se van resolviendo con los PR de Dependabot. Cuando el listado
+  # esté limpio, quitar `continue-on-error` para que bloquee.
+  # Ignorar un aviso concreto y justificado: añadir `--ignore-vuln GHSA-xxxx-xxxx-xxxx`
+  # (una vez por aviso) a la línea de pip-audit, con un comentario del motivo.
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Export locked dependencies
+        run: uv export --frozen --no-hashes --no-emit-project --no-annotate > requirements-audit.txt
+
+      - name: pip-audit
+        run: uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip

@@ -9,6 +9,7 @@
 | [datasets/](datasets/) | Una ficha por dataset soportado ([BigEarthNet-S2](datasets/bigearthnet.md), [MedMNIST](datasets/medmnist.md), [PANDA](datasets/panda.md)) |
 | [roadmap.md](roadmap.md) | Plan de trabajo posterior al TFG y su **estado actual** |
 | [flujo_ia.md](flujo_ia.md) | Cómo se trabaja con IA: agentes, skills, hooks, permisos y controles |
+| [SECURITY.md](../SECURITY.md) | Política de seguridad: cómo informar de una vulnerabilidad y reglas del proyecto (secretos, `torch.load`, datos médicos) |
 | [inspeccion.md](inspeccion.md) | Qué captura la inspección del entrenamiento (sistema, rendimiento, predicciones por muestra, Grad-CAM, capas) y en qué formato |
 | [eventos.md](eventos.md) | Esquema del flujo de eventos de cada run (`events_*.jsonl`): contrato entre el entrenamiento y la web |
 | [research/inventario_herramientas_observabilidad.md](research/inventario_herramientas_observabilidad.md) | Inventario funcionalidad a funcionalidad de W&B, TensorBoard, Comet, Aim, ClearML, FiftyOne, Lightning y otras: qué muestran, matriz comparativa, requisitos de imagen médica y lista priorizada para el proyecto |

@@ -59,7 +59,7 @@ def import_run_archive(file_bytes: bytes, logs_root: Path) -> list[str]:
             if rel is None:
                 continue
             dest = (logs_root / rel).resolve()
-            if not str(dest).startswith(str(logs_root.resolve())):
+            if not dest.is_relative_to(logs_root.resolve()):
                 continue                    # belt-and-suspenders against traversal
             dest.parent.mkdir(parents=True, exist_ok=True)
             with z.open(name) as src:
@@ -86,7 +86,7 @@ def import_run_folder(folder: Path, logs_root: Path) -> list[str]:
         if rel is None:
             continue
         dest = (logs_root / rel).resolve()
-        if not str(dest).startswith(str(logs_root.resolve())):
+        if not dest.is_relative_to(logs_root.resolve()):
             continue
         if dest == path.resolve():          # importing from inside logs/ itself
             continue
