@@ -42,6 +42,9 @@ class TrainerDecorator(BaseTrainer):
     def save_checkpoint(self, epoch: int, metrics: dict):
         return self._trainer.save_checkpoint(epoch, metrics)
 
+    def save_last_checkpoint(self, epoch: int, metrics: dict, extra: dict | None = None):
+        return self._trainer.save_last_checkpoint(epoch, metrics, extra)
+
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         return self._trainer.fit(train_loader, val_loader, epochs)
 
@@ -123,6 +126,18 @@ class EpochController(TrainerDecorator):
         self._notify("on_fit_end", best=progress["best"], epochs_run=progress["epochs_run"],
                      early_stopped=stopped_early)
 
+    def _save_last(self, epoch: int, metrics: dict, best_f1: float, no_improve: int) -> None:
+        """last.pt is a convenience for resuming: a failure to write it (full disk) warns
+        and training goes on; best.pt failing still aborts the run."""
+        try:
+            self.save_last_checkpoint(epoch, metrics, {"best_metric": best_f1,
+                                                       "epochs_no_improve": no_improve})
+        except OSError as exc:
+            msg = f"[Epoch {epoch:03d}] No se pudo escribir last.pt ({exc}); sigo sin él"
+            warnings.warn(msg, RuntimeWarning, stacklevel=2)
+            if hasattr(type(self), "_emit"):
+                self._emit(msg)
+
     def _run_epochs(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int,
                     progress: dict) -> bool:
         """The epoch loop. Updates ``progress`` as it goes (so a failure can still be
@@ -130,6 +145,9 @@ class EpochController(TrainerDecorator):
         best_f1 = -1.0   # so the first epoch always saves a baseline checkpoint
         epoch_times: list[float] = []
         epochs_no_improve: int = 0
+        resumed = getattr(self, "resume_state", None)   # set by --resume from last.pt
+        if resumed:
+            best_f1, epochs_no_improve = resumed["best_metric"], resumed["epochs_no_improve"]
 
         for epoch in range(1, epochs + 1):
             self._on_epoch_start(epoch, epochs)
@@ -144,17 +162,18 @@ class EpochController(TrainerDecorator):
             # An undefined metric (NaN: e.g. QWK/AUC on a one-class split) never beats
             # the best, but the first epoch is still saved so there is a checkpoint.
             is_best = value > best_f1 or (epoch == 1 and math.isnan(value))
+            metrics_clean = {k: v for k, v in val_m.items() if not k.startswith("_")}
+            # Keep the threshold tuned on VALIDATION with the checkpoint, so the
+            # test evaluation applies it instead of tuning on the test set itself.
+            if val_m.get("_optimal_threshold") is not None:
+                metrics_clean["optimal_threshold"] = val_m["_optimal_threshold"]
             if is_best:
                 best_f1 = best_f1 if math.isnan(value) else value
                 epochs_no_improve = 0
-                metrics_clean = {k: v for k, v in val_m.items() if not k.startswith("_")}
-                # Keep the threshold tuned on VALIDATION with the checkpoint, so the
-                # test evaluation applies it instead of tuning on the test set itself.
-                if val_m.get("_optimal_threshold") is not None:
-                    metrics_clean["optimal_threshold"] = val_m["_optimal_threshold"]
                 self.save_checkpoint(epoch, metrics_clean)
             else:
                 epochs_no_improve += 1
+            self._save_last(epoch, metrics_clean, best_f1, epochs_no_improve)
 
             self._on_epoch_end(epoch, epochs, train_m, val_m, best_f1, epoch_times)
             progress["epochs_run"], progress["best"] = epoch, best_f1

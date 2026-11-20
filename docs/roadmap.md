@@ -213,6 +213,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Ramas locales mergeadas eliminadas; borrado automático de ramas al mergear activado en GitHub.
 - [x] Ramas remotas ya mergeadas eliminadas (solo quedan `main` y `develop`).
 - [x] `AGENTS.md` + `CLAUDE.md` mínimo + `CHANGELOG.md`; el antiguo `CLAUDE.md` repartido en `docs/`.
+- [x] Checkpoints por run (20/11/2026): carpeta con sello de tiempo, `best.pt` + `last.pt` (`checkpoint.keep`), escritura atómica.
 - [ ] (Opcional) Integración con Zenodo para tener un DOI de cada release.
 - [x] Seguridad del repo: `SECURITY.md`, Dependabot, CodeQL, auditoría de dependencias en CI y gitleaks en pre-commit (PR pendiente de merge: el lock tiene ~250 avisos en dependencias, a resolver con Dependabot).
 

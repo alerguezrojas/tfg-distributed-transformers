@@ -153,8 +153,11 @@ Los scripts de `scripts/` (`train_single_gpu.py`, `train_ddp.py`, `train_model_p
 ### `eval` — el número honesto final
 
 ```bash
-uv run paravit.py eval --checkpoint checkpoints/verode/checkpoint_epoch_007.pt --split test
+uv run paravit.py eval --checkpoint checkpoints/verode/single/vit_base_patch16_224/19112026_101500 --split test
 ```
+
+`--checkpoint` acepta un fichero (`best.pt`, `last.pt` o un `checkpoint_epoch_NNN.pt` antiguo) o la carpeta
+de un run, que se resuelve a su `best.pt`.
 
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
 agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
@@ -227,6 +230,7 @@ training:
   mixup_alpha: 0.2
 checkpoint:
   dir: "checkpoints/local"
+  keep: best_last                       # best_last (defecto: best.pt + last.pt) | all (uno por época mejorada)
 output:
   env: "local"                          # local | verode | kaggle → organiza logs/
 ```
@@ -284,7 +288,21 @@ Cada run escribe, bajo `logs/<entorno>/<estrategia>/<modelo>/`:
 | `inspect_<fecha>/` | Con `--monitor`: predicciones por imagen, *embeddings* y Grad-CAM por época ([formato](inspeccion.md)); no se versiona |
 | `test_*.csv` | Resultado de la evaluación en test (si se ejecutó `eval`) |
 
-Los pesos van a `checkpoints/` (fuera de git). El panel web descubre los runs automáticamente; los
+Los pesos van a `checkpoints/<env>/[<dataset>/]<modo>/<modelo>/<DDMMYYYY_HHMMSS>/` (fuera de git): una
+carpeta por run, con el mismo sello que sus logs. Por defecto solo se conservan `best.pt` (mejor época
+según `select_by`) y `last.pt` (última época, para reanudar con `--resume`, que también acepta la
+carpeta del run); con `checkpoint.keep: all` se guarda un `checkpoint_epoch_NNN.pt` por época que
+mejora. Los ficheros se escriben a un temporal y se renombran, así que un disco lleno no deja un
+`best.pt` corrupto. Los checkpoints antiguos siguen sirviendo con `--checkpoint RUTA`.
+
+Cada run deja dos ficheros (~0,5 GB con ViT-S) y los runs se acumulan: **hay que borrar a mano los
+viejos**; esto evita mezclar runs, no libera disco por sí solo. `last.pt` guarda además la época
+global (las reanudaciones encadenan), el estado del `GradScaler` (AMP), la mejor métrica y el
+contador de *early stopping*, que `--resume` restaura. **No se restauran** el estado de los
+generadores aleatorios ni el orden de los lotes (la reanudación no es bit a bit idéntica), y el
+`best.pt` del run reanudado solo aparece si mejora la mejor métrica anterior (el anterior sigue en
+la carpeta del run original). Si escribir `last.pt` falla (disco lleno) se avisa y el
+entrenamiento continúa; si falla `best.pt`, el run aborta. El panel web descubre los runs automáticamente; los
 entrenados en otra máquina se importan desde la sección *Dataset → Import* subiendo un zip de esos
 ficheros.
 

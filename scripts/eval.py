@@ -5,8 +5,8 @@ in the config (``data.name``, default BigEarthNet-S2), reporting per-class and
 aggregate metrics — with optimal threshold search for sigmoid tasks.
 
 Usage:
-    # Evaluate best checkpoint with default config
-    uv run python scripts/eval.py --checkpoint checkpoints/verode/checkpoint_epoch_007.pt
+    # Evaluate the best checkpoint of a run (a folder resolves to its best.pt)
+    uv run python scripts/eval.py --checkpoint checkpoints/verode/vit_small/05102026_101500
 
     # Override config (e.g. to use cluster dataset paths)
     uv run python scripts/eval.py \\
@@ -36,13 +36,15 @@ from src.analysis.io import save_predictions
 from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
+from src.training.checkpoints import resolve_checkpoint
 from src.training.tasks import MultiLabelTask, Task
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained checkpoint on the test set")
     parser.add_argument("--checkpoint", type=str, required=True,
-                        help="Path to checkpoint .pt file")
+                        help="Checkpoint .pt file (best.pt, last.pt or an old "
+                             "checkpoint_epoch_NNN.pt); a run folder resolves to its best.pt")
     parser.add_argument("--config", type=str, default="configs/train.yaml",
                         help="Config YAML (used for dataset paths, model name, batch size)")
     parser.add_argument("--model", type=str, default=None,
@@ -210,7 +212,7 @@ def main():
     spec = dataset_spec_from_config(cfg)
     task = spec.make_task()
 
-    print(f"Checkpoint : {args.checkpoint}")
+    print(f"Checkpoint : {resolve_checkpoint(args.checkpoint)}")
     print(f"Dataset    : {spec.name} ({task.name}, {spec.num_classes} clases)")
     print(f"Modelo     : {model_name}")
     print(f"Split      : {args.split}")
@@ -226,7 +228,7 @@ def main():
         in_chans=spec.in_channels,
         img_size=cfg["model"].get("img_size"),
     )
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
+    ckpt = torch.load(resolve_checkpoint(args.checkpoint), map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state_dict"])
     model = model.to(device)
     resumed_epoch = ckpt.get("epoch", "?")
