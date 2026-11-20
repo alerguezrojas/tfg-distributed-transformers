@@ -15,7 +15,8 @@ locales (0,794 ± 0,012): Kaggle y la máquina local son comparables. A 1.024 px
 **0,821** (mejor run hasta ahora; sube en los dos hospitales y la sensibilidad de ISUP ≥ 2 pasa de
 0,76 a 0,86), pero la ordinal a 1.024 se queda en 0,806, igual que a 512. Con una semilla no se
 puede afirmar que la resolución mejore (frente al 512 de Kaggle, +0,021 [−0,005; +0,048]); **en
-curso**, las semillas 43 y 44 de la base a 1.024 px en Kaggle (~6 h). Cada run a 1.024 tarda
+curso**, las semillas 43 y 44 de la base a 1.024 px en Kaggle (~6 h; relanzadas tras el PR #216,
+porque en DDP `--seed` no cambiaba el orden de los datos). Cada run a 1.024 tarda
 ~2,9 h. El predictor subestima el tiempo en T4 (−40 % a 512, −16 % a 1.024): las T4 trabajan
 limitadas por potencia (reloj mediano 960 MHz frente a 1.590). Tablas en
 [datasets/panda.md](datasets/panda.md#resolución-1024-px-en-kaggle-20112026) y

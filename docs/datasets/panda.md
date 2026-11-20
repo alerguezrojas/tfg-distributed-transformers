@@ -238,7 +238,10 @@ Semilla 42 en los tres. *Bootstrap* emparejado del test (2000 remuestreos):
 Coste: a 1024 px cada época tarda ~11 min y un run de 15 épocas, ~2,9 h (frente a 37 min a 512).
 La GPU 0 llega al 98 % de memoria, porque el Grad-CAM del monitor se queda sin memoria: es solo un
 aviso, el run sigue y se guardan las predicciones. **En curso:** semillas 43 y 44 de la base a
-1024 px (lote `seeds_1024` del kernel).
+1024 px (lote `seeds_1024` del kernel), relanzadas tras el PR #216. Hasta ese arreglo,
+`DistributedSampler` barajaba siempre con la semilla 0, así que en DDP las semillas solo cambiaban
+la inicialización y los aumentos, no el orden de los datos. Los runs a 512 px de una GPU no se
+ven afectados.
 
 ## Riesgos
 
