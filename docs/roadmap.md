@@ -104,8 +104,7 @@ del repo, en la carpeta de reuniones del autor).
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** nada en marcha. Todo está integrado en `develop` (aún no en `main`: `develop → main`
-cuando el autor lo valide).
+**En curso:** versión 1.1.0 (20/11/2026): todo lo anterior pasa de `develop` a `main`.
 
 **Siguiente paso recomendado:** según lo que se decida en la reunión del 20/11. Por orden:
 (1) **más resolución** o más tiles (es lo que más puede mejorar: los ganadores usaban 4-9 veces
@@ -216,6 +215,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] `AGENTS.md` + `CLAUDE.md` mínimo + `CHANGELOG.md`; el antiguo `CLAUDE.md` repartido en `docs/`.
 - [x] Checkpoints por run (20/11/2026): carpeta con sello de tiempo, `best.pt` + `last.pt` (`checkpoint.keep`), escritura atómica.
 - [ ] (Opcional) Integración con Zenodo para tener un DOI de cada release.
+- [x] Seguridad del repo: `SECURITY.md`, Dependabot, CodeQL, auditoría de dependencias en CI y gitleaks en pre-commit (PR pendiente de merge: el lock tiene ~250 avisos en dependencias, a resolver con Dependabot).
 
 ### Fase 2 — Abstracción dataset/tarea (hecha, 17/10/2026)
 - [x] `DatasetSpec` (clases, canales, tarea, lector, transforms) + registro elegible con `data.name`.

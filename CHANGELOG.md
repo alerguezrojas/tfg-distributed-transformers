@@ -4,7 +4,26 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Seguridad
+- Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,
+  starlette, urllib3, jupyter-server, jupyterlab, mistune, filelock y otras; streamlit sube a
+  1.67 porque lo exige pillow 13). torch se queda en 2.11 hasta validar 2.13 en las GPU.
+- El job `audit` de la CI pasa a bloquear: cero avisos salvo cuatro aceptados con su motivo en
+  `ci.yml` (torch.jit, que no se usa, y dos de setuptools al construir paquetes).
+
+## [1.1.0] - 2026-11-20
+
+Primera versión posterior al TFG: soporte multi-dataset (fichas `DatasetSpec` y tareas), MedMNIST,
+PANDA con clases ordenadas y QWK, observabilidad del entrenamiento (flujo de eventos, vista *Live*,
+monitor de predicciones e *Inspector* en la web), evaluación clínica en test y perfilado automático
+de modelos de timm en el predictor.
+
 ### Añadido
+- Seguridad y calidad del repositorio: `SECURITY.md` (aviso privado de GitHub, alcance y reglas),
+  Dependabot semanal agrupado (`uv` y `github-actions`, hacia `develop`), análisis CodeQL de Python
+  (`.github/workflows/codeql.yml`), `permissions: contents: read` y `concurrency` en CI, job
+  `audit` con `pip-audit` sobre `uv export` (informativo por ahora: el lock tiene avisos en
+  dependencias de desarrollo) y hook de gitleaks en `pre-commit`. Historial escaneado: sin secretos.
 - PANDA, mejoras y generalización entre hospitales (18-19/11/2026, 14 runs): con tres semillas,
   base 0,794 ± 0,012 y pérdida ordinal 0,802 ± 0,009 de QWK en test, sin mejora clara (con una
   sola semilla parecía +0,025); el color tampoco mejora. Cortes clínicos (ISUP ≥ 1 y ≥ 2) y
@@ -241,6 +260,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- Importación de runs en la web: la comprobación de que el destino queda dentro de `logs/` usaba
+  un prefijo de texto (aceptaba `logs_evil/` vía enlace simbólico); ahora usa `is_relative_to`.
 - La línea `Configuración:` del log muestra la pérdida real de la tarea cuando el YAML no define `training.loss`
   (`ce` en multiclase, antes `bce`), con el helper `configured_loss_name`.
 - `PrecisionRecallReporter` imprime también `qwk` (datasets ordinales) y `auc` por época; el parser de la web ignora
@@ -288,5 +309,6 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...v1.1.0
 [v1.0-tfg]: https://github.com/alerguezrojas/tfg-distributed-transformers/releases/tag/v1.0-tfg
