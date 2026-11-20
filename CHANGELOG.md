@@ -37,6 +37,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   (lleva el dataset).
 
 ### Seguridad
+- torch 2.11 → 2.15 (torchvision 0.29, CUDA 13.2), que corrige CVE-2025-3000. Validado en la
+  RTX 3060 Ti local: suite completa en verde (golden incluido) y PANDA a 512 px con el mismo
+  tiempo por época (~82 s) y el mismo QWK que 2.11 dentro del ruido. Verode sigue con su torch
+  2.7.1+cu118 instalado aparte (ver `docs/infraestructura.md`). La auditoría ya no ignora el aviso.
 - Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,
   starlette, urllib3, jupyter-server, jupyterlab, mistune, filelock y otras; streamlit sube a
   1.67 porque lo exige pillow 13). torch se queda en 2.11 hasta validar 2.13 en las GPU.
