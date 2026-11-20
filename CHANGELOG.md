@@ -12,6 +12,11 @@ monitor de predicciones e *Inspector* en la web), evaluación clínica en test y
 de modelos de timm en el predictor.
 
 ### Añadido
+- Seguridad y calidad del repositorio: `SECURITY.md` (aviso privado de GitHub, alcance y reglas),
+  Dependabot semanal agrupado (`uv` y `github-actions`, hacia `develop`), análisis CodeQL de Python
+  (`.github/workflows/codeql.yml`), `permissions: contents: read` y `concurrency` en CI, job
+  `audit` con `pip-audit` sobre `uv export` (informativo por ahora: el lock tiene avisos en
+  dependencias de desarrollo) y hook de gitleaks en `pre-commit`. Historial escaneado: sin secretos.
 - PANDA, mejoras y generalización entre hospitales (18-19/11/2026, 14 runs): con tres semillas,
   base 0,794 ± 0,012 y pérdida ordinal 0,802 ± 0,009 de QWK en test, sin mejora clara (con una
   sola semilla parecía +0,025); el color tampoco mejora. Cortes clínicos (ISUP ≥ 1 y ≥ 2) y
@@ -240,6 +245,8 @@ de modelos de timm en el predictor.
   mayúsculas.
 
 ### Corregido
+- Importación de runs en la web: la comprobación de que el destino queda dentro de `logs/` usaba
+  un prefijo de texto (aceptaba `logs_evil/` vía enlace simbólico); ahora usa `is_relative_to`.
 - La línea `Configuración:` del log muestra la pérdida real de la tarea cuando el YAML no define `training.loss`
   (`ce` en multiclase, antes `bce`), con el helper `configured_loss_name`.
 - `PrecisionRecallReporter` imprime también `qwk` (datasets ordinales) y `auc` por época; el parser de la web ignora
