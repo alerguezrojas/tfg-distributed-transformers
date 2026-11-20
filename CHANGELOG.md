@@ -4,6 +4,17 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Añadido
+- Backbones que no son de timm: `BackboneSpec` y registro por nombre (`src/models/backbones.py`),
+  adaptador genérico `hf:<repo>` de Hugging Face `transformers` (pooling `model.pooling`, media de
+  tokens por defecto) e I-JEPA ViT-H/14 (`ijepa_vith14_1k`, `ijepa_vith14_22k`, licencia CC BY-NC 4.0
+  con aviso al construirlo). Los nombres que no están en el registro siguen siendo timm, sin
+  cambios. `transformers` es opcional (`uv sync --extra hf`).
+- `model.freeze_backbone: true` (sonda lineal): solo se entrena la cabeza; el validador comprueba
+  también `model.pooling` y rechaza los backbones no timm con paralelismo de modelo.
+- Guía [docs/modelos/README.md](docs/modelos/README.md): cómo añadir un modelo, sonda lineal frente
+  a ajuste fino, protocolo de comparación y licencias.
+
 ## [1.1.0] - 2026-11-20
 
 Primera versión posterior al TFG: soporte multi-dataset (fichas `DatasetSpec` y tareas), MedMNIST,
