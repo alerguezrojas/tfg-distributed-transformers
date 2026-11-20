@@ -15,6 +15,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - Guía [docs/modelos/README.md](docs/modelos/README.md): cómo añadir un modelo, sonda lineal frente
   a ajuste fino, protocolo de comparación y licencias.
 
+### Seguridad
+- Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,
+  starlette, urllib3, jupyter-server, jupyterlab, mistune, filelock y otras; streamlit sube a
+  1.67 porque lo exige pillow 13). torch se queda en 2.11 hasta validar 2.13 en las GPU.
+- El job `audit` de la CI pasa a bloquear: cero avisos salvo cuatro aceptados con su motivo en
+  `ci.yml` (torch.jit, que no se usa, y dos de setuptools al construir paquetes).
+
 ## [1.1.0] - 2026-11-20
 
 Primera versión posterior al TFG: soporte multi-dataset (fichas `DatasetSpec` y tareas), MedMNIST,
