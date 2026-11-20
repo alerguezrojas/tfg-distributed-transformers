@@ -23,7 +23,7 @@ class BaseTrainer(ABC):
     def save_checkpoint(self, epoch: int, metrics: dict):
         """Save a model checkpoint."""
 
-    def save_last_checkpoint(self, epoch: int, metrics: dict):
+    def save_last_checkpoint(self, epoch: int, metrics: dict, extra: dict | None = None):
         """Save the end-of-epoch checkpoint used to resume (no-op unless overridden)."""
 
     @abstractmethod

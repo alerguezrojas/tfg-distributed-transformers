@@ -43,14 +43,74 @@ def test_best_last_keeps_two_files(tmp_path):
     assert 1 <= best["epoch"] <= 3 and "model_state_dict" in best
 
 
-def test_last_is_a_copy_of_best_when_the_epoch_improves(tmp_path):
+def test_last_moves_every_epoch_and_best_stays(tmp_path):
     tr = _trainer(tmp_path)
     tr.save_checkpoint(2, {"f1": 0.5})
     tr.save_last_checkpoint(2, {"f1": 0.5})
-    assert torch.load(tmp_path / "last.pt", weights_only=True)["epoch"] == 2
     tr.save_last_checkpoint(3, {"f1": 0.4})       # worse epoch: last moves, best stays
     assert torch.load(tmp_path / "last.pt", weights_only=True)["epoch"] == 3
     assert torch.load(tmp_path / "best.pt", weights_only=True)["epoch"] == 2
+
+
+def test_double_resume_keeps_the_global_epoch(tmp_path):
+    """10 epochs, cut at 6, resume, cut at 2 of the second run: last.pt must say 8, not 2."""
+    first = _trainer(tmp_path / "run1")
+    first.save_last_checkpoint(6, {})
+    second = _trainer(tmp_path / "run2")
+    second.load_checkpoint(tmp_path / "run1")
+    second.save_last_checkpoint(2, {})
+    last = torch.load(tmp_path / "run2" / "last.pt", weights_only=True)
+    assert last["epoch"] == 8
+    third = _trainer(tmp_path / "run3")
+    assert third.load_checkpoint(tmp_path / "run2")["epoch"] == 8
+
+
+def test_resume_restores_best_metric_and_patience(tmp_path):
+    tr = _trainer(tmp_path / "a")
+    tr.save_last_checkpoint(3, {}, {"best_metric": 0.7, "epochs_no_improve": 2})
+    tr2 = _trainer(tmp_path / "b")
+    tr2.load_checkpoint(tmp_path / "a")
+    assert tr2.resume_state == {"best_metric": 0.7, "epochs_no_improve": 2}
+    seen = {}
+    ctrl = TracingDecorator(tr2)
+    orig = ctrl._should_stop
+    ctrl._patience = 99
+    ctrl._should_stop = lambda n: seen.setdefault("n", n) or orig(n)
+    ctrl.fit(_loader(), _loader(), 1)
+    assert seen["n"] >= 2        # the counter continued from 2, not from 0
+
+
+def test_scaler_state_is_saved_and_restored(tmp_path):
+    tr = _trainer(tmp_path / "a")
+    tr._scaler = torch.amp.GradScaler("cpu", enabled=True, init_scale=1024.0)
+    tr.save_last_checkpoint(1, {})
+    ckpt = torch.load(tmp_path / "a" / "last.pt", weights_only=True)
+    assert ckpt["scaler_state_dict"]["scale"] == 1024.0
+    tr2 = _trainer(tmp_path / "b")
+    tr2._scaler = torch.amp.GradScaler("cpu", enabled=True, init_scale=2.0)
+    tr2.load_checkpoint(tmp_path / "a")
+    assert tr2._scaler.get_scale() == 1024.0
+
+
+def test_failing_last_write_warns_and_training_goes_on(tmp_path):
+    tr = _trainer(tmp_path)
+
+    def full_disk(*a, **k):
+        raise OSError("No space left on device")
+    tr.save_last_checkpoint = full_disk
+    with pytest.warns(RuntimeWarning, match="last.pt"):
+        TracingDecorator(tr).fit(_loader(), _loader(), 2)
+    assert (tmp_path / "best.pt").exists()
+
+
+def test_failing_best_write_still_aborts(tmp_path):
+    tr = _trainer(tmp_path)
+
+    def full_disk(*a, **k):
+        raise OSError("No space left on device")
+    tr.save_checkpoint = full_disk
+    with pytest.raises(OSError):
+        TracingDecorator(tr).fit(_loader(), _loader(), 2)
 
 
 def test_keep_all_keeps_the_old_scheme(tmp_path):

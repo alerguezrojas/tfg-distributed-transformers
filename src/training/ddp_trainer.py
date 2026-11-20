@@ -107,6 +107,6 @@ class DDPTrainer(Trainer):
         if self.rank == 0:
             super().save_checkpoint(epoch, metrics)
 
-    def save_last_checkpoint(self, epoch: int, metrics: dict):
+    def save_last_checkpoint(self, epoch: int, metrics: dict, extra: dict | None = None):
         if self.rank == 0:
-            super().save_last_checkpoint(epoch, metrics)
+            super().save_last_checkpoint(epoch, metrics, extra)

@@ -293,7 +293,16 @@ carpeta por run, con el mismo sello que sus logs. Por defecto solo se conservan 
 según `select_by`) y `last.pt` (última época, para reanudar con `--resume`, que también acepta la
 carpeta del run); con `checkpoint.keep: all` se guarda un `checkpoint_epoch_NNN.pt` por época que
 mejora. Los ficheros se escriben a un temporal y se renombran, así que un disco lleno no deja un
-`best.pt` corrupto. Los checkpoints antiguos siguen sirviendo con `--checkpoint RUTA`. El panel web descubre los runs automáticamente; los
+`best.pt` corrupto. Los checkpoints antiguos siguen sirviendo con `--checkpoint RUTA`.
+
+Cada run deja dos ficheros (~0,5 GB con ViT-S) y los runs se acumulan: **hay que borrar a mano los
+viejos**; esto evita mezclar runs, no libera disco por sí solo. `last.pt` guarda además la época
+global (las reanudaciones encadenan), el estado del `GradScaler` (AMP), la mejor métrica y el
+contador de *early stopping*, que `--resume` restaura. **No se restauran** el estado de los
+generadores aleatorios ni el orden de los lotes (la reanudación no es bit a bit idéntica), y el
+`best.pt` del run reanudado solo aparece si mejora la mejor métrica anterior (el anterior sigue en
+la carpeta del run original). Si escribir `last.pt` falla (disco lleno) se avisa y el
+entrenamiento continúa; si falla `best.pt`, el run aborta. El panel web descubre los runs automáticamente; los
 entrenados en otra máquina se importan desde la sección *Dataset → Import* subiendo un zip de esos
 ficheros.
 

@@ -8,7 +8,6 @@ antiguo (un ``checkpoint_epoch_NNN.pt`` por época mejorada).
 from __future__ import annotations
 
 import os
-import shutil
 from pathlib import Path
 
 import torch
@@ -27,17 +26,6 @@ def atomic_save(state: dict, path: Path) -> None:
     try:
         torch.save(state, tmp)
         os.replace(tmp, path)
-    except BaseException:
-        tmp.unlink(missing_ok=True)
-        raise
-
-
-def atomic_copy(src: Path, dst: Path) -> None:
-    """Copia ``src`` en ``dst`` con la misma garantía de atomicidad."""
-    tmp = dst.with_name(dst.name + ".tmp")
-    try:
-        shutil.copyfile(src, tmp)
-        os.replace(tmp, dst)
     except BaseException:
         tmp.unlink(missing_ok=True)
         raise

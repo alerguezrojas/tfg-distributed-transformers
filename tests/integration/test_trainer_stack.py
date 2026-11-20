@@ -296,7 +296,7 @@ class _ScriptedTrainer:
     def save_checkpoint(self, epoch, metrics):
         self.saved_epochs.append(epoch)
 
-    def save_last_checkpoint(self, epoch, metrics):
+    def save_last_checkpoint(self, epoch, metrics, extra=None):
         pass
 
 
