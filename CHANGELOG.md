@@ -31,10 +31,6 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   `model.pooling`, y Grad-CAM funciona con `freeze_backbone`. La línea `Configuración:` añade
   `freeze_backbone=` y `backbone=`; la validación del predictor ignora las sondas lineales.
 
-### Corregido
-- Documentación desfasada: el recuento de pruebas del README y de la guía de uso (411 → más de 1.200),
-  el tiempo de la batería en `AGENTS.md` (~10 s → ~1,5 min) y la ruta de los logs en el mapa del código
-  (lleva el dataset).
 - La web conoce el dataset y la métrica de cada run. Cada entrenamiento escribe un manifiesto
   `run_<ts>.json` (lo de `run_start` más el comando; unos KB, se versiona) por el mismo observador
   que los eventos, y `scripts/backfill_run_manifests.py` lo genera para los runs viejos (de sus
@@ -52,6 +48,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - *Compare* agrupa los runs que solo difieren en la semilla: media ± desviación en la tabla y curvas
   con banda; trabaja con un dataset cada vez, hasta 12 runs, con columnas de semilla, hospital,
   color y resolución.
+
+### Corregido
+- Documentación desfasada: el recuento de pruebas del README y de la guía de uso (411 → más de 1.200),
+  el tiempo de la batería en `AGENTS.md` (~10 s → ~1,5 min) y la ruta de los logs en el mapa del código
+  (lleva el dataset).
 - «Fastest epoch» del Overview marcaba 0,0 min porque mezclaba datasets (MedMNIST tarda ~1,4 s por
   época): ahora es del dataset en curso y se muestra en segundos si dura menos de un minuto.
 - Los soportes por clase de BigEarthNet ya no se aplican a runs de otro dataset (Per-class) y la
