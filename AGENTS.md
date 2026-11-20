@@ -45,6 +45,7 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | `src/cli.py`, `src/cli_menu.py` | CLI Typer y menú interactivo; lanzadores `paravit.py` / `tfg.py` (alias) |
 | `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV |
 | `scripts/` | Puntos de entrada por estrategia (`train_single_gpu.py`, `train_ddp.py`, …) + `benchmark.py`, `eval.py` |
+| `kaggle/` | Kernels de Kaggle (2 × T4) para PANDA: mosaicos y entrenamientos con DDP; [guía](kaggle/README.md) |
 | `configs/` | YAML de entrenamiento (índice en `configs/README.md`) |
 | `logs/{env}/{mode}/{model}/` | Artefactos de cada run (se commitean); `checkpoints/` no |
 | `tests/unit`, `tests/integration` | pytest, todo en CPU |

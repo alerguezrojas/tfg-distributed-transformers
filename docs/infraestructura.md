@@ -8,8 +8,16 @@
 ### Local (desarrollo)
 - **GPU:** NVIDIA RTX 3060 Ti (8 GB VRAM)
 - **Driver:** nvidia-driver-580-open, kernel 6.8
-- **Dataset:** SSD externo montado en `/media/alejandro/SSD/` (ext4, ~120 GB)
+- **Datos y checkpoints:** SSD externo de 2 TB en `/media/alejandro/SSD/` (ext4): datasets (PANDA ocupa ~420 GB) y `paravit-checkpoints/`
 - **Gestión de paquetes:** `uv`
+
+### Kaggle (2 × T4) — entrenamientos que no caben en local
+
+GPU gratuitas (2 × NVIDIA T4 de 16 GB, ~30 h a la semana, sesiones de hasta 12 h) con los datos
+de PANDA ya montados. Se usa para lo que no cabe en la RTX 3060 Ti (8 GB), como PANDA a 1024 px.
+Los kernels están en [`kaggle/`](../kaggle/README.md) y se lanzan con `scripts/kaggle_push.sh`.
+Los checkpoints locales viven en el SSD (`checkpoints/local` y `checkpoints/runs` son enlaces a
+`/media/alejandro/SSD/paravit-checkpoints/`): la partición `/home` es de solo 59 GB.
 
 ### Clúster VERODE (ULL) — entrenamiento
 - **Login:** `ssh alu0101317038@verode00.pcg.ull.es`

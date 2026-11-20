@@ -5,6 +5,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Entrenamiento en Kaggle (2 × T4): kernels en `kaggle/` para generar los mosaicos de PANDA desde
+  los datos de la competición y para entrenar con DDP y evaluar en test una lista de experimentos
+  (`timings.csv` para contrastar el predictor). La partición se comprueba por md5 contra la local.
+  `scripts/kaggle_push.sh` rellena el usuario de Kaggle al lanzar, para no publicarlo en el repo.
 - Backbones que no son de timm: `BackboneSpec` y registro por nombre (`src/models/backbones.py`),
   adaptador genérico `hf:<repo>` de Hugging Face `transformers` (pooling `model.pooling`, media de
   tokens por defecto) e I-JEPA ViT-H/14 (`ijepa_vith14_1k`, `ijepa_vith14_22k`, licencia CC BY-NC 4.0
