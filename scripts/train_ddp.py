@@ -40,6 +40,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
+from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
@@ -207,7 +208,7 @@ def main():
             f"(global={_bs * world_size}, {world_size} GPUs) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
             f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)} | "
-            f"dataset={spec.name}"
+            f"dataset={spec.name} | {backbone_log_fields(cfg['model'], model_name)}"
         )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

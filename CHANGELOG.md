@@ -15,6 +15,21 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   los datos de la competición y para entrenar con DDP y evaluar en test una lista de experimentos
   (`timings.csv` para contrastar el predictor). La partición se comprueba por md5 contra la local.
   `scripts/kaggle_push.sh` rellena el usuario de Kaggle al lanzar, para no publicarlo en el repo.
+- Backbones que no son de timm: `BackboneSpec` y registro por nombre (`src/models/backbones.py`),
+  adaptador genérico `hf:<repo>` de Hugging Face `transformers` (pooling `model.pooling`, media de
+  tokens por defecto) e I-JEPA ViT-H/14 (`ijepa_vith14_1k`, `ijepa_vith14_22k`, licencia CC BY-NC 4.0
+  con aviso al construirlo). Los nombres que no están en el registro siguen siendo timm, sin
+  cambios. `transformers` es opcional (`uv sync --extra hf`).
+- `model.freeze_backbone: true` (sonda lineal): solo se entrena la cabeza; el validador comprueba
+  también `model.pooling` y rechaza los backbones no timm con paralelismo de modelo.
+- Guía [docs/modelos/README.md](docs/modelos/README.md): cómo añadir un modelo, sonda lineal frente
+  a ajuste fino, protocolo de comparación y licencias. Un nombre mal escrito (ni timm ni registrado)
+  da un error que lista los backbones registrados. Probado con `transformers` 5.12 real (modelo
+  I-JEPA diminuto desde config; el test se salta si no está instalado).
+- Adaptador `hf:`: sin *pooler* ni `mask_token` entrenable (DDP fallaba por parámetros sin
+  gradiente), la media excluye `[CLS]` y *register tokens*, `eval.py` y el benchmark respetan
+  `model.pooling`, y Grad-CAM funciona con `freeze_backbone`. La línea `Configuración:` añade
+  `freeze_backbone=` y `backbone=`; la validación del predictor ignora las sondas lineales.
 
 ### Corregido
 - Documentación desfasada: el recuento de pruebas del README y de la guía de uso (411 → más de 1.200),
