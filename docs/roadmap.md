@@ -62,11 +62,14 @@ generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset d
 del repo, en la carpeta de reuniones del autor).
 
 **Hecho:**
-- **Versión 1.1.0 en `main` (20/11/2026)**, con etiqueta y release: seguridad (secret scanning,
-  Dependabot, CodeQL, auditoría bloqueante, gitleaks, ramas protegidas), torch 2.15, checkpoints por
-  run (`best.pt`/`last.pt`, escritura atómica), registro de backbones no timm (`hf:`, I-JEPA, sonda
-  lineal), guía para colaboradores, web multi-dataset, `--seed`/`--data-root` en todos los scripts
-  y kernels de Kaggle (`kaggle/`). Lo posterior está en `develop` (sección *Unreleased*).
+- **Versiones 1.1.0 y 1.2.0 en `main` (20/11/2026)**, con etiqueta y release. La 1.1.0 llevó
+  PANDA, la medición clínica, la inspección del entrenamiento y la seguridad del repositorio
+  (secret scanning, Dependabot, CodeQL, gitleaks, ramas protegidas). La 1.2.0 lleva las
+  dependencias sin vulnerabilidades y torch 2.15, los checkpoints por run (`best.pt`/`last.pt`,
+  escritura atómica; los DDP y de paralelismo de modelo ya cargan en `eval.py`), el registro de
+  backbones no timm (`hf:`, I-JEPA, sonda lineal), la guía para colaboradores, la web
+  multi-dataset, `--seed`/`--data-root` en todos los scripts y los kernels de Kaggle con los
+  primeros runs de PANDA a 1.024 px.
 - **El Inspector lee las predicciones de test (20/11/2026):** `eval --save-predictions` sin ruta
   guarda `test_preds_<ts>.npz` en la carpeta de logs del run (sello deducido del checkpoint) y la
   web ofrece la fuente «Test (eval)» en Curves, Clinical (con cortes «grado ≥ k»), Calibration y
