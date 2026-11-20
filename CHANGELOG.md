@@ -32,6 +32,14 @@ monitor de predicciones e *Inspector* en la web), evaluación clínica en test y
 de modelos de timm en el predictor.
 
 ### Añadido
+- El Inspector de la web lee las predicciones de test: si el run tiene `test_preds_<ts>.npz`,
+  ofrece la fuente «Test (eval)» junto a «Validation (monitor)» en Curves, Clinical, Calibration y
+  Subgroups; en tareas ordinales, Clinical muestra la tabla de cortes «grado ≥ k». `eval
+  --save-predictions` sin ruta (`--save-predictions-auto` en `paravit.py eval`) guarda ese fichero
+  en la carpeta de logs del run con su sello, deducido del checkpoint con la estructura del
+  *builder* (`checkpoint.dir` y `output.env`; carpeta con sello o `checkpoint_epoch_*.pt` antiguos, con
+  aviso si es ambiguo) o el de la evaluación si no se puede. El `.npz` guarda `threshold_source` y la
+  web avisa si el umbral se eligió sobre el propio test. La web solo abre ficheros dentro de `logs/` y carga el `.npz` con `allow_pickle=False`.
 - Seguridad y calidad del repositorio: `SECURITY.md` (aviso privado de GitHub, alcance y reglas),
   Dependabot semanal agrupado (`uv` y `github-actions`, hacia `develop`), análisis CodeQL de Python
   (`.github/workflows/codeql.yml`), `permissions: contents: read` y `concurrency` en CI, job
@@ -235,6 +243,14 @@ de modelos de timm en el predictor.
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- Checkpoints por run (20/11/2026): cada run guarda en su carpeta
+  `checkpoints/.../<modelo>/<DDMMYYYY_HHMMSS>/` y por defecto solo conserva `best.pt` y `last.pt`
+  (antes, un `checkpoint_epoch_NNN.pt` por época mejorada, todos los runs del modelo mezclados; llenó
+  el disco el 19/11/2026). Evita mezclar runs y deja dos ficheros por run (~0,5 GB con ViT-S), pero
+  los runs se acumulan y hay que limpiar los viejos a mano. Nueva clave `checkpoint.keep` (`best_last` | `all`, validada) y escritura
+  atómica. `eval`, `--resume` y el menú entienden ficheros antiguos, `best.pt`/`last.pt` y carpetas
+  de run (`resolve_checkpoint`). `last.pt` guarda la época global, el `GradScaler`, la mejor métrica y
+  la paciencia, y `--resume` los restaura; si falla su escritura se avisa y se sigue. Mismas reglas en las cuatro estrategias (DDP: solo rank 0).
 - `.gitignore`: `checkpoints/runs` y `checkpoints/local` (copias de checkpoints y predicciones de
   test por run; en el equipo local son enlaces al SSD).
 - Web: se eliminan `DashboardContext.refresh_interval` (nadie lo usaba) y los comentarios

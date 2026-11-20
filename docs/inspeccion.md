@@ -265,7 +265,7 @@ cada paso (trabajo pequeño en CPU; no cambia ningún número).
 
 ### Predicciones en test (`--save-predictions`)
 
-`paravit.py eval ... --save-predictions logs/.../pred_test.npz` (o `scripts/eval.py`) guarda, en el
+`paravit.py eval ... --save-predictions RUTA.npz` (o `scripts/eval.py`) guarda, en el
 orden del split evaluado, lo necesario para rehacer cualquier análisis sin volver a inferir:
 
 | Clave | Forma y tipo | Significado |
@@ -280,6 +280,24 @@ orden del split evaluado, lo necesario para rehacer cualquier análisis sin volv
 
 `src.analysis.io.load_predictions(path)` lo lee (`Predictions`). Con `--max-batches` el fichero
 contiene solo las muestras evaluadas.
+
+**Dónde vive para que la web lo vea.** El Inspector busca `test_preds_<ts>.npz` en la carpeta de
+logs del run (`logs/<output.env>/<run_subdir>/`), con el mismo sello `DDMMYYYY_HHMMSS` que
+`train_<ts>.log`. Basta `--save-predictions` **sin ruta** (en `paravit.py eval`,
+`--save-predictions-auto`). `eval` lo deduce como el *builder*: la carpeta del checkpoint es
+`<checkpoint.dir>/<run_subdir>/<sello>/{best,last}.pt`, así que el sello es el nombre de esa carpeta
+y la de logs es `logs/<output.env>/<run_subdir>` (con `checkpoint.dir` y `output.env` de la
+config, no por sustitución de texto). Con la estructura antigua (`checkpoint_epoch_NNN.pt` en una
+carpeta compartida) el sello es el del último `train_<ts>.log`, `train_deep_<ts>.log` o
+`events_<ts>.jsonl` anterior a la fecha del checkpoint; si hay varios runs posibles o ninguno es
+anterior (p. ej. copiado con `scp`), `eval` avisa por consola con el sello elegido. Si no puede
+deducir la carpeta, guarda en `logs/` con el sello de la evaluación. Con `--save-predictions
+RUTA.npz` guarda donde se le diga, pero la web solo lo encuentra si nombre y carpeta siguen la
+convención.
+
+Clave opcional `threshold_source` (`()` cadena: `checkpoint`, `val` o `test`, según
+`--threshold-from`; ausente en ficheros antiguos y si la tarea no tiene umbral): la web la muestra
+en *Clinical* y *Curves* y avisa cuando vale `test` (umbral elegido sobre el propio test: optimista).
 
 ### Estadística para publicación
 
@@ -334,6 +352,15 @@ La web usa estas funciones en cuatro sitios (`src/web/inspector_stats.py` reúne
 - **Subgroups:** solo si existe `groups.npz`. Métricas por grupo con IC opcional y brecha máx-mín;
   se calculan sobre el subconjunto monitorizado (el que tiene los grupos alineados), así que los
   grupos pequeños son ruidosos (`min_size` los marca y los excluye de la brecha).
+- **Fuente de datos (validación o test):** si el run tiene `test_preds_<ts>.npz`, el Inspector
+  ofrece «Validation (monitor)» o «Test (eval)». En test funcionan *Curves*, *Clinical*,
+  *Calibration* y *Subgroups* (las variables `group__*` del `.npz`), con los mismos cálculos de
+  `src/analysis/` sobre `probs` y `targets`; el umbral por defecto es el guardado por `eval`. En
+  tareas ordinales, *Clinical* añade la tabla de cortes «grado ≥ k» (`clinical_cutoffs`). No hay
+  *Predictions*, *Errors* (necesitan miniaturas y pérdida por muestra), *Dynamics*, *Embeddings* ni
+  *Explain*, ni evolución por época (una sola evaluación). Un run con solo `test_preds_*.npz` (sin
+  events ni `inspect_*`) también aparece en la lista. La web solo abre ficheros dentro de `logs/` y
+  carga el `.npz` con `allow_pickle=False`.
 - **Alerts:** lista cronológica de los eventos `alert` y banner con las alertas activas en la
   cabecera del Inspector y de Live. Como no hay evento de «resuelta», *activa* se define por
   recencia: la última de cada (`code`, `group`) emitida en la época actual o la anterior (con el

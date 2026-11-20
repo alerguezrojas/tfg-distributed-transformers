@@ -15,6 +15,7 @@ import math
 from src.data.registry import available_datasets, dataset_name_from_config, get_dataset_spec
 from src.data.spec import DatasetSpec
 from src.models.backbones import POOLINGS, resolve_backbone
+from src.training.checkpoints import KEEP_MODES
 
 
 class ConfigError(ValueError):
@@ -56,6 +57,7 @@ def validate_config(cfg: dict, model_parallel: bool = False) -> None:
     _check_training(cfg["training"], spec, errors)
     _check_distributed(cfg.get("distributed", {}), errors)
     _check_monitor(cfg.get("monitor") or {}, errors)
+    _check_checkpoint(cfg.get("checkpoint") or {}, errors)
 
     if errors:
         _raise(errors)
@@ -258,6 +260,14 @@ def _check_pos_weight_against(spec: DatasetSpec, pw, errors: list) -> None:
     elif isinstance(pw, (list, tuple)) and len(pw) != spec.num_classes:
         errors.append(f"training.pos_weight has {len(pw)} values but dataset "
                       f"{spec.name!r} has {spec.num_classes} classes")
+
+
+def _check_checkpoint(ckpt: dict, errors: list) -> None:
+    if not isinstance(ckpt, dict):
+        errors.append(f"checkpoint must be a mapping, got {type(ckpt).__name__}")
+        return
+    if ckpt.get("keep") is not None and ckpt["keep"] not in KEEP_MODES:
+        errors.append(f"checkpoint.keep must be one of {list(KEEP_MODES)}, got {ckpt['keep']!r}")
 
 
 def _check_distributed(dist: dict, errors: list) -> None:

@@ -87,7 +87,7 @@ def ci_column(cis: Sequence[dict[str, dict[str, float]]], metric: str) -> list[s
 
 # ── Operating point (Clinical view) ─────────────────────────────────────────────
 
-CRITERIA = {"fixed": "Fixed threshold", "validation": "Run's validation-optimal threshold",
+CRITERIA = {"fixed": "Fixed threshold", "validation": "Recorded threshold (validation-optimal)",
             "sensitivity": "Target sensitivity", "youden": "Youden's J"}
 _COUNTS = ("tp", "fp", "fn", "tn")
 POINT_METRICS = ("sensitivity", "specificity", "ppv", "npv", "f1", "accuracy")
@@ -214,6 +214,14 @@ def point_frame(report: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame({"Metric": [names[k] for k in POINT_METRICS],
                          "Value": [fmt_ci(m[k]["estimate"], m[k]["lo"], m[k]["hi"])
                                    for k in POINT_METRICS]})
+
+
+def cutoffs_frame(rows: Sequence[dict[str, Any]]) -> pd.DataFrame:
+    """Table of the ordinal "grade >= k" cut-offs of ``analysis.clinical.clinical_cutoffs``."""
+    cols = {"label": "Cut-off", "n_pos": "n+", "n_neg": "n-", "sensitivity": "Sensitivity",
+            "specificity": "Specificity", "ppv": "PPV", "npv": "NPV", "auc": "AUC"}
+    df = pd.DataFrame(list(rows), columns=list(cols)).rename(columns=cols)
+    return df.round({c: 3 for c in ("Sensitivity", "Specificity", "PPV", "NPV", "AUC")})
 
 
 # ── Calibration ─────────────────────────────────────────────────────────────────

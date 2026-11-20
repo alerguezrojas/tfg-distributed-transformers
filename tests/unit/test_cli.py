@@ -186,3 +186,11 @@ def test_run_row_no_csv_is_dashes(tmp_path):
     (d / "train_02062026_120000.log").write_text("x\n")
     row = _run_row(discover_runs(tmp_path)[0])
     assert row["best_val_f1"] is None and row["test_f1"] is None
+
+
+def test_eval_save_predictions_auto_has_no_path():
+    s = _join(build_eval_cmd("ckpt.pt", "c.yaml", save_predictions_auto=True))
+    assert s.endswith("--save-predictions")
+    both = _join(build_eval_cmd("ckpt.pt", "c.yaml", save_predictions="p.npz",
+                                save_predictions_auto=True))
+    assert "--save-predictions p.npz" in both and both.count("--save-predictions") == 1

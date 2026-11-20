@@ -6,6 +6,7 @@ that are absent come back as ``None``.
 """
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -111,10 +112,12 @@ class Predictions:
     task: str                    # multilabel | binary | multiclass
     ordinal: bool
     groups: dict[str, np.ndarray]    # {variable: (N,)}; empty if the dataset has none
+    threshold_source: str | None = None    # checkpoint | val | test (None: unknown / no threshold)
 
 
 def save_predictions(path, probs, targets, threshold: float, classes, task: str,
-                     ordinal: bool = False, groups: dict | None = None) -> Path:
+                     ordinal: bool = False, groups: dict | None = None,
+                     threshold_source: str | None = None) -> Path:
     """Write the per-sample test predictions; group variables go under ``group__<name>``."""
     probs, targets = np.asarray(probs, dtype=np.float32), np.asarray(targets)
     if probs.shape != targets.shape or probs.ndim != 2:
@@ -129,7 +132,9 @@ def save_predictions(path, probs, targets, threshold: float, classes, task: str,
     path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(path, probs=probs, targets=(targets > 0.5).astype(np.uint8),
                         threshold=np.float32(threshold), classes=np.asarray(list(classes), dtype=str),
-                        task=np.asarray(task), ordinal=np.asarray(bool(ordinal)), **arrays)
+                        task=np.asarray(task), ordinal=np.asarray(bool(ordinal)), **arrays,
+                        **({"threshold_source": np.asarray(threshold_source)}
+                           if threshold_source else {}))
     return path
 
 
@@ -140,4 +145,109 @@ def load_predictions(path) -> Predictions:
         probs=d["probs"], targets=d["targets"], threshold=float(d["threshold"]),
         classes=[str(c) for c in d["classes"]], task=str(d["task"]),
         ordinal=bool(d["ordinal"]) if "ordinal" in d else False,
+        threshold_source=str(d["threshold_source"]) if "threshold_source" in d else None,
         groups={k[len(_GROUP_PREFIX):]: v for k, v in d.items() if k.startswith(_GROUP_PREFIX)})
+
+
+# ── Where the test predictions live (``test_preds_<ts>.npz`` in the run's log folder) ──────────
+
+#: Stamp format of the run artefacts (``tipo_DDMMYYYY_HHMMSS.{log,csv}``).
+TS_FORMAT = "%d%m%Y_%H%M%S"
+_STAMP = re.compile(r"^\d{8}_\d{6}$")
+# Files that mark a run in its log folder: train_<ts>.log, train_deep_<ts>.log, events_<ts>.jsonl.
+_RUN_FILE = re.compile(r"^(?:train_(?:deep_)?|events_)(\d{8}_\d{6})\.(?:log|jsonl)$")
+_TEST_PREDS = re.compile(r"^test_preds_(\d{8}_\d{6})\.npz$")
+
+
+def _parse_ts(ts: str) -> datetime | None:
+    """Run stamp as a datetime (DDMMYYYY_HHMMSS, or the legacy YYYYMMDD_HHMMSS)."""
+    for fmt in (TS_FORMAT, "%Y%m%d_%H%M%S"):
+        try:
+            return datetime.strptime(ts, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def run_location(checkpoint, checkpoint_dir=None, env: str | None = None
+                 ) -> tuple[Path | None, str | None]:
+    """``(log folder, stamp)`` of the run a checkpoint belongs to; ``None`` for what is unknown.
+
+    The builder writes the checkpoints to ``<checkpoint.dir>/<run_subdir>/<ts>/{best,last}.pt``
+    (older runs: ``checkpoint_epoch_NNN.pt`` straight in ``<run_subdir>/``) and the logs to
+    ``logs/<output.env>/<run_subdir>/``. A checkpoint folder named like a stamp *is* the run's
+    stamp and its parent is the ``run_subdir``. With the config's ``checkpoint_dir`` and ``env``
+    the log folder is built the way the builder does; without them it is guessed by swapping a
+    ``checkpoints`` path component for ``logs`` (right only if ``checkpoint.dir`` is
+    ``checkpoints/<env>``).
+    """
+    folder = Path(checkpoint).parent
+    stamp = None
+    if _STAMP.match(folder.name):
+        stamp, folder = folder.name, folder.parent
+    if checkpoint_dir is not None and env:
+        for a, b in ((folder, Path(checkpoint_dir)), (folder.resolve(), Path(checkpoint_dir).resolve())):
+            if a.is_relative_to(b):
+                return Path("logs") / env / a.relative_to(b), stamp
+    parts = folder.parts
+    if "checkpoints" not in parts:
+        return None, stamp
+    i = len(parts) - 1 - parts[::-1].index("checkpoints")      # the innermost one
+    return Path(*parts[:i], "logs", *parts[i + 1:]), stamp
+
+
+def run_stamp_for(run_dir, checkpoint_mtime: float | None = None) -> tuple[str | None, bool]:
+    """``(stamp, ambiguous)`` of the run in ``run_dir`` that wrote a checkpoint of the old shared
+    folder: the latest run (``train_``/``train_deep_`` log or events file) that started before the
+    checkpoint was saved, or the latest overall without a modification time.
+
+    Checkpoint names repeat from run to run, so the modification time is what tells which run
+    wrote it. ``ambiguous`` is True when several runs were possible or none started before the
+    file (e.g. copied with scp). ``(None, False)`` if the folder has no run.
+    """
+    d = Path(run_dir)
+    runs = []
+    if d.is_dir():
+        found = {m.group(1) for f in d.iterdir() if (m := _RUN_FILE.match(f.name))}
+        runs = sorted((t, s) for s in found if (t := _parse_ts(s)))
+    if not runs:
+        return None, False
+    before = runs
+    if checkpoint_mtime is not None:
+        before = [r for r in runs if r[0].timestamp() <= checkpoint_mtime]
+    return (before or runs)[-1][1], len(runs) > 1 or not before
+
+
+def default_predictions_path(checkpoint, now: datetime | None = None, checkpoint_dir=None,
+                             env: str | None = None, warn=None) -> Path:
+    """Where ``eval --save-predictions`` (no path) writes: ``<run log folder>/test_preds_<ts>.npz``.
+
+    Folder and stamp come from :func:`run_location` (stamp folder of the checkpoint) or, for the
+    old shared folder, from :func:`run_stamp_for`. If either cannot be deduced the file goes to
+    ``logs/`` with the stamp of the evaluation. ``warn(message)`` is called when the stamp is a
+    guess (several possible runs) or the fallback is used.
+    """
+    ckpt = Path(checkpoint)
+    run_dir, stamp = run_location(ckpt, checkpoint_dir, env)
+    if run_dir is not None and stamp is None:
+        try:
+            mtime = ckpt.stat().st_mtime
+        except OSError:
+            mtime = None
+        stamp, ambiguous = run_stamp_for(run_dir, mtime)
+        if stamp and ambiguous and warn:
+            warn(f"several runs in {run_dir}: assuming {stamp} by the checkpoint's date")
+    if (run_dir is None or stamp is None) and warn:
+        warn("could not deduce the run of the checkpoint: using the evaluation's stamp"
+             + ("" if run_dir else " in logs/"))
+    return (run_dir or Path("logs")) / (
+        f"test_preds_{stamp or (now or datetime.now()).strftime(TS_FORMAT)}.npz")
+
+
+def list_test_predictions(root) -> list[tuple[str, Path]]:
+    """Every ``test_preds_<ts>.npz`` under ``<root>/logs`` as ``(stamp, path)``."""
+    logs = Path(root) / "logs"
+    if not logs.is_dir():
+        return []
+    return [(m.group(1), f) for f in sorted(logs.rglob("test_preds_*.npz"))
+            if (m := _TEST_PREDS.match(f.name))]
