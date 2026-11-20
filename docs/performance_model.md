@@ -134,6 +134,36 @@ test the model.
 
 All rows are reproduced by the unit tests in `tests/unit/test_performance_model.py`.
 
+### Out-of-sample check: PANDA on 2×T4 (Kaggle, 20/11/2026)
+
+A new dataset, a new resolution and a profiled model (ViT-S/16 at 512 and 1024 px, not a table
+entry), so nothing here was fitted. DDP on 2 × T4, global batch 16 (8 per GPU), AMP, 7,433 train
+images, `--monitor`. "Real" is the median train time per epoch of the run's `epoch_end` events
+(`logs/kaggle/panda/ddp/vit_small_patch16_224/`); "Predicted" is `time_per_epoch_train_s`.
+
+| Run | Predicted train/epoch | Real train/epoch | Error | Predicted regime | Measured |
+|---|---|---|---|---|---|
+| 512 px (`20112026_163243`) | 73 s | 122 s | −40 % | I/O-bound | GPU util. median 71 %, data wait 1.9 % |
+| 1024 px (`20112026_171003`) | 523 s | 620 s | −16 % | compute-bound | GPU util. 100 %, data wait 0.4 % |
+| VRAM per GPU, 1024 px | 4.9 GB | 7.0 GB median (nvidia-smi) | — | fits | fits (15.0 GB peak with the monitor's Grad-CAM) |
+
+Both times are **under-estimated**, and the regime is only half right:
+
+* At 1024 px the regime is right (compute-bound), but the T4s run **power-capped**: the median SM
+  clock is 960 MHz against a 1,590 MHz boost, at ~65 W of their 70 W. The `MFU = 0.17`
+  calibration comes from short vit_base runs at 224 px. The monitor's per-batch work also counts
+  in the measured time.
+* At 512 px the GPU waits on its input for only 1.9 % of the time, so the epoch is not I/O-bound
+  as predicted. 71 % utilisation with 8 images per GPU suggests the small per-GPU batch, not the
+  disk, limits throughput. The model has no batch-size term in `MFU`.
+* The memory model gives the PyTorch peak of the training step; nvidia-smi adds the CUDA context
+  and the allocator's cache, so the two are not the same quantity. A peak from
+  `torch.cuda.max_memory_allocated` is needed to settle it.
+
+These rows are **validation, not calibration**: no constant was changed after seeing them. They
+point at two missing terms (sustained clock under a power cap, efficiency at small per-GPU
+batches) that need measurements on more machines before they are added.
+
 ---
 
 ## 5. Energy model

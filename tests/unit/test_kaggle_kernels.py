@@ -20,13 +20,20 @@ def _load(rel: str):
 train = _load("kaggle/panda_train/run.py")
 
 
-@pytest.mark.parametrize("name,base,overrides", train.EXPERIMENTS)
+@pytest.mark.parametrize("name,base,overrides",
+                         [e for batch in train.BATCHES.values() for e in batch])
 def test_every_experiment_config_is_valid(name, base, overrides):
     cfg = train.build_config(REPO, name, base, overrides)
     validate_config(cfg)
     assert cfg["data"]["image_size"] == cfg["model"]["img_size"]
     assert cfg["training"]["batch_size"] * 2 == 16            # global batch of the local runs
     assert cfg["checkpoint"]["dir"].endswith(name)            # one folder per experiment
+
+
+def test_experiment_names_are_unique_across_batches():
+    names = [name for batch in train.BATCHES.values() for name, _, _ in batch]
+    assert len(names) == len(set(names))                      # results/<name> never overwritten
+    assert train.EXPERIMENTS is train.BATCHES[train.BATCH]
 
 
 def test_deep_update_merges_nested_dicts():
