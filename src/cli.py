@@ -2,7 +2,7 @@
 
 One entry point for everything that runs in a terminal, where the compute lives:
 launch trainings (any strategy), estimate before training (analytic), run a real
-benchmark, evaluate on the test split, and open the dashboard. The web stays
+benchmark, evaluate on the test split, write a run report and open the dashboard. The web stays
 read-only (visualisation); anything that needs a GPU is driven from here — the
 same separation used by Weights & Biases / MLflow / TensorBoard.
 
@@ -59,7 +59,7 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     precision: str | None = None, layers: list[str] | None = None,
                     fn: list[str] | None = None, n_gpus: int = 2, nnodes: int = 1,
                     node_rank: int = 0, master_addr: str = "localhost",
-                    master_port: int = 29500) -> list[str]:
+                    master_port: int = 29500, monitor: bool = False) -> list[str]:
     """Build the exact command for a training strategy.
 
     single / model-parallel run a plain script; ddp / heterogeneous run under
@@ -74,6 +74,8 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
     if epochs:
         common += ["--epochs", str(epochs)]
     common += ["--trace", trace]                      # every script accepts --trace
+    if monitor:
+        common += ["--monitor"]                       # every script accepts --monitor
     layers_fn = []
     if layers:
         layers_fn += ["--layers", *layers]
@@ -135,7 +137,8 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
 def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
                    split: str = "test", output: str | None = None,
                    metadata: str | None = None, batch_size: int | None = None,
-                   max_batches: int | None = None) -> list[str]:
+                   max_batches: int | None = None,
+                   save_predictions: str | None = None) -> list[str]:
     """Build the eval.py command (held-out evaluation)."""
     cmd = [sys.executable, "scripts/eval.py", "--checkpoint", checkpoint,
            "--config", config, "--split", split]
@@ -149,6 +152,8 @@ def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
         cmd += ["--batch-size", str(batch_size)]
     if max_batches:
         cmd += ["--max-batches", str(max_batches)]
+    if save_predictions:
+        cmd += ["--save-predictions", save_predictions]
     return cmd
 
 
@@ -204,13 +209,16 @@ def train(
     node_rank: int = typer.Option(0, help="This node's rank (multi-node)."),
     master_addr: str = typer.Option("localhost", help="Rendez-vous host (multi-node)."),
     master_port: int = typer.Option(29500, help="Rendez-vous port (multi-node)."),
+    monitor: bool = typer.Option(False, "--monitor",
+                                 help="Per-sample predictions, embeddings, Grad-CAM and "
+                                      "layer stats every epoch (see the web Inspector)."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Launch a training run with the chosen distribution strategy."""
     cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
                           precision=precision, layers=_csv(layers), fn=_csv(fn), n_gpus=n_gpus,
                           nnodes=nnodes, node_rank=node_rank, master_addr=master_addr,
-                          master_port=master_port)
+                          master_port=master_port, monitor=monitor)
     _run(cmd, dry_run)
 
 
@@ -418,11 +426,14 @@ def eval(
     metadata: Optional[str] = typer.Option(None, help="Override metadata.parquet."),
     batch_size: Optional[int] = typer.Option(None, help="Batch size."),
     max_batches: Optional[int] = typer.Option(None, help="Stop after N batches (sanity)."),
+    save_predictions: Optional[str] = typer.Option(
+        None, "--save-predictions", help=".npz path for the per-sample predictions."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Evaluate a checkpoint on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
-                         metadata=metadata, batch_size=batch_size, max_batches=max_batches)
+                         metadata=metadata, batch_size=batch_size, max_batches=max_batches,
+                         save_predictions=save_predictions)
     _run(cmd, dry_run)
 
 
@@ -488,6 +499,34 @@ def runs(
                   f"{d['best_val_f1']:.4f}" if d["best_val_f1"] is not None else "—",
                   f"[bold green]{d['test_f1']:.4f}[/]" if d["test_f1"] is not None else "—")
     console.print(t)
+
+@app.command()
+def report(
+    run: str = typer.Argument(..., help="An events_*.jsonl, a run folder, or a DDMMYYYY_HHMMSS "
+                                        "stamp (searched under logs/)."),
+    output: Optional[Path] = typer.Option(None, "--output", "-o",
+                                          help="Output file (default: report_<stamp>.html next "
+                                               "to the run's events file)."),
+    epoch: Optional[int] = typer.Option(None, help="Inspected epoch to evaluate (default: the "
+                                                   "last one)."),
+    n_boot: int = typer.Option(1000, min=1, help="Bootstrap resamples for the confidence "
+                                                 "intervals."),
+    seed: int = typer.Option(0, help="Bootstrap random seed (written in the report)."),
+    bins: int = typer.Option(15, min=1, help="Calibration bins."),
+    errors: int = typer.Option(8, min=0, help="Worst-error thumbnails to show."),
+) -> None:
+    """Write a self-contained HTML report of a run (summary, training, evaluation with
+    confidence intervals, calibration, dynamics and a TRIPOD+AI checklist). Reads logs only:
+    no GPU, nothing is trained. Needs --monitor data for the evaluation sections."""
+    from src.reporting import NoInspection, RunNotFound, write_report
+    try:
+        out = write_report(run, output, root=ROOT, epoch=epoch, n_boot=n_boot, seed=seed,
+                           bins=bins, k_errors=errors)
+    except (RunNotFound, NoInspection) as exc:
+        console.print(f"[red]{exc}[/]")
+        raise typer.Exit(1)
+    console.print(f"[green]Report written:[/] {out}")
+
 
 @app.command()
 def menu() -> None:

@@ -27,7 +27,8 @@ Available reporters
 LossReporter            — train_loss / val_loss
 F1Reporter              — train_f1   / val_f1
 AccuracyReporter        — train_acc  / val_acc
-PrecisionRecallReporter — val_precision / val_recall  (no train equivalent)
+PrecisionRecallReporter — val_precision / val_recall / val_qwk / val_auc  (no train equivalent;
+                          qwk only for ordinal datasets)
 """
 
 import logging
@@ -99,17 +100,18 @@ class AccuracyReporter(_TrainValReporter):
 
 
 class PrecisionRecallReporter(_MetricReporter):
-    """Reports val precision and recall after each epoch.
+    """Reports val-only metrics after each epoch: precision, recall, and, when the
+    task provides them, the quadratic weighted kappa (``qwk``, ordinal) and ``auc``.
 
-    Precision and recall are only available from eval_epoch (not train_epoch).
+    These are only available from eval_epoch (not train_epoch).
     """
+
+    _KEYS = ("precision", "recall", "qwk", "auc")
 
     def eval_epoch(self, loader: DataLoader) -> dict:
         result = self._trainer.eval_epoch(loader)
-        p = result.get("precision")
-        r = result.get("recall")
-        if p is not None:
-            self._emit(f"  {'precision':<14} val={p:.4f}")
-        if r is not None:
-            self._emit(f"  {'recall':<14} val={r:.4f}")
+        for key in self._KEYS:
+            value = result.get(key)
+            if value is not None:
+                self._emit(f"  {key:<14} val={value:.4f}")
         return result

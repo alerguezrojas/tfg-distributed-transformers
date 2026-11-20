@@ -1,0 +1,22 @@
+@startuml
+!include style.iuml
+skinparam nodesep 70
+class "NombreDeClase" as C {
+  + atributo : tipo
+  + metodo(param) : tipo
+}
+abstract class "ClaseAbstracta" as A {
+  + metodo_abstracto()
+}
+class "ClaseHija" as H
+A <|-- H : herencia\n(«es un»)
+class "Cliente" as Cl
+class "Servicio" as S
+Cl --> S : asociación\n(«usa / tiene un»)
+class "Fábrica" as F
+class "Producto" as P
+F ..> P : dependencia\n(«crea / devuelve»)
+class "Contenedor" as Co
+class "Elemento" as El
+Co o-- "*" El : agregación\n(«guarda varios»)
+@enduml

@@ -35,6 +35,7 @@ class DatasetSpec:
     build: DatasetFactory
     transforms: TransformFactory
     class_counts: ClassCounter | None = None   # enables training.pos_weight: auto
+    ordinal: bool = False   # ordered classes (a grade): adds the QWK metric (multiclass)
 
     def __post_init__(self):
         if not self.name or self.name != self.name.lower():
@@ -50,13 +51,16 @@ class DatasetSpec:
             raise ValueError(f"{self.name}: a multiclass task needs at least 2 classes")
         if self.in_channels < 1:
             raise ValueError(f"{self.name}: in_channels must be >= 1")
+        if self.ordinal and self.task != "multiclass":
+            raise ValueError(f"{self.name}: ordinal classes need a multiclass task, "
+                             f"got {self.task!r}")
 
     @property
     def num_classes(self) -> int:
         return len(self.classes)
 
     def make_task(self) -> Task:
-        return get_task(self.task)
+        return get_task(self.task, ordinal=self.ordinal)
 
     def dataset(self, data_cfg: dict, split: str) -> Dataset:
         """The ``split`` ('train' | 'val' | 'test') with its default transforms."""

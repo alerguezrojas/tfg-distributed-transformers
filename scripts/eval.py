@@ -24,12 +24,15 @@ import csv
 import sys
 from pathlib import Path
 
+import numpy as np
 import torch
 import yaml
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.analysis.clinical import clinical_cutoffs, group_summary
+from src.analysis.io import save_predictions
 from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
@@ -54,6 +57,10 @@ def parse_args():
                         help="Override metadata.parquet path (e.g. a demo subset)")
     parser.add_argument("--max-batches", type=int, default=None,
                         help="Stop after N batches (quick sanity check)")
+    parser.add_argument("--save-predictions", type=str, default=None, metavar="PATH",
+                        help=".npz path to save the per-sample probabilities, targets, "
+                             "threshold, classes, task and group variables (format in "
+                             "docs/inspeccion.md)")
     parser.add_argument("--threshold-from", choices=["checkpoint", "val", "test"],
                         default="checkpoint",
                         help="Where the decision threshold is tuned: 'checkpoint' (the one "
@@ -148,6 +155,49 @@ def per_class_metrics(probs, labels, threshold, class_names=(), task: Task | Non
     return rows
 
 
+def dataset_groups(ds, n: int) -> dict:
+    """Grouping variables of the dataset (duck typing: ``ds.groups()``), or {} if it has none
+    or they do not cover the ``n`` evaluated samples (e.g. with ``--max-batches``)."""
+    getter = getattr(ds, "groups", None)
+    if not callable(getter):
+        return {}
+    groups = {k: np.asarray(v) for k, v in getter().items()}
+    if any(v.shape[0] < n for v in groups.values()):
+        return {}
+    return {k: v[:n] for k, v in groups.items()}      # the loader keeps the dataset order
+
+
+def _fmt(x) -> str:
+    return "  n/a " if x is None or np.isnan(x) else f"{x:.3f}"
+
+
+def print_group_metrics(probs, hard, task_name, groups, threshold, ordinal) -> None:
+    """Per-variable, per-value n and main metrics (nothing if there are no groups)."""
+    if not groups:
+        return
+    rows = group_summary(probs, hard, task_name, groups, threshold, ordinal)
+    qwk_head = "  QWK  " if ordinal else ""
+    for var in groups:
+        print(f"\n── Metrics by group: {var} ───────────────────────────────────────")
+        print(f"  {'group':<20} {'n':>6}  {'Acc':>5}  {'F1':>5}  {'AUC':>5}{qwk_head}")
+        for r in (r for r in rows if r["variable"] == var):
+            qwk = f"  {_fmt(r['qwk'])}" if ordinal else ""
+            print(f"  {str(r['group'])[:20]:<20} {r['n']:>6}  {_fmt(r['accuracy'])}  "
+                  f"{_fmt(r['f1'])}  {_fmt(r['auc'])}{qwk}")
+
+
+def print_clinical_cutoffs(probs, hard, class_names) -> None:
+    """Table of the binary 'grade >= k' cut-offs of an ordinal task."""
+    rows = clinical_cutoffs(probs, hard, class_names)
+    print("\n── Clinical cut-offs (grade >= k; score = P(grade >= k)) ─────────")
+    print(f"  {'cut':<10} {'n+':>6} {'n-':>6}  {'Sens':>5}  {'Spec':>5}  {'PPV':>5}  "
+          f"{'NPV':>5}  {'AUC':>5}")
+    for r in rows:
+        print(f"  {r['label'][:10]:<10} {r['n_pos']:>6} {r['n_neg']:>6}  "
+              f"{_fmt(r['sensitivity'])}  {_fmt(r['specificity'])}  {_fmt(r['ppv'])}  "
+              f"{_fmt(r['npv'])}  {_fmt(r['auc'])}")
+
+
 def main():
     args = parse_args()
 
@@ -174,6 +224,7 @@ def main():
         num_classes=spec.num_classes,
         pretrained=False,
         in_chans=spec.in_channels,
+        img_size=cfg["model"].get("img_size"),
     )
     ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state_dict"])
@@ -229,6 +280,8 @@ def main():
     print(f"  Precision(t=0.50) : {prec_05:.4f}")
     print(f"  Recall   (t=0.50) : {rec_05:.4f}")
     print(f"  AUC (macro)       : {auc:.4f}")
+    if "qwk" in agg:                         # ordinal datasets (a grade): PANDA's metric
+        print(f"  QWK (cuadrático)  : {agg['qwk']:.4f}")
     if task.searches_threshold:
         note = "  (aviso: ajustado sobre el propio test, optimista)" if source == "test" else ""
         print(f"  Threshold         : {best_t:.2f} (de {source}){note}")
@@ -243,6 +296,18 @@ def main():
     for row in pc_sorted:
         bar = "█" * int(row["f1"] * 20)
         print(f"  {row['class_name'][:40]:<40} F1={row['f1']:.3f}  {bar}")
+
+    # ── Per-group metrics / clinical cut-offs / saved predictions ─────────────
+    groups = dataset_groups(ds, len(probs))
+    ordinal = bool(getattr(task, "ordinal", False))
+    probs_np, hard_np = probs.numpy(), hard.numpy()
+    print_group_metrics(probs_np, hard_np, task.name, groups, best_t, ordinal)
+    if ordinal:
+        print_clinical_cutoffs(probs_np, hard_np, spec.classes)
+    if args.save_predictions:
+        save_predictions(args.save_predictions, probs_np, hard_np, best_t, spec.classes,
+                         task.name, ordinal, groups)
+        print(f"\nPredicciones guardadas en: {args.save_predictions}")
 
     # ── Save CSV ──────────────────────────────────────────────────────────────
     if args.output:

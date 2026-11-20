@@ -29,12 +29,15 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
+from src.training.losses import configured_loss_name
 from src.training.builder import TrainingSessionBuilder
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
 def parse_args():
     p = argparse.ArgumentParser(description="Model-parallel training")
+    p.add_argument("--monitor", action="store_true",
+                   help="Prediction/layer monitor (docs/inspeccion.md)")
     p.add_argument("--config", type=str, default="configs/train_model_parallel_kaggle.yaml")
     p.add_argument("--model", type=str, default=None, help="Override model name (timm ViT)")
     p.add_argument("--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
@@ -130,6 +133,8 @@ def main():
         builder = builder.with_model(args.model)
     if args.batch_log_every is not None:
         builder = builder.with_batch_log_every(args.batch_log_every)
+    if args.monitor:
+        builder = builder.with_monitor()
     trainer = builder.build()
 
     print(f"Modelo      : {model_name} (paralelismo de modelo)")
@@ -140,7 +145,7 @@ def main():
 
     # Config line for the dashboard's Run -> Info panel.
     _prec = cfg["training"].get("precision", "fp32")
-    _loss = str(cfg["training"].get("loss", "bce")).lower()
+    _loss = configured_loss_name(cfg["training"], spec.make_task())
     logging.getLogger("trainer").info(
         f"Configuración: modelo={model_name} | paralelismo=modelo(pipeline) | "
         f"devices={'+'.join(devices)} | split_block={args.split_block or 'auto'} | "

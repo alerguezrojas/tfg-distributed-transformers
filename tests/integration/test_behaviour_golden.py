@@ -43,9 +43,13 @@ def _model() -> nn.Module:
     return nn.Sequential(nn.Flatten(), nn.Linear(3 * 8 * 8, N_CLASSES))
 
 
+# Wall-clock figures (non-deterministic by nature): compared in test_throughput.py.
+_TIMING_KEYS = {"time", "samples_per_s", "data_wait_frac", "data_time_s", "step_time_s"}
+
+
 def _round(d: dict) -> dict:
     return {k: round(float(v), 6) for k, v in d.items()
-            if not k.startswith("_") and k != "time"}
+            if not k.startswith("_") and k not in _TIMING_KEYS}
 
 
 # ── Trainer (single) ──────────────────────────────────────────────────────────

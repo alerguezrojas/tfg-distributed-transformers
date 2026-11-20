@@ -12,6 +12,7 @@ anteriores siguen funcionando sin cambios.
 | `medmnist_derma` | multiclase | 7 | 3 | [medmnist.md](medmnist.md) |
 | `medmnist_path` | multiclase | 9 | 3 | [medmnist.md](medmnist.md) |
 | `medmnist_chest` | multi-etiqueta | 14 | 1 | [medmnist.md](medmnist.md) |
+| `panda` | multiclase | 6 | 3 | [panda.md](panda.md) |
 
 ## Qué decide la ficha y qué decide la tarea
 
@@ -21,7 +22,10 @@ anteriores siguen funcionando sin cambios.
 - el tipo de tarea;
 - las claves obligatorias del bloque `data:` del YAML;
 - cómo se lee cada split y con qué transformaciones;
-- opcionalmente, el recuento de positivos por clase, que habilita `pos_weight: auto`.
+- opcionalmente, el recuento de positivos por clase, que habilita `pos_weight: auto`;
+- opcionalmente, si las clases están ordenadas (`ordinal=True`, solo multiclase: un grado de
+  cáncer). Añade el kappa cuadrático ponderado (`qwk`) a las métricas y permite `select_by: qwk`
+  y la pérdida ordinal `ce_emd`.
 
 **La tarea** (`src/training/tasks.py`) dice cómo se aprende y se mide ese tipo de problema:
 
@@ -29,17 +33,32 @@ anteriores siguen funcionando sin cambios.
 |---|---|---|---|---|---|
 | `multilabel` | BigEarthNet, radiografías de tórax | sigmoide por clase | `bce` (por defecto), `focal` | media por etiqueta | sí |
 | `binary` | ¿hay tumor? | una sigmoide | `bce` (por defecto), `focal` | media por etiqueta | sí |
-| `multiclass` | tipo de lesión de piel | softmax | `ce` (por defecto) | acierto exacto | no |
+| `multiclass` | tipo de lesión de piel | softmax | `ce` (por defecto); con clases ordenadas, también `ce_emd` | acierto exacto | no |
+
+Con clases ordenadas, `ce_emd` suma a la entropía cruzada la distancia EMD al cuadrado entre la
+distribución predicha y la real (Hou et al., 2017): equivocarse por varios grados cuesta más que
+por uno, como en el kappa cuadrático. Exactamente, para cada imagen,
+`CE + w · Σ_k (F_pred(k) − F_real(k))²`, con `F` las distribuciones acumuladas y la suma sobre
+las C clases sin normalizar (va de 0 a C−1); `w` es `training.emd_weight` (1,0 por defecto). La
+salida y la predicción (la clase más probable) no cambian. La pérdida de `eval.py` y la del
+monitor por imagen siguen siendo la entropía cruzada, así que la `val_loss` de un run `ce_emd`
+no se compara con la de un run `ce` (el QWK, el F1 y la selección del checkpoint sí).
 
 Las etiquetas viajan siempre como tensores `float` de forma `(N, C)`: multi-hot en
 multi-etiqueta, one-hot en multiclase y `(N, 1)` en binaria. Así el mixup, los trainers y
 los decoradores no necesitan saber qué tarea es.
+
+Diagramas UML del diseño (antes y después, patrones y secuencia de un entrenamiento) en
+[diagramas/multidataset/](../diagramas/multidataset/).
 
 ## Cómo añadir un dataset
 
 1. **Crear `src/data/<nombre>.py`** con un `torch.utils.data.Dataset` que devuelva
    `(imagen, etiqueta)`: la imagen como tensor `(canales, H, W)` y la etiqueta como `float`
    de forma `(C,)`, en el formato de su tarea.
+   **Recomendado:** exponer todas las etiquetas en un atributo `targets` de forma `(N, C)`
+   (como `MedMNISTDataset`): así el monitor de predicciones (`--monitor`) elige un subconjunto
+   de validación equilibrado por clase y las clases raras no quedan fuera de la inspección.
 2. **Definir y registrar la ficha** al final del mismo fichero:
 
    ```python
@@ -69,6 +88,11 @@ los decoradores no necesitan saber qué tarea es.
    la ficha.
 
 No hace falta tocar el entrenamiento, las estrategias distribuidas ni los decoradores.
+Con la ficha registrada, el dataset funciona también con el seguimiento en vivo, el Inspector,
+las alertas y `paravit report` ([inspeccion.md](../inspeccion.md)), que solo consultan la ficha y
+la tarea. Si el dataset trae datos de los pacientes (sexo, edad, centro), conviene conservarlos:
+el análisis por subgrupos los leerá de un `groups.npz` junto a las predicciones (formato en
+[inspeccion.md](../inspeccion.md); falta que el monitor lo escriba).
 El test `tests/integration/test_new_dataset_end_to_end.py` comprueba precisamente eso, con
 un dataset multiclase de un canal y otro binario.
 
@@ -81,6 +105,14 @@ un dataset multiclase de un canal y otro binario.
   estadísticas del dataset; las curvas y métricas de cualquier run sí se ven bien. Los runs de
   otros datasets se guardan en `logs/{env}/<dataset>/{mode}/{model}/` y la web los etiqueta con
   el nombre del dataset.
+- El diseño cubre la **clasificación de imágenes 2D** (multi-etiqueta, multiclase y binaria).
+  Una tarea de **segmentación o detección** cambia la forma de la salida (ya no es una fila
+  `(C,)` por imagen) y exigiría ampliar la `Task` (pérdidas y métricas como Dice o IoU) y la
+  cabeza del modelo; la ficha, el registro y el builder se mantendrían. Los **volúmenes 3D**
+  (TAC, resonancia) necesitan cortes 2D o un modelo 3D. Más de 3 canales ya está admitido por
+  el modelo (`in_channels`); solo falta el lector.
+- En imagen médica, el lector debe respetar las **particiones por paciente** oficiales: si las
+  imágenes de un paciente caen en train y test a la vez, los resultados salen inflados.
 - El **predictor analítico** (`src/performance_model.py`) sigue calibrado con BigEarthNet
   (tamaños de split, rendimiento de lectura de TIFF, prior de calidad). Generalizarlo es la
   fase 5 del [roadmap](../roadmap.md).

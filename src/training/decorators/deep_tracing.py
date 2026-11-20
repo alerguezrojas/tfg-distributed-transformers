@@ -18,7 +18,8 @@ fire the per-layer table mid-epoch, which the standard `train_epoch` cannot
 expose. The deliberate consequence: in that mode the inner decorators'
 `train_epoch` is bypassed, so the metric reporters, `LayerHooksDecorator` and
 `@fn`-decorated `train_epoch` do NOT run (deep registers its own richer hooks and
-manages its own metrics; `PlottingDecorator` is fed via `_propagate_train_result`).
+manages its own metrics; `PlottingDecorator` is fed via `_propagate_train_result`
+and the Trainer's batch hooks, e.g. `BatchMonitorDecorator`, are called per batch).
 
 This is *by design*, not a leaky abstraction: in this codebase a "controller"
 (EpochController and its subclasses) is categorically different from an "aspect"
@@ -40,11 +41,12 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
-from src.training.metrics import f1_score, eta_str
+from src.training.metrics import f1_score, eta_str, grad_norm_value, precision
 from src.training.tasks import MultiLabelTask
-from src.models.vit import input_channels
+from src.models.vit import input_channels, input_size
 from src.training.augmentations import mixup_batch
 from src.training.decorators.tracing import TracingDecorator
+from src.training.throughput import StepTimer
 
 
 ALL_INSPECT_FEATURES: frozenset[str] = frozenset(
@@ -277,8 +279,11 @@ class DeepTracingDecorator(TracingDecorator):
 
         label_smoothing = getattr(self._trainer, "label_smoothing", 0.0)
         mixup_alpha = getattr(self._trainer, "mixup_alpha", 0.0)
+        timer = StepTimer()
+        timer.start()
 
         for batch_idx, (images, labels) in enumerate(loader, 1):
+            timer.batch_ready()
             images, labels = images.to(device), labels.to(device)
 
             # `labels` stays the original 0/1 targets (for metrics); the loss uses
@@ -296,20 +301,41 @@ class DeepTracingDecorator(TracingDecorator):
             loss = criterion(logits, train_labels)
             loss.backward()
             grad_clip = getattr(self._trainer, "grad_clip", None)
+            pre_clip = None
             if grad_clip is not None:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+                pre_clip = torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
             optimizer.step()
 
             total_loss += loss.item()
             with torch.no_grad():
                 hard_labels = task.hard_targets(labels)  # ORIGINAL targets
                 preds = task.predict(task.probabilities(logits))
+                preds_cpu, hard_labels_cpu = preds.cpu(), hard_labels.cpu()
                 if not mixed:                            # skip blended batches
-                    all_preds.append(preds.cpu())
-                    all_labels.append(hard_labels.cpu())
+                    all_preds.append(preds_cpu)
+                    all_labels.append(hard_labels_cpu)
+            timing = timer.step_done(labels.shape[0])    # after the syncs above: real time
+
+            # This loop replaces Trainer.train_epoch, so it must feed the Trainer's batch
+            # hooks too (BatchMonitorDecorator): same dict as Trainer.train_epoch.
+            batch_hooks = getattr(self._trainer, "_batch_hooks", None)
+            if batch_hooks:
+                self._trainer.last_grad_norm = grad_norm_value(model, pre_clip)
+                batch_metrics = {
+                    "running_loss": total_loss / batch_idx,
+                    "batch_loss": loss.item(),
+                    "lr": optimizer.param_groups[0]["lr"],
+                    "batch_f1": f1_score(preds_cpu, hard_labels_cpu),
+                    "batch_acc": task.accuracy(preds_cpu, hard_labels_cpu),
+                    "batch_prec": precision(preds_cpu, hard_labels_cpu),
+                    **timing,
+                }
+                for hook in batch_hooks:
+                    hook(self._current_epoch, batch_idx, len(loader), batch_metrics)
 
             if batch_idx % self.log_every == 0:
                 self._log_layer_table(self._current_epoch, batch_idx, len(loader))
+            timer.iteration_end()
 
         scheduler = getattr(self._trainer, "scheduler", None)
         if scheduler:
@@ -326,6 +352,7 @@ class DeepTracingDecorator(TracingDecorator):
             "f1": f1_score(all_preds_t, all_labels_t),
             "accuracy": task.accuracy(all_preds_t, all_labels_t),
             "time": time.time() - start,
+            **timer.epoch_stats(),
         }
         self._propagate_train_result(result)
         return result
@@ -349,7 +376,8 @@ class DeepTracingDecorator(TracingDecorator):
         model = self._trainer.model
         try:
             self._emit("=== Arquitectura del modelo (torchinfo) ===")
-            stats = summary(model, input_size=(1, input_channels(model), 224, 224),
+            side = input_size(model)
+            stats = summary(model, input_size=(1, input_channels(model), side, side),
                             verbose=0, device=self._trainer.device)
             for line in str(stats).splitlines():
                 self._emit(line)

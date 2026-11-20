@@ -78,6 +78,7 @@ alias). `--help` funciona en cada subcomando.
 | `train` | Entrenamiento con la estrategia elegida | Sí |
 | `eval` | Evaluación de un checkpoint sobre el split de test (o val) | Sí |
 | `runs` | Tabla de todos los entrenamientos registrados con su mejor F1 | No |
+| `report` | Informe HTML autocontenido de un run (métricas con IC, calibración, TRIPOD+AI) | No |
 | `dashboard` | Abre el panel web en `http://localhost:8501` | No |
 
 ### `estimate` — predecir sin entrenar
@@ -137,6 +138,8 @@ Opciones principales:
 | `--trace` | `off` · `simple` · `deep` | Solo consola / registro a fichero / traza profunda por capas |
 | `--layers` | `plot,confusion,batch-monitor,hooks` | Decoradores de aspecto, combinables por comas |
 | `--fn` | `timing,energy` | Cronometraje por fase y energía de todas las GPU del run |
+| `--monitor` | | Monitor de predicciones: en cada época guarda qué predice el modelo para un subconjunto fijo de validación (con miniaturas), su pérdida por imagen, *embeddings*, mapas Grad-CAM y estadísticas por capa ([detalle](inspeccion.md)). No cambia el entrenamiento |
+| (config) `monitor.alerts` | | Alertas en el flujo de eventos (NaN, divergencia, sobreajuste, gradientes, cuello de I/O, GPU al límite); activas por defecto, `monitor.alerts.enabled: false` las apaga y cada umbral se ajusta ([detalle](inspeccion.md#alertas)) |
 | `--n-gpus`, `--nnodes`, `--node-rank`, `--master-addr`, `--master-port` | | Coordinación multi-GPU y multi-nodo |
 | `--dry-run` | | Imprime el comando final sin ejecutarlo |
 
@@ -156,10 +159,43 @@ uv run paravit.py eval --checkpoint checkpoints/verode/checkpoint_epoch_007.pt -
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
 agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
 
+Tras las métricas agregadas y por clase, `eval` añade (solo si procede):
+
+- **Métricas por grupo** (`── Metrics by group: <variable> ──`): si el dataset expone `groups()`
+  (PANDA: el centro, `data_provider`), `n`, exactitud, F1 macro, AUC macro y QWK (si es ordinal)
+  de cada valor.
+- **Cortes clínicos** (`── Clinical cut-offs ──`): en tareas ordinales, sensibilidad, especificidad,
+  VPP, VPN y AUC de «grado ≥ k» para cada k (puntuación `P(grado ≥ k)`, regla `argmax ≥ k`). En
+  PANDA, `≥ ISUP 1` es «hay cáncer» y `≥ ISUP 2` «cáncer clínicamente significativo».
+- `--save-predictions RUTA.npz` guarda probabilidades, objetivos, umbral, clases, tarea y grupos
+  por muestra para rehacer análisis sin reinferir (formato en [`inspeccion.md`](inspeccion.md)).
+
 En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbral **elegido en
 validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
 que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce
 el comportamiento anterior (ajustarlo sobre el propio test), que da una cifra optimista.
+
+### `report` — informe de un run
+
+```bash
+uv run paravit.py report 25102026_120000                 # por sello (se busca bajo logs/)
+uv run paravit.py report logs/local/medmnist_derma/single/vit_tiny_patch16_224   # carpeta del run
+uv run paravit.py report logs/.../events_25102026_120000.jsonl --epoch 12 --n-boot 2000 -o informe.html
+```
+
+Genera **un solo fichero HTML** (plotly.js embebido una vez, imágenes en base64, sin recursos
+externos), que se puede enviar por correo. Por defecto queda en `report_<sello>.html` junto al
+`events_*.jsonl` (los `report_*.html` no se versionan). Solo lee `logs/`: no usa GPU ni entrena.
+Secciones: resumen (dataset, tarea, modelo, entorno con UUID de GPU, energía aproximada,
+configuración plegable), entrenamiento (curvas, rendimiento, GPU, alertas), evaluación de la
+época elegida (`--epoch`, por defecto la última inspeccionada: métricas con IC95 *bootstrap* con
+semilla anotada, ROC/PR, tabla por clase, matriz de confusión, calibración con pendiente e
+intercepto, puntos de operación, peores errores y Grad-CAM), dinámica (cartografía y PCA) y la
+lista **TRIPOD+AI** (Collins et al., BMJ 2024, [doi:10.1136/bmj-2023-078378](https://doi.org/10.1136/bmj-2023-078378)),
+con cada ítem como *documentado*, *parcial* o *pendiente* (lo que exige a los autores no se marca).
+Sin `inspect_<sello>/` o sin eventos `system`, la sección lo dice e indica qué activar
+(`--monitor`, `monitor.system_interval_s`). La evaluación usa la validación: no sustituye a `eval`
+sobre test.
 
 ## 4. Los ficheros de configuración
 
@@ -176,6 +212,7 @@ model:
   pretrained: true
   num_classes: 19                       # opcional: sale del dataset (si se pone, debe coincidir)
   dropout: 0.3
+  img_size: 512                         # opcional: lado de entrada del ViT (por defecto 224)
 training:
   epochs: 30
   batch_size: 64                        # por GPU en DDP
@@ -185,6 +222,7 @@ training:
   llrd_decay: 0.75                      # learning rate por capas (solo ViT/DeiT/Swin)
   grad_clip: 1.0
   early_stopping_patience: 10
+  select_by: f1                         # mejor checkpoint: f1 | f1_optimal | auc | qwk
   label_smoothing: 0.1                  # regularización opcional
   mixup_alpha: 0.2
 checkpoint:
@@ -197,6 +235,11 @@ Configs incluidos: `train.yaml` / `train_v3.yaml` (local), `train_cluster*.yaml`
 `train_demo_single.yaml` / `train_demo_ddp.yaml` (estudio comparable sobre el subconjunto),
 `train_model_parallel_kaggle.yaml`, `train_heterogeneous_ddp*.yaml` y la pareja
 `train_cluster_focal.yaml` / `train_cluster_bce.yaml` (pérdidas para clases raras).
+
+`model.img_size` construye el *backbone* de timm para otro tamaño de entrada (timm adapta los
+*position embeddings* preentrenados); el dataset debe entregar imágenes de ese lado. `select_by: qwk`
+(kappa cuadrático ponderado, columna `val_qwk` del CSV) solo vale para datasets con clases
+ordenadas (`ordinal=True` en su ficha, p. ej. un grado de cáncer).
 
 Las claves de `data:` dependen del dataset elegido con `data.name`. Los datasets disponibles y
 cómo añadir uno nuevo están en [`datasets/README.md`](datasets/README.md).
@@ -237,6 +280,8 @@ Cada run escribe, bajo `logs/<entorno>/<estrategia>/<modelo>/`:
 | `perclass_metrics_*.csv` | Precisión/exhaustividad/F1 de cada clase por época |
 | `confusion_matrix_*.csv` | Matriz de co-activación 19×19 por época |
 | `batch_metrics_*.csv` | Pérdida, F1 y learning rate por lote |
+| `events_*.jsonl` | Flujo de eventos del run ([esquema](eventos.md)): lo que lee la pestaña *Live* |
+| `inspect_<fecha>/` | Con `--monitor`: predicciones por imagen, *embeddings* y Grad-CAM por época ([formato](inspeccion.md)); no se versiona |
 | `test_*.csv` | Resultado de la evaluación en test (si se ejecutó `eval`) |
 
 Los pesos van a `checkpoints/` (fuera de git). El panel web descubre los runs automáticamente; los
@@ -249,12 +294,77 @@ ficheros.
 uv run paravit.py dashboard    # → http://localhost:8501
 ```
 
-Interfaz de solo lectura (el terminal ejecuta, la web analiza), con cinco secciones: **Overview**
-(indicadores globales, run activo, tabla de runs), **Run results** (curvas, métricas por clase,
+Interfaz de solo lectura (el terminal ejecuta, la web analiza), con siete secciones: **Overview**
+(indicadores globales, run activo, tabla de runs), **Live** (seguimiento de un entrenamiento en
+curso, ver más abajo), **Inspector** (análisis a fondo de un run, ver más abajo), **Run results** (curvas, métricas por clase,
 confusiones, lotes y detalles del run activo), **Compare** (hasta 8 runs: aceleración frente a una
 referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
 del conjunto e importación de runs). Idioma inglés con vista opcional en español y modo oscuro.
+
+### Seguir un entrenamiento en directo (Live)
+
+Mientras un run entrena, el proceso principal añade eventos a
+`logs/<entorno>/…/events_<DDMMYYYY_HHMMSS>.jsonl`, junto al `train_*.log` del mismo run. La sección
+**Live** los lee de forma incremental (solo lo nuevo en cada vuelta) y muestra:
+
+- **Estado**: *Running*, *Completed*, *Early stopped*, *Failed* o *Stalled* (el run no ha terminado
+  pero el fichero lleva más de N minutos sin cambios; por defecto 10, configurable en la propia
+  sección), con el dataset, el modelo y la estrategia.
+- **Progreso y ETA**: épocas hechas frente a las planificadas. El ETA es la media del tiempo de
+  época por las épocas que faltan, así que es una cota superior si hay *early stopping*.
+- **Indicadores**: épocas hechas, mejor valor de la métrica de selección y la última loss, F1 y AUC
+  de validación (con su variación respecto a la época anterior).
+- **Curvas**: loss de train y validación, F1 y AUC de validación por época y, si el entrenamiento
+  registra batches, la loss por batch.
+- **Configuración y entorno** del run (versiones, equipo, dispositivos) en un desplegable.
+
+Se elige el run en la lista (por defecto, el activo más reciente), el interruptor **Live** activa o
+pausa el refresco automático y **Refresh every** fija el intervalo (2, 5, 10 o 30 s). Solo se vuelve
+a pintar el contenido de la sección, no el resto de la página. Si se lanza un entrenamiento con la
+sección ya abierta, pulsar **Refresh now** para que aparezca en la lista. La web no entrena ni
+toca la GPU: solo lee el fichero.
+
+### Analizar un run a fondo (Inspector)
+
+**Inspector** abre un run con flujo de eventos y/o directorio `inspect_<ts>/` (se generan con
+`--monitor`, ver [inspeccion.md](inspeccion.md)) y sirve tanto en vivo (mismo refresco que Live)
+como a posteriori. Un selector elige la vista; las vistas por época usan un deslizador de época
+(por defecto sigue la última):
+
+- **System**: utilización, memoria, potencia, temperatura y reloj por GPU; CPU y RAM del proceso;
+  medias, picos y energía aproximada (integral de la potencia muestreada).
+- **Performance**: muestras/s, tiempo de paso y espera del DataLoader. Más de un 30 % del tiempo
+  esperando datos se diagnostica como cuello de I/O.
+- **Predictions**: galería de miniaturas con borde verde (acierto) o rojo (fallo), filtros por
+  clase real y predicha, acierto, cambio respecto a la época anterior y orden por pérdida o
+  confianza; al elegir una muestra, su trayectoria por época y su Grad-CAM.
+- **Errors**: peores errores, matriz de confusión (conteos o normalizada) con las imágenes de la
+  celda elegida, y TP/FP/FN por clase.
+- **Curves**: ROC y PR por clase con macro y micro, F1/sensibilidad/especificidad frente al umbral,
+  tabla por clase y evolución del AUC y AP macro. Las métricas macro (y, si se pide, las de cada clase) llevan
+  intervalos de confianza *bootstrap* al 95 % con 200, 1000 o 2000 remuestras. Usa las probabilidades de toda la validación si
+  el run las guardó; si no, las del subconjunto (y lo indica).
+- **Clinical**: punto de operación de una clase (uno contra el resto en multiclase): umbral manual, el óptimo de
+  validación del run, sensibilidad objetivo (0,90 / 0,95…) o Youden; sensibilidad, especificidad, VPP, VPN, F1 y
+  matriz 2×2 con intervalos de confianza, prevalencia editable para VPP/VPN y ROC con el punto marcado.
+- **Calibration**: diagrama de fiabilidad, histograma de confianza, ECE/MCE/Brier, pendiente e intercepto de
+  calibración (pendiente < 1 = sobreconfianza), ECE adaptativa y por clase, y su evolución por época.
+- **Subgroups**: solo aparece si el run tiene `groups.npz` (ver [inspeccion.md](inspeccion.md)); métricas por
+  grupo con intervalos y la brecha entre el mejor y el peor.
+- **Dynamics**: cartografía de datos (fácil, ambigua, difícil) y cambios de acierto entre épocas;
+  las muestras «difíciles» son candidatas a etiqueta errónea.
+- **Embeddings**: proyección 2D (PCA, o UMAP si está instalado) coloreada por clase o acierto.
+- **Explain**: panel de Grad-CAM superpuesto (opacidad ajustable) y su evolución por época.
+- **Layers**: mapas de calor por grupo de capas de la norma del gradiente, la norma de los pesos y
+  el ratio de actualización (banda sana 1e-4 a 1e-2), e histogramas de pesos (o de gradientes, si el run los
+  trae) por época.
+- **Alerts**: lista cronológica de las alertas de salud del entrenamiento (NaN, divergencia, sobreajuste,
+  gradientes, cuello de I/O, GPU). Las activas salen como banner (rojo = crítica, ámbar = aviso) en la
+  cabecera del Inspector y de Live.
+
+Cada vista indica cómo activar los datos que le faltan (`--monitor`, `monitor.layers: true`…). Solo
+se calcula la vista elegida y los `.npz` se cachean por ruta y fecha de modificación.
 
 ![Overview del cuadro de mandos](img/dashboard_overview.png)
 

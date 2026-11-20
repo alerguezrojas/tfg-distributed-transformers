@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from src.benchmark.value_objects import ModelInfo
-from src.models.vit import input_channels
+from src.models.vit import input_channels, input_size
 
 
 class ModelAnalyzer:
@@ -36,7 +36,8 @@ class ModelAnalyzer:
         try:
             from torchinfo import summary
             stats = summary(self._model,
-                            input_size=(1, input_channels(self._model), 224, 224),
+                            input_size=(1, input_channels(self._model),
+                                        input_size(self._model), input_size(self._model)),
                             verbose=0, device=torch.device("cpu"))
             return stats.total_mult_adds / 1e6, getattr(stats, "total_output_bytes", 0) / 1e6
         except Exception:

@@ -10,6 +10,8 @@ Usage (called automatically by TrainingSessionBuilder.build()):
 
 from __future__ import annotations
 
+import math
+
 from src.data.registry import available_datasets, dataset_name_from_config, get_dataset_spec
 from src.data.spec import DatasetSpec
 
@@ -50,6 +52,7 @@ def validate_config(cfg: dict) -> None:
     _check_model(cfg["model"], spec, errors)
     _check_training(cfg["training"], spec, errors)
     _check_distributed(cfg.get("distributed", {}), errors)
+    _check_monitor(cfg.get("monitor") or {}, errors)
 
     if errors:
         _raise(errors)
@@ -86,6 +89,10 @@ def _check_model(model: dict, spec: DatasetSpec | None, errors: list) -> None:
         elif spec is not None and nc != spec.num_classes:
             errors.append(f"model.num_classes={nc} does not match dataset {spec.name!r} "
                           f"({spec.num_classes} classes); omit it to use the dataset's")
+    if model.get("img_size") is not None:
+        size = model["img_size"]
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            errors.append(f"model.img_size must be a positive integer, got {size!r}")
     if "dropout" in model:
         d = model["dropout"]
         if not isinstance(d, (int, float)) or not (0.0 <= float(d) < 1.0):
@@ -163,9 +170,12 @@ def _check_model_selection(train: dict, spec: DatasetSpec | None, errors: list) 
     if "select_by" not in train:
         return
     sb = str(train["select_by"]).lower()
-    if sb not in ("f1", "f1_optimal", "auc"):
-        errors.append(f"training.select_by must be 'f1', 'f1_optimal' or 'auc', "
+    if sb not in ("f1", "f1_optimal", "auc", "qwk"):
+        errors.append(f"training.select_by must be 'f1', 'f1_optimal', 'auc' or 'qwk', "
                       f"got {train['select_by']!r}")
+    elif sb == "qwk" and spec is not None and not spec.ordinal:
+        errors.append(f"training.select_by: qwk needs ordered (graded) classes, which "
+                      f"dataset {spec.name!r} does not declare; use 'f1' or 'auc'")
     elif sb == "f1_optimal" and spec is not None and not spec.make_task().searches_threshold:
         errors.append(f"training.select_by: f1_optimal needs a tunable threshold, which "
                       f"the {spec.task} task of {spec.name!r} does not have; use 'f1'")
@@ -177,6 +187,14 @@ def _check_loss(train: dict, spec: DatasetSpec | None, errors: list) -> None:
             spec.make_task().build_criterion(str(train["loss"]))
         except ValueError as exc:
             errors.append(f"training.loss: {exc}")
+
+    if "emd_weight" in train:
+        w = train["emd_weight"]
+        if (isinstance(w, bool) or not isinstance(w, (int, float))
+                or not math.isfinite(w) or w < 0):
+            errors.append(f"training.emd_weight must be a finite number >= 0, got {w!r}")
+        elif str(train.get("loss") or "").lower() != "ce_emd":
+            errors.append("training.emd_weight only applies to loss: ce_emd")
 
     if "pos_weight" not in train:
         return
@@ -232,3 +250,60 @@ def _check_distributed(dist: dict, errors: list) -> None:
 def _raise(errors: list) -> None:
     msg = "\n".join(f"  • {e}" for e in errors)
     raise ConfigError(f"Config validation failed with {len(errors)} error(s):\n{msg}")
+
+
+# monitor.* (docs/inspeccion.md): key → (type, minimum)
+_MONITOR_KEYS: dict[str, tuple[type, float | None]] = {
+    "enabled": (bool, None), "embeddings": (bool, None), "layers": (bool, None),
+    "samples": (int, 1), "every": (int, 1), "seed": (int, 0), "thumbnail": (int, 8),
+    "gradcam": (int, 0), "full_val_max": (int, 0), "system_interval_s": (float, 0),
+}
+
+
+# monitor.alerts.* (docs/inspeccion.md): key → (type, minimum)
+_ALERT_KEYS: dict[str, tuple[type, float | None]] = {
+    "enabled": (bool, None), "loss_divergence_factor": (float, 1), "overfit_epochs": (int, 1),
+    "grad_explosion_factor": (float, 1), "grad_history": (int, 5),
+    "update_ratio_min": (float, 0), "update_ratio_max": (float, 0),
+    "update_ratio_patience": (int, 1), "data_wait_frac": (float, 0),
+    "gpu_mem_pct": (float, 0), "gpu_temp_c": (float, 0), "throughput_drop_factor": (float, 0),
+}
+
+
+def _check_typed(section: str, values: dict, table: dict, errors: list,
+                 extra_keys: tuple = ()) -> None:
+    """Check ``values`` against ``table`` (key → (type, minimum)); ``extra_keys`` are known
+    keys checked elsewhere (listed in the "available" hint only)."""
+    for key, value in values.items():
+        if key in extra_keys:
+            continue
+        if key not in table:
+            errors.append(f"{section}.{key} is not a known key; "
+                          f"available: {sorted([*table, *extra_keys])}")
+            continue
+        kind, minimum = table[key]
+        ok = (isinstance(value, bool) if kind is bool
+              else isinstance(value, (int, float)) and not isinstance(value, bool)
+              and (kind is float or isinstance(value, int)))
+        if not ok:
+            errors.append(f"{section}.{key} must be {kind.__name__}, got {value!r}")
+        elif minimum is not None and value < minimum:
+            errors.append(f"{section}.{key} must be >= {minimum}, got {value!r}")
+
+
+def _check_monitor(monitor: dict, errors: list) -> None:
+    if not isinstance(monitor, dict):
+        errors.append(f"monitor must be a mapping, got {type(monitor).__name__}")
+        return
+    alerts = monitor.get("alerts")
+    if alerts is not None:
+        if isinstance(alerts, dict):
+            n_before = len(errors)
+            _check_typed("monitor.alerts", alerts, _ALERT_KEYS, errors)
+            lo, hi = alerts.get("update_ratio_min", 1e-7), alerts.get("update_ratio_max", 1e-1)
+            if len(errors) == n_before and lo >= hi:
+                errors.append("monitor.alerts.update_ratio_min must be < update_ratio_max, "
+                              f"got {lo!r} >= {hi!r}")
+        else:
+            errors.append(f"monitor.alerts must be a mapping, got {type(alerts).__name__}")
+    _check_typed("monitor", monitor, _MONITOR_KEYS, errors, extra_keys=("alerts",))

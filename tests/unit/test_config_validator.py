@@ -166,3 +166,34 @@ def test_select_by_unknown_rejected():
     cfg["training"]["select_by"] = "loss"
     with pytest.raises(ConfigError, match="select_by"):
         validate_config(cfg)
+
+
+class TestMonitorSection:
+    def _with(self, monitor):
+        cfg = _base_cfg()
+        cfg["monitor"] = monitor
+        return cfg
+
+    def test_valid_monitor(self):
+        validate_config(self._with({"enabled": True, "samples": 256, "gradcam": 0,
+                                    "system_interval_s": 2.5, "layers": False}))
+
+    def test_absent_or_empty_monitor_is_fine(self):
+        validate_config(_base_cfg())
+        validate_config(self._with(None))
+
+    @pytest.mark.parametrize("monitor, message", [
+        ({"sampels": 10}, "not a known key"),
+        ({"samples": 0}, "must be >= 1"),
+        ({"enabled": "yes"}, "must be bool"),
+        ({"samples": 2.5}, "must be int"),
+        ({"gradcam": True}, "must be int"),
+        ({"system_interval_s": -1}, "must be >= 0"),
+    ])
+    def test_invalid_monitor(self, monitor, message):
+        with pytest.raises(ConfigError, match=message):
+            validate_config(self._with(monitor))
+
+    def test_monitor_must_be_a_mapping(self):
+        with pytest.raises(ConfigError, match="mapping"):
+            validate_config(self._with([1, 2]))

@@ -15,7 +15,7 @@ from src.data.spec import DatasetSpec
 DEFAULT_DATASET = "bigearthnet"
 
 # Modules that define (and register) the built-in datasets.
-_BUILTIN_MODULES = ("src.data.bigearthnet", "src.data.medmnist")
+_BUILTIN_MODULES = ("src.data.bigearthnet", "src.data.medmnist", "src.data.panda")
 
 _REGISTRY: dict[str, DatasetSpec] = {}
 _builtins_loaded = False

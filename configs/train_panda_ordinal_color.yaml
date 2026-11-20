@@ -1,0 +1,37 @@
+# PANDA con pérdida ordinal (`ce_emd`) y aumentos de color (`color_jitter: 0.2`) a la vez: la
+# combinación de train_panda_ordinal.yaml y train_panda_color.yaml, en las mismas condiciones.
+
+data:
+  name: panda
+  root: "/media/alejandro/SSD/datasets/panda"   # train.csv, splits.csv y mosaics_l1_16x256/
+  image_size: 512
+  num_workers: 4
+  color_jitter: 0.2     # aumentos de color solo en train (tinción distinta por hospital)
+
+model:
+  name: "vit_small_patch16_224"
+  pretrained: true
+  dropout: 0.1
+  img_size: 512         # debe coincidir con data.image_size
+
+training:
+  epochs: 15
+  batch_size: 16
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 5
+  log_batch_every: 10
+  seed: 42
+  select_by: qwk
+  loss: ce_emd          # entropía cruzada + EMD² entre la distribución predicha y la real
+  emd_weight: 1.0
+
+checkpoint:
+  dir: "checkpoints/local"
+
+output:
+  env: "local"

@@ -88,3 +88,15 @@ def test_summarize_import():
     assert s["benchmark"] == 1
     assert s["metric_csvs"] == 1
     assert s["total"] == 4
+
+
+def test_import_no_escribe_en_carpeta_hermana_con_mismo_prefijo(tmp_path):
+    """Un enlace simbólico a `logs_evil/` (prefijo de `logs`) no debe pasar la comprobación."""
+    logs = tmp_path / "logs"
+    evil = tmp_path / "logs_evil"
+    logs.mkdir()
+    evil.mkdir()
+    (logs / "salida").symlink_to(evil, target_is_directory=True)
+    data = _make_zip({"salida/train_1.log": b"x"})
+    assert import_run_archive(data, logs) == []
+    assert not (evil / "train_1.log").exists()

@@ -1,0 +1,15 @@
+{"v": 1, "time": 1792231200.0, "type": "run_start", "run_id": "17102026_120000", "dataset": "medmnist_chest", "task": "multilabel", "classes": ["atelectasis", "cardiomegaly", "effusion"], "model": "vit_tiny_patch16_224", "mode": "single", "world_size": 1, "epochs": 5, "select_metric": "auc", "config": {"model": {"name": "vit_tiny_patch16_224", "dropout": 0.1}, "training": {"epochs": 5, "batch_size": 32, "lr": 0.0001}, "data": {"name": "medmnist_chest"}}, "env": {"host": "nodo-test", "python": "3.12.3", "torch": "2.5.1+cpu", "timm": "1.0.11", "git_commit": "abc1234", "devices": ["NVIDIA GeForce RTX 3060 Ti"]}}
+{"v": 1, "time": 1792231201.0, "type": "epoch_start", "epoch": 1, "epochs": 5}
+{"v": 1, "time": 1792231202.0, "type": "batch", "epoch": 1, "batch": 50, "n_batches": 200, "metrics": {"batch_loss": 0.35, "running_loss": 0.335, "lr": 0.0001, "batch_f1": 0.25}}
+{"v": 1, "time": 1792231212.0, "type": "batch", "epoch": 1, "batch": 100, "n_batches": 200, "metrics": {"batch_loss": 0.33, "running_loss": 0.32, "lr": 0.0001, "batch_f1": 0.25}}
+{"v": 1, "time": 1792231222.0, "type": "batch", "epoch": 1, "batch": 150, "n_batches": 200, "metrics": {"batch_loss": 0.31, "running_loss": 0.305, "lr": 0.0001, "batch_f1": 0.25}}
+{"v": 1, "time": 1792231232.0, "type": "epoch_end", "epoch": 1, "epochs": 5, "train": {"loss": 0.31, "f1": 0.3, "accuracy": 0.85}, "val": {"loss": 0.29, "f1": 0.18, "accuracy": 0.83, "precision": 0.4, "recall": 0.25, "auc": 0.71, "optimal_threshold": 0.3}, "epoch_time_s": 41.0, "best": 0.71, "is_best": true}
+{"v": 1, "time": 1792231233.0, "type": "epoch_start", "epoch": 2, "epochs": 5}
+{"v": 1, "time": 1792231234.0, "type": "batch", "epoch": 2, "batch": 50, "n_batches": 200, "metrics": {"batch_loss": 0.32, "running_loss": 0.305, "lr": 0.0001, "batch_f1": 0.3}}
+{"v": 1, "time": 1792231244.0, "type": "batch", "epoch": 2, "batch": 100, "n_batches": 200, "metrics": {"batch_loss": 0.3, "running_loss": 0.29, "lr": 0.0001, "batch_f1": 0.3}}
+{"v": 1, "time": 1792231254.0, "type": "batch", "epoch": 2, "batch": 150, "n_batches": 200, "metrics": {"batch_loss": 0.28, "running_loss": 0.275, "lr": 0.0001, "batch_f1": 0.3}}
+{"v": 1, "time": 1792231264.0, "type": "epoch_end", "epoch": 2, "epochs": 5, "train": {"loss": 0.24, "f1": 0.4, "accuracy": 0.85}, "val": {"loss": 0.25, "f1": 0.31, "accuracy": 0.83, "precision": 0.4, "recall": 0.25, "auc": 0.78, "optimal_threshold": 0.3}, "epoch_time_s": 42.0, "best": 0.78, "is_best": true}
+{"v": 1, "time": 1792231265.0, "type": "epoch_start", "epoch": 3, "epochs": 5}
+{"v": 1, "time": 1792231266.0, "type": "batch", "epoch": 3, "batch": 50, "n_batches": 200, "metrics": {"batch_loss": 0.29, "running_loss": 0.275, "lr": 0.0001, "batch_f1": 0.35}}
+{"v": 1, "time": 1792231276.0, "type": "batch", "epoch": 3, "batch": 100, "n_batches": 200, "metrics": {"batch_loss": 0.27, "running_loss": 0.26, "lr": 0.0001, "batch_f1": 0.35}}
+{"v": 1, "time": 1792231286.0, "type": "batch", "epoch": 3, "batch": 150, "n_batches": 200, "metrics": {"batch_loss": 0.25, "running_loss": 0.245, "lr": 0.0001, "batch_f1": 0.35}}

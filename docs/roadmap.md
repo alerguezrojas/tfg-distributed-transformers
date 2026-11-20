@@ -6,10 +6,69 @@
 
 ## Estado actual
 
-> Actualizado el 17/10/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 19/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
+**Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
+multi-dataset, MedMNIST y el trabajo con agentes de IA. **El tutor enviará el dataset médico
+concreto** en el que centrar el trabajo; hasta entonces, MedMNIST sirve de banco de pruebas y el
+diseño debe seguir admitiendo datasets nuevos sin tocar el entrenamiento. Pidió además **analizar
+con más detalle la inferencia en las trazas**, para ver en tiempo real las decisiones del modelo
+durante el entrenamiento, posiblemente desde la web. Auditoría y plan en "Auditoría de
+observabilidad (25/10/2026)" y en la fase 4.
+
+**Dataset del tutor (02/11/2026): PANDA** (*Prostate cANcer graDe Assessment*, Kaggle 2020;
+Radboud y Karolinska): 10.616 biopsias de próstata (WSI `.tiff` de tres niveles, 1×/4×/16×,
+~25-33 k px de alto a ~0,45-0,49 µm/px) con grado ISUP 0-5 y el hospital de origen. Licencia
+CC BY-NC-SA 4.0. Karolinska concentra los grados bajos y Radboud los altos, y tiñen distinto:
+riesgo de que el modelo aprenda el centro (comprobarlo con *Subgroups*). Descarga en
+`/media/alejandro/SSD/datasets/panda/` (zip de 193 GB; `uvx --with six kaggle competitions download
+-c prostate-cancer-grade-assessment`, token en `~/.kaggle/access_token`). Primer prototipo de
+preparación: mosaico de los 16 tiles de 256 px con más tejido del nivel 4× (1024 px, 80-90 % de
+tejido, <1 s por biopsia). Se presenta al tutor el 03/11/2026.
+
+**Decisión (02/11/2026, el autor la delega):** primero **mosaico + multiclase con QWK** a 512 px
+(no toca el entrenamiento; es el enfoque de los ganadores de Kaggle). Después, pérdida ordinal; MIL
+queda como mejora si el mosaico se queda corto; los modelos de base de patología (UNI,
+CTransPath) se descartan porque apenas entrenan el ViT. Se usan las 10.616 biopsias; la limpieza
+de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/panda.md).
+
+**Reunión con el tutor del 20/11/2026:** informe con las mejoras de PANDA, medidas clínicas,
+generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset del médico (fuera
+del repo, en la carpeta de reuniones del autor).
+
 **Hecho:**
+- **PANDA, mejoras y generalización (18-19/11/2026, PRs #186-#189):**
+  - **Con tres semillas, ni la pérdida ordinal `ce_emd` ni los aumentos de color mejoran el QWK
+    de forma clara a 512 px.** Base 0,794 ± 0,012 y ordinal 0,802 ± 0,009 en test (ordinal −
+    base por semilla: +0,025, +0,005 y −0,005). Con una sola semilla la ordinal parecía mejorar
+    (intervalo *bootstrap* del test sin el 0): ese intervalo no recoge la variación del
+    entrenamiento, así que desde ahora se compara con tres semillas. El color (una semilla) no
+    mejora y multiplica por 2,5 el tiempo por época (el `ColorJitter` va en CPU).
+  - Cortes clínicos (media de 3 semillas, ordinal): ISUP ≥ 1, sensibilidad 0,90 / especificidad
+    0,83 / AUC 0,95; ISUP ≥ 2, 0,81 / 0,90 / 0,93. La ordinal sube la especificidad de ISUP ≥ 1
+    (0,78 → 0,83).
+  - Entrenado en un solo hospital, el QWK cae en el otro: Radboud 0,81 → Karolinska 0,55;
+    Karolinska 0,75 → Radboud 0,37. Ni la ordinal ni el color lo evitan (una semilla). La
+    literatura ve la misma caída. Tablas en [datasets/panda.md](datasets/panda.md).
+  - Código: `data.color_jitter` y `data.providers` en PANDA, `groups.npz` del monitor (vista
+    *Subgroups*), `eval --save-predictions` con tablas por grupo y cortes «grado ≥ k»
+    (`src/analysis/clinical.py`), y la revisión de medición clínica con la lista para un dataset
+    clínico ([research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
+  - Infraestructura local: `/home` (59 GB) se llenó con los checkpoints. `checkpoints/local` y
+    `checkpoints/runs` son ahora enlaces al SSD (ignorados por git), y los entrenamientos largos se
+    lanzan como servicio de usuario con `nice`.
+- **PANDA, línea base (02/11/2026):** dataset descargado y descomprimido (412 GB en el SSD), mosaicos
+  de las 10.616 biopsias (0 errores, 8 GB) y partición 7.433/1.593/1.590. ViT-S a 512 px en la
+  RTX 3060 Ti local (82 s/época, parada en la época 14): **QWK 0,781 en test** (0,814 en
+  validación), exactitud 0,609, 88 % a un grado o menos; por centro, 0,745 (Karolinska) y 0,760
+  (Radboud). Sobreajusta desde la época 5. Detalle en [datasets/panda.md](datasets/panda.md).
+  PR #184: la línea `Configuración:` dice la pérdida real de la tarea y el log muestra `qwk`/`auc`
+  por época.
+- PANDA (PRs #179-#182, revisados por el agente revisor): estado del arte
+  (`docs/research/panda.md`), script de mosaicos, partición fija 70/15/15 estable por huella,
+  ficha `panda` ordinal, config a 512 px con `select_by: qwk`. Núcleo: `DatasetSpec.ordinal` + QWK
+  (`val_qwk`) y `model.img_size` (cuatro estrategias, `eval.py`, benchmark).
 - Fases 1 (higiene) y 2 (abstracción de dataset y tarea, verificada en GPU con las cuatro
   estrategias).
 - Fase 3, primer bloque: MedMNIST (cuatro datasets médicos) con **3 semillas**. DermaMNIST y
@@ -19,25 +78,58 @@
 - Predictor: perfilado automático de cualquier modelo de timm (fase 5, primer punto), revisado
   por el agente revisor y corregido.
 - Web: AUC de validación y filtro por dataset. Estado del arte sobre predicción del rendimiento
-  (`docs/research/`).
+  y sobre observabilidad (`docs/research/`).
+- Fase 4, primer bloque (observabilidad): **flujo de eventos** `events_*.jsonl` en cada run
+  ([esquema](eventos.md); observadores del bucle, *heartbeat*, nunca detiene el entrenamiento) y
+  pestaña **Live** de la web, que sigue el run en tiempo real. Verificado con un entrenamiento real
+  en GPU seguido desde el navegador. PRs #160-#163.
+- Fase 4, segundo bloque: **inspección profesional del entrenamiento** (PRs #164-#175), con el
+  [inventario del sector](research/inventario_herramientas_observabilidad.md) como referencia:
+  - Terminal: monitor de predicciones (`--monitor`: subconjunto fijo de validación por época con
+    probabilidades, pérdida por imagen, *embeddings* y Grad-CAM), estadísticas por capa
+    (gradientes, pesos, ratio de actualización, histogramas), métricas de sistema (GPU/CPU/RAM),
+    rendimiento por batch (espera del DataLoader, muestras/s) y **alertas** (NaN, divergencia,
+    sobreajuste, gradientes, cuello de I/O, GPU al límite). Nada de esto cambia el entrenamiento
+    (tests de pesos idénticos) y todo queda fuera del tiempo medido.
+  - Análisis (`src/analysis/`, NumPy): curvas ROC/PR, calibración completa (ECE, pendiente,
+    intercepto), IC *bootstrap*, punto de operación clínico, subgrupos, cartografía y proyecciones.
+  - Web: página **Inspector** con 13 vistas (System, Performance, Predictions, Errors, Curves,
+    Clinical, Calibration, Subgroups, Dynamics, Embeddings, Explain, Layers, Alerts), en vivo y a
+    posteriori. `paravit report` genera un **informe HTML** autocontenido con la lista TRIPOD+AI.
+  - Verificado con entrenamientos reales en GPU (DermaMNIST) recorriendo cada vista en el navegador.
 - Arnés de trabajo con IA (agentes, skills, hooks, permisos, lint en CI y pre-commit).
 - Corregidos los fallos de `model.dropout` (todos los runs del TFG usaron 0.1) y del heterogéneo
   con `pos_weight`.
+- Limpieza de trazas (deuda de la auditoría): docstrings de `plot`/`confusion` al día,
+  `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
+  `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** nada. Todo está integrado en `develop`.
+**En curso:** versión 1.1.0 (20/11/2026): todo lo anterior pasa de `develop` a `main`.
 
-**Siguiente paso recomendado:** fase 4, instrumentación y registro de medidas. Su objetivo es
-medir el tiempo de espera del DataLoader y la potencia por GPU, en un esquema estándar, para
-validar el ángulo más prometedor del artículo: tiempo y energía según el régimen (cómputo o I/O).
-Los cuatro MedMNIST, BigEarthNet y su subset ya dan perfiles de I/O muy distintos para probarlo.
+**Siguiente paso recomendado:** según lo que se decida en la reunión del 20/11. Por orden:
+(1) **más resolución** o más tiles (es lo que más puede mejorar: los ganadores usaban 4-9 veces
+más píxeles por biopsia). El predictor estima que a 1.024 px ViT-S con lote 16 necesita 8,7 GB y
+no cabe en la RTX 3060 Ti; hace falta otra máquina o DDP. Además, a 512 px predijo 101 s por época
+frente a 82 s medidos: es una medida para validar el predictor fuera de BigEarthNet.
+(2) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro centro y medir cuántas
+hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
+(Macenko). (3) Grad-CAM frente a las máscaras de PANDA. Toda comparación, con 3 semillas. Técnicos: aumentos de color en GPU, que cada run guarde solo el mejor checkpoint
+y el último en una carpeta propia con fecha (hoy van todos a la misma y la cola los mueve a mano),
+el aviso de array NumPy no escribible en `src/data/panda.py` y que el validador exige
+`epochs > warmup_epochs`. Pendientes de la fase 4: `paravit predict`/`explain` con la prueba de
+cordura de Grad-CAM y la agregación por semilla en *Compare*.
 
 **Decisiones pendientes del autor o del tutor:**
-- Integrar `develop` en `main` (contiene todo lo anterior).
+- Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
+  [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
+- Pedir la preparación y los resultados del TFG previo que usó PANDA (referencia para compararse).
+- Máquina para entrenar PANDA a más resolución (Verode o las máquinas nuevas).
+- Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
 - Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
 - Máquinas nuevas a las que dará acceso el tutor (aún sin concretar).
-- Instalar el pre-commit una vez por clon:
+- En cada clon nuevo, instalar el pre-commit una vez (ya instalado en el equipo local):
   `uvx pre-commit install --hook-type pre-commit --hook-type commit-msg`.
 
 ## Diagnóstico de partida (auditoría del 17/10/2026)
@@ -80,6 +172,40 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 6. **Solo estimaciones puntuales**, sin intervalos de incertidumbre.
 7. **El prior de calidad (F1)** no se transfiere a otros datasets.
 
+## Auditoría de observabilidad (25/10/2026)
+
+Petición del tutor: ver con detalle qué decide el modelo durante el entrenamiento, en tiempo real
+y desde la web. Inventario del código y revisión del sector en
+[`research/observabilidad_entrenamiento.md`](research/observabilidad_entrenamiento.md).
+
+**Diagnóstico:**
+
+1. **No se guarda nada por muestra.** Las predicciones de validación se reducen a métricas
+   globales, por clase y a la matriz de confusión; `eval.py` tampoco guarda predicciones por
+   imagen. No hay forma de ver *qué* imágenes falla el modelo ni con qué confianza.
+2. **No hay inferencia fuera del entrenamiento.** No existe un comando para clasificar imágenes
+   sueltas ni para explicar una predicción (Grad-CAM, *attention rollout*).
+3. **Todo es texto y CSV, sin formato estructurado.** La web reconstruye cada run con
+   expresiones regulares sobre el log; las claves en español son un contrato frágil.
+4. **La web no es "en vivo".** Lee los ficheros al interactuar o cuando caduca la caché (30-60 s);
+   `refresh_interval` está definido pero nadie lo usa, y el monitor del sistema se retiró.
+5. **Deuda menor:** docstrings que prometen PNG que no se generan, `LayerHooksDecorator` que solo
+   imprime por consola, decoradores sin tests, `tensorboard` declarado y sin uso (se mantiene para un futuro exportador), y `psutil`
+   usado y sin declarar.
+
+**Decisión de diseño:** un único **flujo de eventos** (`events_*.jsonl`, solo rank 0, una línea
+por evento y versionado) como fuente estructurada de cada run. Sirve a la vez para la vista en
+vivo, para el análisis por muestra (eventos de panel) y para las medidas de la fase 4
+(espera del DataLoader, potencia por GPU). Convive con los logs actuales, que siguen siendo el
+contrato con la web existente. Los exportadores a TensorBoard o MLflow, si llegan, serán otros
+consumidores del mismo flujo. W&B y ClearML se descartan por licencia e infraestructura.
+
+**Orden:** (1) flujo de eventos y vista *Live*; (2) panel fijo de validación, predicciones por
+muestra en test, calibración (ECE) y ROC/PR, con su pestaña en la web; (3) `paravit predict`;
+(4) `paravit explain` con Grad-CAM fuera del bucle medido (los mapas se generan en el terminal y
+la web solo los muestra). Lo que dependa del tipo de problema se resuelve en la `Task`, de modo
+que funcione con cualquier dataset, incluido el que envíe el tutor.
+
 ## Fases
 
 ### Fase 1 — Higiene (en curso)
@@ -88,6 +214,7 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 - [x] Ramas remotas ya mergeadas eliminadas (solo quedan `main` y `develop`).
 - [x] `AGENTS.md` + `CLAUDE.md` mínimo + `CHANGELOG.md`; el antiguo `CLAUDE.md` repartido en `docs/`.
 - [ ] (Opcional) Integración con Zenodo para tener un DOI de cada release.
+- [x] Seguridad del repo: `SECURITY.md`, Dependabot, CodeQL, auditoría de dependencias en CI y gitleaks en pre-commit (PR pendiente de merge: el lock tiene ~250 avisos en dependencias, a resolver con Dependabot).
 
 ### Fase 2 — Abstracción dataset/tarea (hecha, 17/10/2026)
 - [x] `DatasetSpec` (clases, canales, tarea, lector, transforms) + registro elegible con `data.name`.
@@ -115,14 +242,60 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
       MedMNIST lo usan.
 - [x] Repeticiones (3 semillas) y AUC en validación para MedMNIST: Derma y Path superan a todas las
       referencias oficiales; Breast y Chest, dentro del rango ([ficha](datasets/medmnist.md)).
+- [ ] **PANDA** (dataset del tutor, 02/11/2026): preparación offline a mosaicos, partición propia,
+      ficha, config, métrica QWK y subgrupos por centro.
+  - [x] Preparación a mosaicos, partición 70/15/15, ficha y config (`docs/datasets/panda.md`).
+  - [x] `model.img_size` para timm (entrada de 512) y métrica QWK (`ordinal=True`, `select_by: qwk`).
+  - [x] Mosaicos y `splits.csv` del dataset completo y línea base a 512 px (QWK 0,781 en test).
+  - [x] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal (sin mejora clara con 3 semillas).
+  - [x] Aumentos de color y entrenamiento por hospital (generalización entre centros).
+  - [x] Tres semillas de base y ordinal; ordinal y color entrenando en un solo hospital.
+  - [ ] Más resolución (otra máquina), adaptación a otro hospital y normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
 - [ ] Una ficha por dataset en `docs/datasets/`.
 
-### Fase 4 — Instrumentación y registro de medidas
+### Fase 4 — Instrumentación, observabilidad e inferencia
+- [x] Flujo de eventos `events_*.jsonl` (esquema v1 en [eventos.md](eventos.md)): inicio con
+      configuración y huella del entorno, épocas, batches, parada temprana y fin (también si falla).
+- [x] Web: pestaña *Live* que sigue un run en curso con lectura incremental del flujo.
+- [x] Limpieza de la deuda de las trazas (docstrings, `LayerHooksDecorator`, *batch hooks* con
+      `batch-table`, dependencias).
+- [x] Muestreo de sistema (evento `system`: GPU por NVML, CPU y RAM) y rendimiento por batch
+      (`data_time_s`, `step_time_s`, `samples_per_s`, `data_wait_frac`) en el flujo de eventos
+      ([inspeccion.md](inspeccion.md)).
+- [x] Panel fijo de validación: probabilidades, pérdida, *embeddings* y Grad-CAM de un
+      subconjunto fijo de validación en cada época (`--monitor`, `inspect_<ts>/`).
+- [x] Análisis de la inspección en CPU: paquete puro `src/analysis/` (curvas, umbrales,
+      calibración, confusión, cartografía, flips, peores errores, proyección 2D y lector de
+      `inspect_<ts>/`); la web los muestra en la página *Inspector*.
+- [x] Predicciones por muestra en test (`eval.py --save-predictions`) con métricas por grupo y
+      cortes clínicos; calibración, curvas ROC/PR y peores errores ya los da el Inspector.
+- [ ] Que la web lea las predicciones de test (`test_preds.npz`) además del panel de validación.
+- [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.
+- [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
+- Segunda ola, según el [inventario del sector](research/inventario_herramientas_observabilidad.md)
+  (lo que ninguna herramienta general trae y la imagen médica exige):
+  - [x] Intervalos de confianza *bootstrap*, calibración completa (pendiente, intercepto, ECE por
+        clase), punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN) y métricas
+        por subgrupo: cálculo en `src/analysis/` y vistas *Curves*, *Clinical*, *Calibration* y
+        *Subgroups* del Inspector (lee el `groups.npz` que escribe el monitor; en PANDA, el
+        hospital).
+  - [x] Alertas en el flujo de eventos (pérdida NaN/infinita, divergencia, sobreajuste, gradientes
+        fuera de rango, cuello de I/O, GPU al límite, caída de throughput): evento `alert`
+        (`src/training/alerts.py`); lado web hecho (banner en Live e Inspector, vista
+        *Alerts*).
+  - [x] Histogramas de gradientes (evento `histograms` con `kind`; la web los muestra).
+  - [ ] Prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo et al. 2018).
+  - [x] Informe exportable de un run (HTML) con la lista TRIPOD+AI: `paravit report`;
+        falta CLAIM y los subgrupos (dependen de los metadatos del dataset del tutor).
+  - [ ] Agregación por semilla en la comparación de runs (media y banda).
+  - [ ] Métricas por *rank* en DDP (rezagados; cómputo frente a comunicación).
+  - [ ] Duplicados y fuga entre particiones (hash/embeddings; por paciente).
+  - [ ] Perfil puntual con `torch.profiler` (traza Perfetto) y exportador opcional a TensorBoard.
 - [ ] Esquema estándar de cada medida: huella de hardware y software, configuración, throughput
-      estable, pico de VRAM, potencia y **espera del DataLoader** (un decorador nuevo).
+      estable, pico de VRAM, potencia y **espera del DataLoader** (nuevos eventos del flujo).
 - [ ] Script de barrido con sondas cortas (N pasos en régimen estable) para muchas configuraciones.
 - [ ] Entorno portable para HPC (contenedor Apptainer) y plantillas Slurm multinodo.
 

@@ -19,6 +19,7 @@ Usage:
 """
 
 import logging
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +29,10 @@ from src.training.base_trainer import BaseTrainer
 from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
+from src.training.events import JsonlEventSink, environment_fingerprint
+from src.training.alerts import AlertMonitor, alerts_config
+from src.training.monitor import LayerStatsMonitor, PredictionMonitor, monitor_config
+from src.training.system_sampler import SystemSampler, visible_gpu_uuids
 from src.training.decorators import (
     TracingDecorator,
     DeepTracingDecorator,
@@ -87,6 +92,7 @@ class TrainingSessionBuilder:
         self._hetero_local_batch_size: int | None = None  # None → standard DDPTrainer
         self._model_parallel: tuple | None = None     # None → not model-parallel; else (devices, split_block)
         self._output_mode: str | None = None         # None → "ddp"/"single" por defecto
+        self._monitor: bool = False                   # --monitor (or monitor.enabled)
 
     # ── Fluent configuration API ─────────────────────────────────────────────
 
@@ -116,6 +122,11 @@ class TrainingSessionBuilder:
         """Select metric reporters (only active for --trace off/simple):
         'loss', 'f1', 'accuracy', 'precision_recall'. Pass nothing to disable all."""
         self._metrics = list(metrics)
+        return self
+
+    def with_monitor(self, enabled: bool = True) -> "TrainingSessionBuilder":
+        """Enable the prediction and layer monitors (same as ``monitor.enabled``)."""
+        self._monitor = enabled
         return self
 
     def with_inspect(self, *features: str) -> "TrainingSessionBuilder":
@@ -186,6 +197,7 @@ class TrainingSessionBuilder:
                 split_block=mp_split,
                 in_chans=spec.in_channels,
                 dropout=dropout,
+                img_size=cfg["model"].get("img_size"),
             )
         else:
             model = build_model(
@@ -194,6 +206,7 @@ class TrainingSessionBuilder:
                 pretrained=cfg["model"].get("pretrained", True),
                 in_chans=spec.in_channels,
                 dropout=dropout,
+                img_size=cfg["model"].get("img_size"),
             )
 
         # ── Optimizer ────────────────────────────────────────────────────────
@@ -413,7 +426,86 @@ class TrainingSessionBuilder:
             trainer = TracingDecorator(inner, logger=logger, patience=patience,
                                        epoch_csv=epoch_csv, select_metric=select_metric)
 
+        # ── 6. Event stream (rank 0) — docs/eventos.md ────────────────────────
+        if self._trace != "off" and self._rank == 0:
+            sink = JsonlEventSink(
+                log_dir / f"events_{self._timestamp}.jsonl",
+                run_info={
+                    "run_id": self._timestamp,
+                    "dataset": spec.name,
+                    "task": task.name,
+                    "classes": list(spec.classes),
+                    "model": model_name,
+                    "mode": mode,
+                    "world_size": self._world_size,
+                    "select_metric": select_metric,
+                    "config": cfg,
+                    "env": environment_fingerprint(),
+                },
+                log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),
+            )
+            # System sampler (GPU/CPU/RAM every N s). Added before the sink so it stops
+            # before `run_end` is written. 0 disables it; independent of the monitor.
+            system_interval = (cfg.get("monitor") or {}).get("system_interval_s", 5)
+            if system_interval and system_interval > 0:
+                uuids = visible_gpu_uuids() if self._device.type == "cuda" else None
+                trainer.add_listener(SystemSampler(sink, interval_s=system_interval,
+                                                   gpu_uuids=uuids))
+            trainer.add_listener(sink)
+            if "batch-monitor" in self._layers:
+                # Same cadence as the batch CSV (the monitor already makes the
+                # Trainer compute the per-batch metrics).
+                base.register_batch_hook(sink.on_batch)
+            # Alerts first: their batch hook must run before the layer monitor's, so a
+            # batch's loss is known when its `layers` event is evaluated.
+            self._attach_alerts(trainer, base, sink, cfg)
+            self._attach_monitors(trainer, base, sink, cfg, spec, task, log_dir)
+        elif self._trace == "off" and (self._monitor or monitor_config(cfg)["enabled"]):
+            warnings.warn("the prediction monitor writes to the event stream, which "
+                          "--trace off disables: the monitor is not active",
+                          RuntimeWarning, stacklevel=2)
+
         return trainer
+
+    # ── Inspection (docs/inspeccion.md) ───────────────────────────────────────
+
+    def _attach_monitors(self, trainer, base, sink, cfg, spec, task, log_dir) -> None:
+        """Prediction and layer monitors (``monitor.enabled`` or ``--monitor``)."""
+        mon = monitor_config(cfg)
+        if not (mon["enabled"] or self._monitor):
+            return
+        # Note: with layer statistics the Trainer has a batch hook, so it computes the
+        # per-batch metrics dict every batch (small CPU work; no number changes).
+        data_cfg = cfg["data"]
+        trainer.add_listener(PredictionMonitor(
+            base, spec.dataset(data_cfg, "val"), task, spec.classes, sink, log_dir,
+            self._timestamp, mon, batch_size=cfg["training"]["batch_size"],
+            num_workers=min(int(data_cfg.get("num_workers", 0)), 4)))
+        if mon["layers"]:
+            layers = LayerStatsMonitor(
+                base, sink,
+                log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 50))
+            trainer.add_listener(layers)
+            base.register_batch_hook(layers.on_batch)
+
+    def _attach_alerts(self, trainer, base, sink, cfg) -> None:
+        """Alert rules over the event stream (``monitor.alerts``, on by default).
+
+        Added after the sink so each alert follows the ``epoch_end`` it comes from. It
+        listens to the sink for ``system`` / ``layers`` events, and takes the per-batch NaN
+        and gradient-norm checks only if the run has batch hooks anyway (batch monitor or
+        layer statistics): it never forces per-batch work, otherwise the epoch loss is
+        checked."""
+        acfg = alerts_config(cfg)
+        if not acfg["enabled"]:
+            return
+        alerts = AlertMonitor(sink, acfg, grad_norm_source=lambda: base.last_grad_norm)
+        trainer.add_listener(alerts)
+        sink.subscribe(alerts.on_event)
+        mon = monitor_config(cfg)
+        layer_stats = (mon["enabled"] or self._monitor) and mon["layers"]
+        if "batch-monitor" in self._layers or layer_stats:
+            base.register_batch_hook(alerts.on_batch)
 
     # ── Output layout ─────────────────────────────────────────────────────────
 
@@ -461,7 +553,8 @@ class TrainingSessionBuilder:
                 pos_weight = torch.tensor(
                     pos_weight_cfg, dtype=torch.float32, device=self._device
                 )
-        criterion = build_criterion(train_cfg, pos_weight=pos_weight, task=spec.task)
+        # The spec's own task, so that ordered classes (ce_emd) are known.
+        criterion = build_criterion(train_cfg, pos_weight=pos_weight, task=spec.make_task())
         if loss_kind == "focal" and self._hetero_local_batch_size is None:
             print(f"  [loss] focal (gamma={train_cfg.get('focal_gamma', 2.0)}, "
                   f"alpha={train_cfg.get('focal_alpha', -1.0)})")

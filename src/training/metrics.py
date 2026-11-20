@@ -9,6 +9,22 @@ THRESHOLD_GRID: list[float] = [
 ]
 
 
+def grad_norm_value(model: torch.nn.Module, pre_clip=None) -> float | None:
+    """Global gradient norm of the step, for the per-batch metrics (``grad_norm_total``).
+
+    ``pre_clip`` is what ``clip_grad_norm_`` returned (the norm *before* clipping, so
+    clipping does not hide a spike); without clipping the norm is computed from the
+    ``.grad`` of the parameters (one device-to-host copy). Only call it when batch hooks
+    exist: it is an extra reduction otherwise unneeded. ``None`` if there is no gradient.
+    """
+    if pre_clip is not None:
+        return float(pre_clip)
+    norms = [p.grad.detach().float().norm() for p in model.parameters() if p.grad is not None]
+    if not norms:
+        return None
+    return torch.stack([n.cpu() for n in norms]).norm().item()
+
+
 def f1_score(preds: torch.Tensor, labels: torch.Tensor) -> float:
     """Macro-averaged F1 for multi-label classification."""
     tp = (preds & labels.bool()).sum(dim=0).float()
@@ -60,6 +76,30 @@ def roc_auc_macro(probs: torch.Tensor, hard: torch.Tensor) -> float:
     aucs = [a for c in range(hard.shape[1])
             if (a := roc_auc(probs[:, c], hard[:, c])) is not None]
     return sum(aucs) / len(aucs) if aucs else float("nan")
+
+
+def quadratic_weighted_kappa(preds: torch.Tensor, hard: torch.Tensor) -> float:
+    """Cohen's kappa with quadratic weights between one-hot predictions and targets
+    (N × C) whose class columns are ORDERED (e.g. ISUP grade 0-5, the PANDA metric).
+
+    Disagreeing by k grades costs k²/(C-1)². 1 = perfect, 0 = chance agreement.
+    NaN when undefined (fewer than two classes, or both raters constant on the
+    same class, so the expected disagreement is zero).
+    """
+    num_classes = hard.shape[1]
+    if num_classes < 2 or hard.shape[0] == 0:
+        return float("nan")
+    y_pred, y_true = preds.argmax(dim=1), hard.argmax(dim=1)
+    observed = torch.zeros(num_classes, num_classes, dtype=torch.float64)
+    observed.index_put_((y_true, y_pred), torch.ones(len(y_true), dtype=torch.float64),
+                        accumulate=True)
+    expected = torch.outer(observed.sum(dim=1), observed.sum(dim=0)) / observed.sum()
+    grades = torch.arange(num_classes, dtype=torch.float64)
+    weights = (grades[:, None] - grades[None, :]) ** 2 / (num_classes - 1) ** 2
+    denom = (weights * expected).sum()
+    if denom.item() <= 0.0:
+        return float("nan")
+    return (1.0 - (weights * observed).sum() / denom).item()
 
 
 def _average_ranks(x: torch.Tensor) -> torch.Tensor:

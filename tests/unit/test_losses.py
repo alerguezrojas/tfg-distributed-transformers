@@ -118,3 +118,11 @@ class TestBuilderWiring:
         crit = b._build_criterion(cfg, self._spec())
         assert isinstance(crit, torch.nn.BCEWithLogitsLoss)
         assert crit.pos_weight is not None and crit.pos_weight.shape[0] == 19
+
+
+def test_configured_loss_name_defaults_to_task_loss():
+    from src.training.losses import configured_loss_name
+    from src.training.tasks import get_task
+    assert configured_loss_name({}, get_task("multiclass")) == "ce"
+    assert configured_loss_name({"loss": None}, get_task("multilabel")) == "bce"
+    assert configured_loss_name({"loss": "Focal"}, get_task("multilabel")) == "focal"

@@ -1,0 +1,41 @@
+@startuml
+!include style.iuml
+class PreparadorCorreccion <<builder>> {
+  + construir(config) : Corrector
+}
+class RegistroAsignaturas <<registro>> {
+  + registrar(ficha)
+  + obtener(nombre) : FichaAsignatura
+}
+class FichaAsignatura <<dataclass>> {
+  + nombre : str
+  + preguntas : tuple[str]
+  + tipo : str
+  + leer_hojas : función
+  + crear_tipo() : TipoExamen
+}
+class Corrector {
+  - tipo : TipoExamen
+  + corregir_todo(hojas, soluciones)
+}
+abstract class TipoExamen <<abstract>> {
+  + puntuar(respuesta, solucion) : float
+}
+class UnaRespuesta {
+  + puntuar(...)
+}
+class VariasRespuestas {
+  + puntuar(...)
+}
+class VerdaderoFalso {
+  + puntuar(...)
+}
+PreparadorCorreccion --> RegistroAsignaturas : 1. obtener(nombre)
+RegistroAsignaturas o-- "*" FichaAsignatura
+PreparadorCorreccion ..> Corrector : 3. crea
+FichaAsignatura ..> TipoExamen : 2. crear_tipo()
+Corrector --> TipoExamen : usa
+TipoExamen <|-- UnaRespuesta
+TipoExamen <|-- VariasRespuestas
+TipoExamen <|-- VerdaderoFalso
+@enduml

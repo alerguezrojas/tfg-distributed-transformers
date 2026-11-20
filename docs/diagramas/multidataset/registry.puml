@@ -1,0 +1,27 @@
+@startuml
+!include style.iuml
+skinparam nodesep 90
+class Registro <<registro>> {
+  - entradas : dict[str, Ficha]
+  + registrar(ficha)
+  + obtener(nombre) : Ficha
+  + disponibles() : list[str]
+}
+class Ficha {
+  + nombre : str
+  + ...
+}
+class ModuloA <<módulo>>
+class ModuloB <<módulo>>
+class Cliente {
+  + preparar(config)
+}
+ModuloA ..> Registro : registra
+ModuloB ..> Registro : registra
+Registro o-- "*" Ficha : guarda
+Cliente --> Registro : obtener(config.nombre)
+note top of ModuloA
+  Cada módulo registra
+  su ficha al importarse.
+end note
+@enduml

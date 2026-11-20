@@ -1,0 +1,36 @@
+# PANDA, grado ISUP de biopsias de próstata (multiclase ordinal, 6 clases) — RTX 3060 Ti local.
+# Antes hay que preparar los mosaicos y la partición (una sola vez):
+#   uv run python scripts/prepare_panda.py --root /media/alejandro/SSD/datasets/panda --workers 8 --make-splits
+# El mosaico es de 1024 px; el Dataset lo reescala a data.image_size.
+
+data:
+  name: panda
+  root: "/media/alejandro/SSD/datasets/panda"   # train.csv, splits.csv y mosaics_l1_16x256/
+  image_size: 512
+  num_workers: 4
+
+model:
+  name: "vit_small_patch16_224"
+  pretrained: true
+  dropout: 0.1
+  img_size: 512         # debe coincidir con data.image_size (timm adapta los position embeddings)
+
+training:
+  epochs: 15
+  batch_size: 16
+  lr: 0.0001
+  lr_min: 0.000001
+  weight_decay: 0.05
+  warmup_epochs: 1
+  llrd_decay: 0.75
+  grad_clip: 1.0
+  early_stopping_patience: 5
+  log_batch_every: 10
+  seed: 42
+  select_by: qwk        # kappa cuadrático ponderado, la métrica oficial de PANDA
+
+checkpoint:
+  dir: "checkpoints/local"
+
+output:
+  env: "local"

@@ -36,8 +36,10 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | `src/models/` | `TimmClassifier` (backbone timm + cabeza), optimizador LLRD, `ModelParallelViT` |
 | `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, tareas (`tasks.py`), pérdidas, métricas |
 | `src/training/decorators/` | Decoradores GoF: controladores (`EpochController` → tracing/deep) y aspectos (plot, hooks, confusion, batch-monitor, reporters) |
+| `src/training/events.py` | Observadores del bucle (`TrainingListener`) y flujo de eventos `events_*.jsonl` ([esquema](docs/eventos.md)) |
 | `src/training/fn_decorators.py` | Decoradores `@` de Python: `timed`, `measure_energy`, `retry_on_cuda_oom` |
 | `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md) |
+| `src/analysis/` | Análisis puro (NumPy) de los datos de inspección: curvas, calibración, umbrales, confusión, dinámica, proyección; lo usa la web |
 | `src/benchmark/` | Benchmark empírico en la máquina real (Facade `BenchmarkChecker`) |
 | `src/cli.py`, `src/cli_menu.py` | CLI Typer y menú interactivo; lanzadores `paravit.py` / `tfg.py` (alias) |
 | `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV |
@@ -69,7 +71,10 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 ## Convenciones
 
 - **Git:** `main ← develop ← feature/*`. Las ramas salen de `develop` y hacen PR a `develop`; nunca
-  directo a `main`. `develop → main` solo cuando el autor lo valida. GitHub borra la rama al mergear.
+  directo a `main`. `develop → main` por PR, como versión: CI en verde, revisión del agente
+  revisor en los cambios del núcleo, sección del `CHANGELOG.md` con fecha, versión en
+  `pyproject.toml` y etiqueta `vX.Y.Z` (el autor lo delegó el 20/11/2026). GitHub borra la rama al
+  mergear.
 - **Commits:** Conventional Commits en español (`feat:`, `fix(web):`, `docs:`, `chore:`…), cortos.
   **Sin** `Co-Authored-By` ni "Generated with…" en commits ni PRs.
 - **Idioma:** documentación en español (registro canario: "ustedes", no "vosotros"); UI de la web en

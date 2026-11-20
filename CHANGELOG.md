@@ -4,7 +4,166 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-20
+
+Primera versión posterior al TFG: soporte multi-dataset (fichas `DatasetSpec` y tareas), MedMNIST,
+PANDA con clases ordenadas y QWK, observabilidad del entrenamiento (flujo de eventos, vista *Live*,
+monitor de predicciones e *Inspector* en la web), evaluación clínica en test y perfilado automático
+de modelos de timm en el predictor.
+
 ### Añadido
+- Seguridad y calidad del repositorio: `SECURITY.md` (aviso privado de GitHub, alcance y reglas),
+  Dependabot semanal agrupado (`uv` y `github-actions`, hacia `develop`), análisis CodeQL de Python
+  (`.github/workflows/codeql.yml`), `permissions: contents: read` y `concurrency` en CI, job
+  `audit` con `pip-audit` sobre `uv export` (informativo por ahora: el lock tiene avisos en
+  dependencias de desarrollo) y hook de gitleaks en `pre-commit`. Historial escaneado: sin secretos.
+- PANDA, mejoras y generalización entre hospitales (18-19/11/2026, 14 runs): con tres semillas,
+  base 0,794 ± 0,012 y pérdida ordinal 0,802 ± 0,009 de QWK en test, sin mejora clara (con una
+  sola semilla parecía +0,025); el color tampoco mejora. Cortes clínicos (ISUP ≥ 1 y ≥ 2) y
+  entrenamiento en un hospital evaluado en el otro (QWK 0,81 → 0,55 y 0,75 → 0,37; ni la ordinal
+  ni el color evitan la caída). Runs en `logs/local/panda/` y tablas en `docs/datasets/panda.md`.
+- Pérdida ordinal `ce_emd` para clases ordenadas (`DatasetSpec.ordinal`): entropía cruzada +
+  `training.emd_weight` × EMD al cuadrado entre la distribución predicha y la real (Hou et al.
+  2017), compatible con mixup y suavizado; misma cabeza y predicción. Config
+  `configs/train_panda_ordinal.yaml`. El builder pasa a `build_criterion` la tarea de la ficha
+  (antes la reconstruía por nombre y perdía `ordinal`).
+- Evaluación en test más clínica: `eval --save-predictions RUTA.npz` guarda probabilidades,
+  objetivos, umbral, clases, tarea y variables de grupo por muestra (`save_predictions` /
+  `load_predictions` en `src/analysis/io.py`); si el dataset expone `groups()` imprime n, exactitud,
+  F1, AUC (y QWK) por grupo, y en tareas ordinales una tabla de cortes «grado ≥ k» con sensibilidad,
+  especificidad, VPP, VPN y AUC (`src/analysis/clinical.py`). Las líneas anteriores de `eval.py` no
+  cambian (las secciones nuevas van después).
+- PANDA: `data.color_jitter` (aumentos de color solo en train, `ColorJitter` con hue = s/4;
+  0 = desactivado, idéntico a antes), `data.providers` (filtra la partición por centro y split,
+  para entrenar en un hospital y evaluar en el otro; `class_counts` lo respeta) y las configs
+  `train_panda_color.yaml`, `train_panda_radboud.yaml` y `train_panda_karolinska.yaml`.
+- El `PredictionMonitor` escribe `groups.npz` cuando el dataset de validación expone `groups()`
+  (también envuelto en `Subset`), alineado con `monitor_set.npz`: la vista *Subgroups* ya tiene
+  datos en PANDA (variable `data_provider`).
+- Revisión sobre medición clínica del cáncer de próstata (`docs/research/medicion_clinica_prostata.md`):
+  grado Gleason/ISUP, variabilidad entre patólogos, métricas de los modelos de IA con cifras publicadas y
+  lista de requisitos para un dataset clínico nuevo.
+- PANDA, línea base (02/11/2026): mosaicos del dataset completo y primer entrenamiento a 512 px
+  (ViT-S, RTX 3060 Ti): QWK 0,781 en test, 0,745/0,760 por centro. Run y tabla en
+  `docs/datasets/panda.md`.
+- Dataset PANDA (`panda`, multiclase ordinal ISUP 0-5, QWK, 512 px): ficha y lector (`src/data/panda.py`), mosaicos de
+  tiles con más tejido (`src/data/wsi.py`, puro NumPy), `scripts/prepare_panda.py` (idempotente,
+  paralelo, tolerante a TIFF ilegibles, `--make-splits`), partición 70/15/15 estratificada por
+  centro y grado (semilla 42, por biopsia), `configs/train_panda.yaml`, ficha
+  `docs/datasets/panda.md` y dependencias `tifffile` e `imagecodecs`. El Dataset expone
+  `data_provider` para el futuro `groups.npz`. La ficha declara clases ordenadas (QWK y
+  `select_by: qwk`) y el config entrena a 512 px (`model.img_size`). La partición ordena cada
+  estrato por una huella `sha256(semilla:id)`, estable si se quitan unas pocas biopsias.
+- Clases ordenadas: `DatasetSpec.ordinal` (solo multiclase) añade el kappa cuadrático ponderado
+  (`metrics.quadratic_weighted_kappa`, `qwk`) a las métricas de la tarea, la columna `val_qwk` del
+  CSV por época (NaN en los demás datasets), `select_by: qwk` y la línea `QWK` de `eval.py`. La
+  tarea sigue llamándose `multiclass` aguas abajo (inspección, web).
+- `model.img_size`: el *backbone* de timm se construye para otro lado de entrada (p. ej. 512 px
+  para los mosaicos de PANDA) en las cuatro estrategias y en `eval.py`; los resúmenes de torchinfo
+  usan ese tamaño (`input_size`), igual que el benchmark (modelo y lotes sintéticos). Con CNNs la
+  clave se ignora al construir (aceptan cualquier tamaño). Sin la clave, el comportamiento no cambia.
+- Selección del mejor checkpoint: una métrica indefinida (NaN) en la primera época ya no deja el run
+  sin checkpoint, y un mejor valor negativo (QWK por debajo del azar) se informa en los eventos en
+  vez de salir como *n/a*.
+- Revisión bibliográfica del dataset PANDA (`docs/research/panda.md`): formato, licencia, métrica,
+  soluciones ganadoras, ViT, problemas conocidos e implicaciones para el proyecto.
+- Roadmap: el dataset del tutor es PANDA (biopsias de próstata, grado ISUP); estado de la
+  descarga, primer prototipo de mosaicos y decisiones pendientes.
+- Diagrama genérico del patrón Factory (`docs/diagramas/multidataset/factory.puml`), junto a los
+  de Strategy y Registry.
+- Alertas (`src/training/alerts.py`): reglas puras y un `AlertMonitor` que escribe eventos `alert`
+  (`level` warning/critical, `code`, `message`, `epoch`, `batch`, `value`, `threshold`, `group`)
+  para `nan_loss`, `loss_divergence`, `overfitting`, `grad_explosion`,
+  `update_ratio_out_of_range`, `dataloader_bound`, `gpu_memory_high`, `gpu_temp_high` y
+  `throughput_drop`. Una vez por (código, grupo) y se re-arma al desaparecer la condición;
+  umbrales en `monitor.alerts` (validados), activas por defecto con el flujo de eventos. No
+  fuerzan cálculo por batch ni alteran el entrenamiento (test de invariancia). `JsonlEventSink`
+  gana `subscribe` para observar los eventos que otros productores emiten. Contrato en
+  `docs/inspeccion.md`.
+- Alertas: `grad_explosion` también sobre la norma total del gradiente antes del recorte
+  (`Trainer.last_grad_norm`, solo con *batch hooks*; los tres bucles), ignora los pasos que el
+  `GradScaler` salta, y el par (código, grupo) solo se da por emitido tras escribir el evento.
+- Histogramas de gradientes por grupo de capas (gradientes del último batch de cada época) en el
+  evento `histograms`, que ahora lleva `kind: "weights" | "gradients"`.
+- `pytest.ini`: `tmp_path_retention_policy = failed` y `tmp_path_retention_count = 1`, para que
+  los directorios temporales de los tests (con checkpoints) no llenen `/tmp`.
+- Web, Inspector: vistas clínicas. **Curves** con intervalos de confianza *bootstrap* (macro y por
+  clase; 200/1000/2000 remuestras, semilla fija, cacheados); nueva vista **Clinical** (umbral
+  manual, óptimo de validación, sensibilidad objetivo o Youden; sensibilidad, especificidad, VPP,
+  VPN, F1 y 2×2 con IC, prevalencia editable, ROC con el punto); **Calibration** con pendiente,
+  intercepto, ECE adaptativa y por clase; **Subgroups** (solo con el `groups.npz` opcional,
+  documentado en `docs/inspeccion.md`, `load_groups` en `src/analysis/io.py`); **Alerts** y banner
+  de alertas en Inspector y Live a partir de los eventos `alert` (con `group`); selector
+  pesos/gradientes en **Layers** (`histograms.kind`). Helpers en `src/web/inspector_stats.py`.
+- `paravit report <run>` (`src/reporting/`): informe HTML autocontenido de un run (un solo
+  fichero, plotly.js una vez, imágenes en base64) con resumen y entorno, curvas de entrenamiento,
+  rendimiento y GPU, alertas, evaluación con IC95 *bootstrap* (semilla anotada), ROC/PR, calibración
+  (pendiente e intercepto), puntos de operación, peores errores, Grad-CAM, dinámica y lista
+  TRIPOD+AI con cada ítem documentado, parcial o pendiente. `<run>` es un `events_*.jsonl`, la
+  carpeta del run o un sello. Degrada indicando qué flag activar. `report_*.html` se ignora en git.
+- Estadística para publicación en `src/analysis/` (solo NumPy): intervalos de confianza
+  *bootstrap* (`bootstrap_ci`, `metrics_with_ci` con AUC, AP, F1, sensibilidad, especificidad,
+  exactitud, ECE y Brier; ruta vectorizada), pendiente e intercepto de calibración, ECE por clase
+  y ECE adaptativo, punto de operación clínico (sensibilidad objetivo, Youden, VPP/VPN por
+  prevalencia) y métricas por subgrupo con brecha máx-mín. No cambia ninguna función existente.
+  Descrito en `docs/inspeccion.md` y `docs/arquitectura.md`.
+- `docs/research/inventario_herramientas_observabilidad.md`: inventario funcionalidad a
+  funcionalidad de 14 herramientas de observabilidad, matriz comparativa, requisitos de imagen
+  médica y lista priorizada; la segunda ola de la fase 4 sale de ahí.
+- Web: página **Inspector** (system, performance, predictions, errors, curves, calibration,
+  dynamics, embeddings, explain, layers) para analizar un run en vivo y a posteriori a partir de
+  `events_*.jsonl` e `inspect_<ts>/`. `EventsFollower` reconoce `system`, `layers`, `histograms`,
+  `monitor_start` e `inspection` (acotados en memoria). Helpers puros en
+  `src/web/inspector_data.py`; fixture `tests/fixtures/make_inspector_run.py`.
+- Muestreo de sistema (`src/training/system_sampler.py`): un `TrainingListener` que, mientras el
+  run está vivo, añade al flujo de eventos un evento `system` cada `monitor.system_interval_s`
+  segundos (5 por defecto; 0 lo desactiva) con, por GPU visible, uso, memoria, potencia,
+  temperatura y reloj SM (NVML) y, del equipo y del proceso, CPU y RAM (`psutil`). Respeta
+  `CUDA_VISIBLE_DEVICES`; sin NVML o sin GPU emite `gpus: []`; los errores se avisan una vez y
+  nunca detienen el entrenamiento. Lo cablea el builder en rank 0 junto al `JsonlEventSink`. Las
+  GPU se identifican por UUID (NVML y CUDA numeran distinto), de modo que `index` es `cuda:N`;
+  cada entrada lleva `uuid`. La medida de energía (`_PowerSampler`) usa el mismo criterio.
+- Rendimiento por batch (`src/training/throughput.py`, `StepTimer`): espera del DataLoader y tiempo
+  de paso con `time.perf_counter()` (sin `cuda.synchronize`). Los *batch hooks* reciben
+  `data_time_s`, `step_time_s` y `samples_per_s`, y el resultado de `train_epoch` añade
+  `samples_per_s` y `data_wait_frac`, que salen en `epoch_end.train`. Lo usan los tres bucles
+  (`Trainer`, heterogéneo y `--trace deep`); el CSV de épocas no cambia de columnas.
+- Paquete `src/analysis/` (solo NumPy, sin torch ni Streamlit) para analizar los datos de
+  inspección en la web: curvas ROC/PR por clase con macro y micro, barrido de umbral (misma
+  definición de F1 que `training/metrics.py`), calibración (ECE, MCE, Brier, diagrama de
+  fiabilidad), matriz de confusión con índices por celda, cartografía de datos, *flips* entre
+  épocas, peores errores, proyección 2D (PCA; UMAP opcional) y lector del directorio
+  `inspect_<ts>/`. Generador de fixtures sintéticos que cumplen el contrato
+  (`tests/fixtures/make_inspect_fixture.py`). Descrito en `docs/arquitectura.md`.
+- Monitor de predicciones (`--monitor` en los scripts y en `paravit train`, o `monitor.enabled`):
+  en cada época guarda en `inspect_<ts>/` las probabilidades, la pérdida por imagen, los
+  *embeddings* y Grad-CAM (ViT y CNN) de un subconjunto fijo de validación con miniaturas, y las
+  probabilidades de toda la validación; `LayerStatsMonitor` registra normas de gradiente y peso,
+  ratio de actualización e histogramas por grupo de capas. No altera el entrenamiento (test de
+  pesos idénticos). Coste en DermaMNIST (512 muestras, 16 mapas): ~0,6 s por época, fuera del
+  tiempo medido.
+- Contrato de la inspección del entrenamiento (`docs/inspeccion.md`): eventos de sistema,
+  rendimiento por batch, monitor de predicciones por muestra, Grad-CAM y capas; sección `monitor:`
+  validada en la config; `JsonlEventSink.emit()` para otros productores del flujo; los datos de
+  inspección (`logs/**/inspect_*/`) no se versionan.
+- Fuentes PlantUML de los diagramas del diseño multi-dataset en `docs/diagramas/multidataset/`.
+- Flujo de eventos de cada run (`events_<ts>.jsonl`, esquema v1 en `docs/eventos.md`): inicio
+  con configuración y huella del entorno (host, versiones, commit, GPUs), épocas, batches (con
+  el monitor de batches), parada temprana y fin, también si el entrenamiento falla. Lo escribe
+  rank 0 con *flush* por línea, para seguir el run en vivo; un hilo aparte escribe un `heartbeat`
+  cada 30 s, y un error de escritura nunca detiene el entrenamiento. `EpochController` admite observadores
+  (`TrainingListener`, `add_listener`); el bucle y sus resultados no cambian.
+- Tests de `LayerHooksDecorator`, de los metric reporters y de `batch-table` + `batch-monitor`.
+- Auditoría de observabilidad (`docs/roadmap.md`) y revisión del sector en
+  `docs/research/observabilidad_entrenamiento.md`: seguimiento en vivo, formato de eventos e
+  interpretabilidad de ViT en imagen médica. Esquema v1 del flujo de eventos en `docs/eventos.md`.
+- Web: pestaña **Live** para seguir un entrenamiento en curso. Lee de forma incremental (por
+  desplazamiento de bytes) el flujo `logs/<env>/…/events_<sello>.jsonl` (esquema v1: `run_start`,
+  `epoch_start`, `batch`, `epoch_end`, `early_stop`, `run_end`) y muestra estado (running,
+  completed, early_stopped, failed, interrupted, stalled), progreso y ETA, KPIs, curvas por época, loss por
+  batch y la config y el entorno del run. Se refresca con `st.fragment(run_every=…)`, con
+  interruptor Live/Pause e intervalo de 2/5/10/30 s; la web sigue siendo solo de lectura. Lector
+  puro en `src/web/events_reader.py`; `RunInfo.events_path` asocia el JSONL al run por el sello.
 - MedMNIST con 3 semillas: media ± desviación en test (`docs/datasets/medmnist.md`). `--seed` en
   `train_single_gpu.py` (se escribe en el log) y `scripts/summarize_runs.py` para agregar los
   resultados de test de runs repetidos.
@@ -56,6 +215,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- `.gitignore`: `checkpoints/runs` y `checkpoints/local` (copias de checkpoints y predicciones de
+  test por run; en el equipo local son enlaces al SSD).
+- Web: se eliminan `DashboardContext.refresh_interval` (nadie lo usaba) y los comentarios
+  engañosos sobre un refresco en vivo que no existía.
 - `eval.py` aplica a test el umbral elegido en **validación** (el del checkpoint, o ajustado sobre
   val en checkpoints antiguos); antes lo ajustaba sobre el propio test, lo que inflaba el "F1 con
   umbral óptimo". `--threshold-from test` mantiene el comportamiento anterior. El CSV de test
@@ -82,6 +245,23 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- Importación de runs en la web: la comprobación de que el destino queda dentro de `logs/` usaba
+  un prefijo de texto (aceptaba `logs_evil/` vía enlace simbólico); ahora usa `is_relative_to`.
+- La línea `Configuración:` del log muestra la pérdida real de la tarea cuando el YAML no define `training.loss`
+  (`ce` en multiclase, antes `bce`), con el helper `configured_loss_name`.
+- `PrecisionRecallReporter` imprime también `qwk` (datasets ordinales) y `auc` por época; el parser de la web ignora
+  esas líneas.
+- `--trace deep` con `batch-table` ya alimenta a `--layers batch-monitor`: el bucle propio de
+  `DeepTracingDecorator` no llamaba a los batch hooks del `Trainer` y `batch_metrics_*.csv`
+  quedaba solo con la cabecera. Llama a los hooks con el mismo diccionario que
+  `Trainer.train_epoch`; ningún cálculo cambia (los tests de caracterización siguen igual).
+- Docstrings que afirmaban que `plot` y `confusion` guardan PNGs (`scripts/train_single_gpu.py`,
+  `ConfusionMatrixDecorator`, `PlottingDecorator`): `plot` solo acumula el histórico en memoria y
+  `confusion` escribe `perclass_metrics_*.csv` y `confusion_matrix_*.csv`.
+- `LayerHooksDecorator` escribe en el logger `trainer` si tiene handlers (como los decoradores
+  `@fn`) y en stdout si no; el texto es el mismo.
+- `psutil` declarado en las dependencias (lo importan `src/web/system_monitor.py` y las sondas del
+  benchmark; solo llegaba de forma transitiva vía `ipykernel`).
 - El hook guardián de commits solo examina el mensaje del `git commit`: antes bloqueaba
   comandos que mencionaban "Co-Authored-By" en otro sitio (por ejemplo, el cuerpo de un PR).
 - Web: `use_container_width` (obsoleto en Streamlit) pasa a `width="stretch"`; la columna
@@ -114,5 +294,6 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...v1.1.0
 [v1.0-tfg]: https://github.com/alerguezrojas/tfg-distributed-transformers/releases/tag/v1.0-tfg

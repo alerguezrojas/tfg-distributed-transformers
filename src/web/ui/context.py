@@ -12,4 +12,3 @@ class DashboardContext:
     runs: list[Any]
     selected_run: Any | None
     run: Any | None
-    refresh_interval: int

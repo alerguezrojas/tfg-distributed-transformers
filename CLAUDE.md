@@ -27,6 +27,9 @@ agentes de proyecto (`.claude/agents/`), cada uno con el modelo que su tarea nec
 - Agentes en paralelo con `isolation: worktree` cuando hay un entrenamiento u otro trabajo en el
   directorio principal; cada uno abre su PR a `develop` y la sesión principal lo revisa y mergea.
 - Las copias de los agentes van a `.claude/worktrees/` (ignorado por git).
+- En un worktree **no** se ejecuta `uv sync`/`uv run` (crearía otro `.venv` de ~5 GB y llena el
+  disco): se usa el del repo principal, `/ruta/al/repo/.venv/bin/python -m pytest -q`, desde el
+  worktree (importa el código del worktree).
 
 ## Continuidad entre sesiones
 

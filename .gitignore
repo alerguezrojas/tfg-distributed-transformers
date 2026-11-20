@@ -1,5 +1,9 @@
 # Model checkpoints — exclude large .pt files
 checkpoints/**/*.pt
+# Per-run copies of checkpoints and test predictions (checkpoints/runs/<run>/), local only.
+# No trailing slash: on this machine runs/ and local/ are symlinks to the SSD.
+/checkpoints/runs
+/checkpoints/local
 
 # Training PNGs — el dashboard web genera gráficas interactivas desde los CSVs
 # Los PNGs ya no se generan durante el entrenamiento; si quedan locales, no los rastreamos
@@ -66,6 +70,9 @@ cover/
 
 # Django stuff:
 *.log
+# Per-run inspection data (predictions, embeddings, Grad-CAM): large, not versioned
+logs/**/inspect_*/
+
 # Training logs at any depth under logs/ are always committed
 !logs/**/*.log
 local_settings.py
@@ -221,3 +228,6 @@ mlartifacts/
 
 # Copias de trabajo de los agentes de Claude Code (los agentes de .claude/agents/ sí se versionan)
 .claude/worktrees/
+
+# Informes HTML de un run (paravit report): pesan ~5 MB cada uno
+logs/**/report_*.html

@@ -91,8 +91,16 @@ class _PowerSampler:
         try:
             import pynvml
             pynvml.nvmlInit()
+            from src.training.system_sampler import gpu_uuid
             for i in device_indices:
-                self._handles.append(pynvml.nvmlDeviceGetHandleByIndex(int(i)))
+                # `i` is a torch ordinal (cuda:i); NVML numbers by PCI bus, so go through
+                # the UUID and only fall back to the index when torch cannot give one.
+                uuid = gpu_uuid(int(i))
+                try:
+                    handle = pynvml.nvmlDeviceGetHandleByUUID(uuid)
+                except Exception:  # noqa: BLE001 — uuid is None or unknown to NVML
+                    handle = pynvml.nvmlDeviceGetHandleByIndex(int(i))
+                self._handles.append(handle)
         except ImportError:
             self._error = "pynvml no instalado"
         except Exception as e:

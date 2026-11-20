@@ -155,6 +155,64 @@ TracingDecorator / DeepTracingDecorator   ← controlador (--trace)
 - `@fn` en `train_epoch` no dispara; sí dispara en `eval_epoch`
 - `PlottingDecorator` recibe métricas de train vía `_propagate_train_result()` al final de cada epoch
 
+### Observadores del bucle: flujo de eventos
+
+El controlador también admite **observadores** (patrón *Observer*): objetos `TrainingListener`
+(`src/training/events.py`) que se suscriben con `add_listener` y reciben el ciclo de vida del run
+(`on_fit_start`, `on_epoch_start`, `on_epoch_end`, `on_early_stop`, `on_fit_end` y
+`on_fit_error` si el entrenamiento lanza una excepción). Solo observan: reciben los mismos valores
+que los hooks `_on_*` cuando el bucle ya los ha usado, y si uno falla se emite un aviso sin parar el
+entrenamiento. A diferencia de los decoradores, que envuelven `train_epoch`/`eval_epoch`, un
+observador ve el run entero, incluido su final o su fallo.
+
+El builder suscribe en rank 0 un `JsonlEventSink`, que escribe `events_<ts>.jsonl` (esquema en
+[eventos.md](eventos.md)) siempre que `--trace` no sea `off`. Si el monitor de batches está activo,
+registra además su `on_batch` como *batch hook* del `Trainer`, con la misma cadencia que el CSV.
+Es la fuente estructurada de la vista en vivo de la web.
+
+Con el mismo flujo de eventos, el builder suscribe un `SystemSampler`
+(`src/training/system_sampler.py`, otro `TrainingListener`) **antes** del sink, de modo que se
+detiene antes de escribirse `run_end`. Al empezar la primera época lanza un hilo *daemon* que cada
+`monitor.system_interval_s` segundos (5 por defecto; 0 lo desactiva) lee NVML (`pynvml`) y `psutil`
+y añade un evento `system` con `sink.emit`. Solo lee: no toca torch ni CUDA. Sin NVML o sin GPU
+reporta `gpus: []`, y un error de lectura o escritura se convierte en un único aviso.
+
+El rendimiento por batch lo mide `StepTimer` (`src/training/throughput.py`), compartido por los tres
+bucles que poseen una época (`Trainer` —y con él DDP y paralelismo de modelo—,
+`HeterogeneousDDPTrainer` y `_train_epoch_deep`). Solo usa `time.perf_counter()`, sin
+`cuda.synchronize`: el `loss.item()` del propio paso ya sincroniza la GPU. Los *batch hooks* reciben
+`data_time_s`, `step_time_s` y `samples_per_s`, y el diccionario de `train_epoch` añade
+`samples_per_s` y `data_wait_frac`; el CSV de épocas no cambia de columnas.
+
+### Alertas
+
+Con el flujo de eventos activo, el builder suscribe también un `AlertMonitor`
+(`src/training/alerts.py`, contrato en [inspeccion.md](inspeccion.md#alertas)) **después** del
+sink, de modo que cada alerta sigue al `epoch_end` que la origina. Las reglas son funciones puras
+(`check_*`, sin torch); el monitor las alimenta con los resultados de época, el *batch hook* (solo
+si el `Trainer` ya tiene alguno) y los eventos `system` y `layers`, a los que accede con
+`JsonlEventSink.subscribe` sin acoplar el muestreador ni el monitor de capas. Emite un evento
+`alert` por hallazgo nuevo y lo re-arma cuando la condición desaparece. Es un observador más:
+no puede detener el entrenamiento ni cambiar sus números.
+
+### Monitores de inspección
+
+Con `--monitor` (o `monitor.enabled`), el builder suscribe dos observadores más
+(`src/training/monitor.py`, contrato en [inspeccion.md](inspeccion.md)):
+
+- `PredictionMonitor`: elige con su propia semilla un subconjunto de validación (equilibrado por
+  clase si el dataset expone `targets`) y, tras cada época, guarda sus probabilidades, la pérdida
+  por imagen, la entrada de la última capa lineal (*embedding*) y Grad-CAM de un panel, además de
+  las probabilidades de toda la validación. Trabaja en `on_epoch_end`, fuera del tiempo medido, con
+  el modelo desenvuelto de DDP y en modo `eval`, y restaura el modo al terminar.
+- `LayerStatsMonitor`: *batch hook* que mide por grupo de capas la norma del gradiente, la de los
+  pesos y el ratio actualización/peso (el paso real de AdamW reconstruido de su estado), e
+  histogramas por época de los pesos y de los gradientes del último batch (`kind` en el evento).
+
+Ninguno consume números aleatorios globales ni acumula gradientes en los parámetros
+(Grad-CAM usa `torch.autograd.grad` respecto a la activación): un test comprueba que los pesos
+finales son idénticos con el monitor activado o no.
+
 ### DeepTracingDecorator — detalle
 
 Registra en cada epoch:
@@ -168,6 +226,54 @@ Registra en cada epoch:
 - **Alertas**: neuronas muertas, gradiente explosivo/evanescente, update ratio anómalo
 
 Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfiere el escalar con `.item()`.
+
+---
+
+## Análisis de la inspección (`src/analysis/`)
+
+Paquete **puro** (solo NumPy: sin torch, sin Streamlit, sin GPU) con el que la web analiza en CPU
+los `.npz` del directorio `inspect_<ts>/` ([contrato](inspeccion.md)). El terminal guarda datos en
+bruto; aquí se calculan las vistas. Un módulo por pregunta:
+
+| Módulo | Funciones |
+|---|---|
+| `io.py` | `load_monitor_set`, `list_epochs`, `load_epoch` (dataclasses `MonitorSet` y `EpochData`; las claves opcionales ausentes quedan en `None`) |
+| `curves.py` | `roc_curve`, `pr_curve`, `per_class_curves` (por clase + macro y micro; ≤ 1000 puntos por curva) |
+| `thresholds.py` | `threshold_sweep`: F1, precisión, recall, sensibilidad y especificidad frente al umbral (misma definición que `training/metrics.py`) |
+| `calibration.py` | `calibration`: ECE, MCE, Brier y diagrama de fiabilidad; `calibration_curve_stats` (pendiente e intercepto), `per_class_calibration`, `adaptive_ece` |
+| `bootstrap.py` | `bootstrap_ci` (cualquier métrica) y `metrics_with_ci` (AUC, AP, F1, sensibilidad, especificidad, exactitud, ECE y Brier con IC95; remuestreo vectorizado por pesos) |
+| `operating_point.py` | Punto de operación por clase: umbral fijo, sensibilidad objetivo, Youden, VPP/VPN según la prevalencia |
+| `subgroups.py` | `subgroup_metrics`: métricas (con IC opcional) por valor de un array de grupos y brecha máx-mín |
+| `confusion.py` | `confusion`: matriz de conteos, índices por celda y TP/FP/FN/TN por clase |
+| `dynamics.py` | `cartography`, `prob_of_true`, `sample_correct`, `flips`, `worst_errors` |
+| `projection.py` | `project_2d`: PCA por SVD (determinista); UMAP solo si `umap-learn` está instalado |
+
+Todas reciben la tarea (`multilabel`, `binary` o `multiclass`) y las probabilidades tal como se
+guardan (float16 incluido). Una clase sin positivos o sin negativos da NaN, nunca una excepción.
+Los tests usan un generador de directorios sintéticos
+(`tests/fixtures/make_inspect_fixture.py`) que cumple exactamente el contrato.
+
+La página **Inspector** de la web (`src/web/tabs/inspector/`, un módulo por vista) la consume:
+`src/web/inspector_data.py` reúne los helpers puros (tablas de muestras, matrices de capas,
+superposición de Grad-CAM, descubrimiento de runs) y `EventsFollower` guarda, acotados, los
+eventos `system`, `layers`, `histograms` (pesos y gradientes), `monitor_start`, `inspection` y `alert`.
+`src/web/inspector_stats.py` reúne los helpers puros de las vistas clínicas (IC, punto de operación,
+subgrupos, interpretación de la calibración) y `src/web/ui/alert_banner.py` el banner de alertas que
+comparten Live y el Inspector. Solo la vista elegida
+se calcula en cada refresco. `tests/fixtures/make_inspector_run.py` genera un run completo
+(eventos + `inspect_<ts>/`) para los tests.
+
+---
+
+## Informe de un run (`src/reporting/`)
+
+`paravit report <run>` genera un HTML autocontenido a partir de `events_*.jsonl` e `inspect_<ts>/`
+(solo lectura, CPU). Un módulo por responsabilidad: `data.py` (resolver el argumento: fichero,
+carpeta o sello; leer los eventos), `evaluation.py` (estadística con `src/analysis/` para la época
+elegida), `figures.py` (plotly), `tripod.py` (lista TRIPOD+AI y su estado por ítem), `render.py`
+(HTML, tablas y estilo, sin plantillas ni recursos externos) y `report.py` (secciones y
+`build_report`/`write_report`). Reutiliza `parse_event`, `system_frames`, `energy_wh` y los
+helpers de imagen de `src/web/`. Tests: `tests/unit/test_reporting.py`.
 
 ---
 
@@ -357,7 +463,7 @@ Los artefactos se organizan por entorno (`local`/`verode`/`kaggle`), modo (`sing
 logs/
   local/
     single/{model}/   # train_*.log, epoch_metrics_*.csv, perclass_metrics_*.csv,
-                      # batch_metrics_*.csv, confusion_matrix_*.csv
+                      # batch_metrics_*.csv, confusion_matrix_*.csv, events_*.jsonl
     ddp/{model}/      # ídem para runs distribuidos
     benchmark/        # benchmark_*.log + benchmark_*.csv
   verode/
@@ -444,7 +550,7 @@ Igual que `train_cluster.yaml` más `label_smoothing: 0.1`, `mixup_alpha: 0.2`, 
 
 ## Dashboard web
 
-`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~220 líneas: page config + CSS + sidebar + dispatch) que monta el menú de iconos + las 5 páginas y delega en módulos `render(ctx)`. **Tema visual** en `.streamlit/config.toml` (primario azul #1A5276, toolbar mínima) — sin él Streamlit usa su rojo por defecto.
+`src/web/` — interfaz Streamlit profesional para gestionar y analizar el proyecto de principio a fin. **UI en inglés** (post-seminario 3) y **arquitectura modular (SRP)**: `app.py` es un orquestador delgado (~220 líneas: page config + CSS + sidebar + dispatch) que monta el menú de iconos + las 6 páginas y delega en módulos `render(ctx)`. **Tema visual** en `.streamlit/config.toml` (primario azul #1A5276, toolbar mínima) — sin él Streamlit usa su rojo por defecto.
 
 ```
 .streamlit/config.toml      # tema (primaryColor azul, toolbarMode minimal)
@@ -453,7 +559,7 @@ src/web/
   app.py                    # orquestador: page config + CSS + menú de iconos (streamlit-option-menu)
                             #   + selector de run activo + toggle claro/oscuro + dispatch a tabs/
   ui/
-    context.py              # DashboardContext (runs, selected_run, run, refresh_interval) → ctx
+    context.py              # DashboardContext (runs, selected_run, run) → ctx
     theme.py                # diseño: register_plotly_template(mode) + inject_css(mode) — modo
                             #   claro/oscuro (toggle en la sidebar); paleta COLORS/GOOD/WARN/BAD
     charts.py               # helpers Plotly + estilo: _show, _dl_csv, _metric_fig, _overlay_fig,
@@ -468,14 +574,18 @@ src/web/
     run/                    # paquete: Curves / Per-class / Confusions / Batch / Details (una fila de pestañas)
                             #   perclass.py = heatmap clases×(P/R/F1) + support (val); confusions.py = top
                             #   co-activación + matriz 19×19 (avanzado); curves.py = veredicto color-coded
+    live.py                 # Live: sigue un run en curso (events_*.jsonl) con st.fragment(run_every=…);
+                            #   estado/ETA, KPIs, curvas por época, loss por batch, config y entorno
     comparison.py           # Compare unificado: multiselect → resumen + speedup vs baseline + radar + energía + overlays
     benchmark/              # paquete: Estimate (predict.py, analítico) / Benchmark (report.py + ddp.py + study.py) / Estimate vs Benchmark vs Run (validate.py)
                             #   predict.py = formulario → headline + tabla fórmula tiempo + tabla fórmula memoria
                             #   + calidad + escalado 1→8 GPU + coste; validate.py = Compare vs runs; report.py + ddp.py + study.py
     data_models.py          # Import runs (subir zip / apuntar a carpeta → copia a logs/)
   run_import.py             # import_run_archive (zip) / import_run_folder / _dest_relpath (puro, testeable)
+  events_reader.py          # lector incremental de events_*.jsonl (EventsFollower, RunState) y
+                            # descubrimiento de runs activos; puro (sin Streamlit)
   run_registry.py           # descubre runs con rglob (estructura plana y profunda);
-                            # RunInfo con env, mode, model, precision (leída del log) y CSV paths;
+                            # RunInfo con env, mode, model, precision (leída del log), CSV paths y events_path;
                             # label compacto con tags [ddp]/[amp]/[deep] (defaults implícitos)
   log_parser.py             # parsea logs --trace simple y --trace deep → DataFrame (fallback)
   batch_parser.py           # lee batch_metrics_*.csv → DataFrame por batch
@@ -484,6 +594,13 @@ src/web/
   confusion_matrix_parser.py # lee confusion_matrix_*.csv → matriz numpy por epoch
   system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo con specs de GPU (usado por el predictor)
 ```
+
+**Pestaña Live.** Sigue un run en curso a partir de su flujo de eventos (`events_*.jsonl`, esquema
+en [eventos.md](eventos.md)). `EventsFollower` guarda el desplazamiento en bytes y solo lee lo
+añadido; descarta la última línea si no parsea y la reintenta. El estado (`running`, `completed`,
+`early_stopped`, `failed`, `interrupted`, `stalled`) sale de `run_end` o, sin él, de que el fichero
+lleve más de 3 minutos sin cambiar (un entrenamiento vivo escribe un `heartbeat` cada 30 s). Los
+tipos desconocidos o de versión mayor se ignoran. La web sigue siendo de solo lectura.
 
 **Motor analítico de predicción** (`src/performance_model.py`): **único motor** de predicción del proyecto. Predice tiempo/speedup/memoria/cuello/coste/**energía** **y calidad (F1)** de **cualquier** (estrategia, modelo, GPU, nº GPUs, dataset, batch, precisión) **sin benchmark** (fórmula maestra `T(n,π)`, estimación de `r_c/r_io/π` por specs, modelo de memoria/OOM). **Energía = potencia efectiva × tiempo** (29/06/26): `GpuSpec.train_power_w` calibrada de los logs `--fn energy` (T4 64W, V100 103W, RTX 3060 Ti 180W; resto = 0.65×TDP, `power_calibrated=False`), potencia independiente de precisión (AMP ahorra por *tiempo*), eval=0.9×train, `power_working_gpus` (single/heterogéneo=1, ddp/MP=n), MP×0.83 (idle de tubería); `predict()` también estima el tiempo de **eval** → total/epoch. Calibrado contra los datos reales de Kaggle (<10% en compute-bound). Expuesto en la pestaña **Estimate** (tiempo + memoria + **energía** + coste + calidad + puente `rc_measured`). Derivación en `docs/performance_model.md`.
 

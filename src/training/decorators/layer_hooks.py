@@ -5,13 +5,15 @@ from torch.utils.data import DataLoader
 
 from src.training.base_trainer import BaseTrainer
 from src.training.decorators.base import TrainerDecorator
+from src.training.fn_decorators import _log
 
 
 class LayerHooksDecorator(TrainerDecorator):
-    """Aspect decorator that prints mean activations of Linear layers every N epochs.
+    """Aspect decorator that reports mean activations of Linear layers every N epochs.
 
     Registers forward hooks before each training epoch and removes them after.
-    Hooks observe the model without modifying it.
+    Hooks observe the model without modifying it. The report goes to the "trainer"
+    logger when it has handlers (same routing as the @fn decorators), else to stdout.
 
     Stack this between the Trainer and the controller decorator:
         trainer = TracingDecorator(
@@ -60,6 +62,6 @@ class LayerHooksDecorator(TrainerDecorator):
     def _print(self):
         if not self._activations:
             return
-        print(f"\n[hooks] Activaciones medias — epoch {self._epoch:03d}:")
+        _log(f"[hooks] Activaciones medias — epoch {self._epoch:03d}:")
         for name, val in list(self._activations.items())[:5]:
-            print(f"  {name:<50} {val:.4f}  {'█' * int(val * 20)}")
+            _log(f"  {name:<50} {val:.4f}  {'█' * int(val * 20)}")

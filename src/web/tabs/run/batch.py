@@ -25,7 +25,8 @@ def _batch(ctx: DashboardContext) -> None:
             "With `--batch-log-every 1` you get one record per individual batch."
         )
     else:
-        # Load with a short TTL so the live refresh works
+        # Short TTL so a re-render picks up new rows of a run in progress (this tab
+        # does not auto-refresh; the Live page does)
         @st.cache_data(ttl=5)
         def _load_batch_live(p: str) -> pd.DataFrame:
             return _load_batch(p)
