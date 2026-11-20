@@ -5,6 +5,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- `--seed` y `--data-root` en `paravit train` y en todos los scripts de entrenamiento (DDP,
+  heterogéneo y paralelismo de modelo; antes solo en el de una GPU), con la sobrescritura de la
+  config en un único sitio (`src/training/config_overrides.py`). El menú los ofrece en las opciones
+  avanzadas.
 - Incorporación de colaboradores: `CONTRIBUTING.md` (ramas protegidas, ramas largas `tfg/<nombre>`,
   commits, definición de hecho, pre-commit, revisión y releases), `docs/primeros_pasos.md` (guía
   paso a paso con un primer entrenamiento en BreastMNIST, mapa del código, protocolo de
@@ -50,6 +54,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   color y resolución.
 
 ### Corregido
+- `--epochs 1` ya no falla con los configs que traen `warmup_epochs: 1`: si `--epochs` deja
+  `epochs <= warmup_epochs`, se baja `warmup_epochs` a `epochs - 1` (mínimo 0) y se avisa por el log.
+  Un YAML con esa combinación sigue fallando en el validador.
 - Documentación desfasada: el recuento de pruebas del README y de la guía de uso (411 → más de 1.200),
   el tiempo de la batería en `AGENTS.md` (~10 s → ~1,5 min) y la ruta de los logs en el mapa del código
   (lleva el dataset).

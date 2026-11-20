@@ -128,8 +128,7 @@ frente a 82 s medidos: es una medida para validar el predictor fuera de BigEarth
 hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
 (Macenko). (3) Grad-CAM frente a las máscaras de PANDA. Toda comparación, con 3 semillas. Técnicos: aumentos de color en GPU, que cada run guarde solo el mejor checkpoint
 y el último en una carpeta propia con fecha (hoy van todos a la misma y la cola los mueve a mano),
-el aviso de array NumPy no escribible en `src/data/panda.py` y que el validador exige
-`epochs > warmup_epochs`. Pendientes de la fase 4: `paravit predict`/`explain` con la prueba de
+el aviso de array NumPy no escribible en `src/data/panda.py`. Pendientes de la fase 4: `paravit predict`/`explain` con la prueba de
 cordura de Grad-CAM. La agregación por semilla en *Compare* ya está hecha (20/11/2026).
 
 **Decisiones pendientes del autor o del tutor:**

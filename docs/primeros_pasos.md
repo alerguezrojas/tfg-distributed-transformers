@@ -70,19 +70,17 @@ GPU. Se usa un ViT diminuto (`vit_tiny`).
 uv run python scripts/download_medmnist.py --root ~/datasets/medmnist --datasets medmnist_breast
 
 # 2. Entrenar 2 épocas. --data-root sustituye la ruta del YAML (que es la de la máquina del autor)
-uv run python scripts/train_single_gpu.py --config configs/medmnist_breast_local.yaml \
+uv run paravit.py train --strategy single --config configs/medmnist_breast_local.yaml \
     --data-root ~/datasets/medmnist --epochs 2 --monitor
 ```
 
 Notas:
 
-- Usen al menos `--epochs 2`: con 1 el validador de la configuración protesta porque
-  `warmup_epochs` (1) no puede ser mayor o igual que las épocas.
+- Con `--epochs 1` el calentamiento (`warmup_epochs`) se baja solo a 0 y se avisa por el log; un
+  YAML que ya traiga `warmup_epochs >= epochs` sigue fallando en el validador.
 - Sin GPU se entrena en CPU, más despacio (unos minutos con este dataset).
-- Se usa `scripts/train_single_gpu.py` y no `paravit train` porque este último no tiene todavía
-  `--data-root` ni `--seed`. Con `paravit train` valdría editar `data.root` en una copia del YAML
-  (fuera de git, o sin añadirla a un commit). `uv run paravit.py train --config ... --dry-run`
-  muestra siempre el comando exacto que ejecutaría.
+- `paravit train` acepta también `--seed` y `--data-root` (y los pasa al script de la estrategia).
+  `uv run paravit.py train --config ... --dry-run` muestra siempre el comando exacto que ejecutaría.
 - `--monitor` guarda las predicciones por imagen de cada época para el Inspector de la web.
 
 Resultado:
