@@ -8,7 +8,8 @@ import streamlit as st
 
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (ROOT, _detect_anomalies, _dur_str, _get_configs,
-                                 _load_df, _run_config, _safe_max, _safe_val_at_best)
+                                 _load_df, _run_config, _run_metric, _safe_max,
+                                 _safe_val_at_best)
 
 
 def _info(ctx: DashboardContext) -> None:
@@ -20,8 +21,11 @@ def _info(ctx: DashboardContext) -> None:
 
     df_info = _load_df(str(run.log_path), str(run.epoch_csv_path) if run.epoch_csv_path else None)
     n_ep_i = len(df_info)
-    best_f1_i = _safe_max(df_info["val_f1"]) if "val_f1" in df_info.columns else float("nan")
-    best_ep_i_v = _safe_val_at_best(df_info, "val_f1", "epoch")
+    metric = _run_metric(run, df_info)
+    best_f1_i = (_safe_max(df_info[metric.column]) if metric.column in df_info.columns
+                 else float("nan"))
+    best_ep_i_v = _safe_val_at_best(df_info, metric.column, "epoch")
+    meta = run.meta
 
     col_m, col_f = st.columns(2)
 
@@ -29,13 +33,32 @@ def _info(ctx: DashboardContext) -> None:
         st.subheader("Run metadata")
         _cfg_run = _run_config(str(run.log_path))
         rows_i = {
+            "Dataset": run.dataset,
+            "Task": ((meta.task if meta else None) or "—") + (" (ordered classes)" if meta and meta.ordinal else ""),
             "Model": run.model or "—",
             "Environment · Mode": f"{run.env} · {run.mode}",
             "Trace mode": run.trace_mode,
             "Epochs": n_ep_i,
-            "Best Val F1": f"{best_f1_i:.4f}" if not pd.isna(best_f1_i) else "—",
+            f"Best Val {metric.name}": f"{best_f1_i:.4f}" if not pd.isna(best_f1_i) else "—",
             "Best epoch": str(int(best_ep_i_v)) if best_ep_i_v is not None else "—",  # one dtype for Arrow
         }
+        # What distinguishes the run from its neighbours (manifest / events / log line).
+        if meta:
+            rows_i["Loss"] = meta.loss_label
+            if meta.seed is not None:
+                rows_i["Seed"] = str(meta.seed)
+            if meta.providers_label:
+                rows_i["Providers"] = meta.providers_label
+            if meta.providers_test:
+                rows_i["Test providers"] = "+".join(meta.providers_test)
+            if meta.color_jitter:
+                rows_i["Color jitter"] = f"{meta.color_jitter:g}"
+            if meta.img_size:
+                rows_i["Input size"] = f"{meta.img_size}px"
+            if meta.n_train and meta.n_val:
+                rows_i["Train/val samples"] = f"{meta.n_train:,} / {meta.n_val:,}"
+            if meta.command:
+                rows_i["Command"] = f"`{meta.command}`"
         # Run config (only new / backfilled runs record it)
         if _cfg_run.get("batch"):
             rows_i["Batch size"] = _cfg_run["batch"]
@@ -50,9 +73,9 @@ def _info(ctx: DashboardContext) -> None:
             rows_i["Average/epoch"] = f"{df_info['epoch_time'].mean()/60:.1f} min"
         for k, v in rows_i.items():
             st.markdown(f"**{k}:** {v}")
-        if not _cfg_run:
-            st.caption("ℹ️ Batch size is only recorded in new runs (from this "
-                       "version onwards). Earlier ones did not store it in the log.")
+        if meta:
+            st.caption(f"Run metadata from: {meta.source}"
+                       + ("" if meta.source != "path" else " (the folder layout only)"))
 
     with col_f:
         st.subheader("Associated files")

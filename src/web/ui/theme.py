@@ -162,8 +162,15 @@ def inject_css(mode: str = "light") -> None:
   [data-testid="stSidebar"] .stButton button[kind="secondary"] { border: none; background: transparent; }
   [data-testid="stSidebar"] .stButton button[kind="secondary"]:hover {
     background: #EAEEF2; color: inherit; }
-  [data-testid="stSidebar"] .active-run { font-size: 0.8rem; line-height: 1.3; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis;
+  /* Run labels carry what tells runs apart (loss, seed, hospital…) at their END: let them
+     wrap instead of truncating it. */
+  [data-testid="stSidebar"] .stButton button { height: auto; min-height: 2.2rem; }
+  [data-testid="stSidebar"] .stButton button,
+  [data-testid="stSidebar"] .stButton button * { white-space: normal !important;
+    overflow: visible !important; text-overflow: clip !important; }
+  [data-testid="stSidebar"] .stButton button p { text-align: left; line-height: 1.25;
+    font-size: 0.8rem; }
+  [data-testid="stSidebar"] .active-run { font-size: 0.8rem; line-height: 1.3;
     background: #E8F1F8; border: 1px solid #CFE2F0; border-radius: 6px; padding: 0.45rem 0.6rem;
     color: #1A5276; margin-bottom: 0.4rem; }
 

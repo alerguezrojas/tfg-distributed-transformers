@@ -6,35 +6,42 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from src.web.ui.charts import (COLORS, _base_layout, _overlay_fig, _show)
+from src.web.run_meta import MetricInfo
+from src.web.seed_agg import Series
+from src.web.ui.charts import (COLORS, _base_layout, _overlay_series_fig, _show)
 from src.web.ui.helpers import (_safe_val_at_best)
 from src.web.tabs.comparison._common import (_has)
 
+_RADAR_AXES = {"val_f1": "F1", "val_auc": "AUC", "val_qwk": "QWK", "val_acc": "Accuracy",
+               "val_prec": "Precision", "val_rec": "Recall"}
 
-def _radar_section(compare_dfs: list[tuple[str, pd.DataFrame]]) -> None:
+
+def _radar_section(series: list[Series], metric: MetricInfo) -> None:
+    """Radar of the validation metrics at each series' best epoch of the main metric
+    (the mean over seeds for a seed group). Axes are the metrics the runs logged."""
     st.markdown("#### Metric radar at the best epoch")
-    radar_metrics = ["val_f1", "train_f1", "val_acc", "val_prec", "val_rec"]
+    axes = [metric.column] + [c for c in _RADAR_AXES if c != metric.column
+                              and any(_has(d, c) for s in series for d in s.dfs)]
+    names = [_RADAR_AXES.get(a, a) for a in axes]
     radar_fig = go.Figure()
-    for i, (lbl, cdf) in enumerate(compare_dfs):
-        vals = [
-            float(v) if (v := _safe_val_at_best(cdf, "val_f1", m)) is not None else 0.0
-            for m in radar_metrics
-        ]
-        vals_closed = vals + [vals[0]]
+    for i, s in enumerate(series):
+        per_run = [[float(v) if (v := _safe_val_at_best(d, metric.column, m)) is not None
+                    else 0.0 for m in axes] for d in s.dfs]
+        vals = [sum(col) / len(col) for col in zip(*per_run)]
         radar_fig.add_trace(go.Scatterpolar(
-            r=vals_closed, theta=radar_metrics + [radar_metrics[0]],
-            fill="toself", name=lbl,
+            r=vals + [vals[0]], theta=names + [names[0]],
+            fill="toself", name=s.label,
             line={"color": COLORS[i % len(COLORS)]}, opacity=0.6,
         ))
     # Full-label legend below the radar: one row per run stays readable
     # even with 7-8 runs selected.
-    _n_radar = len(compare_dfs)
+    _n_radar = len(series)
     radar_fig.update_layout(
         polar={"radialaxis": {"visible": True, "range": [0, 1]}},
         showlegend=True, height=380 + 20 * _n_radar,
         legend={"orientation": "h", "yanchor": "top", "y": -0.08, "xanchor": "left", "x": 0},
         margin={"l": 60, "r": 60, "t": 40, "b": 40 + 20 * _n_radar},
-        title={"text": "Metrics at the best Val F1 epoch", "font": {"size": 13}},
+        title={"text": f"Metrics at the best Val {metric.name} epoch", "font": {"size": 13}},
     )
     _show(radar_fig, "radar_comparison")
 
@@ -95,22 +102,26 @@ def _energy_section(compare_dfs: list[tuple[str, pd.DataFrame]]) -> None:
 
 # ── Per-epoch overlays ──────────────────────────────────────────────────────────
 
-def _overlay_charts(compare_dfs: list[tuple[str, pd.DataFrame]]) -> None:
-    has_energy = any(_has(d, "energy_train_wh") or _has(d, "energy_eval_wh")
-                     for _, d in compare_dfs)
+def _overlay_charts(series: list[Series], metric: MetricInfo) -> None:
+    all_dfs = [d for s in series for d in s.dfs]
+    has_energy = any(_has(d, "energy_train_wh") or _has(d, "energy_eval_wh") for d in all_dfs)
     _energy_opts = (["energy_train_wh", "energy_eval_wh", "power_train_w"]
                     if has_energy else [])
-    # val_auc only exists in epoch CSVs written since the AUC is logged.
-    _auc_opts = ["val_auc"] if any(_has(d, "val_auc") for _, d in compare_dfs) else []
+    # The main metric leads; val_auc / val_qwk only exist in epoch CSVs written since they
+    # are logged, so they are offered only when some run has them.
+    options = ([metric.column]
+               + [c for c in ("val_loss", "val_f1", "train_f1", "train_loss", "val_prec",
+                              "val_rec", "val_auc", "val_qwk")
+                  if c != metric.column and any(_has(d, c) for d in all_dfs)]
+               + ["epoch_time"] + _energy_opts)
     metrics_to_compare = st.multiselect(
-        "Metrics to overlay",
-        ["val_f1", "val_loss", "train_f1", "train_loss", "val_prec", "val_rec"]
-        + _auc_opts + ["epoch_time"] + _energy_opts,
-        default=["val_f1", "val_loss"],
-    )
+        "Metrics to overlay", options,
+        default=[metric.column, "val_loss"] if "val_loss" in options else [metric.column])
+    if any(s.n > 1 for s in series):
+        st.caption("Seed groups are drawn as the per-epoch mean with a ±1 std band.")
     cols = st.columns(2)
     for idx, col_name in enumerate(metrics_to_compare):
-        fig = _overlay_fig(compare_dfs, col=col_name,
-                           title=col_name.replace("_", " "), y_label=col_name)
+        fig = _overlay_series_fig(series, col=col_name,
+                                  title=col_name.replace("_", " "), y_label=col_name)
         with cols[idx % 2]:
             _show(fig, f"compare_{col_name}")

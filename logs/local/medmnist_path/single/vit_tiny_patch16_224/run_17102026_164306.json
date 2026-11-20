@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "type": "run_manifest",
+  "source": "log",
+  "run_id": "17102026_164306",
+  "dataset": "medmnist_path",
+  "task": "multiclass",
+  "classes": [
+    "adipose",
+    "background",
+    "debris",
+    "lymphocytes",
+    "mucus",
+    "smooth muscle",
+    "normal colon mucosa",
+    "cancer-associated stroma",
+    "colorectal adenocarcinoma epithelium"
+  ],
+  "model": "vit_tiny_patch16_224",
+  "mode": "single",
+  "config": {
+    "data": {
+      "name": "medmnist_path"
+    },
+    "model": {
+      "name": "vit_tiny_patch16_224"
+    },
+    "training": {
+      "epochs": 5,
+      "lr": 0.0001,
+      "seed": 42,
+      "precision": "fp32",
+      "batch_size": 128,
+      "loss": "bce"
+    },
+    "output": {
+      "env": "local"
+    }
+  },
+  "epochs": 5,
+  "n_train": 89996,
+  "n_val": 10004,
+  "ordinal": false
+}

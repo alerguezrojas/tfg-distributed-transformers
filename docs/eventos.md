@@ -34,7 +34,7 @@ cambiar el significado de un campo sí.
 
 | `type` | Campos | Cuándo |
 |---|---|---|
-| `run_start` | `run_id` (el sello), `dataset`, `task` (`multilabel`/`binary`/`multiclass`), `classes`, `model`, `mode` (`single`/`ddp`/`ddp_hetero`/`model_parallel`, como la carpeta de `logs/`), `world_size`, `epochs` (planificadas), `select_metric` (`f1`/`f1_optimal`/`auc`), `config` (YAML completo), `env` (`host`, `python`, `torch`, `timm`, `git_commit` o `null`, `devices`) | Al empezar `fit()` |
+| `run_start` | `run_id` (el sello), `dataset`, `task` (`multilabel`/`binary`/`multiclass`), `classes`, `model`, `mode` (`single`/`ddp`/`ddp_hetero`/`model_parallel`, como la carpeta de `logs/`), `world_size`, `epochs` (planificadas), `ordinal` (clases ordenadas; solo si la ficha lo dice), `select_metric` (`f1`/`f1_optimal`/`auc`/`qwk`), `config` (YAML completo), `env` (`host`, `python`, `torch`, `timm`, `git_commit` o `null`, `devices`) | Al empezar `fit()` |
 | `epoch_start` | `epoch`, `epochs` | Al empezar cada época |
 | `batch` | `epoch` (la del bucle, como en `epoch_start`, también tras `--resume`), `batch`, `n_batches`, `metrics` (`batch_loss`, `running_loss`, `lr`, `batch_f1`, `batch_acc`…) | Cada `log_batch_every` batches, si está activo el monitor de batches |
 | `epoch_end` | `epoch`, `epochs`, `train` (métricas), `val` (`loss`, `f1`, `accuracy`, `precision`, `recall`, `auc` y, si la tarea busca umbral, `optimal_threshold` y `f1_at_optimal_threshold`), `epoch_time_s`, `best`, `is_best` | Al terminar cada época |
@@ -75,3 +75,38 @@ str|null}`. Códigos: `nan_loss` (el único `critical`), `loss_divergence`, `ove
 `gpu_temp_high`, `throughput_drop`. `group` es el nombre de la capa, `gpu<N>` o `train`/`val`;
 `value` es `null` si no es finito. Una alerta por (`code`, `group`). Los lectores antiguos la
 ignoran (tipo desconocido).
+
+## Manifiesto del run (`run_<DDMMYYYY_HHMMSS>.json`)
+
+El flujo de eventos pesa decenas de MB y el *pre-commit* rechaza ficheros de más de 2 MB, así que
+normalmente **no se sube al repositorio**. Para que la web sepa de qué va cada run aunque solo
+tenga el log, cada entrenamiento escribe también un **manifiesto**: un JSON pequeño (unos KB)
+junto al `train_*.log`, con el mismo sello. Lo escribe el mismo observador que los eventos
+(`JsonlEventSink`), **solo el rank 0**, al empezar `fit()` y de forma atómica (fichero temporal y
+renombrado); un error al escribirlo es un aviso, nunca detiene el entrenamiento. Se escribe en
+las mismas condiciones que los eventos (`--trace` distinto de `off`).
+
+| Campo | Significado |
+|---|---|
+| `v`, `type` | Versión del esquema (`1`) y `"run_manifest"` |
+| `source` | De dónde sale: `training` (lo escribió el propio run), `events` (reconstruido de `events_*.jsonl`) o `log` (de la línea `Configuración:` del log) |
+| `run_id`, `dataset`, `task`, `ordinal`, `classes`, `model`, `mode`, `world_size`, `select_metric`, `config`, `env`, `epochs` | Los mismos que en `run_start` |
+| `command` | Línea de comandos del entrenamiento (script y argumentos; solo si lo escribió el propio run) |
+| `n_train`, `n_val` | Tamaños de las particiones; solo en los reconstruidos del log, que es lo único que los registra |
+
+Un campo que el run no registró no aparece: no se inventa. La web lee los metadatos del run
+(dataset, tarea, métrica principal, pérdida, semilla, hospital, color, resolución) del manifiesto;
+si no lo hay, del `run_start` de los eventos; y si tampoco, de la línea `Configuración:` del log
+(semilla, pérdida, precisión, lote, lr, épocas y tamaños), completando con la carpeta
+(`env/[dataset/]modo/modelo`). Cada fuente solo rellena lo que le falta a la anterior.
+
+Para los runs anteriores al manifiesto:
+
+```bash
+python scripts/backfill_run_manifests.py                              # logs/ de este repo
+python scripts/backfill_run_manifests.py --events-from /otra/copia/logs   # con los eventos de otra copia
+```
+
+Por cada `train_*.log` sin manifiesto lo genera de sus eventos (completo) o, si no los hay, de la
+línea `Configuración:` y de la carpeta, más la tarea y las clases de la ficha del dataset si está
+registrado. `--force` sobrescribe y `--dry-run` solo cuenta.
