@@ -51,9 +51,6 @@ jobs:
 
   # Auditoría de dependencias con vulnerabilidades conocidas (base OSV/PyPI). Bloquea el PR.
   # Avisos aceptados (cada uno con su motivo; revisar al actualizar torch):
-  #   GHSA-rrmf-rvhw-rf47 (CVE-2025-3000, torch): corrupción de memoria en torch.jit.script;
-  #     el proyecto no usa torch.jit. Se corrige en torch 2.13: pendiente de validar en las GPU
-  #     (local y Verode) antes de subir torch.
   #   GHSA-xmj3-9gf7-h52w y PYSEC-2026-3447 (setuptools < 83/84, lo fija torch): fallos al
   #     instalar ruedas antiguas en Windows y al aplicar MANIFEST.in al construir paquetes; aquí
   #     no se construyen paquetes ni se instala en Windows.
@@ -73,5 +70,4 @@ jobs:
       - name: pip-audit
         run: >-
           uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip
-          --ignore-vuln GHSA-rrmf-rvhw-rf47 --ignore-vuln PYSEC-2025-194
           --ignore-vuln GHSA-xmj3-9gf7-h52w --ignore-vuln PYSEC-2026-3447
