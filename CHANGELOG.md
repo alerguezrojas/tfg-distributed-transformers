@@ -5,6 +5,36 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Incorporación de colaboradores: `CONTRIBUTING.md` (ramas protegidas, ramas largas `tfg/<nombre>`,
+  commits, definición de hecho, pre-commit, revisión y releases), `docs/primeros_pasos.md` (guía
+  paso a paso con un primer entrenamiento en BreastMNIST, mapa del código, protocolo de
+  comparación de modelos y licencias), plantillas de incidencias (fallo y propuesta; las
+  vulnerabilidades van al aviso privado) y sección «Colaborar» en el README. La plantilla de PR
+  añade tests, credenciales y licencias.
+- Entrenamiento en Kaggle (2 × T4): kernels en `kaggle/` para generar los mosaicos de PANDA desde
+  los datos de la competición y para entrenar con DDP y evaluar en test una lista de experimentos
+  (`timings.csv` para contrastar el predictor). La partición se comprueba por md5 contra la local.
+  `scripts/kaggle_push.sh` rellena el usuario de Kaggle al lanzar, para no publicarlo en el repo.
+- Backbones que no son de timm: `BackboneSpec` y registro por nombre (`src/models/backbones.py`),
+  adaptador genérico `hf:<repo>` de Hugging Face `transformers` (pooling `model.pooling`, media de
+  tokens por defecto) e I-JEPA ViT-H/14 (`ijepa_vith14_1k`, `ijepa_vith14_22k`, licencia CC BY-NC 4.0
+  con aviso al construirlo). Los nombres que no están en el registro siguen siendo timm, sin
+  cambios. `transformers` es opcional (`uv sync --extra hf`).
+- `model.freeze_backbone: true` (sonda lineal): solo se entrena la cabeza; el validador comprueba
+  también `model.pooling` y rechaza los backbones no timm con paralelismo de modelo.
+- Guía [docs/modelos/README.md](docs/modelos/README.md): cómo añadir un modelo, sonda lineal frente
+  a ajuste fino, protocolo de comparación y licencias. Un nombre mal escrito (ni timm ni registrado)
+  da un error que lista los backbones registrados. Probado con `transformers` 5.12 real (modelo
+  I-JEPA diminuto desde config; el test se salta si no está instalado).
+- Adaptador `hf:`: sin *pooler* ni `mask_token` entrenable (DDP fallaba por parámetros sin
+  gradiente), la media excluye `[CLS]` y *register tokens*, `eval.py` y el benchmark respetan
+  `model.pooling`, y Grad-CAM funciona con `freeze_backbone`. La línea `Configuración:` añade
+  `freeze_backbone=` y `backbone=`; la validación del predictor ignora las sondas lineales.
+
+### Corregido
+- Documentación desfasada: el recuento de pruebas del README y de la guía de uso (411 → más de 1.200),
+  el tiempo de la batería en `AGENTS.md` (~10 s → ~1,5 min) y la ruta de los logs en el mapa del código
+  (lleva el dataset).
 - La web conoce el dataset y la métrica de cada run. Cada entrenamiento escribe un manifiesto
   `run_<ts>.json` (lo de `run_start` más el comando; unos KB, se versiona) por el mismo observador
   que los eventos, y `scripts/backfill_run_manifests.py` lo genera para los runs viejos (de sus
@@ -22,8 +52,6 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - *Compare* agrupa los runs que solo difieren en la semilla: media ± desviación en la tabla y curvas
   con banda; trabaja con un dataset cada vez, hasta 12 runs, con columnas de semilla, hospital,
   color y resolución.
-
-### Corregido
 - «Fastest epoch» del Overview marcaba 0,0 min porque mezclaba datasets (MedMNIST tarda ~1,4 s por
   época): ahora es del dataset en curso y se muestra en segundos si dura menos de un minuto.
 - Los soportes por clase de BigEarthNet ya no se aplican a runs de otro dataset (Per-class) y la
@@ -31,6 +59,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   el QWK.
 
 ### Seguridad
+- torch 2.11 → 2.15 (torchvision 0.29, CUDA 13.2), que corrige CVE-2025-3000. Validado en la
+  RTX 3060 Ti local: suite completa en verde (golden incluido) y PANDA a 512 px con el mismo
+  tiempo por época (~82 s) y el mismo QWK que 2.11 dentro del ruido. Verode sigue con su torch
+  2.7.1+cu118 instalado aparte (ver `docs/infraestructura.md`). La auditoría ya no ignora el aviso.
 - Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,
   starlette, urllib3, jupyter-server, jupyterlab, mistune, filelock y otras; streamlit sube a
   1.67 porque lo exige pillow 13). torch se queda en 2.11 hasta validar 2.13 en las GPU.

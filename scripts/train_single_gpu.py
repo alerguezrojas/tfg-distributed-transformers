@@ -61,6 +61,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
 from src.training.losses import configured_loss_name
+from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
@@ -240,7 +241,7 @@ def main():
         f"Configuración: modelo={model_name} | batch={_bs}/GPU (global={_bs}) | "
         f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
         f"precision={_prec} | loss={_loss} | train={len(train_ds)} | val={len(val_ds)} | "
-        f"dataset={spec.name} | seed={seed}"
+        f"dataset={spec.name} | seed={seed} | {backbone_log_fields(cfg['model'], model_name)}"
     )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

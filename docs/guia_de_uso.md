@@ -451,7 +451,7 @@ experimentos del TFG es el siguiente.
 ## 9. Las pruebas
 
 ```bash
-uv run pytest            # 411 pruebas, también ejecutadas en CI en cada push
+uv run pytest            # más de 1.200 pruebas, también ejecutadas en CI en cada push
 ```
 
 ## 10. Solución de problemas

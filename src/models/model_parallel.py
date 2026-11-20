@@ -23,6 +23,7 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from src.models.backbones import resolve_backbone
 from src.models.vit import TimmClassifier
 
 
@@ -116,6 +117,9 @@ def build_model_parallel_vit(
     img_size: int | None = None,
 ) -> ModelParallelViT:
     """Build a ViT and wrap it for model parallelism across ``devices``."""
+    if resolve_backbone(model_name) is not None:
+        raise ValueError(f"model parallelism only splits timm ViT backbones, "
+                         f"not '{model_name}' (registered or hf: backbone)")
     base = TimmClassifier(
         model_name=model_name,
         num_classes=num_classes,

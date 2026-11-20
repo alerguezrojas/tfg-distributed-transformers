@@ -14,6 +14,7 @@ import math
 
 from src.data.registry import available_datasets, dataset_name_from_config, get_dataset_spec
 from src.data.spec import DatasetSpec
+from src.models.backbones import POOLINGS, resolve_backbone
 from src.training.checkpoints import KEEP_MODES
 
 
@@ -37,8 +38,10 @@ _TRAIN_NON_NEGATIVE  = ["label_smoothing", "mixup_alpha", "warmup_epochs",
                          "llrd_decay", "weight_decay"]
 
 
-def validate_config(cfg: dict) -> None:
-    """Validate a training config dict.  Raises ConfigError with a human-readable message."""
+def validate_config(cfg: dict, model_parallel: bool = False) -> None:
+    """Validate a training config dict.  Raises ConfigError with a human-readable message.
+
+    ``model_parallel``: the run splits the model across devices (timm ViTs only)."""
     errors: list[str] = []
 
     # Top-level sections
@@ -50,7 +53,7 @@ def validate_config(cfg: dict) -> None:
         _raise(errors)
 
     spec = _check_data(cfg, errors)
-    _check_model(cfg["model"], spec, errors)
+    _check_model(cfg["model"], spec, errors, model_parallel)
     _check_training(cfg["training"], spec, errors)
     _check_distributed(cfg.get("distributed", {}), errors)
     _check_monitor(cfg.get("monitor") or {}, errors)
@@ -80,7 +83,8 @@ def _check_data(cfg: dict, errors: list) -> DatasetSpec | None:
     return spec
 
 
-def _check_model(model: dict, spec: DatasetSpec | None, errors: list) -> None:
+def _check_model(model: dict, spec: DatasetSpec | None, errors: list,
+                 model_parallel: bool = False) -> None:
     for key in _MODEL_REQUIRED:
         if key not in model:
             errors.append(f"model.{key} is required")
@@ -99,6 +103,38 @@ def _check_model(model: dict, spec: DatasetSpec | None, errors: list) -> None:
         d = model["dropout"]
         if not isinstance(d, (int, float)) or not (0.0 <= float(d) < 1.0):
             errors.append(f"model.dropout must be in [0, 1), got {d!r}")
+    _check_backbone(model, spec, errors, model_parallel)
+
+
+def _check_backbone(model: dict, spec: DatasetSpec | None, errors: list,
+                    model_parallel: bool) -> None:
+    """model.name (timm / registered / hf:), model.pooling and model.freeze_backbone."""
+    if "pooling" in model and model["pooling"] not in POOLINGS:
+        errors.append(f"model.pooling must be one of {list(POOLINGS)}, got {model['pooling']!r}")
+    freeze = model.get("freeze_backbone", False)
+    if not isinstance(freeze, bool):
+        errors.append(f"model.freeze_backbone must be true or false, got {freeze!r}")
+    name = model.get("name")
+    if not isinstance(name, str):
+        return
+    try:
+        backbone = resolve_backbone(name)
+    except ValueError as exc:
+        errors.append(f"model.name: {exc}")
+        return
+    if backbone is None:
+        if "pooling" in model:
+            errors.append("model.pooling only applies to registered or 'hf:' backbones; "
+                          "timm models pool as they were defined")
+        if model_parallel and freeze is True:
+            errors.append("model.freeze_backbone is not supported with model parallelism")
+        return
+    if model_parallel:
+        errors.append(f"model.name {name!r} is not a timm ViT: model parallelism only splits "
+                      f"timm ViT/DeiT/Swin backbones")
+    if spec is not None and spec.in_channels != 3:
+        errors.append(f"model.name {name!r} expects 3-channel images but dataset {spec.name!r} "
+                      f"has {spec.in_channels}")
 
 
 def _check_training(train: dict, spec: DatasetSpec | None, errors: list) -> None:

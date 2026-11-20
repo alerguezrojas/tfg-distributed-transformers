@@ -29,6 +29,10 @@ dependencies = [
     "typer>=0.24.1",
 ]
 
+[project.optional-dependencies]
+# Backbones que no son de timm (p. ej. I-JEPA): src/models/backbones.py, docs/modelos/README.md
+hf = ["transformers>=4.47"]
+
 [dependency-groups]
 dev = [
     "ipykernel>=7.2.0",

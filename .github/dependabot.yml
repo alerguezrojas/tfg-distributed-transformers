@@ -13,6 +13,11 @@ updates:
     groups:
       python-deps:
         patterns: ["*"]
+    # torch y torchvision se suben a mano: hay que validar la rueda CUDA en las GPU (local y
+    # Verode, donde cu13 no funciona con su driver) y que el golden no cambia. Ver AGENTS.md.
+    ignore:
+      - dependency-name: "torch"
+      - dependency-name: "torchvision"
   - package-ecosystem: github-actions
     directory: /
     target-branch: develop
