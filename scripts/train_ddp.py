@@ -43,7 +43,7 @@ from src.data.registry import dataset_spec_from_config
 from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.config_overrides import add_common_overrides, apply_common_overrides
-from src.training.reproducibility import set_seed, make_generator, seed_worker
+from src.training.reproducibility import set_seed, make_generator, sampler_seed, seed_worker
 
 
 def parse_args():
@@ -147,6 +147,7 @@ def main():
     # drop_last=False on val preserves all validation samples for unbiased metrics.
     train_sampler = DistributedSampler(
         train_ds, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True,
+        seed=sampler_seed(seed),
     )
     val_sampler = DistributedSampler(
         val_ds, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False,

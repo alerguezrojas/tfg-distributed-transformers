@@ -57,9 +57,12 @@ def write_manifest(path: str | Path, manifest: Mapping) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
-                   encoding="utf-8")
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(json.dumps(manifest, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
+                       encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)        # only left behind if writing or renaming failed
     return path
 
 

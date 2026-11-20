@@ -159,3 +159,21 @@ def test_backfill_skips_existing_unless_forced_and_dry_run_writes_nothing(tmp_pa
     forced = backfill_script.backfill(logs, [other], force=True)
     assert len(forced["events"]) + len(forced["log"]) == 2
     assert read_manifest(d / "run_18112026_100000.json") is not None
+
+
+def test_sink_manifest_sanitises_values_like_the_events(tmp_path):
+    """A NaN or a date in the YAML must not lose the manifest (the run_start line survives it)."""
+    import datetime
+    mp = tmp_path / "run_t.json"
+    info = {"run_id": "t", "config": {"training": {"lr_min": float("nan")},
+                                      "when": datetime.date(2026, 11, 20)}}
+    sink = JsonlEventSink(tmp_path / "events_t.jsonl", run_info=info, heartbeat_s=0,
+                          manifest_path=mp)
+    sink.on_fit_start(2)
+    assert read_manifest(mp)["epochs"] == 2
+
+
+def test_failed_manifest_write_leaves_no_temp_file(tmp_path):
+    with pytest.raises(ValueError):
+        write_manifest(tmp_path / "run_t.json", {"v": 1, "x": float("nan")})
+    assert list(tmp_path.iterdir()) == []

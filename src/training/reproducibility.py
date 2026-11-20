@@ -48,3 +48,14 @@ def make_generator(seed: int) -> torch.Generator:
     g = torch.Generator()
     g.manual_seed(seed)
     return g
+
+
+def sampler_seed(seed: int | str | None) -> int:
+    """Seed of a distributed sampler: ``training.seed`` itself, **the same on every rank**.
+
+    ``DistributedSampler`` shuffles with ``seed + epoch`` and ignores the global RNG, so without
+    it every seed of a DDP run saw the data in the same order (seed 0) and repeated runs
+    differed only in initialisation and augmentation. It must not add the rank: the ranks
+    shuffle the same permutation and take disjoint slices of it. No seed keeps the old 0.
+    """
+    return int(seed) if seed is not None else 0

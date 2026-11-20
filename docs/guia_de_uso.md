@@ -135,7 +135,7 @@ Opciones principales:
 | `--model` | id de timm | Sustituye el modelo del config (`vit_tiny_patch16_224`, `resnet50`…) |
 | `--epochs` | entero | Sustituye el número de épocas; si queda `epochs <= warmup_epochs`, baja `warmup_epochs` a `epochs - 1` (mínimo 0) y avisa |
 | `--seed` | entero | Sustituye `training.seed` (repeticiones con distinta semilla) |
-| `--data-root` | ruta | Sustituye `data.root` (dónde está el dataset en esta máquina) |
+| `--data-root` | ruta | Sustituye `data.root` (dónde está el dataset en esta máquina). Solo esa clave: las rutas absolutas de `data.metadata` (BigEarthNet) o `data.splits`/`data.mosaics` (PANDA) se cambian en el YAML |
 | `--precision` | `fp32` · `tf32` · `amp` · `bf16` | fp32 usa núcleos CUDA; el resto, núcleos tensoriales |
 | `--trace` | `off` · `simple` · `deep` | Solo consola / registro a fichero / traza profunda por capas |
 | `--layers` | `plot,confusion,batch-monitor,hooks` | Decoradores de aspecto, combinables por comas |
