@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
 from src.training.losses import configured_loss_name
+from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
@@ -151,7 +152,8 @@ def main():
         f"devices={'+'.join(devices)} | split_block={args.split_block or 'auto'} | "
         f"batch={bs} (global) | epochs={cfg['training']['epochs']} | "
         f"lr={cfg['training']['lr']} | precision={_prec} | loss={_loss} | "
-        f"train={len(train_ds)} | val={len(val_ds)} | dataset={spec.name}"
+        f"train={len(train_ds)} | val={len(val_ds)} | dataset={spec.name} | "
+        f"{backbone_log_fields(cfg['model'], model_name)}"
     )
 
     trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])

@@ -261,6 +261,12 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
 - [ ] Una ficha por dataset en `docs/datasets/`.
 
+### Modelos no timm (JEPA)
+- [x] Registro de backbones (`BackboneSpec`), adaptador `hf:` de `transformers`, I-JEPA ViT-H/14 y
+      sonda lineal (`model.freeze_backbone`); guía en [modelos/README.md](modelos/README.md).
+- [ ] Entrenar y comparar JEPA frente a un ViT supervisado en PANDA (alumno nuevo; protocolo en la guía).
+- [ ] Normalización propia del backbone (hoy solo se avisa si difiere de ImageNet).
+
 ### Fase 4 — Instrumentación, observabilidad e inferencia
 - [x] Flujo de eventos `events_*.jsonl` (esquema v1 en [eventos.md](eventos.md)): inicio con
       configuración y huella del entorno, épocas, batches, parada temprana y fin (también si falla).

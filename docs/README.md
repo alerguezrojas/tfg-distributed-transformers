@@ -7,6 +7,7 @@
 | [performance_model.md](performance_model.md) | Derivación y validación del predictor analítico (tiempo, memoria, energía) |
 | [infraestructura.md](infraestructura.md) | Máquinas, clúster VERODE, lanzamiento por entorno, errores conocidos |
 | [datasets/](datasets/) | Una ficha por dataset soportado ([BigEarthNet-S2](datasets/bigearthnet.md), [MedMNIST](datasets/medmnist.md), [PANDA](datasets/panda.md)) |
+| [modelos/](modelos/README.md) | Cómo se elige y se añade un modelo: timm, registro propio (`BackboneSpec`), `hf:` (I-JEPA), sonda lineal frente a ajuste fino, protocolo de comparación y licencias |
 | [roadmap.md](roadmap.md) | Plan de trabajo posterior al TFG y su **estado actual** |
 | [flujo_ia.md](flujo_ia.md) | Cómo se trabaja con IA: agentes, skills, hooks, permisos y controles |
 | [SECURITY.md](../SECURITY.md) | Política de seguridad: cómo informar de una vulnerabilidad y reglas del proyecto (secretos, `torch.load`, datos médicos) |

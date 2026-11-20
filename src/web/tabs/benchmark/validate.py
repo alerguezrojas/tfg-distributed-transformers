@@ -22,6 +22,12 @@ def _short(lbl: str) -> str:
     return re.sub(r"^\d{2}/\d{2}/\d{4}\s+", "", lbl)
 
 
+def _is_linear_probe(r) -> bool:
+    """A frozen-backbone run (``freeze_backbone=true`` in its config line): its cost is not
+    the full fine-tuning the analytic predictor models, so it is left out of the comparison."""
+    return str(_run_config(str(r.log_path)).get("freeze_backbone", "")).lower() == "true"
+
+
 def _run_batch(r) -> int | None:
     """Per-GPU batch the run used (from its config line) — to match the benchmark
     row of the SAME batch (the benchmark is single-GPU, at that per-GPU batch)."""
@@ -300,7 +306,11 @@ def render_validate(_ctx) -> object:
         env = p.parent.parent.name if p.parent.parent else "?"
         parsed.append((env, m.get("model_name", "?"), m, df))
 
-    runs = _get_runs()
+    all_runs = _get_runs()
+    runs = [r for r in all_runs if not _is_linear_probe(r)]
+    if len(runs) < len(all_runs):
+        st.caption(f"{len(all_runs) - len(runs)} linear-probe run(s) (`freeze_backbone`) left out: "
+                   "the predictor models full fine-tuning.")
     labelled = {r.label: r for r in runs}
     feas_models = {mo for _, mo, _, _ in parsed}
     # Default prefers single-GPU runs (they get a full per-metric comparison) plus a

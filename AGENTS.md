@@ -33,7 +33,7 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | Ruta | Responsabilidad |
 |---|---|
 | `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`): BigEarthNet y MedMNIST |
-| `src/models/` | `TimmClassifier` (backbone timm + cabeza), optimizador LLRD, `ModelParallelViT` |
+| `src/models/` | `TimmClassifier` (backbone + cabeza), registro de backbones no timm (`backbones.py`: `BackboneSpec`, `hf:`; [guía](docs/modelos/README.md)), optimizador LLRD, `ModelParallelViT` |
 | `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, tareas (`tasks.py`), pérdidas, métricas |
 | `src/training/decorators/` | Decoradores GoF: controladores (`EpochController` → tracing/deep) y aspectos (plot, hooks, confusion, batch-monitor, reporters) |
 | `src/training/events.py` | Observadores del bucle (`TrainingListener`) y flujo de eventos `events_*.jsonl` ([esquema](docs/eventos.md)) |
@@ -58,7 +58,8 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 - **Nuevo comportamiento transversal = nuevo decorador**, no `if`s dentro de `Trainer`.
 - **El núcleo no asume un dataset.** Clases, canales y lector vienen de la `DatasetSpec`; lo que
   depende del tipo de problema (pérdida, sigmoide/softmax, métricas, umbral) vive en la `Task`.
-  Un dataset nuevo se añade sin tocar el entrenamiento ([guía](docs/datasets/README.md)).
+  Un dataset nuevo se añade sin tocar el entrenamiento ([guía](docs/datasets/README.md)); un
+  backbone no timm, igual, con un `BackboneSpec` ([guía](docs/modelos/README.md)).
 - **`tests/integration/test_behaviour_golden.py` fija números exactos** del entrenamiento. Si
   falla, el comportamiento ha cambiado: se investiga, no se reescriben los valores.
 - **El terminal hace, la web mira:** la web nunca entrena ni toca la GPU; lee `logs/`.
@@ -108,5 +109,5 @@ documentador, investigador, explorador); `CLAUDE.md` explica cuándo usar cada u
 
 Índice completo en [`docs/README.md`](docs/README.md). Lo más consultado:
 [arquitectura](docs/arquitectura.md) · [modelo de rendimiento](docs/performance_model.md) ·
-[infraestructura](docs/infraestructura.md) · [datasets](docs/datasets/README.md) · [roadmap](docs/roadmap.md) ·
+[infraestructura](docs/infraestructura.md) · [datasets](docs/datasets/README.md) · [modelos](docs/modelos/README.md) · [roadmap](docs/roadmap.md) ·
 [guía de uso](docs/guia_de_uso.md).

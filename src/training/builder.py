@@ -174,7 +174,7 @@ class TrainingSessionBuilder:
     def build(self) -> BaseTrainer:
         """Assemble and return the fully configured trainer stack."""
         from src.training.config_validator import validate_config
-        validate_config(self._cfg)
+        validate_config(self._cfg, model_parallel=self._model_parallel is not None)
 
         cfg = self._cfg
 
@@ -187,6 +187,7 @@ class TrainingSessionBuilder:
         # ── Model ────────────────────────────────────────────────────────────
         model_name = self._model_name or cfg["model"]["name"]
         dropout = cfg["model"].get("dropout", 0.1)
+        freeze_backbone = bool(cfg["model"].get("freeze_backbone", False))
         if self._model_parallel is not None:
             from src.models.model_parallel import build_model_parallel_vit
             mp_devices, mp_split = self._model_parallel
@@ -208,6 +209,8 @@ class TrainingSessionBuilder:
                 in_chans=spec.in_channels,
                 dropout=dropout,
                 img_size=cfg["model"].get("img_size"),
+                pooling=cfg["model"].get("pooling"),
+                freeze_backbone=freeze_backbone,
             )
 
         # ── Optimizer ────────────────────────────────────────────────────────
@@ -218,7 +221,15 @@ class TrainingSessionBuilder:
         weight_decay = cfg["training"].get("weight_decay", 0.05)
         llrd_decay = cfg["training"].get("llrd_decay", 0.0)
 
-        if llrd_decay > 0.0 and opt_model.is_vit:
+        if freeze_backbone:
+            # Linear probe: only the head has requires_grad; LLRD does not apply.
+            if llrd_decay > 0.0:
+                print("  [aviso] freeze_backbone: solo se entrena la cabeza, llrd_decay no se aplica.")
+            optimizer = torch.optim.AdamW(
+                [p for p in model.parameters() if p.requires_grad],
+                lr=lr_base, weight_decay=weight_decay
+            )
+        elif llrd_decay > 0.0 and opt_model.is_vit:
             optimizer = build_llrd_optimizer(opt_model, lr_base, weight_decay, llrd_decay)
         else:
             if llrd_decay > 0.0 and not opt_model.is_vit:
@@ -521,7 +532,7 @@ class TrainingSessionBuilder:
         """``mode/model`` for BigEarthNet (the historical layout every existing run
         uses) and ``dataset/mode/model`` for any other dataset, so runs of different
         datasets never share a folder."""
-        model_slug = model_name.replace("/", "_")
+        model_slug = model_name.replace("/", "_").replace(":", "_")
         if spec.name == DEFAULT_DATASET:
             return Path(mode) / model_slug
         return Path(spec.name) / mode / model_slug
