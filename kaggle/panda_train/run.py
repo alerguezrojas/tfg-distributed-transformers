@@ -45,6 +45,9 @@ BATCHES = {
         ("panda_ordinal_ddp_1024", "configs/train_panda_ordinal.yaml", res(1024)),
     ],
     # 20/11/2026 (2nd): seeds 43 and 44 of the base at 1024 (seed 42 gave 0.821 vs 0.794 +- 0.012).
+    # Relaunched after PR #216: the first launch ran with the DistributedSampler always on seed 0
+    # (same data order for every seed) and was stopped. The seed-42 run of "resolution" also used
+    # sampler seed 0, which is just one more data order.
     "seeds_1024": [
         ("panda_ddp_1024_s43", "configs/train_panda.yaml", res(1024, 43)),
         ("panda_ddp_1024_s44", "configs/train_panda.yaml", res(1024, 44)),
