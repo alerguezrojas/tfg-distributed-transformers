@@ -31,6 +31,24 @@ def atomic_save(state: dict, path: Path) -> None:
         raise
 
 
+_WRAPPER_PREFIX = "module."
+
+
+def unwrap_model(model: torch.nn.Module) -> torch.nn.Module:
+    """El modelo de verdad bajo ``DistributedDataParallel``/``DataParallel``: sus pesos se
+    guardan sin el prefijo ``module.`` y cargan igual en una o varias GPU."""
+    wrappers = (torch.nn.parallel.DistributedDataParallel, torch.nn.DataParallel)
+    return model.module if isinstance(model, wrappers) else model
+
+
+def strip_wrapper_prefix(state_dict: dict) -> dict:
+    """Quita ``module.`` de las claves si **todas** lo llevan: los checkpoints DDP anteriores
+    al arreglo guardaban el ``state_dict`` del envoltorio y no cargaban en un modelo suelto."""
+    if state_dict and all(k.startswith(_WRAPPER_PREFIX) for k in state_dict):
+        return {k[len(_WRAPPER_PREFIX):]: v for k, v in state_dict.items()}
+    return state_dict
+
+
 def _newest(files: list[Path]) -> Path:
     return max(files, key=lambda p: (p.stat().st_mtime, p.name))
 

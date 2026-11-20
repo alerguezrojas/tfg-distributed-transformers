@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from src.training.checkpoints import atomic_save, resolve_checkpoint
+from src.training.checkpoints import atomic_save, resolve_checkpoint, strip_wrapper_prefix
 from src.training.decorators import TracingDecorator
 from src.training.trainer import Trainer
 
@@ -228,3 +228,36 @@ def test_resolve_errors(tmp_path):
         resolve_checkpoint(tmp_path / "nope")
     with pytest.raises(FileNotFoundError):
         resolve_checkpoint(tmp_path)
+
+
+def _wrapped_trainer(path):
+    """DataParallel en CPU se comporta como DDP a efectos del state_dict (prefijo "module.")."""
+    model = nn.DataParallel(nn.Sequential(nn.Flatten(), nn.Linear(48, N_CLASSES)))
+    opt = torch.optim.AdamW(model.parameters(), lr=1e-2)
+    return Trainer(model, opt, None, torch.device("cpu"), checkpoint_dir=str(path))
+
+
+def test_wrapped_model_saves_plain_keys_that_load_without_wrapper(tmp_path):
+    """Un checkpoint DDP debe cargar en el modelo suelto de eval.py (run de Kaggle del 20/11)."""
+    _wrapped_trainer(tmp_path).save_checkpoint(1, {})
+    state = torch.load(tmp_path / "best.pt", weights_only=True)["model_state_dict"]
+    assert not any(k.startswith("module.") for k in state)
+    nn.Sequential(nn.Flatten(), nn.Linear(48, N_CLASSES)).load_state_dict(state)
+
+
+def test_old_prefixed_checkpoint_loads_in_both_directions(tmp_path):
+    old = _wrapped_trainer(tmp_path / "old")
+    atomic_save({"epoch": 2, "model_state_dict": old.model.state_dict(),    # with "module."
+                 "optimizer_state_dict": old.optimizer.state_dict()}, tmp_path / "old.pt")
+    state = torch.load(tmp_path / "old.pt", weights_only=True)["model_state_dict"]
+    plain = nn.Sequential(nn.Flatten(), nn.Linear(48, N_CLASSES))
+    plain.load_state_dict(strip_wrapper_prefix(state))                      # eval.py
+    _wrapped_trainer(tmp_path / "new").load_checkpoint(tmp_path / "old.pt")  # resume under DDP
+    _trainer(tmp_path / "single").load_checkpoint(tmp_path / "old.pt")      # resume on 1 GPU
+
+
+def test_strip_prefix_only_when_every_key_has_it():
+    mixed = {"module.a": 1, "b": 2}
+    assert strip_wrapper_prefix(mixed) is mixed
+    assert strip_wrapper_prefix({"module.a": 1, "module.b": 2}) == {"a": 1, "b": 2}
+    assert strip_wrapper_prefix({}) == {}

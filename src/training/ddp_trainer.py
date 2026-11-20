@@ -103,7 +103,7 @@ class DDPTrainer(Trainer):
         return {"loss": loss_t.item(), **self._evaluate(all_probs, all_labels)}
 
     def save_checkpoint(self, epoch: int, metrics: dict):
-        # Only rank 0 writes to disk; DDP.state_dict() delegates to module
+        # Only rank 0 writes to disk (Trainer saves the unwrapped module: no "module." prefix)
         if self.rank == 0:
             super().save_checkpoint(epoch, metrics)
 

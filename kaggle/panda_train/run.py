@@ -137,8 +137,8 @@ def main() -> None:
             writer = csv.DictWriter(f, fieldnames=list(timings[0]))
             writer.writeheader()
             writer.writerows(timings)
-        if (REPO / "logs").is_dir():
-            shutil.copytree(REPO / "logs", OUT / "logs", dirs_exist_ok=True)
+        if (REPO / "logs" / "kaggle").is_dir():   # only this run's logs, not the repo's history
+            shutil.copytree(REPO / "logs" / "kaggle", OUT / "logs" / "kaggle", dirs_exist_ok=True)
     print(open(OUT / "timings.csv").read(), flush=True)
 
 
