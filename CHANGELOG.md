@@ -5,10 +5,21 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [Unreleased]
 
 ### Añadido
+- Incorporación de colaboradores: `CONTRIBUTING.md` (ramas protegidas, ramas largas `tfg/<nombre>`,
+  commits, definición de hecho, pre-commit, revisión y releases), `docs/primeros_pasos.md` (guía
+  paso a paso con un primer entrenamiento en BreastMNIST, mapa del código, protocolo de
+  comparación de modelos y licencias), plantillas de incidencias (fallo y propuesta; las
+  vulnerabilidades van al aviso privado) y sección «Colaborar» en el README. La plantilla de PR
+  añade tests, credenciales y licencias.
 - Entrenamiento en Kaggle (2 × T4): kernels en `kaggle/` para generar los mosaicos de PANDA desde
   los datos de la competición y para entrenar con DDP y evaluar en test una lista de experimentos
   (`timings.csv` para contrastar el predictor). La partición se comprueba por md5 contra la local.
   `scripts/kaggle_push.sh` rellena el usuario de Kaggle al lanzar, para no publicarlo en el repo.
+
+### Corregido
+- Documentación desfasada: el recuento de pruebas del README y de la guía de uso (411 → más de 1.200),
+  el tiempo de la batería en `AGENTS.md` (~10 s → ~1,5 min) y la ruta de los logs en el mapa del código
+  (lleva el dataset).
 
 ### Seguridad
 - Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,

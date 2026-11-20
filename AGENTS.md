@@ -18,7 +18,7 @@ multi-dataset y mejora del predictor analítico con medidas de más máquinas.
 
 ```bash
 uv sync                                  # entorno (Python 3.12, gestionado con uv)
-uv run pytest -q                         # tests: solo CPU, sin GPU ni dataset (~10 s)
+uv run pytest -q                         # tests: solo CPU, sin GPU ni dataset (~1,5 min)
 uv run paravit.py --help                 # CLI: train | estimate | benchmark | eval | runs | dashboard | menu
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
 uv run paravit.py train --strategy single --config configs/train.yaml --dry-run   # ver el comando sin ejecutar
@@ -47,8 +47,9 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | `scripts/` | Puntos de entrada por estrategia (`train_single_gpu.py`, `train_ddp.py`, …) + `benchmark.py`, `eval.py` |
 | `kaggle/` | Kernels de Kaggle (2 × T4) para PANDA: mosaicos y entrenamientos con DDP; [guía](kaggle/README.md) |
 | `configs/` | YAML de entrenamiento (índice en `configs/README.md`) |
-| `logs/{env}/{mode}/{model}/` | Artefactos de cada run (se commitean); `checkpoints/` no |
+| `logs/{env}/[{dataset}/]{mode}/{model}/` | Artefactos de cada run (se commitean); `checkpoints/<env>/.../<sello>/{best,last}.pt` no |
 | `tests/unit`, `tests/integration` | pytest, todo en CPU |
+| `CONTRIBUTING.md`, `.github/` | Normas de trabajo, plantillas de PR e issues, CI, CodeQL, Dependabot |
 
 ## Invariantes de diseño (no romper)
 
@@ -109,4 +110,5 @@ documentador, investigador, explorador); `CLAUDE.md` explica cuándo usar cada u
 Índice completo en [`docs/README.md`](docs/README.md). Lo más consultado:
 [arquitectura](docs/arquitectura.md) · [modelo de rendimiento](docs/performance_model.md) ·
 [infraestructura](docs/infraestructura.md) · [datasets](docs/datasets/README.md) · [roadmap](docs/roadmap.md) ·
-[guía de uso](docs/guia_de_uso.md).
+[guía de uso](docs/guia_de_uso.md) · [primeros pasos](docs/primeros_pasos.md) (para quien se incorpora) ·
+[CONTRIBUTING](CONTRIBUTING.md).

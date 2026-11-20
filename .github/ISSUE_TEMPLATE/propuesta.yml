@@ -1,0 +1,28 @@
+name: Propuesta
+description: Una mejora, un dataset, un modelo o una línea de trabajo nueva
+labels: [enhancement]
+body:
+  - type: textarea
+    id: que
+    attributes:
+      label: Qué se propone
+    validations:
+      required: true
+  - type: textarea
+    id: por-que
+    attributes:
+      label: Por qué
+      description: Qué problema resuelve o qué pregunta permite contestar. Si tiene que ver con una fase del roadmap, enlácenla.
+    validations:
+      required: true
+  - type: textarea
+    id: como
+    attributes:
+      label: Cómo se comprobaría
+      description: Tests, medidas o experimentos (con qué semillas y qué métrica) que mostrarían que funciona.
+  - type: checkboxes
+    id: licencia
+    attributes:
+      label: Licencias
+      options:
+        - label: Si añade datos o pesos, he comprobado su licencia (de los pesos, no solo del código).

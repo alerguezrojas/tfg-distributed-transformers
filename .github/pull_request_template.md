@@ -10,8 +10,9 @@
 
 - [ ] `uv run pytest -q` en verde y `uv run ruff check src scripts tests` sin avisos
 - [ ] Los tests de caracterización (`test_behaviour_golden.py`) pasan sin cambiar valores, o el cambio está justificado aquí
-- [ ] Si arregla un fallo, hay un test que falla sin el arreglo
+- [ ] Tests para la lógica nueva; si arregla un fallo, hay un test que falla sin el arreglo
 - [ ] `CHANGELOG.md` actualizado ([Unreleased])
 - [ ] `docs/roadmap.md` actualizado (casillas y "Estado actual")
-- [ ] Documentación afectada al día (`AGENTS.md`, `docs/`)
+- [ ] Documentación afectada al día (`AGENTS.md`, `docs/`, fichas de dataset y de modelo)
+- [ ] Sin credenciales, datos médicos ni checkpoints en el diff (`SECURITY.md`); si añade datos o pesos, su licencia está anotada en la ficha
 - [ ] Sin `Co-Authored-By` ni "Generated with" en commits ni en este texto

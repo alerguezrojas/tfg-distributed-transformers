@@ -1,0 +1,32 @@
+name: Fallo
+description: Algo no funciona como debería
+labels: [bug]
+body:
+  - type: textarea
+    id: que-pasa
+    attributes:
+      label: Qué ocurre
+      description: Qué esperaban y qué ha pasado en su lugar.
+    validations:
+      required: true
+  - type: textarea
+    id: reproducir
+    attributes:
+      label: Cómo reproducirlo
+      description: Orden exacta y config usados (por ejemplo, `uv run paravit.py train --config ...`).
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: salida
+    attributes:
+      label: Salida o traza del error
+      description: Texto, no captura. No incluyan credenciales ni datos de pacientes.
+      render: text
+  - type: input
+    id: entorno
+    attributes:
+      label: Entorno
+      description: Sistema operativo, GPU y driver (o CPU), commit o versión.
+    validations:
+      required: true

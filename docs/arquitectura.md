@@ -485,6 +485,7 @@ checkpoints/
 ```
 
 - El builder lee `output.env` del config y deduce `mode`/`model` automáticamente.
+- Los datasets distintos de BigEarthNet añaden su nombre tras el entorno (`logs/local/medmnist_breast/single/{model}/`, y lo mismo en `checkpoints/`).
 - Los runs anteriores a mayo 2026 usan la estructura plana (`logs/{env}/`) — el dashboard los descubre igual vía `rglob`.
 - Los ficheros se nombran con formato **DDMMYYYY_HHMMSS**.
 - **Checkpoints:** `checkpoint.keep` (`best_last` por defecto, o `all` = un `checkpoint_epoch_NNN.pt` por época mejorada); escritura atómica (`src/training/checkpoints.py`); los runs anteriores a nov. 2026 tienen `checkpoint_epoch_*.pt` directamente en la carpeta del modelo y siguen siendo válidos.

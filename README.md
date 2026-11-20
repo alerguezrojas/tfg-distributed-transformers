@@ -55,7 +55,7 @@ Lab*); el antiguo comando `tfg` se conserva como alias retrocompatible.
 
 ## Calidad del código
 
-El proyecto se acompaña de una batería de **411 pruebas automáticas** ejecutadas en integración
+El proyecto se acompaña de una batería de **más de 1.200 pruebas automáticas** ejecutadas en integración
 continua y se analiza de forma continua en
 [SonarCloud](https://sonarcloud.io/summary/overall?id=alerguezrojas_tfg-distributed-transformers):
 calificación **A en mantenibilidad**, **A en fiabilidad** y **A en seguridad**, con un **0,0 % de
@@ -118,6 +118,13 @@ uv run paravit.py dashboard          # → http://localhost:8501
   y [roadmap](docs/roadmap.md) del trabajo posterior.
 - Versión entregada como TFG: etiqueta [`v1.0-tfg`](https://github.com/alerguezrojas/tfg-distributed-transformers/releases/tag/v1.0-tfg);
   cambios desde entonces en el [CHANGELOG](CHANGELOG.md).
+
+## Colaborar
+
+Para incorporarse al proyecto: [primeros pasos](docs/primeros_pasos.md) (instalación, un primer
+entrenamiento pequeño y cómo comparar modelos de forma justa) y [CONTRIBUTING.md](CONTRIBUTING.md)
+(ramas, commits, pull requests y revisión). Los fallos y las propuestas se abren como *issues*; las
+vulnerabilidades, por el aviso privado de [SECURITY.md](SECURITY.md).
 
 ## Diseño
 
