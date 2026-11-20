@@ -13,7 +13,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - `model.freeze_backbone: true` (sonda lineal): solo se entrena la cabeza; el validador comprueba
   también `model.pooling` y rechaza los backbones no timm con paralelismo de modelo.
 - Guía [docs/modelos/README.md](docs/modelos/README.md): cómo añadir un modelo, sonda lineal frente
-  a ajuste fino, protocolo de comparación y licencias.
+  a ajuste fino, protocolo de comparación y licencias. Un nombre mal escrito (ni timm ni registrado)
+  da un error que lista los backbones registrados. Probado con `transformers` 5.12 real (modelo
+  I-JEPA diminuto desde config; el test se salta si no está instalado).
 
 ### Seguridad
 - Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,

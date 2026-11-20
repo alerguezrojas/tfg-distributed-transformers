@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim
 
-from src.models.backbones import resolve_backbone
+from src.models.backbones import available_backbones, resolve_backbone
 
 DEFAULT_IMG_SIZE = 224
 
@@ -60,14 +60,16 @@ class TimmClassifier(nn.Module):
         if spec is not None:
             self.backbone = spec.build({"pretrained": pretrained, "in_chans": in_chans,
                                         "img_size": img_size, "pooling": spec.pooling})
-        elif img_size:
-            try:
-                self.backbone = timm.create_model(model_name, img_size=img_size, **kwargs)
-            except TypeError:
-                # CNN families take no img_size kwarg: they accept any input side.
-                self.backbone = timm.create_model(model_name, **kwargs)
         else:
-            self.backbone = timm.create_model(model_name, **kwargs)
+            try:
+                self.backbone = self._create_timm(model_name, img_size, kwargs)
+            except RuntimeError as exc:
+                if "Unknown model" not in str(exc):
+                    raise
+                # Not timm's either: a misspelt registered name must not fail silently.
+                raise ValueError(
+                    f"model.name {model_name!r} is not a timm model, a registered backbone "
+                    f"{available_backbones()} or an 'hf:<repo>' name") from exc
 
         embed_dim = self.backbone.num_features
 
@@ -80,6 +82,16 @@ class TimmClassifier(nn.Module):
             for p in self.backbone.parameters():
                 p.requires_grad = False
             self.backbone.eval()
+
+    @staticmethod
+    def _create_timm(model_name: str, img_size: int | None, kwargs: dict) -> nn.Module:
+        if not img_size:
+            return timm.create_model(model_name, **kwargs)
+        try:
+            return timm.create_model(model_name, img_size=img_size, **kwargs)
+        except TypeError:
+            # CNN families take no img_size kwarg: they accept any input side.
+            return timm.create_model(model_name, **kwargs)
 
     @staticmethod
     def _warn_about(spec) -> None:

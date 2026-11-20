@@ -133,9 +133,10 @@ class HFEncoder(nn.Module):
     def llrd_layout(self):
         """``(embedding params, [block params…], other params)`` as ``(name, param)`` lists."""
         embed = getattr(self.model, "embeddings", None)
-        layers = getattr(getattr(self.model, "encoder", None), "layer", None)
+        layers = _find_layers(self.model)
         if embed is None or layers is None:
-            raise ValueError("LLRD needs a model with 'embeddings' and 'encoder.layer'; "
+            raise ValueError("LLRD needs a model with 'embeddings' and a list of layers "
+                             "(encoder.layer / encoder.layers / layers); "
                              "set training.llrd_decay: 0.0 for this backbone")
 
         def named(module):   # lowercase: LLRD skips weight decay for names with 'norm'
@@ -146,8 +147,24 @@ class HFEncoder(nn.Module):
         return named(embed), [named(b) for b in layers], rest
 
 
-def build_hf_encoder(repo: str, cfg: dict) -> HFEncoder:
-    """Load ``repo`` with ``AutoModel`` (random weights from its config if not pretrained)."""
+def _find_layers(model: nn.Module):
+    """The transformer blocks of a ``transformers`` model: ``encoder.layer`` (BERT/ViT style,
+    transformers 4.x), ``encoder.layers`` or ``layers`` (I-JEPA in transformers 5.x)."""
+    holders = (getattr(model, "encoder", None), model)
+    for holder in holders:
+        for attr in ("layer", "layers"):
+            layers = getattr(holder, attr, None)
+            if isinstance(layers, nn.ModuleList):
+                return layers
+    return None
+
+
+def build_hf_encoder(repo: str, cfg: dict, config=None) -> HFEncoder:
+    """Load ``repo`` with ``AutoModel`` (random weights from its config if not pretrained).
+
+    ``config`` (a ``transformers`` config object) replaces the one downloaded from the hub
+    when ``pretrained`` is false: lets tests build a tiny model without network.
+    """
     if cfg.get("in_chans", 3) != 3:
         raise ValueError(f"'hf:{repo}' expects 3-channel images, the dataset has "
                          f"{cfg['in_chans']}; pick a 3-channel dataset or a timm model")
@@ -160,7 +177,8 @@ def build_hf_encoder(repo: str, cfg: dict) -> HFEncoder:
     if cfg.get("pretrained", True):
         model = AutoModel.from_pretrained(repo)
     else:
-        model = AutoModel.from_config(AutoConfig.from_pretrained(repo))
+        model = AutoModel.from_config(config if config is not None
+                                      else AutoConfig.from_pretrained(repo))
     return HFEncoder(model, pooling=cfg.get("pooling") or "mean")
 
 

@@ -17,7 +17,7 @@ sigue siendo timm, con el mismo código, los mismos pesos y el mismo comportamie
 | cualquier ID de timm | timm | el del modelo | la del modelo | ViT, DeiT, Swin, ResNet, ConvNeXt… |
 | `ijepa_vith14_1k` | `transformers` (`facebook/ijepa_vith14_1k`) | media de tokens | **CC BY-NC 4.0** | ViT-H/14, 224 px, ImageNet-1k |
 | `ijepa_vith14_22k` | `transformers` (`facebook/ijepa_vith14_22k`) | media de tokens | **CC BY-NC 4.0** | ViT-H/14, 224 px, ImageNet-22k |
-| `hf:<repo>` | `transformers` | media de tokens (`model.pooling` lo cambia) | la del repositorio | cualquier ViT con `embeddings` y `encoder.layer` |
+| `hf:<repo>` | `transformers` | media de tokens (`model.pooling` lo cambia) | la del repositorio | cualquier ViT con `embeddings` y una lista de bloques (`encoder.layer`, `encoder.layers` o `layers`) |
 
 ## Cómo se usa cada tipo
 

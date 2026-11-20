@@ -303,3 +303,8 @@ class TestValidator:
         from src.models.model_parallel import build_model_parallel_vit
         with pytest.raises(ValueError, match="only splits timm"):
             build_model_parallel_vit("hf:a/b", devices=["cpu", "cpu"])
+
+
+def test_misspelt_name_lists_registered_backbones():
+    with pytest.raises(ValueError, match=r"ijepa_vith14_1k.*ijepa_vith14_22k"):
+        TimmClassifier("ijepa_vith14_1", num_classes=2, pretrained=False)
