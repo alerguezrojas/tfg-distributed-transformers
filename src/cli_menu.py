@@ -157,6 +157,8 @@ def run_menu() -> None:
                 if strat == "single":
                     kw["precision"] = Prompt.ask("Precision",
                                                  choices=["fp32", "amp", "tf32", "bf16"], default="fp32")
+                kw["seed"] = _opt_int("Seed (blank = from config)")
+                kw["data_root"] = _opt("Dataset root (blank = from config)") or None
                 kw["layers"] = _csv(_opt("Layers (comma: plot,confusion,batch-monitor,hooks)"))
                 kw["fn"] = _csv(_opt("Fn decorators (comma: timing,energy)"))
                 if strat in ("ddp", "heterogeneous"):

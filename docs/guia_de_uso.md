@@ -133,7 +133,9 @@ Opciones principales:
 | `--strategy` | `single` · `ddp` · `model-parallel` · `heterogeneous` | Estrategia de distribución; las distribuidas se lanzan solas con `torchrun` |
 | `--config` | fichero YAML | Rutas, modelo, lote, épocas, regularización (sección 4) |
 | `--model` | id de timm | Sustituye el modelo del config (`vit_tiny_patch16_224`, `resnet50`…) |
-| `--epochs` | entero | Sustituye el número de épocas |
+| `--epochs` | entero | Sustituye el número de épocas; si queda `epochs <= warmup_epochs`, baja `warmup_epochs` a `epochs - 1` (mínimo 0) y avisa |
+| `--seed` | entero | Sustituye `training.seed` (repeticiones con distinta semilla) |
+| `--data-root` | ruta | Sustituye `data.root` (dónde está el dataset en esta máquina) |
 | `--precision` | `fp32` · `tf32` · `amp` · `bf16` | fp32 usa núcleos CUDA; el resto, núcleos tensoriales |
 | `--trace` | `off` · `simple` · `deep` | Solo consola / registro a fichero / traza profunda por capas |
 | `--layers` | `plot,confusion,batch-monitor,hooks` | Decoradores de aspecto, combinables por comas |

@@ -59,7 +59,8 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     precision: str | None = None, layers: list[str] | None = None,
                     fn: list[str] | None = None, n_gpus: int = 2, nnodes: int = 1,
                     node_rank: int = 0, master_addr: str = "localhost",
-                    master_port: int = 29500, monitor: bool = False) -> list[str]:
+                    master_port: int = 29500, monitor: bool = False,
+                    seed: int | None = None, data_root: str | None = None) -> list[str]:
     """Build the exact command for a training strategy.
 
     single / model-parallel run a plain script; ddp / heterogeneous run under
@@ -73,6 +74,10 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
         common += ["--model", model]
     if epochs:
         common += ["--epochs", str(epochs)]
+    if seed is not None:
+        common += ["--seed", str(seed)]
+    if data_root:
+        common += ["--data-root", data_root]
     common += ["--trace", trace]                      # every script accepts --trace
     if monitor:
         common += ["--monitor"]                       # every script accepts --monitor
@@ -203,6 +208,8 @@ def train(
     config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model, batch…)."),
     model: Optional[str] = typer.Option(None, help="Override the model (any timm ID)."),
     epochs: Optional[int] = typer.Option(None, help="Override the number of epochs."),
+    seed: Optional[int] = typer.Option(None, help="Override training.seed (repetitions)."),
+    data_root: Optional[str] = typer.Option(None, help="Override data.root (dataset location)."),
     trace: str = typer.Option("simple", help="off | simple | deep."),
     precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (single-GPU)."),
     layers: Optional[str] = typer.Option(None, help="Comma-separated: plot,confusion,batch-monitor,hooks."),
@@ -221,7 +228,8 @@ def train(
     cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
                           precision=precision, layers=_csv(layers), fn=_csv(fn), n_gpus=n_gpus,
                           nnodes=nnodes, node_rank=node_rank, master_addr=master_addr,
-                          master_port=master_port, monitor=monitor)
+                          master_port=master_port, monitor=monitor, seed=seed,
+                          data_root=data_root)
     _run(cmd, dry_run)
 
 
