@@ -61,6 +61,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   color y resolución.
 
 ### Corregido
+- **`--seed` en DDP cambia también el orden de los datos**: el `DistributedSampler` (y el del
+  heterogéneo) barajaba siempre con la semilla 0, así que las repeticiones con otra semilla solo
+  cambiaban la inicialización y los aumentos. Ahora usan `training.seed`, igual en todas las
+  ranks (`sampler_seed`). Afecta a la comparación entre semillas de los runs DDP anteriores.
+- El manifiesto `run_<ts>.json` sanea los valores como los eventos (un NaN o una fecha en el YAML
+  ya no impiden escribirlo) y no deja un `.tmp` en `logs/` si la escritura falla. La ayuda de
+  `--data-root` aclara que solo cambia `data.root`.
 - **Checkpoints DDP y de paralelismo de modelo cargables en `eval.py`**: `Trainer` guardaba el
   `state_dict` del envoltorio (prefijos `module.` de DDP y `base.` de `ModelParallelViT`), así que
   `scripts/eval.py` no cargaba esos checkpoints (falló en los tres runs de Kaggle del 20/11). Ahora

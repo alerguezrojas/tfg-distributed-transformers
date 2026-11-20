@@ -168,7 +168,8 @@ class JsonlEventSink(TrainingListener):
             return
         try:
             write_manifest(self._manifest_path, build_manifest(
-                {**self._run_info, "epochs": epochs}, command=self._command))
+                {k: _json_value(v) for k, v in {**self._run_info, "epochs": epochs}.items()},
+                command=self._command))
         except Exception as exc:  # noqa: BLE001
             warnings.warn(f"events: run manifest not written ({exc!r})", RuntimeWarning,
                           stacklevel=2)

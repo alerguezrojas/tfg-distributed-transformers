@@ -46,7 +46,7 @@ from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.config_overrides import add_common_overrides, apply_common_overrides
 from src.training.heterogeneous_sampler import HeterogeneousDistributedSampler
-from src.training.reproducibility import set_seed
+from src.training.reproducibility import sampler_seed, set_seed
 
 
 def parse_args():
@@ -155,7 +155,7 @@ def main():
 
     train_sampler = HeterogeneousDistributedSampler(
         train_ds, weights=compute_weights, rank=rank, world_size=world_size,
-        shuffle=True, drop_last=True,
+        shuffle=True, drop_last=True, seed=sampler_seed(seed),
     )
     val_sampler = DistributedSampler(
         val_ds, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False,

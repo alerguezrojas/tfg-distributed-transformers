@@ -74,3 +74,26 @@ class TestThresholdGrid:
     def test_grid_sorted_and_in_range(self):
         assert m.THRESHOLD_GRID == sorted(m.THRESHOLD_GRID)
         assert all(0.0 < t < 1.0 for t in m.THRESHOLD_GRID)
+
+
+class TestSamplerSeed:
+    """--seed must change the data order of a DDP run, identically on every rank."""
+
+    def _order(self, seed, rank=0, epoch=0):
+        from torch.utils.data.distributed import DistributedSampler
+        from src.training.reproducibility import sampler_seed
+        s = DistributedSampler(list(range(40)), num_replicas=2, rank=rank, shuffle=True,
+                               seed=sampler_seed(seed))
+        s.set_epoch(epoch)
+        return list(s)
+
+    def test_different_seeds_give_different_orders(self):
+        assert self._order(42) != self._order(43)
+
+    def test_ranks_take_disjoint_slices_of_the_same_permutation(self):
+        r0, r1 = self._order(43, rank=0), self._order(43, rank=1)
+        assert not set(r0) & set(r1) and len(set(r0) | set(r1)) == 40
+
+    def test_no_seed_keeps_the_old_behaviour(self):
+        from src.training.reproducibility import sampler_seed
+        assert sampler_seed(None) == 0 and sampler_seed("7") == 7
