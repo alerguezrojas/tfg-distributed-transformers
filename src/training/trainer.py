@@ -11,6 +11,8 @@ from torch.utils.data import DataLoader
 
 from src import precision as precision_mod
 from src.training.base_trainer import BaseTrainer
+from src.training.checkpoints import (BEST_NAME, DEFAULT_KEEP, LAST_NAME, atomic_save,
+                                      resolve_checkpoint, strip_wrapper_prefix, unwrap_model)
 from src.training import metrics as m
 from src.training.augmentations import mixup_batch
 from src.training.tasks import MultiLabelTask, Task
@@ -59,6 +61,7 @@ class Trainer(BaseTrainer):
         mixup_alpha: float = 0.0,
         precision: str = "fp32",
         task: Task | None = None,
+        checkpoint_keep: str = DEFAULT_KEEP,
     ):
         self.task: Task = task if task is not None else MultiLabelTask()
         self.model = self._place_model(model, device)
@@ -67,6 +70,11 @@ class Trainer(BaseTrainer):
         self.device = device
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.checkpoint_keep = checkpoint_keep   # 'best_last' | 'all' (checkpoint.keep)
+        # Épocas ya hechas por el run del que se reanuda: el 'epoch' del checkpoint es global
+        # (el bucle cuenta desde 1 en cada run) para que reanudaciones sucesivas encadenen.
+        self._epoch_offset: int = 0
+        self.resume_state: dict | None = None   # mejor métrica y paciencia del checkpoint
         self.criterion = criterion if criterion is not None else self.task.build_criterion()
         self.grad_clip = grad_clip
         self.label_smoothing = label_smoothing
@@ -242,29 +250,53 @@ class Trainer(BaseTrainer):
         return result
 
     def save_checkpoint(self, epoch: int, metrics: dict):
-        path = self.checkpoint_dir / f"checkpoint_epoch_{epoch:03d}.pt"
+        """Guarda el checkpoint de una época que mejora: ``best.pt`` (se sobrescribe) o,
+        con ``keep: all``, un ``checkpoint_epoch_NNN.pt`` por época mejorada."""
+        epoch += self._epoch_offset
+        name = f"checkpoint_epoch_{epoch:03d}.pt" if self.checkpoint_keep == "all" else BEST_NAME
+        atomic_save(self._checkpoint_state(epoch, metrics), self.checkpoint_dir / name)
+
+    def save_last_checkpoint(self, epoch: int, metrics: dict, extra: dict | None = None):
+        """Guarda ``last.pt`` (última época, para reanudar); con ``keep: all`` no hace nada.
+        ``extra`` (mejor métrica, épocas sin mejora) se guarda para restaurar el bucle."""
+        if self.checkpoint_keep == "all":
+            return
+        state = self._checkpoint_state(epoch + self._epoch_offset, metrics)
+        state.update(extra or {})
+        atomic_save(state, self.checkpoint_dir / LAST_NAME)
+
+    def _checkpoint_state(self, epoch: int, metrics: dict) -> dict:
         state = {
             "epoch": epoch,
-            "model_state_dict": self.model.state_dict(),
+            "model_state_dict": unwrap_model(self.model).state_dict(),   # sin "module." de DDP
             "optimizer_state_dict": self.optimizer.state_dict(),
             "metrics": {k: v for k, v in metrics.items() if not k.startswith("_")},
         }
         if self.scheduler is not None:
             state["scheduler_state_dict"] = self.scheduler.state_dict()
-        torch.save(state, path)
+        if self._scaler.is_enabled():   # AMP fp16: la escala de pérdida forma parte del estado
+            state["scaler_state_dict"] = self._scaler.state_dict()
+        return state
 
     def load_checkpoint(self, path: str | Path) -> dict:
         """Restore model, optimizer and scheduler from a checkpoint file.
 
         Returns the checkpoint dict (contains 'epoch' and 'metrics').
         """
-        ckpt = torch.load(path, map_location=self.device, weights_only=True)
-        self.model.load_state_dict(ckpt["model_state_dict"])
+        ckpt = torch.load(resolve_checkpoint(path, prefer="last"), map_location=self.device,
+                          weights_only=True)
+        unwrap_model(self.model).load_state_dict(strip_wrapper_prefix(ckpt["model_state_dict"]))
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in ckpt and self.scheduler is not None:
             self.scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+        if "scaler_state_dict" in ckpt and self._scaler.is_enabled():
+            self._scaler.load_state_dict(ckpt["scaler_state_dict"])
         resumed_epoch = ckpt.get("epoch", 0)
         self._current_epoch = resumed_epoch
+        self._epoch_offset = resumed_epoch
+        if "best_metric" in ckpt:   # solo last.pt: el bucle retoma el mejor valor y la paciencia
+            self.resume_state = {"best_metric": ckpt["best_metric"],
+                                 "epochs_no_improve": ckpt.get("epochs_no_improve", 0)}
         return ckpt
 
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):

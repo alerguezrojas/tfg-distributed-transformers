@@ -55,13 +55,20 @@ def _confusions_view(run) -> None:
     ep = st.selectbox("Epoch", epochs_cm, index=len(epochs_cm) - 1,
                       format_func=lambda e: f"Epoch {e}", key="cm_epoch_sel")
 
-    st.caption(
-        "Multi-label task: an image carries several of the 19 classes, so there is no "
-        "single 'predicted class' to confuse. This reads label **co-activation** — when "
-        "a class is truly present, which other labels the model also predicts. Some pairs "
-        "are genuine confusion, others natural co-occurrence (e.g. forest types share a "
-        "scene). Per-class recall lives in the **Per-class** tab."
-    )
+    if run.dataset == "bigearthnet":
+        st.caption(
+            "Multi-label task: an image carries several of the 19 classes, so there is no "
+            "single 'predicted class' to confuse. This reads label **co-activation** — when "
+            "a class is truly present, which other labels the model also predicts. Some pairs "
+            "are genuine confusion, others natural co-occurrence (e.g. forest types share a "
+            "scene). Per-class recall lives in the **Per-class** tab."
+        )
+    else:
+        st.caption(
+            "Row-normalised confusion: for each true class, the share of its validation "
+            "samples that the model assigns to every class. The diagonal is the recall of "
+            "the class; per-class recall lives in the **Per-class** tab."
+        )
 
     # ── Top label confusions (the off-diagonal of the co-activation matrix) ───────
     st.markdown("#### Top label confusions")
@@ -121,7 +128,8 @@ def _confusions_view(run) -> None:
         _dl_csv(top, f"top_confusions_ep{ep}.csv", "Download confusions table")
 
     # ── Full matrix (advanced) ────────────────────────────────────────────────────
-    with st.expander("Full 19×19 co-activation matrix (advanced)"):
+    n_cls = cm_df["true_class"].nunique()
+    with st.expander(f"Full {n_cls}×{n_cls} co-activation matrix (advanced)"):
         st.caption("Cell (row i, column j) = P(model predicts j | class i is truly "
                    "present). The diagonal is recall; bright off-diagonal cells are "
                    "the confusions above. Coloured borders group classes by ecosystem.")

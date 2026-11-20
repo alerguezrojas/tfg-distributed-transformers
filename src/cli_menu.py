@@ -84,7 +84,10 @@ def _list_configs() -> list[str]:
 
 def _list_checkpoints() -> list[str]:
     d = ROOT / "checkpoints"
-    return sorted(str(p.relative_to(ROOT)) for p in d.rglob("*.pt"))[:40] if d.exists() else []
+    if not d.exists():   # newest first; sees both best.pt/last.pt and old checkpoint_epoch_*.pt
+        return []
+    files = sorted(d.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [str(p.relative_to(ROOT)) for p in files[:40]]
 
 
 def _confirm_run(cmd: list[str]) -> None:
@@ -154,6 +157,8 @@ def run_menu() -> None:
                 if strat == "single":
                     kw["precision"] = Prompt.ask("Precision",
                                                  choices=["fp32", "amp", "tf32", "bf16"], default="fp32")
+                kw["seed"] = _opt_int("Seed (blank = from config)")
+                kw["data_root"] = _opt("Dataset root (blank = from config)") or None
                 kw["layers"] = _csv(_opt("Layers (comma: plot,confusion,batch-monitor,hooks)"))
                 kw["fn"] = _csv(_opt("Fn decorators (comma: timing,energy)"))
                 if strat in ("ddp", "heterogeneous"):

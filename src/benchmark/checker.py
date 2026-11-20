@@ -69,7 +69,8 @@ class BenchmarkChecker:
         model = build_model(model_name=self._model_name, pretrained=False,
                             num_classes=self._spec.num_classes,
                             in_chans=self._spec.in_channels,
-                            img_size=self._img_size)
+                            img_size=self._img_size,
+                            pooling=(self._config.get("model") or {}).get("pooling"))
 
         hw_probe = HardwareProbe()
         model_info = ModelAnalyzer(model, self._model_name, self._device).analyze()

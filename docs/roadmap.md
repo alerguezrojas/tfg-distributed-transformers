@@ -6,8 +6,32 @@
 
 ## Estado actual
 
-> Actualizado el 19/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 20/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
+
+**PANDA a 1.024 px en Kaggle (20/11/2026):** primera tanda en 2 × T4 con DDP (lote global 16,
+como en local). El control a 512 px da 0,801 en test, dentro de la variación de las tres semillas
+locales (0,794 ± 0,012): Kaggle y la máquina local son comparables. A 1.024 px la base da
+**0,821** (mejor run hasta ahora; sube en los dos hospitales y la sensibilidad de ISUP ≥ 2 pasa de
+0,76 a 0,86), pero la ordinal a 1.024 se queda en 0,806, igual que a 512. Con una semilla no se
+puede afirmar que la resolución mejore (frente al 512 de Kaggle, +0,021 [−0,005; +0,048]); **en
+curso**, las semillas 43 y 44 de la base a 1.024 px en Kaggle (~6 h; relanzadas tras el PR #216,
+porque en DDP `--seed` no cambiaba el orden de los datos). Cada run a 1.024 tarda
+~2,9 h. El predictor subestima el tiempo en T4 (−40 % a 512, −16 % a 1.024): las T4 trabajan
+limitadas por potencia (reloj mediano 960 MHz frente a 1.590). Tablas en
+[datasets/panda.md](datasets/panda.md#resolución-1024-px-en-kaggle-20112026) y
+[performance_model.md](performance_model.md). La evaluación en test falló en Kaggle porque los
+checkpoints DDP guardaban el prefijo `module.` (PR #214, corregido también para el paralelismo de
+modelo); los tres modelos se evaluaron después en la GPU local.
+
+**Web multi-dataset (20/11/2026):** el panel conoce el dataset y la métrica de cada run (QWK en
+PANDA, AUC en MedMNIST, F1 en BigEarthNet), con etiquetas que distinguen semilla, pérdida, hospital,
+color y resolución, paneles de dataset solo para el dataset en curso y *Compare* con agregación por
+semilla (media ± desviación y banda). Cada run escribe un manifiesto `run_<ts>.json` (se versiona,
+a diferencia de los eventos) y `scripts/backfill_run_manifests.py` lo genera para los viejos
+([esquema](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)). Los manifiestos de los runs
+anteriores están en `logs/`; los de PANDA salen de sus eventos y los demás, de la línea
+`Configuración:`.
 
 **Reunión con el tutor (20/10/2026):** se le presentaron la etiqueta `v1.0-tfg`, el diseño
 multi-dataset, MedMNIST y el trabajo con agentes de IA. **El tutor enviará el dataset médico
@@ -38,6 +62,18 @@ generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset d
 del repo, en la carpeta de reuniones del autor).
 
 **Hecho:**
+- **Versiones 1.1.0 y 1.2.0 en `main` (20/11/2026)**, con etiqueta y release. La 1.1.0 llevó
+  PANDA, la medición clínica, la inspección del entrenamiento y la seguridad del repositorio
+  (secret scanning, Dependabot, CodeQL, gitleaks, ramas protegidas). La 1.2.0 lleva las
+  dependencias sin vulnerabilidades y torch 2.15, los checkpoints por run (`best.pt`/`last.pt`,
+  escritura atómica; los DDP y de paralelismo de modelo ya cargan en `eval.py`), el registro de
+  backbones no timm (`hf:`, I-JEPA, sonda lineal), la guía para colaboradores, la web
+  multi-dataset, `--seed`/`--data-root` en todos los scripts y los kernels de Kaggle con los
+  primeros runs de PANDA a 1.024 px.
+- **El Inspector lee las predicciones de test (20/11/2026):** `eval --save-predictions` sin ruta
+  guarda `test_preds_<ts>.npz` en la carpeta de logs del run (sello deducido del checkpoint) y la
+  web ofrece la fuente «Test (eval)» en Curves, Clinical (con cortes «grado ≥ k»), Calibration y
+  Subgroups. Solo se abren ficheros de `logs/`.
 - **PANDA, mejoras y generalización (18-19/11/2026, PRs #186-#189):**
   - **Con tres semillas, ni la pérdida ordinal `ce_emd` ni los aumentos de color mejoran el QWK
     de forma clara a 512 px.** Base 0,794 ± 0,012 y ordinal 0,802 ± 0,009 en test (ordinal −
@@ -104,26 +140,25 @@ del repo, en la carpeta de reuniones del autor).
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** versión 1.1.0 (20/11/2026): todo lo anterior pasa de `develop` a `main`.
+**En curso:** semillas 43 y 44 de PANDA base a 1.024 px en Kaggle (lote `seeds_1024` de
+`kaggle/panda_train/run.py`). Al terminar: descargar la salida, evaluar si hiciera falta
+(`results/<nombre>/test_preds.npz`), comparar con las tres semillas a 512 y documentarlo.
 
-**Siguiente paso recomendado:** según lo que se decida en la reunión del 20/11. Por orden:
-(1) **más resolución** o más tiles (es lo que más puede mejorar: los ganadores usaban 4-9 veces
-más píxeles por biopsia). El predictor estima que a 1.024 px ViT-S con lote 16 necesita 8,7 GB y
-no cabe en la RTX 3060 Ti; hace falta otra máquina o DDP. Además, a 512 px predijo 101 s por época
-frente a 82 s medidos: es una medida para validar el predictor fuera de BigEarthNet.
+**Siguiente paso recomendado:** (1) **cerrar la pregunta de la resolución** con las tres semillas
+a 1.024 px. Si mejora, rehacer a 1.024 la prueba entre hospitales y probar más tiles por biopsia;
+si no, el límite no está en los píxeles y toca MIL o limpiar etiquetas ruidosas.
 (2) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro centro y medir cuántas
 hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
-(Macenko). (3) Grad-CAM frente a las máscaras de PANDA. Toda comparación, con 3 semillas. Técnicos: aumentos de color en GPU, que cada run guarde solo el mejor checkpoint
-y el último en una carpeta propia con fecha (hoy van todos a la misma y la cola los mueve a mano),
-el aviso de array NumPy no escribible en `src/data/panda.py` y que el validador exige
-`epochs > warmup_epochs`. Pendientes de la fase 4: `paravit predict`/`explain` con la prueba de
-cordura de Grad-CAM y la agregación por semilla en *Compare*.
+(Macenko). (3) Grad-CAM frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 a alta
+resolución (limitación por potencia, lotes pequeños por GPU). Toda comparación, con 3 semillas.
+Técnicos: aumentos de color en GPU, el aviso de array NumPy no escribible en `src/data/panda.py`,
+Grad-CAM del monitor sin memoria a 1.024 px en la T4 (aviso, no detiene el run). Pendientes de la
+fase 4: `paravit predict`/`explain` con la prueba de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
 - Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
   [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
 - Pedir la preparación y los resultados del TFG previo que usó PANDA (referencia para compararse).
-- Máquina para entrenar PANDA a más resolución (Verode o las máquinas nuevas).
 - Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
@@ -213,6 +248,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Ramas locales mergeadas eliminadas; borrado automático de ramas al mergear activado en GitHub.
 - [x] Ramas remotas ya mergeadas eliminadas (solo quedan `main` y `develop`).
 - [x] `AGENTS.md` + `CLAUDE.md` mínimo + `CHANGELOG.md`; el antiguo `CLAUDE.md` repartido en `docs/`.
+- [x] Checkpoints por run (20/11/2026): carpeta con sello de tiempo, `best.pt` + `last.pt` (`checkpoint.keep`), escritura atómica.
 - [ ] (Opcional) Integración con Zenodo para tener un DOI de cada release.
 - [x] Seguridad del repo: `SECURITY.md`, Dependabot, CodeQL, auditoría de dependencias en CI y gitleaks en pre-commit (PR pendiente de merge: el lock tiene ~250 avisos en dependencias, a resolver con Dependabot).
 
@@ -256,6 +292,12 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
 - [ ] Una ficha por dataset en `docs/datasets/`.
 
+### Modelos no timm (JEPA)
+- [x] Registro de backbones (`BackboneSpec`), adaptador `hf:` de `transformers`, I-JEPA ViT-H/14 y
+      sonda lineal (`model.freeze_backbone`); guía en [modelos/README.md](modelos/README.md).
+- [ ] Entrenar y comparar JEPA frente a un ViT supervisado en PANDA (alumno nuevo; protocolo en la guía).
+- [ ] Normalización propia del backbone (hoy solo se avisa si difiere de ImageNet).
+
 ### Fase 4 — Instrumentación, observabilidad e inferencia
 - [x] Flujo de eventos `events_*.jsonl` (esquema v1 en [eventos.md](eventos.md)): inicio con
       configuración y huella del entorno, épocas, batches, parada temprana y fin (también si falla).
@@ -272,7 +314,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
       `inspect_<ts>/`); la web los muestra en la página *Inspector*.
 - [x] Predicciones por muestra en test (`eval.py --save-predictions`) con métricas por grupo y
       cortes clínicos; calibración, curvas ROC/PR y peores errores ya los da el Inspector.
-- [ ] Que la web lea las predicciones de test (`test_preds.npz`) además del panel de validación.
+- [x] Que la web lea las predicciones de test (`test_preds_<ts>.npz`) además del panel de validación:
+      selector «Validation / Test» en el Inspector (Curves, Clinical con cortes «grado ≥ k»,
+      Calibration y Subgroups).
 - [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.
 - [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
 - Segunda ola, según el [inventario del sector](research/inventario_herramientas_observabilidad.md)
@@ -290,7 +334,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [ ] Prueba de cordura de Grad-CAM (aleatorizar pesos, Adebayo et al. 2018).
   - [x] Informe exportable de un run (HTML) con la lista TRIPOD+AI: `paravit report`;
         falta CLAIM y los subgrupos (dependen de los metadatos del dataset del tutor).
-  - [ ] Agregación por semilla en la comparación de runs (media y banda).
+  - [x] Agregación por semilla en la comparación de runs (media y banda): *Compare* agrupa los
+        runs que solo difieren en la semilla (`src/web/seed_agg.py`).
   - [ ] Métricas por *rank* en DDP (rezagados; cómputo frente a comunicación).
   - [ ] Duplicados y fuga entre particiones (hash/embeddings; por paciente).
   - [ ] Perfil puntual con `torch.profiler` (traza Perfetto) y exportador opcional a TensorBoard.

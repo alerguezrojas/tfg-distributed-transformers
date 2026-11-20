@@ -204,6 +204,45 @@ color son `train_panda_{radboud,karolinska}.yaml` con `loss: ce_emd` o `data.col
 - Consecuencia para un dataset clínico nuevo: no basta con el modelo entrenado en PANDA; hay que
   ajustarlo con datos del hospital y medirlo por separado en ellos.
 
+## Resolución 1024 px en Kaggle (20/11/2026)
+
+**Pregunta:** ¿el límite a 512 px está en la entrada? Los mosaicos se generan a 1024 px y se
+reducían a la mitad. A 1024 px ViT-S/16 ve 4096 *tokens* por biopsia y no cabe en la RTX 3060 Ti
+con lote 16, así que se entrena en Kaggle (2 × T4, DDP, 8 por GPU = lote global 16, `amp`,
+`--monitor`) con los kernels de [`kaggle/`](../../kaggle/README.md). Los mosaicos se regeneran en
+Kaggle con la misma receta, y el kernel comprueba que el md5 de `splits.csv` coincide con el
+local: misma partición. La evaluación en test se hizo en la GPU local con el `best.pt` de cada run
+(en Kaggle falló por el prefijo `module.` de los checkpoints DDP, corregido en el PR #214).
+
+| Run (`logs/kaggle/panda/ddp/`) | Variante | Mejor val | QWK test | Exact. | ±1 grado | Karolinska | Radboud | ISUP ≥ 1 sens. / espec. / AUC | ISUP ≥ 2 sens. / espec. / AUC | min/época |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `20112026_163243` | Base, 512 px (control) | 0,805 | 0,801 | 0,636 | 0,886 | 0,755 | 0,786 | 0,895 / 0,836 / 0,942 | 0,761 / 0,944 / 0,926 | 2,4 |
+| `20112026_171003` | Base, 1024 px | 0,803 | **0,821** | 0,667 | 0,896 | 0,762 | 0,821 | 0,925 / 0,834 / 0,956 | 0,856 / 0,885 / 0,936 | 11,0 |
+| `20112026_200237` | Ordinal, 1024 px | 0,813 | 0,806 | 0,662 | 0,894 | 0,745 | 0,806 | 0,940 / 0,776 / 0,958 | 0,831 / 0,910 / 0,936 | 11,0 |
+
+Semilla 42 en los tres. *Bootstrap* emparejado del test (2000 remuestreos):
+
+- Control: Kaggle 512 − local 512 (semilla 42) = +0,019 [−0,005; +0,044]. El 0,801 cae dentro de
+  las tres semillas locales (0,794 ± 0,012), así que **los runs de Kaggle se pueden comparar con
+  los locales**.
+- Base 1024 − base 512 (Kaggle) = +0,021 [−0,005; +0,048]. Frente a la media local, +0,027 (más de
+  dos desviaciones entre semillas). Es prometedor, pero **con una semilla no basta** (la ordinal a
+  512 enseñó que una semilla engaña).
+- Ordinal 1024 − ordinal 512 (local, semilla 42) = −0,001 [−0,029; +0,027]: a 1024 la ordinal no
+  gana nada.
+- Por hospital, la base a 1024 sube sobre todo en Radboud (0,786 → 0,821), que tiene los grados
+  altos, y la sensibilidad de ISUP ≥ 2 pasa de 0,76 a 0,86 con menos especificidad (0,94 → 0,89).
+- El mejor valor de validación no ordena bien el test: la ordinal a 1024 es la mejor en
+  validación (0,813) y la peor de las dos a 1024 en test.
+
+Coste: a 1024 px cada época tarda ~11 min y un run de 15 épocas, ~2,9 h (frente a 37 min a 512).
+La GPU 0 llega al 98 % de memoria, porque el Grad-CAM del monitor se queda sin memoria: es solo un
+aviso, el run sigue y se guardan las predicciones. **En curso:** semillas 43 y 44 de la base a
+1024 px (lote `seeds_1024` del kernel), relanzadas tras el PR #216. Hasta ese arreglo,
+`DistributedSampler` barajaba siempre con la semilla 0, así que en DDP las semillas solo cambiaban
+la inicialización y los aumentos, no el orden de los datos. Los runs a 512 px de una GPU no se
+ven afectados.
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen

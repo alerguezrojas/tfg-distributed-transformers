@@ -52,14 +52,14 @@ def monitor_config(cfg: dict) -> dict:
 def forward_module(model: nn.Module) -> nn.Module:
     """The callable to run inference with: DDP is unwrapped (a DDP forward on rank 0
     alone could issue collectives); a pipeline wrapper is kept (it places tensors)."""
-    from torch.nn.parallel import DistributedDataParallel
-    return model.module if isinstance(model, DistributedDataParallel) else model
+    from src.training.checkpoints import unwrap_ddp
+    return unwrap_ddp(model)
 
 
 def core_classifier(model: nn.Module) -> nn.Module:
     """The TimmClassifier inside DDP / ModelParallelViT wrappers (for hooks)."""
-    model = forward_module(model)
-    return getattr(model, "base", model)
+    from src.training.checkpoints import unwrap_model
+    return unwrap_model(model)
 
 
 def last_linear(model: nn.Module) -> nn.Linear | None:
@@ -108,9 +108,20 @@ def grad_cam(model: nn.Module, core: nn.Module, images: torch.Tensor,
     module, kind, n_prefix = target
     captured: list[torch.Tensor] = []
 
+    frozen = not any(p.requires_grad for p in core.backbone.parameters())
+
     def keep(_m, _inp, out):
-        if isinstance(out, torch.Tensor):
+        if not isinstance(out, torch.Tensor):
+            return None
+        if not frozen or captured:
             captured.append(out)
+            return None
+        # Linear probe: nothing upstream needs grad, so the FIRST hooked activation becomes a
+        # leaf that requires it (later ones then get a graph); the clone is what continues,
+        # since in-place ReLUs may not touch a leaf.
+        leaf = out.detach().requires_grad_()
+        captured.append(leaf)
+        return leaf.clone()
 
     modules = module if isinstance(module, list) else [module]
     handles = [m.register_forward_hook(keep) for m in modules]

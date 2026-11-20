@@ -18,7 +18,7 @@ multi-dataset y mejora del predictor analítico con medidas de más máquinas.
 
 ```bash
 uv sync                                  # entorno (Python 3.12, gestionado con uv)
-uv run pytest -q                         # tests: solo CPU, sin GPU ni dataset (~10 s)
+uv run pytest -q                         # tests: solo CPU, sin GPU ni dataset (~1,5 min)
 uv run paravit.py --help                 # CLI: train | estimate | benchmark | eval | runs | dashboard | menu
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
 uv run paravit.py train --strategy single --config configs/train.yaml --dry-run   # ver el comando sin ejecutar
@@ -33,10 +33,11 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | Ruta | Responsabilidad |
 |---|---|
 | `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`): BigEarthNet y MedMNIST |
-| `src/models/` | `TimmClassifier` (backbone timm + cabeza), optimizador LLRD, `ModelParallelViT` |
+| `src/models/` | `TimmClassifier` (backbone + cabeza), registro de backbones no timm (`backbones.py`: `BackboneSpec`, `hf:`; [guía](docs/modelos/README.md)), optimizador LLRD, `ModelParallelViT` |
 | `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, tareas (`tasks.py`), pérdidas, métricas |
 | `src/training/decorators/` | Decoradores GoF: controladores (`EpochController` → tracing/deep) y aspectos (plot, hooks, confusion, batch-monitor, reporters) |
 | `src/training/events.py` | Observadores del bucle (`TrainingListener`) y flujo de eventos `events_*.jsonl` ([esquema](docs/eventos.md)) |
+| `src/training/checkpoints.py` | Política de checkpoints: carpeta por run, `best.pt`/`last.pt` (`checkpoint.keep`), escritura atómica y `resolve_checkpoint` |
 | `src/training/fn_decorators.py` | Decoradores `@` de Python: `timed`, `measure_energy`, `retry_on_cuda_oom` |
 | `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md) |
 | `src/analysis/` | Análisis puro (NumPy) de los datos de inspección: curvas, calibración, umbrales, confusión, dinámica, proyección; lo usa la web |
@@ -44,9 +45,11 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | `src/cli.py`, `src/cli_menu.py` | CLI Typer y menú interactivo; lanzadores `paravit.py` / `tfg.py` (alias) |
 | `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV |
 | `scripts/` | Puntos de entrada por estrategia (`train_single_gpu.py`, `train_ddp.py`, …) + `benchmark.py`, `eval.py` |
+| `kaggle/` | Kernels de Kaggle (2 × T4) para PANDA: mosaicos y entrenamientos con DDP; [guía](kaggle/README.md) |
 | `configs/` | YAML de entrenamiento (índice en `configs/README.md`) |
-| `logs/{env}/{mode}/{model}/` | Artefactos de cada run (se commitean); `checkpoints/` no |
+| `logs/{env}/[{dataset}/]{mode}/{model}/` | Artefactos de cada run (se commitean); `checkpoints/<env>/.../<sello>/{best,last}.pt` no |
 | `tests/unit`, `tests/integration` | pytest, todo en CPU |
+| `CONTRIBUTING.md`, `.github/` | Normas de trabajo, plantillas de PR e issues, CI, CodeQL, Dependabot |
 
 ## Invariantes de diseño (no romper)
 
@@ -56,7 +59,8 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 - **Nuevo comportamiento transversal = nuevo decorador**, no `if`s dentro de `Trainer`.
 - **El núcleo no asume un dataset.** Clases, canales y lector vienen de la `DatasetSpec`; lo que
   depende del tipo de problema (pérdida, sigmoide/softmax, métricas, umbral) vive en la `Task`.
-  Un dataset nuevo se añade sin tocar el entrenamiento ([guía](docs/datasets/README.md)).
+  Un dataset nuevo se añade sin tocar el entrenamiento ([guía](docs/datasets/README.md)); un
+  backbone no timm, igual, con un `BackboneSpec` ([guía](docs/modelos/README.md)).
 - **`tests/integration/test_behaviour_golden.py` fija números exactos** del entrenamiento. Si
   falla, el comportamiento ha cambiado: se investiga, no se reescriben los valores.
 - **El terminal hace, la web mira:** la web nunca entrena ni toca la GPU; lee `logs/`.
@@ -106,5 +110,6 @@ documentador, investigador, explorador); `CLAUDE.md` explica cuándo usar cada u
 
 Índice completo en [`docs/README.md`](docs/README.md). Lo más consultado:
 [arquitectura](docs/arquitectura.md) · [modelo de rendimiento](docs/performance_model.md) ·
-[infraestructura](docs/infraestructura.md) · [datasets](docs/datasets/README.md) · [roadmap](docs/roadmap.md) ·
-[guía de uso](docs/guia_de_uso.md).
+[infraestructura](docs/infraestructura.md) · [datasets](docs/datasets/README.md) · [modelos](docs/modelos/README.md) · [roadmap](docs/roadmap.md) ·
+[guía de uso](docs/guia_de_uso.md) · [primeros pasos](docs/primeros_pasos.md) (para quien se incorpora) ·
+[CONTRIBUTING](CONTRIBUTING.md).

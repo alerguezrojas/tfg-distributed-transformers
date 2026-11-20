@@ -42,9 +42,11 @@ from torch.utils.data import DataLoader, DistributedSampler
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
+from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
+from src.training.config_overrides import add_common_overrides, apply_common_overrides
 from src.training.heterogeneous_sampler import HeterogeneousDistributedSampler
-from src.training.reproducibility import set_seed
+from src.training.reproducibility import sampler_seed, set_seed
 
 
 def parse_args():
@@ -57,6 +59,7 @@ def parse_args():
     parser.add_argument("--config", type=str,
                         default="configs/train_heterogeneous_ddp.yaml")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
+    add_common_overrides(parser)
     parser.add_argument("--model", type=str, help="Override nombre del modelo")
     parser.add_argument(
         "--trace", choices=["off", "simple", "deep"], default="simple",
@@ -107,8 +110,7 @@ def main():
     else:
         device = torch.device("cpu")
 
-    if args.epochs:
-        cfg["training"]["epochs"] = args.epochs
+    apply_common_overrides(cfg, args)
 
     # Reproducibility: seed each rank with a rank offset (deterministic per-rank).
     seed = cfg["training"].get("seed")
@@ -153,7 +155,7 @@ def main():
 
     train_sampler = HeterogeneousDistributedSampler(
         train_ds, weights=compute_weights, rank=rank, world_size=world_size,
-        shuffle=True, drop_last=True,
+        shuffle=True, drop_last=True, seed=sampler_seed(seed),
     )
     val_sampler = DistributedSampler(
         val_ds, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False,
@@ -220,7 +222,8 @@ def main():
             f"reparto=GPU {_n_gpu/_n_tot*100:.0f}% (~{_n_gpu} img) / "
             f"CPU {_n_cpu/_n_tot*100:.0f}% (~{_n_cpu} img) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-            f"train={_n_tot} | val={len(val_ds)} | dataset={spec.name}"
+            f"train={_n_tot} | val={len(val_ds)} | dataset={spec.name} | "
+            f"{backbone_log_fields(cfg['model'], model_name)}"
         )
 
     # ── Entrenamiento ─────────────────────────────────────────────────────────

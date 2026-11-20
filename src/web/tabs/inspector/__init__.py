@@ -24,7 +24,9 @@ from src.web.tabs.inspector import (
     alerts, calibration, clinical, curves, dynamics, embeddings, errors, explain, layers,
     performance, predictions, subgroups, system,
 )
-from src.web.tabs.inspector._common import InspectorCtx, load_groups_cached, load_monitor
+from src.web.tabs.inspector._common import (
+    InspectorCtx, load_groups_cached, load_monitor, load_test_cached,
+)
 from src.web.tabs.live import _FOLLOWERS_KEY, _STATUS_STYLE, _fmt_duration
 from src.web.ui import helpers
 from src.web.ui.alert_banner import render_alert_banner
@@ -42,13 +44,18 @@ VIEWS = {
     "Embeddings": embeddings.render, "Explain": explain.render, "Layers": layers.render,
     "Alerts": alerts.render,
 }
+VAL_SOURCE, TEST_SOURCE = "Validation (monitor)", "Test (eval)"
+# What needs only probabilities and targets also works on the test predictions of `eval`;
+# the rest (images, embeddings, Grad-CAM, per-epoch dynamics, system) needs the monitor or events.
+TEST_VIEWS = ("Curves", "Clinical", "Calibration", "Subgroups")
 _EPOCH_VIEWS = {"Predictions", "Errors", "Curves", "Clinical", "Calibration", "Subgroups",
                 "Dynamics", "Embeddings", "Explain"}
 
 
 def view_names(c: InspectorCtx) -> list[str]:
     """The sub-views on offer: Subgroups only appears when the run has ``groups.npz``."""
-    return [v for v in VIEWS if v != "Subgroups" or c.groups]
+    return [v for v in VIEWS if v != "Subgroups" or c.groups
+            if not c.is_test or v in TEST_VIEWS]
 
 
 def _follower(path: Path) -> EventsFollower:
@@ -59,7 +66,7 @@ def _follower(path: Path) -> EventsFollower:
     return followers[key]
 
 
-def _status_line(run: InspectorRun, state, status: str | None, n_epochs: int) -> None:
+def _status_line(run: InspectorRun, state, status: str | None, c: InspectorCtx) -> None:
     parts = []
     if status is not None:
         color, text = _STATUS_STYLE[status]
@@ -71,11 +78,19 @@ def _status_line(run: InspectorRun, state, status: str | None, n_epochs: int) ->
         eta = state.eta_s()
         if eta is not None:
             parts.append(f"ETA ≤ {_fmt_duration(eta)}")
-    parts.append(f"{n_epochs} inspected epoch(s)" if n_epochs else "no inspection data")
+    if c.is_test:
+        parts.append(f"test set: {len(c.test.probs):,} samples")
+    else:
+        n_epochs = len(c.epochs)
+        parts.append(f"{n_epochs} inspected epoch(s)" if n_epochs else "no inspection data")
     st.markdown(" · ".join(parts))
 
 
-def _context(run: InspectorRun, state) -> InspectorCtx:
+def _context(run: InspectorRun, state, source: str = VAL_SOURCE) -> InspectorCtx:
+    if source == TEST_SOURCE and run.test_preds is not None:
+        pred = load_test_cached(run.test_preds, helpers.ROOT)
+        if pred is not None:
+            return InspectorCtx.from_test(pred, run.test_preds, state)
     inspect_dir = run.inspect_dir
     if inspect_dir is None and state is not None:
         inspect_dir = resolve_inspect_dir(run.events_path, state.monitor_start, helpers.ROOT)
@@ -99,18 +114,34 @@ def _view(run: InspectorRun, stalled_s: float, armed: bool) -> None:
         status = state.status(stalled_after_s=stalled_s)
         if armed and status in FINAL_STATES:
             st.rerun(scope="app")           # the run ended: one full rerun disarms the timer
-    c = _context(run, state)
-    _status_line(run, state, status, len(c.epochs))
+    source = VAL_SOURCE
+    if run.test_preds is not None:
+        # Default to the validation monitor when the run has it, else to the test predictions.
+        options = [VAL_SOURCE, TEST_SOURCE]
+        source = st.radio("Data source", options, horizontal=True, key=f"insp_src_{run.timestamp}",
+                          index=0 if run.inspect_dir is not None else 1,
+                          help="Validation: the monitor's fixed panel and full validation set, "
+                               "per epoch. Test: the predictions saved by `eval "
+                               "--save-predictions`, one evaluation.")
+    c = _context(run, state, source)
+    if source == TEST_SOURCE and not c.is_test:
+        st.warning("The test predictions could not be read (they must be a valid `.npz` inside "
+                   "`logs/`).")
+    _status_line(run, state, status, c)
     render_alert_banner(state, status)
 
     # Epoch selection (by default the latest), only for the per-epoch views.
     names = view_names(c)
-    default = "Predictions" if c.epochs else "System"
+    default = ("Curves" if c.is_test else "Predictions") if c.epochs else "System"
     view = st.segmented_control("View", names, default=default, key="insp_view",
                                 label_visibility="collapsed") or default
     if view not in names:               # e.g. Subgroups of a previous run
         view = default
-    if view in _EPOCH_VIEWS and len(c.epochs) > 1:
+    if c.is_test:
+        st.caption("Test predictions saved by `eval`: curves, clinical operating point, "
+                   "calibration and subgroups. Images, errors and per-epoch views need the "
+                   "validation monitor.")
+    elif view in _EPOCH_VIEWS and len(c.epochs) > 1:
         a, b = st.columns([1, 4], vertical_alignment="center")
         follow = a.toggle("Latest epoch", value=True, key=f"insp_follow_{run.timestamp}")
         if follow:
@@ -145,7 +176,8 @@ def render(ctx: DashboardContext) -> None:
     chosen = c_run.selectbox(
         "Run", keys, index=index, key="insp_run",
         format_func=lambda k: ("● " if by_key[k].active else "") + by_key[k].label
-        + ("" if by_key[k].inspect_dir else "  (no inspection data)"),
+        + ("" if by_key[k].inspect_dir else "  (test predictions only)"
+           if by_key[k].test_preds else "  (no inspection data)"),
         help="Active runs first (● = being written now).")
     run = by_key[chosen]
     live = c_live.toggle("Live", value=True, key="insp_live", help="Off pauses the refresh.")

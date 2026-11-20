@@ -186,3 +186,32 @@ def test_run_row_no_csv_is_dashes(tmp_path):
     (d / "train_02062026_120000.log").write_text("x\n")
     row = _run_row(discover_runs(tmp_path)[0])
     assert row["best_val_f1"] is None and row["test_f1"] is None
+
+
+def test_eval_save_predictions_auto_has_no_path():
+    s = _join(build_eval_cmd("ckpt.pt", "c.yaml", save_predictions_auto=True))
+    assert s.endswith("--save-predictions")
+    both = _join(build_eval_cmd("ckpt.pt", "c.yaml", save_predictions="p.npz",
+                                save_predictions_auto=True))
+    assert "--save-predictions p.npz" in both and both.count("--save-predictions") == 1
+
+
+def test_train_cmd_seed_and_data_root_all_strategies():
+    for strat in STRATEGIES:
+        s = _join(build_train_cmd(strat, "c.yaml", seed=0, data_root="/data"))
+        assert "--seed 0" in s and "--data-root /data" in s
+
+
+def test_train_cmd_omits_seed_and_data_root_by_default():
+    s = _join(build_train_cmd("single", "c.yaml"))
+    assert "--seed" not in s and "--data-root" not in s
+
+
+def test_train_dry_run_passes_seed_and_data_root():
+    from typer.testing import CliRunner
+    from src.cli import app
+    r = CliRunner().invoke(app, ["train", "--config", "c.yaml", "--seed", "42",
+                                 "--data-root", "/d", "--dry-run"])
+    assert r.exit_code == 0
+    out = r.output.replace("\n", " ")
+    assert "--seed 42" in out and "--data-root /d" in out

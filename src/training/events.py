@@ -24,6 +24,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
+from src.run_manifest import build_manifest, write_manifest
+
 #: Version of the event schema (docs/eventos.md). Adding fields or event types
 #: keeps it; removing or redefining a field bumps it.
 SCHEMA_VERSION = 1
@@ -135,10 +137,15 @@ class JsonlEventSink(TrainingListener):
     While the run is alive a daemon thread writes a ``heartbeat`` every
     ``heartbeat_s`` seconds, so a reader can tell a long epoch from a dead process
     without the training loop doing any extra work.
+
+    With ``manifest_path`` it also writes the small ``run_<timestamp>.json`` of the run
+    (``src/run_manifest.py``) when the run starts: the part of ``run_start`` that says
+    what the run is, plus ``command``. Unlike the event stream it is light enough to commit.
     """
 
     def __init__(self, path: str | Path, run_info: Mapping, log_every: int = 1,
-                 heartbeat_s: float = 30.0):
+                 heartbeat_s: float = 30.0, manifest_path: str | Path | None = None,
+                 command: str | None = None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.path.write_text("")            # one file per run (timestamped name)
@@ -152,6 +159,20 @@ class JsonlEventSink(TrainingListener):
         self._heartbeat: threading.Thread | None = None
         self._batch_warned = False
         self._subscribers: list = []
+        self._manifest_path = Path(manifest_path) if manifest_path else None
+        self._command = command
+
+    def _write_manifest(self, epochs: int) -> None:
+        """A manifest that cannot be written must never stop a training run."""
+        if self._manifest_path is None:
+            return
+        try:
+            write_manifest(self._manifest_path, build_manifest(
+                {k: _json_value(v) for k, v in {**self._run_info, "epochs": epochs}.items()},
+                command=self._command))
+        except Exception as exc:  # noqa: BLE001
+            warnings.warn(f"events: run manifest not written ({exc!r})", RuntimeWarning,
+                          stacklevel=2)
 
     def _write(self, event_type: str, **fields) -> None:
         record = {"v": SCHEMA_VERSION, "type": event_type, "time": time.time(),
@@ -206,6 +227,7 @@ class JsonlEventSink(TrainingListener):
     def on_fit_start(self, epochs):
         self._t_start = time.time()
         self._write("run_start", **self._run_info, epochs=epochs)
+        self._write_manifest(epochs)
         self._start_heartbeat()
 
     def on_epoch_start(self, epoch, epochs):

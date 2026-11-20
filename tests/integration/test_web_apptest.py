@@ -1,7 +1,7 @@
 """Renders the real Streamlit app (AppTest) on a synthetic logs/ tree.
 
-Two runs from the same session: a BigEarthNet run whose epoch CSV predates
-``val_auc`` and a MedMNIST run that logs it. Every sidebar section must render
+Three runs from the same session: a BigEarthNet run whose epoch CSV predates
+``val_auc`` and two MedMNIST runs (seeds 42 and 43) that log it. Every sidebar section must render
 without exceptions with either run active, the AUC views must appear only for
 the run that has it, and the dataset filter must narrow the run list.
 """
@@ -22,14 +22,15 @@ NAV_KEYS = ["overview", "live", "inspector", "run", "compare", "benchmark", "dat
 PAGE_TITLES = {"overview": "## Overview", "live": "## Live", "inspector": "## Inspector", "run": "## Run results", "compare": "## Compare",
                "benchmark": "## Estimate / Benchmark", "data": "## Dataset"}
 
-_BEN_TS, _MED_TS = "17102026_100000", "17102026_110000"
+_BEN_TS, _MED_TS, _MED2_TS = "17102026_100000", "17102026_110000", "17102026_120000"
 _CFG = ("2026-10-17 10:00:00 [INFO ] Configuración: modelo=vit_tiny_patch16_224 | "
         "batch=32/GPU (global=32) | epochs=3 | lr=0.0001 | precision=fp32 | loss=bce | "
         "train=500 | val=100{extra}\n")
 
 
-def _write_run(folder: Path, ts: str, with_auc: bool, dataset_tag: str) -> None:
-    folder.mkdir(parents=True)
+def _write_run(folder: Path, ts: str, with_auc: bool, dataset_tag: str,
+               auc=(0.71, 0.78, 0.76)) -> None:
+    folder.mkdir(parents=True, exist_ok=True)
     (folder / f"train_{ts}.log").write_text(_CFG.format(extra=dataset_tag), encoding="utf-8")
     df = pd.DataFrame({
         "epoch": [1, 2, 3],
@@ -40,7 +41,7 @@ def _write_run(folder: Path, ts: str, with_auc: bool, dataset_tag: str) -> None:
         "epoch_time_s": [12.0, 11.5, 11.8],
     })
     if with_auc:
-        df["val_auc"] = [0.71, 0.78, 0.76]
+        df["val_auc"] = list(auc)
     df.to_csv(folder / f"epoch_metrics_{ts}.csv", index=False)
 
 
@@ -52,7 +53,9 @@ def fake_root(tmp_path_factory):
     root = tmp_path_factory.mktemp("webroot")
     _write_run(root / "logs/local/single/vit_tiny_patch16_224", _BEN_TS, False, "")
     _write_run(root / "logs/local/medmnist_chest/single/vit_tiny_patch16_224", _MED_TS, True,
-               " | dataset=medmnist_chest")
+               " | dataset=medmnist_chest | seed=42")
+    _write_run(root / "logs/local/medmnist_chest/single/vit_tiny_patch16_224", _MED2_TS, True,
+               " | dataset=medmnist_chest | seed=43", auc=(0.73, 0.82, 0.80))
     old = helpers.ROOT
     helpers.ROOT = root          # _get_runs / _get_benchmark_csvs read it at call time
     st.cache_data.clear()
@@ -65,7 +68,8 @@ def fake_root(tmp_path_factory):
 def labels(fake_root):
     from src.web.run_registry import discover_runs
     by_ts = {r.timestamp: r.label for r in discover_runs(fake_root)}
-    return {"bigearthnet": by_ts[_BEN_TS], "medmnist": by_ts[_MED_TS]}
+    return {"bigearthnet": by_ts[_BEN_TS], "medmnist": by_ts[_MED_TS],
+            "medmnist2": by_ts[_MED2_TS]}
 
 
 def _run_app(nav: str, run_label: str) -> AppTest:
@@ -88,26 +92,45 @@ def test_every_section_renders(labels, nav, dataset):
     assert any(md.value == PAGE_TITLES[nav] for md in at.markdown), f"{nav} did not render"
 
 
-def test_curves_show_auc_only_when_logged(labels):
+def test_curves_lead_with_the_runs_own_metric(labels):
     med = _run_app("run", labels["medmnist"])
-    assert "Best Val AUC" in _metric_labels(med)
-    assert any("best Val AUC" in i.value for i in med.info) or \
-        any("best Val AUC" in w.value for w in med.warning)
+    assert "Best Val AUC" in _metric_labels(med)       # MedMNIST is judged by AUC
+    assert "Best Val F1" in _metric_labels(med)        # F1 stays as a secondary card
+    assert any("Best Val AUC" in i.value for i in med.info) or \
+        any("Best Val AUC" in w.value for w in med.warning)
 
     ben = _run_app("run", labels["bigearthnet"])
-    assert "Best Val AUC" not in _metric_labels(ben)
+    assert "Best Val AUC" not in _metric_labels(ben)   # not logged by this run
     assert "Best Val F1" in _metric_labels(ben)
 
 
-def test_compare_summary_and_overlay_offer_auc(labels):
+def test_compare_aggregates_seeds_of_one_dataset(labels):
     at = _run_app("compare", labels["medmnist"])
     assert not at.exception
-    summary = at.dataframe[0].value       # default selection = the latest session (both runs)
-    assert "Best Val AUC" in summary.columns
-    assert summary["Best Val AUC"].map(type).nunique() == 1   # one dtype → Arrow-safe
-    assert set(summary["Best Val AUC"]) == {"0.7800", "—"}
+    summary = at.dataframe[0].value       # default selection = both MedMNIST runs, one group
+    assert len(summary) == 1               # the two seeds are aggregated into one row
+    row = summary.iloc[0]
+    assert row["Seeds"] == "42, 43" and "×2" in row["Run"]
+    assert "±" in row["Best Val AUC"]      # mean ± std over the seeds
+    assert row["Best Val AUC"] == "0.8000 ± 0.0283"   # mean ± std of 0.78 and 0.82
     overlay = next(m for m in at.multiselect if m.label == "Metrics to overlay")
-    assert "val_auc" in overlay.options
+    assert overlay.options[0] == "val_auc"            # the main metric leads
+    at.toggle(key="compare_aggregate").set_value(False).run()
+    assert not at.exception
+    assert len(at.dataframe[0].value) == 2            # one row per run again
+
+
+def test_overview_scopes_kpis_and_panels_to_the_dataset(labels):
+    med = _run_app("overview", labels["medmnist"])
+    assert not med.exception
+    kpi = " ".join(m.value for m in med.markdown if "kpi-strip" in m.value)
+    assert "Best val AUC" in kpi and "medmnist_chest" in " ".join(c.value for c in med.caption)
+    assert "Sentinel-2" not in " ".join(c.value for c in med.caption)
+    ben = _run_app("overview", labels["bigearthnet"])
+    kpi_ben = " ".join(m.value for m in ben.markdown if "kpi-strip" in m.value)
+    assert "Best val F1" in kpi_ben and "bigearthnet" in " ".join(c.value for c in ben.caption)
+    # The fastest epoch lasts seconds: it is shown in seconds, never as "0.0 min".
+    assert "11.8 s" in kpi_ben and "0.0 min" not in kpi_ben
 
 
 def test_dataset_filter_narrows_run_list(labels):
@@ -118,8 +141,8 @@ def test_dataset_filter_narrows_run_list(labels):
     assert not at.exception
     picks = {b.label for b in at.button if b.key and b.key.startswith("runpick::")}
     # The active run stays listed (and selected) even when the filter hides it.
-    assert picks == {labels["medmnist"], labels["bigearthnet"]}
+    assert picks == {labels["medmnist"], labels["medmnist2"], labels["bigearthnet"]}
     at.button(key=f"runpick::{labels['medmnist']}").click().run()
     assert at.session_state["run_label"] == labels["medmnist"]
     picks = {b.label for b in at.button if b.key and b.key.startswith("runpick::")}
-    assert picks == {labels["medmnist"]}
+    assert picks == {labels["medmnist"], labels["medmnist2"]}

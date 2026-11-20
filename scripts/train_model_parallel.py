@@ -30,7 +30,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
 from src.training.losses import configured_loss_name
+from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
+from src.training.config_overrides import add_common_overrides, apply_common_overrides
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
@@ -43,6 +45,7 @@ def parse_args():
     p.add_argument("--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
                    help="Override training.precision (Tensor cores)")
     p.add_argument("--epochs", type=int, default=None)
+    add_common_overrides(p)
     p.add_argument("--batch-size", type=int, default=None)
     p.add_argument("--split-block", type=int, default=None,
                    help="Block index where stage 0 ends (default: half the blocks)")
@@ -85,8 +88,7 @@ def main():
         cfg["model"]["name"] = args.model
     if args.precision:
         cfg["training"]["precision"] = args.precision
-    if args.epochs:
-        cfg["training"]["epochs"] = args.epochs
+    apply_common_overrides(cfg, args)
     if args.batch_size:
         cfg["training"]["batch_size"] = args.batch_size
 
@@ -151,7 +153,8 @@ def main():
         f"devices={'+'.join(devices)} | split_block={args.split_block or 'auto'} | "
         f"batch={bs} (global) | epochs={cfg['training']['epochs']} | "
         f"lr={cfg['training']['lr']} | precision={_prec} | loss={_loss} | "
-        f"train={len(train_ds)} | val={len(val_ds)} | dataset={spec.name}"
+        f"train={len(train_ds)} | val={len(val_ds)} | dataset={spec.name} | "
+        f"{backbone_log_fields(cfg['model'], model_name)}"
     )
 
     trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])

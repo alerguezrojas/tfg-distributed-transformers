@@ -1,0 +1,44 @@
+{
+  "v": 1,
+  "type": "run_manifest",
+  "source": "log",
+  "run_id": "27052026_233519",
+  "dataset": "bigearthnet",
+  "task": "multilabel",
+  "classes": [
+    "Urban fabric",
+    "Industrial or commercial units",
+    "Arable land",
+    "Permanent crops",
+    "Pastures",
+    "Complex cultivation patterns",
+    "Land principally occupied by agriculture",
+    "Agro-forestry areas",
+    "Broad-leaved forest",
+    "Coniferous forest",
+    "Mixed forest",
+    "Natural grassland and sparsely vegetated areas",
+    "Moors, heathland and sclerophyllous vegetation",
+    "Transitional woodland, shrub",
+    "Beaches, dunes, sands",
+    "Inland wetlands",
+    "Coastal wetlands",
+    "Inland waters",
+    "Marine waters"
+  ],
+  "model": "vit_tiny_patch16_224",
+  "mode": "single",
+  "config": {
+    "data": {
+      "name": "bigearthnet"
+    },
+    "model": {
+      "name": "vit_tiny_patch16_224"
+    },
+    "training": {},
+    "output": {
+      "env": "local"
+    }
+  },
+  "ordinal": false
+}

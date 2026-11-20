@@ -40,8 +40,10 @@ from torch.utils.data import DataLoader, DistributedSampler
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
+from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
-from src.training.reproducibility import set_seed, make_generator, seed_worker
+from src.training.config_overrides import add_common_overrides, apply_common_overrides
+from src.training.reproducibility import set_seed, make_generator, sampler_seed, seed_worker
 
 
 def parse_args():
@@ -51,6 +53,7 @@ def parse_args():
                              "Grad-CAM and layer stats every epoch (docs/inspeccion.md)")
     parser.add_argument("--config", type=str, default="configs/train_cluster.yaml")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
+    add_common_overrides(parser)
     parser.add_argument("--model", type=str, help="Override model name (any timm ID)")
     parser.add_argument("--precision", choices=["fp32", "tf32", "amp", "bf16"],
                         help="Override training.precision (Tensor cores)")
@@ -107,8 +110,7 @@ def main():
     rank = dist.get_rank()
     world_size = dist.get_world_size()
 
-    if args.epochs:
-        cfg["training"]["epochs"] = args.epochs
+    apply_common_overrides(cfg, args)
     if args.precision:
         cfg["training"]["precision"] = args.precision
 
@@ -145,6 +147,7 @@ def main():
     # drop_last=False on val preserves all validation samples for unbiased metrics.
     train_sampler = DistributedSampler(
         train_ds, num_replicas=world_size, rank=rank, shuffle=True, drop_last=True,
+        seed=sampler_seed(seed),
     )
     val_sampler = DistributedSampler(
         val_ds, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False,
@@ -207,7 +210,7 @@ def main():
             f"(global={_bs * world_size}, {world_size} GPUs) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
             f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)} | "
-            f"dataset={spec.name}"
+            f"dataset={spec.name} | {backbone_log_fields(cfg['model'], model_name)}"
         )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

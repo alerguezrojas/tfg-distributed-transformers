@@ -2,11 +2,13 @@
 
 | Documento | Para qué |
 |---|---|
+| [primeros_pasos.md](primeros_pasos.md) | Incorporación paso a paso: instalar, primer entrenamiento, mapa del código, protocolo para comparar modelos y licencias. Las normas de trabajo, en [CONTRIBUTING.md](../CONTRIBUTING.md) |
 | [guia_de_uso.md](guia_de_uso.md) | Manual de usuario: instalación, CLI, configs, estrategias, web, solución de problemas |
 | [arquitectura.md](arquitectura.md) | Cómo está construido: modelo, decoradores, CLI, DDP, benchmark, artefactos, dashboard |
 | [performance_model.md](performance_model.md) | Derivación y validación del predictor analítico (tiempo, memoria, energía) |
 | [infraestructura.md](infraestructura.md) | Máquinas, clúster VERODE, lanzamiento por entorno, errores conocidos |
 | [datasets/](datasets/) | Una ficha por dataset soportado ([BigEarthNet-S2](datasets/bigearthnet.md), [MedMNIST](datasets/medmnist.md), [PANDA](datasets/panda.md)) |
+| [modelos/](modelos/README.md) | Cómo se elige y se añade un modelo: timm, registro propio (`BackboneSpec`), `hf:` (I-JEPA), sonda lineal frente a ajuste fino, protocolo de comparación y licencias |
 | [roadmap.md](roadmap.md) | Plan de trabajo posterior al TFG y su **estado actual** |
 | [flujo_ia.md](flujo_ia.md) | Cómo se trabaja con IA: agentes, skills, hooks, permisos y controles |
 | [SECURITY.md](../SECURITY.md) | Política de seguridad: cómo informar de una vulnerabilidad y reglas del proyecto (secretos, `torch.load`, datos médicos) |
@@ -17,6 +19,7 @@
 | [research/estado_del_arte_prediccion.md](research/estado_del_arte_prediccion.md) | Trabajo relacionado sobre predicción del rendimiento del entrenamiento (tiempo, memoria, energía, escalado) y dónde encaja el predictor |
 | [research/panda.md](research/panda.md) | Dataset PANDA (biopsias de próstata, ISUP 0-5): formato, licencia, métrica QWK, soluciones ganadoras, ViT, sesgo de centro y cómo encajarlo en el proyecto |
 | [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md) | Cómo se gradúa el cáncer de próstata (Gleason, ISUP, variabilidad entre patólogos), cómo se miden los modelos de IA (QWK, AUC, sensibilidad/especificidad, validación externa) y qué pedir a un dataset clínico nuevo |
+| [research/jepa_y_modelos_base.md](research/jepa_y_modelos_base.md) | JEPA (I-JEPA, V-JEPA, V-JEPA 2) frente a MAE/DINO, pesos y licencias, modelos de base de patología en PANDA y qué hace falta para usar backbones que no son de timm |
 | [resultados_tfg.md](resultados_tfg.md) | Resultados experimentales hasta la entrega (histórico) |
 | [historial_tfg.md](historial_tfg.md) | Bitácora del desarrollo hasta `v1.0-tfg` (congelada) |
 | [class_diagram.svg](class_diagram.svg) | Diagrama de clases (fuente: `class_diagram.puml`) |

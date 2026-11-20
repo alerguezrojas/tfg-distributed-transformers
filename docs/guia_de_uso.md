@@ -133,7 +133,9 @@ Opciones principales:
 | `--strategy` | `single` · `ddp` · `model-parallel` · `heterogeneous` | Estrategia de distribución; las distribuidas se lanzan solas con `torchrun` |
 | `--config` | fichero YAML | Rutas, modelo, lote, épocas, regularización (sección 4) |
 | `--model` | id de timm | Sustituye el modelo del config (`vit_tiny_patch16_224`, `resnet50`…) |
-| `--epochs` | entero | Sustituye el número de épocas |
+| `--epochs` | entero | Sustituye el número de épocas; si queda `epochs <= warmup_epochs`, baja `warmup_epochs` a `epochs - 1` (mínimo 0) y avisa |
+| `--seed` | entero | Sustituye `training.seed` (repeticiones con distinta semilla) |
+| `--data-root` | ruta | Sustituye `data.root` (dónde está el dataset en esta máquina). Solo esa clave: las rutas absolutas de `data.metadata` (BigEarthNet) o `data.splits`/`data.mosaics` (PANDA) se cambian en el YAML |
 | `--precision` | `fp32` · `tf32` · `amp` · `bf16` | fp32 usa núcleos CUDA; el resto, núcleos tensoriales |
 | `--trace` | `off` · `simple` · `deep` | Solo consola / registro a fichero / traza profunda por capas |
 | `--layers` | `plot,confusion,batch-monitor,hooks` | Decoradores de aspecto, combinables por comas |
@@ -153,8 +155,11 @@ Los scripts de `scripts/` (`train_single_gpu.py`, `train_ddp.py`, `train_model_p
 ### `eval` — el número honesto final
 
 ```bash
-uv run paravit.py eval --checkpoint checkpoints/verode/checkpoint_epoch_007.pt --split test
+uv run paravit.py eval --checkpoint checkpoints/verode/single/vit_base_patch16_224/19112026_101500 --split test
 ```
+
+`--checkpoint` acepta un fichero (`best.pt`, `last.pt` o un `checkpoint_epoch_NNN.pt` antiguo) o la carpeta
+de un run, que se resuelve a su `best.pt`.
 
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
 agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
@@ -169,6 +174,9 @@ Tras las métricas agregadas y por clase, `eval` añade (solo si procede):
   PANDA, `≥ ISUP 1` es «hay cáncer» y `≥ ISUP 2` «cáncer clínicamente significativo».
 - `--save-predictions RUTA.npz` guarda probabilidades, objetivos, umbral, clases, tarea y grupos
   por muestra para rehacer análisis sin reinferir (formato en [`inspeccion.md`](inspeccion.md)).
+  Sin ruta (`scripts/eval.py --save-predictions`; en `paravit.py`, `--save-predictions-auto`) lo
+  guarda en la carpeta de logs del run como `test_preds_<ts>.npz`, con el sello del run, y el
+  Inspector de la web lo ofrece como fuente «Test (eval)».
 
 En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbral **elegido en
 validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
@@ -227,6 +235,7 @@ training:
   mixup_alpha: 0.2
 checkpoint:
   dir: "checkpoints/local"
+  keep: best_last                       # best_last (defecto: best.pt + last.pt) | all (uno por época mejorada)
 output:
   env: "local"                          # local | verode | kaggle → organiza logs/
 ```
@@ -280,11 +289,27 @@ Cada run escribe, bajo `logs/<entorno>/<estrategia>/<modelo>/`:
 | `perclass_metrics_*.csv` | Precisión/exhaustividad/F1 de cada clase por época |
 | `confusion_matrix_*.csv` | Matriz de co-activación 19×19 por época |
 | `batch_metrics_*.csv` | Pérdida, F1 y learning rate por lote |
+| `run_<fecha>.json` | Manifiesto del run (dataset, tarea, métrica principal, config completa y comando; unos KB, se versiona): lo que lee la web para saber de qué va el run ([esquema](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)) |
 | `events_*.jsonl` | Flujo de eventos del run ([esquema](eventos.md)): lo que lee la pestaña *Live* |
 | `inspect_<fecha>/` | Con `--monitor`: predicciones por imagen, *embeddings* y Grad-CAM por época ([formato](inspeccion.md)); no se versiona |
 | `test_*.csv` | Resultado de la evaluación en test (si se ejecutó `eval`) |
+| `test_preds_<fecha>.npz` | Predicciones por muestra en test (`eval --save-predictions`); el Inspector las lee |
 
-Los pesos van a `checkpoints/` (fuera de git). El panel web descubre los runs automáticamente; los
+Los pesos van a `checkpoints/<env>/[<dataset>/]<modo>/<modelo>/<DDMMYYYY_HHMMSS>/` (fuera de git): una
+carpeta por run, con el mismo sello que sus logs. Por defecto solo se conservan `best.pt` (mejor época
+según `select_by`) y `last.pt` (última época, para reanudar con `--resume`, que también acepta la
+carpeta del run); con `checkpoint.keep: all` se guarda un `checkpoint_epoch_NNN.pt` por época que
+mejora. Los ficheros se escriben a un temporal y se renombran, así que un disco lleno no deja un
+`best.pt` corrupto. Los checkpoints antiguos siguen sirviendo con `--checkpoint RUTA`.
+
+Cada run deja dos ficheros (~0,5 GB con ViT-S) y los runs se acumulan: **hay que borrar a mano los
+viejos**; esto evita mezclar runs, no libera disco por sí solo. `last.pt` guarda además la época
+global (las reanudaciones encadenan), el estado del `GradScaler` (AMP), la mejor métrica y el
+contador de *early stopping*, que `--resume` restaura. **No se restauran** el estado de los
+generadores aleatorios ni el orden de los lotes (la reanudación no es bit a bit idéntica), y el
+`best.pt` del run reanudado solo aparece si mejora la mejor métrica anterior (el anterior sigue en
+la carpeta del run original). Si escribir `last.pt` falla (disco lleno) se avisa y el
+entrenamiento continúa; si falla `best.pt`, el run aborta. El panel web descubre los runs automáticamente; los
 entrenados en otra máquina se importan desde la sección *Dataset → Import* subiendo un zip de esos
 ficheros.
 
@@ -297,10 +322,41 @@ uv run paravit.py dashboard    # → http://localhost:8501
 Interfaz de solo lectura (el terminal ejecuta, la web analiza), con siete secciones: **Overview**
 (indicadores globales, run activo, tabla de runs), **Live** (seguimiento de un entrenamiento en
 curso, ver más abajo), **Inspector** (análisis a fondo de un run, ver más abajo), **Run results** (curvas, métricas por clase,
-confusiones, lotes y detalles del run activo), **Compare** (hasta 8 runs: aceleración frente a una
-referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
+confusiones, lotes y detalles del run activo), **Compare** (hasta 12 runs de un mismo dataset:
+aceleración frente a una referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
 del conjunto e importación de runs). Idioma inglés con vista opcional en español y modo oscuro.
+
+**La web conoce el dataset y la métrica de cada run.** Los metadatos salen del manifiesto del run
+(`run_*.json`), de los eventos o de la línea `Configuración:` del log, por ese orden
+([detalle](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)). Con ellos:
+
+- **Etiqueta del run:** además de fecha, entorno, dataset, modelo y precisión, añade solo lo que
+  no es el valor por defecto: `· ce_emd · seed 43 · train: karolinska · color 0.2 · 512px`
+  (pérdida, semilla distinta de 42, hospital, aumentos de color, resolución distinta de 224). Así
+  dos runs se distinguen en la barra lateral, en las tablas y en *Compare*.
+- **Métrica principal por run** (la de `select_by`; si falta, la del dataset): **QWK** en PANDA,
+  **AUC** en MedMNIST y **F1** en BigEarthNet. Overview, Run results y Compare usan su nombre y
+  su valor, dibujan su curva (también `val_qwk`) y rotulan la pérdida real (BCE, CE, CE + EMD).
+  Los indicadores del Overview (mejor resultado, época más rápida) son del dataset del filtro
+  lateral o, si es «All», del run activo, y nunca mezclan F1 con QWK. Si el CSV de un run antiguo
+  no tiene la columna (p. ej. `val_auc`), se usa F1.
+- **Paneles por dataset:** solo se muestran los del dataset en curso. BigEarthNet conserva los
+  suyos (reparto, desequilibrio de clases, un parche por clase). Los demás tienen una vista
+  genérica con lo que hay en `logs/`: tarea, clases (y si son ordenadas), tamaños de train y val
+  del run, hospitales (`data.providers`), la distribución de clases de la validación y miniaturas
+  del panel fijo del monitor (ambas salen de `inspect_<fecha>/`; si el run no lo tiene, la web lo
+  dice y no inventa nada).
+- **Compare** trabaja con un dataset cada vez (selector arriba) y **agrupa los runs que solo
+  difieren en la semilla**: una fila por configuración con *media ± desviación típica muestral*
+  de la métrica principal, la época del mejor valor, el valor final, el AUC y las épocas; las
+  curvas por época se dibujan como media con una banda de ±1 desviación (con las épocas a las que
+  llegan menos runs por parada temprana, cada punto promedia los runs que llegaron). El
+  interruptor «Aggregate runs that differ only in the seed» las desactiva. Dos runs son «solo
+  semilla distinta» si coinciden en dataset, modelo, estrategia, entorno, pérdida, hospitales,
+  color, resolución, lote, lr, épocas y precisión; un run que no registra su semilla nunca se
+  agrupa. La tabla pone la métrica justo después del nombre del run y añade columnas de semillas,
+  hospitales, color y resolución; el radar usa las métricas que registraron los runs.
 
 ### Seguir un entrenamiento en directo (Live)
 
@@ -363,6 +419,11 @@ como a posteriori. Un selector elige la vista; las vistas por época usan un des
   gradientes, cuello de I/O, GPU). Las activas salen como banner (rojo = crítica, ámbar = aviso) en la
   cabecera del Inspector y de Live.
 
+Si el run tiene `test_preds_<ts>.npz` (de `eval --save-predictions`), arriba aparece un selector de
+fuente, «Validation (monitor)» o «Test (eval)». En test funcionan *Curves*, *Clinical*,
+*Calibration* y *Subgroups* sobre las predicciones de la evaluación; en tareas ordinales, *Clinical*
+añade la tabla de cortes «grado ≥ k».
+
 Cada vista indica cómo activar los datos que le faltan (`--monitor`, `monitor.layers: true`…). Solo
 se calcula la vista elegida y los `.npz` se cachean por ruta y fecha de modificación.
 
@@ -392,7 +453,7 @@ experimentos del TFG es el siguiente.
 ## 9. Las pruebas
 
 ```bash
-uv run pytest            # 411 pruebas, también ejecutadas en CI en cada push
+uv run pytest            # más de 1.200 pruebas, también ejecutadas en CI en cada push
 ```
 
 ## 10. Solución de problemas

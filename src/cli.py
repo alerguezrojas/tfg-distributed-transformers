@@ -59,7 +59,8 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     precision: str | None = None, layers: list[str] | None = None,
                     fn: list[str] | None = None, n_gpus: int = 2, nnodes: int = 1,
                     node_rank: int = 0, master_addr: str = "localhost",
-                    master_port: int = 29500, monitor: bool = False) -> list[str]:
+                    master_port: int = 29500, monitor: bool = False,
+                    seed: int | None = None, data_root: str | None = None) -> list[str]:
     """Build the exact command for a training strategy.
 
     single / model-parallel run a plain script; ddp / heterogeneous run under
@@ -73,6 +74,10 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
         common += ["--model", model]
     if epochs:
         common += ["--epochs", str(epochs)]
+    if seed is not None:
+        common += ["--seed", str(seed)]
+    if data_root:
+        common += ["--data-root", data_root]
     common += ["--trace", trace]                      # every script accepts --trace
     if monitor:
         common += ["--monitor"]                       # every script accepts --monitor
@@ -138,7 +143,8 @@ def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
                    split: str = "test", output: str | None = None,
                    metadata: str | None = None, batch_size: int | None = None,
                    max_batches: int | None = None,
-                   save_predictions: str | None = None) -> list[str]:
+                   save_predictions: str | None = None,
+                   save_predictions_auto: bool = False) -> list[str]:
     """Build the eval.py command (held-out evaluation)."""
     cmd = [sys.executable, "scripts/eval.py", "--checkpoint", checkpoint,
            "--config", config, "--split", split]
@@ -154,6 +160,8 @@ def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
         cmd += ["--max-batches", str(max_batches)]
     if save_predictions:
         cmd += ["--save-predictions", save_predictions]
+    elif save_predictions_auto:
+        cmd += ["--save-predictions"]       # no path: eval.py picks the run's log folder
     return cmd
 
 
@@ -200,6 +208,8 @@ def train(
     config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model, batch…)."),
     model: Optional[str] = typer.Option(None, help="Override the model (any timm ID)."),
     epochs: Optional[int] = typer.Option(None, help="Override the number of epochs."),
+    seed: Optional[int] = typer.Option(None, help="Override training.seed (repetitions)."),
+    data_root: Optional[str] = typer.Option(None, help="Override data.root (dataset location)."),
     trace: str = typer.Option("simple", help="off | simple | deep."),
     precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (single-GPU)."),
     layers: Optional[str] = typer.Option(None, help="Comma-separated: plot,confusion,batch-monitor,hooks."),
@@ -218,7 +228,8 @@ def train(
     cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
                           precision=precision, layers=_csv(layers), fn=_csv(fn), n_gpus=n_gpus,
                           nnodes=nnodes, node_rank=node_rank, master_addr=master_addr,
-                          master_port=master_port, monitor=monitor)
+                          master_port=master_port, monitor=monitor, seed=seed,
+                          data_root=data_root)
     _run(cmd, dry_run)
 
 
@@ -428,12 +439,17 @@ def eval(
     max_batches: Optional[int] = typer.Option(None, help="Stop after N batches (sanity)."),
     save_predictions: Optional[str] = typer.Option(
         None, "--save-predictions", help=".npz path for the per-sample predictions."),
+    save_predictions_auto: bool = typer.Option(
+        False, "--save-predictions-auto",
+        help="Save the predictions as test_preds_<ts>.npz in the run's log folder "
+             "(the web Inspector reads them)."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Evaluate a checkpoint on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
-                         save_predictions=save_predictions)
+                         save_predictions=save_predictions,
+                         save_predictions_auto=save_predictions_auto)
     _run(cmd, dry_run)
 
 

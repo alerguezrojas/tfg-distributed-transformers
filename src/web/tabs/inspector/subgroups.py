@@ -13,7 +13,7 @@ from src.analysis.subgroups import SUBGROUP_METRICS, subgroup_metrics
 from src.web.inspector_stats import (
     DEFAULT_SEED, SUBGROUP_LABELS, bin_groups, ci_note, gap_frame, subgroup_frame,
 )
-from src.web.tabs.inspector._common import InspectorCtx, _mtime, fmt, need_monitor
+from src.web.tabs.inspector._common import InspectorCtx, fmt, need_monitor
 from src.web.ui.charts import _show
 
 GROUPS_HINT = ("Subgroup analysis needs per-sample metadata (sex, age, centre...). The monitor "
@@ -53,12 +53,13 @@ def render(c: InspectorCtx) -> None:
                                           "and the intervals."))
     n_boot = k[2].selectbox("Interval resamples", (0, 200, 1000), index=1, key="insp_grp_n",
                             format_func=lambda n: "no intervals" if n == 0 else f"{n:,}")
-    mt = _mtime(c.inspect_dir / f"epoch_{c.epoch:03d}.npz")
-    gmt = _mtime(c.inspect_dir / "groups.npz")
-    res = _subgroups(str(c.inspect_dir), c.epoch, mt, gmt, variable, bins, c.task, thr, min_size,
+    mt = c.epoch_mtime(c.epoch)
+    gmt = c.groups_mtime()
+    res = _subgroups(c.key, c.epoch, mt, gmt, variable, bins, c.task, thr, min_size,
                      n_boot, d.probs, c.monitor.targets, labels)
 
-    st.caption(f"Computed on the monitored subset ({res['overall']['n']:,} samples, the ones "
+    where = "the test set" if c.is_test else "the monitored subset"
+    st.caption(f"Computed on {where} ({res['overall']['n']:,} samples, the ones "
                "the groups are aligned with), so small groups are noisy. "
                + (ci_note(n_boot) if n_boot else "No intervals: point estimates only."))
     st.dataframe(subgroup_frame(res), hide_index=True, width="stretch")

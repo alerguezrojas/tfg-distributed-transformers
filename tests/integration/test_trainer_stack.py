@@ -61,7 +61,7 @@ class TestTrainer:
         trainer = Trainer(model, opt, None, torch.device("cpu"),
                           checkpoint_dir=str(tmp_path))
         trainer.save_checkpoint(1, {"f1": 0.5, "loss": 0.3})
-        ckpt_path = tmp_path / "checkpoint_epoch_001.pt"
+        ckpt_path = tmp_path / "best.pt"
         assert ckpt_path.exists()
         if not hasattr(trainer, "load_checkpoint"):
             pytest.skip("load_checkpoint not in this branch")
@@ -263,7 +263,7 @@ class TestEpochController:
                        checkpoint_dir=str(tmp_path))
         ctrl = EpochController(base)
         ctrl.fit(_tiny_loader(), _tiny_loader(), epochs=2)
-        checkpoints = list(tmp_path.glob("checkpoint_epoch_*.pt"))
+        checkpoints = list(tmp_path.glob("best.pt"))
         assert len(checkpoints) >= 1
 
 
@@ -275,7 +275,7 @@ def test_checkpoint_stores_the_validation_tuned_threshold(tmp_path):
     trainer = Trainer(model, torch.optim.AdamW(model.parameters(), lr=1e-3), None,
                       torch.device("cpu"), checkpoint_dir=str(tmp_path))
     TracingDecorator(trainer).fit(_tiny_loader(), _tiny_loader(), epochs=1)
-    ckpt = torch.load(tmp_path / "checkpoint_epoch_001.pt", weights_only=True)
+    ckpt = torch.load(tmp_path / "best.pt", weights_only=True)
     assert 0.0 < ckpt["metrics"]["optimal_threshold"] < 1.0
 
 
@@ -295,6 +295,9 @@ class _ScriptedTrainer:
 
     def save_checkpoint(self, epoch, metrics):
         self.saved_epochs.append(epoch)
+
+    def save_last_checkpoint(self, epoch, metrics, extra=None):
+        pass
 
 
 @pytest.mark.parametrize("select_by, best_epochs", [("f1", [1, 2, 3]), ("auc", [1])])

@@ -35,13 +35,19 @@ def test_best_metric_none_without_column_or_values():
     assert _best_metric(pd.DataFrame(), "val_auc") is None
 
 
-def test_auc_fig_marks_best_epoch():
-    from src.web.tabs.run.curves import _auc_fig
-    df = pd.DataFrame({"epoch": [1, 2, 3], "val_auc": [0.70, 0.85, 0.80]})
-    fig = _auc_fig(df, (0.85, 2))
+def test_metric_curve_marks_best_epoch():
+    from src.web.run_meta import AUC, QWK
+    from src.web.tabs.run.curves import _metric_curve
+    df = pd.DataFrame({"epoch": [1, 2, 3], "val_auc": [0.70, 0.85, 0.80],
+                       "val_qwk": [0.2, 0.5, 0.4]})
+    fig = _metric_curve(df, AUC, (0.85, 2))
     names = [t.name for t in fig.data]
     assert names == ["Val AUC", "Best (epoch 2)"]   # no train trace: AUC is val-only
     assert list(fig.data[1].x) == [2] and math.isclose(fig.data[1].y[0], 0.85)
+    # the QWK curve (PANDA's main metric) is drawn from val_qwk, with its own name
+    qwk = _metric_curve(df, QWK, (0.5, 2))
+    assert [t.name for t in qwk.data] == ["Val QWK", "Best (epoch 2)"]
+    assert list(qwk.data[0].y) == [0.2, 0.5, 0.4]
 
 
 # ── filter_runs ────────────────────────────────────────────────────────────────

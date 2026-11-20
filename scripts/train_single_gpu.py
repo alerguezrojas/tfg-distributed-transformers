@@ -61,7 +61,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
 from src.training.losses import configured_loss_name
+from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
+from src.training.config_overrides import add_common_overrides, apply_common_overrides
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
@@ -71,9 +73,8 @@ def parse_args():
                         help="Prediction/layer monitor: per-sample predictions, embeddings, "
                              "Grad-CAM and layer stats every epoch (docs/inspeccion.md)")
     parser.add_argument("--config", type=str, default="configs/train.yaml")
-    parser.add_argument("--data-root", type=str, help="Override data.root")
     parser.add_argument("--epochs", type=int, help="Override training.epochs")
-    parser.add_argument("--seed", type=int, help="Override training.seed (repetitions)")
+    add_common_overrides(parser)
     parser.add_argument("--batch-size", type=int, help="Override training.batch_size")
     parser.add_argument(
         "--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
@@ -131,12 +132,7 @@ def main():
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
-    if args.data_root:
-        cfg["data"]["root"] = args.data_root
-    if args.epochs:
-        cfg["training"]["epochs"] = args.epochs
-    if args.seed is not None:
-        cfg["training"]["seed"] = args.seed
+    apply_common_overrides(cfg, args)
     if args.batch_size:
         cfg["training"]["batch_size"] = args.batch_size
     if args.precision:
@@ -240,7 +236,7 @@ def main():
         f"Configuración: modelo={model_name} | batch={_bs}/GPU (global={_bs}) | "
         f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
         f"precision={_prec} | loss={_loss} | train={len(train_ds)} | val={len(val_ds)} | "
-        f"dataset={spec.name} | seed={seed}"
+        f"dataset={spec.name} | seed={seed} | {backbone_log_fields(cfg['model'], model_name)}"
     )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

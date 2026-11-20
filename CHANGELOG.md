@@ -4,6 +4,104 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-11-20
+
+### Añadido
+- PANDA a 1024 px en Kaggle (2 × T4, DDP): control a 512 px igual que en local (0,801 frente a
+  0,794 ± 0,012) y base a 1024 px con QWK 0,821 en test, el mejor run hasta ahora (una semilla; la
+  ordinal a 1024 da 0,806). Logs en `logs/kaggle/panda/`, tablas en `docs/datasets/panda.md` y
+  contraste del predictor en `docs/performance_model.md` (subestima el tiempo en T4: −40 % a 512,
+  −16 % a 1024).
+- Kernel de entrenamiento de Kaggle por lotes (`BATCHES`/`BATCH` en `kaggle/panda_train/run.py`);
+  lote `seeds_1024` con las semillas 43 y 44 de la base a 1024 px.
+- `--seed` y `--data-root` en `paravit train` y en todos los scripts de entrenamiento (DDP,
+  heterogéneo y paralelismo de modelo; antes solo en el de una GPU), con la sobrescritura de la
+  config en un único sitio (`src/training/config_overrides.py`). El menú los ofrece en las opciones
+  avanzadas.
+- Incorporación de colaboradores: `CONTRIBUTING.md` (ramas protegidas, ramas largas `tfg/<nombre>`,
+  commits, definición de hecho, pre-commit, revisión y releases), `docs/primeros_pasos.md` (guía
+  paso a paso con un primer entrenamiento en BreastMNIST, mapa del código, protocolo de
+  comparación de modelos y licencias), plantillas de incidencias (fallo y propuesta; las
+  vulnerabilidades van al aviso privado) y sección «Colaborar» en el README. La plantilla de PR
+  añade tests, credenciales y licencias.
+- Entrenamiento en Kaggle (2 × T4): kernels en `kaggle/` para generar los mosaicos de PANDA desde
+  los datos de la competición y para entrenar con DDP y evaluar en test una lista de experimentos
+  (`timings.csv` para contrastar el predictor). La partición se comprueba por md5 contra la local.
+  `scripts/kaggle_push.sh` rellena el usuario de Kaggle al lanzar, para no publicarlo en el repo.
+- Backbones que no son de timm: `BackboneSpec` y registro por nombre (`src/models/backbones.py`),
+  adaptador genérico `hf:<repo>` de Hugging Face `transformers` (pooling `model.pooling`, media de
+  tokens por defecto) e I-JEPA ViT-H/14 (`ijepa_vith14_1k`, `ijepa_vith14_22k`, licencia CC BY-NC 4.0
+  con aviso al construirlo). Los nombres que no están en el registro siguen siendo timm, sin
+  cambios. `transformers` es opcional (`uv sync --extra hf`).
+- `model.freeze_backbone: true` (sonda lineal): solo se entrena la cabeza; el validador comprueba
+  también `model.pooling` y rechaza los backbones no timm con paralelismo de modelo.
+- Guía [docs/modelos/README.md](docs/modelos/README.md): cómo añadir un modelo, sonda lineal frente
+  a ajuste fino, protocolo de comparación y licencias. Un nombre mal escrito (ni timm ni registrado)
+  da un error que lista los backbones registrados. Probado con `transformers` 5.12 real (modelo
+  I-JEPA diminuto desde config; el test se salta si no está instalado).
+- Adaptador `hf:`: sin *pooler* ni `mask_token` entrenable (DDP fallaba por parámetros sin
+  gradiente), la media excluye `[CLS]` y *register tokens*, `eval.py` y el benchmark respetan
+  `model.pooling`, y Grad-CAM funciona con `freeze_backbone`. La línea `Configuración:` añade
+  `freeze_backbone=` y `backbone=`; la validación del predictor ignora las sondas lineales.
+
+- La web conoce el dataset y la métrica de cada run. Cada entrenamiento escribe un manifiesto
+  `run_<ts>.json` (lo de `run_start` más el comando; unos KB, se versiona) por el mismo observador
+  que los eventos, y `scripts/backfill_run_manifests.py` lo genera para los runs viejos (de sus
+  eventos o de la línea `Configuración:`; se ejecutó sobre `logs/`). El evento `run_start` gana
+  `ordinal`. Un lector común (`src/web/run_meta.py`) saca dataset, tarea, métrica principal,
+  pérdida, semilla, hospital, color y resolución del manifiesto, de los eventos o del log.
+- Etiquetas de run que distinguen semilla, pérdida, hospital, color y resolución
+  (`… vit_small [amp] · ce_emd · seed 43 · train: karolinska · color 0.2 · 512px`), con los
+  segundos si dos runs coincidirían; la barra lateral las muestra enteras.
+- Overview, Run results y Compare usan la métrica principal de cada run (QWK en PANDA, AUC en
+  MedMNIST, F1 en BigEarthNet), con su curva (incluida `val_qwk`) y la pérdida real en los títulos.
+  Los indicadores del Overview son por dataset. Los paneles de BigEarthNet solo salen para este
+  dataset; los demás tienen una vista genérica (tarea, clases, tamaños, hospitales, distribución de
+  clases y miniaturas del panel del monitor, si el run guardó `inspect_*`).
+- *Compare* agrupa los runs que solo difieren en la semilla: media ± desviación en la tabla y curvas
+  con banda; trabaja con un dataset cada vez, hasta 12 runs, con columnas de semilla, hospital,
+  color y resolución.
+
+### Corregido
+- Calidad (SonarCloud, PR a `main`): la línea de comando del manifiesto se compone con una función
+  propia de presentación (`command_line`, nunca se ejecuta) en vez de `shlex.join`, que el análisis
+  marcaba como inyección de comandos; la media de tiempos de *Compare* detecta NaN con `math.isnan`
+  y no con `s == s`; `manifest_from_log` baja de complejidad.
+- **`--seed` en DDP cambia también el orden de los datos**: el `DistributedSampler` (y el del
+  heterogéneo) barajaba siempre con la semilla 0, así que las repeticiones con otra semilla solo
+  cambiaban la inicialización y los aumentos. Ahora usan `training.seed`, igual en todas las
+  ranks (`sampler_seed`). Afecta a la comparación entre semillas de los runs DDP anteriores.
+- El manifiesto `run_<ts>.json` sanea los valores como los eventos (un NaN o una fecha en el YAML
+  ya no impiden escribirlo) y no deja un `.tmp` en `logs/` si la escritura falla. La ayuda de
+  `--data-root` aclara que solo cambia `data.root`.
+- **Checkpoints DDP y de paralelismo de modelo cargables en `eval.py`**: `Trainer` guardaba el
+  `state_dict` del envoltorio (prefijos `module.` de DDP y `base.` de `ModelParallelViT`), así que
+  `scripts/eval.py` no cargaba esos checkpoints (falló en los tres runs de Kaggle del 20/11). Ahora
+  se guardan los pesos del clasificador suelto y la carga (evaluación y reanudación) acepta los
+  checkpoints antiguos con prefijo. El kernel de Kaggle copia solo los logs que escribe.
+- `--epochs 1` ya no falla con los configs que traen `warmup_epochs: 1`: si `--epochs` deja
+  `epochs <= warmup_epochs`, se baja `warmup_epochs` a `epochs - 1` (mínimo 0) y se avisa por el log.
+  Un YAML con esa combinación sigue fallando en el validador.
+- Documentación desfasada: el recuento de pruebas del README y de la guía de uso (411 → más de 1.200),
+  el tiempo de la batería en `AGENTS.md` (~10 s → ~1,5 min) y la ruta de los logs en el mapa del código
+  (lleva el dataset).
+- «Fastest epoch» del Overview marcaba 0,0 min porque mezclaba datasets (MedMNIST tarda ~1,4 s por
+  época): ahora es del dataset en curso y se muestra en segundos si dura menos de un minuto.
+- Los soportes por clase de BigEarthNet ya no se aplican a runs de otro dataset (Per-class) y la
+  descripción de Confusions deja de decir «19 clases» fuera de BigEarthNet. La vista *Live* nombra
+  el QWK.
+
+### Seguridad
+- torch 2.11 → 2.15 (torchvision 0.29, CUDA 13.2), que corrige CVE-2025-3000. Validado en la
+  RTX 3060 Ti local: suite completa en verde (golden incluido) y PANDA a 512 px con el mismo
+  tiempo por época (~82 s) y el mismo QWK que 2.11 dentro del ruido. Verode sigue con su torch
+  2.7.1+cu118 instalado aparte (ver `docs/infraestructura.md`). La auditoría ya no ignora el aviso.
+- Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,
+  starlette, urllib3, jupyter-server, jupyterlab, mistune, filelock y otras; streamlit sube a
+  1.67 porque lo exige pillow 13). torch se queda en 2.11 hasta validar 2.13 en las GPU.
+- El job `audit` de la CI pasa a bloquear: cero avisos salvo cuatro aceptados con su motivo en
+  `ci.yml` (torch.jit, que no se usa, y dos de setuptools al construir paquetes).
+
 ## [1.1.0] - 2026-11-20
 
 Primera versión posterior al TFG: soporte multi-dataset (fichas `DatasetSpec` y tareas), MedMNIST,
@@ -12,6 +110,14 @@ monitor de predicciones e *Inspector* en la web), evaluación clínica en test y
 de modelos de timm en el predictor.
 
 ### Añadido
+- El Inspector de la web lee las predicciones de test: si el run tiene `test_preds_<ts>.npz`,
+  ofrece la fuente «Test (eval)» junto a «Validation (monitor)» en Curves, Clinical, Calibration y
+  Subgroups; en tareas ordinales, Clinical muestra la tabla de cortes «grado ≥ k». `eval
+  --save-predictions` sin ruta (`--save-predictions-auto` en `paravit.py eval`) guarda ese fichero
+  en la carpeta de logs del run con su sello, deducido del checkpoint con la estructura del
+  *builder* (`checkpoint.dir` y `output.env`; carpeta con sello o `checkpoint_epoch_*.pt` antiguos, con
+  aviso si es ambiguo) o el de la evaluación si no se puede. El `.npz` guarda `threshold_source` y la
+  web avisa si el umbral se eligió sobre el propio test. La web solo abre ficheros dentro de `logs/` y carga el `.npz` con `allow_pickle=False`.
 - Seguridad y calidad del repositorio: `SECURITY.md` (aviso privado de GitHub, alcance y reglas),
   Dependabot semanal agrupado (`uv` y `github-actions`, hacia `develop`), análisis CodeQL de Python
   (`.github/workflows/codeql.yml`), `permissions: contents: read` y `concurrency` en CI, job
@@ -215,6 +321,14 @@ de modelos de timm en el predictor.
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- Checkpoints por run (20/11/2026): cada run guarda en su carpeta
+  `checkpoints/.../<modelo>/<DDMMYYYY_HHMMSS>/` y por defecto solo conserva `best.pt` y `last.pt`
+  (antes, un `checkpoint_epoch_NNN.pt` por época mejorada, todos los runs del modelo mezclados; llenó
+  el disco el 19/11/2026). Evita mezclar runs y deja dos ficheros por run (~0,5 GB con ViT-S), pero
+  los runs se acumulan y hay que limpiar los viejos a mano. Nueva clave `checkpoint.keep` (`best_last` | `all`, validada) y escritura
+  atómica. `eval`, `--resume` y el menú entienden ficheros antiguos, `best.pt`/`last.pt` y carpetas
+  de run (`resolve_checkpoint`). `last.pt` guarda la época global, el `GradScaler`, la mejor métrica y
+  la paciencia, y `--resume` los restaura; si falla su escritura se avisa y se sigue. Mismas reglas en las cuatro estrategias (DDP: solo rank 0).
 - `.gitignore`: `checkpoints/runs` y `checkpoints/local` (copias de checkpoints y predicciones de
   test por run; en el equipo local son enlaces al SSD).
 - Web: se eliminan `DashboardContext.refresh_interval` (nadie lo usaba) y los comentarios
@@ -294,6 +408,7 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...v1.1.0
 [v1.0-tfg]: https://github.com/alerguezrojas/tfg-distributed-transformers/releases/tag/v1.0-tfg

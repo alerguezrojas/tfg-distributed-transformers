@@ -19,6 +19,7 @@ Usage:
 """
 
 import logging
+import sys
 import warnings
 from datetime import datetime
 from pathlib import Path
@@ -26,9 +27,11 @@ from pathlib import Path
 import torch
 
 from src.training.base_trainer import BaseTrainer
+from src.training.checkpoints import DEFAULT_KEEP
 from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
+from src.run_manifest import command_line, manifest_path
 from src.training.events import JsonlEventSink, environment_fingerprint
 from src.training.alerts import AlertMonitor, alerts_config
 from src.training.monitor import LayerStatsMonitor, PredictionMonitor, monitor_config
@@ -173,7 +176,7 @@ class TrainingSessionBuilder:
     def build(self) -> BaseTrainer:
         """Assemble and return the fully configured trainer stack."""
         from src.training.config_validator import validate_config
-        validate_config(self._cfg)
+        validate_config(self._cfg, model_parallel=self._model_parallel is not None)
 
         cfg = self._cfg
 
@@ -186,6 +189,7 @@ class TrainingSessionBuilder:
         # ── Model ────────────────────────────────────────────────────────────
         model_name = self._model_name or cfg["model"]["name"]
         dropout = cfg["model"].get("dropout", 0.1)
+        freeze_backbone = bool(cfg["model"].get("freeze_backbone", False))
         if self._model_parallel is not None:
             from src.models.model_parallel import build_model_parallel_vit
             mp_devices, mp_split = self._model_parallel
@@ -207,6 +211,8 @@ class TrainingSessionBuilder:
                 in_chans=spec.in_channels,
                 dropout=dropout,
                 img_size=cfg["model"].get("img_size"),
+                pooling=cfg["model"].get("pooling"),
+                freeze_backbone=freeze_backbone,
             )
 
         # ── Optimizer ────────────────────────────────────────────────────────
@@ -217,7 +223,15 @@ class TrainingSessionBuilder:
         weight_decay = cfg["training"].get("weight_decay", 0.05)
         llrd_decay = cfg["training"].get("llrd_decay", 0.0)
 
-        if llrd_decay > 0.0 and opt_model.is_vit:
+        if freeze_backbone:
+            # Linear probe: only the head has requires_grad; LLRD does not apply.
+            if llrd_decay > 0.0:
+                print("  [aviso] freeze_backbone: solo se entrena la cabeza, llrd_decay no se aplica.")
+            optimizer = torch.optim.AdamW(
+                [p for p in model.parameters() if p.requires_grad],
+                lr=lr_base, weight_decay=weight_decay
+            )
+        elif llrd_decay > 0.0 and opt_model.is_vit:
             optimizer = build_llrd_optimizer(opt_model, lr_base, weight_decay, llrd_decay)
         else:
             if llrd_decay > 0.0 and not opt_model.is_vit:
@@ -260,7 +274,9 @@ class TrainingSessionBuilder:
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         precision = cfg["training"].get("precision", "fp32")
-        checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / run_subdir)
+        # One folder per run, named like its logs: .../<model>/<DDMMYYYY_HHMMSS>/
+        checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / run_subdir / self._timestamp)
+        checkpoint_keep = cfg["checkpoint"].get("keep", DEFAULT_KEEP)
 
         # ── Loss / criterion (lever against the rare-class macro-F1 ceiling) ───
         # training.loss: task default ('bce' multi-label, 'ce' multi-class) | 'focal';
@@ -275,6 +291,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=model.output_device,   # logits/labels/loss live on the last stage
                 checkpoint_dir=checkpoint_dir,
+                checkpoint_keep=checkpoint_keep,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -290,6 +307,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                checkpoint_keep=checkpoint_keep,
                 criterion=criterion,      # its pos_weight carries into the summed loss
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -308,6 +326,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                checkpoint_keep=checkpoint_keep,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -324,6 +343,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                checkpoint_keep=checkpoint_keep,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -434,6 +454,7 @@ class TrainingSessionBuilder:
                     "run_id": self._timestamp,
                     "dataset": spec.name,
                     "task": task.name,
+                    "ordinal": bool(spec.ordinal),
                     "classes": list(spec.classes),
                     "model": model_name,
                     "mode": mode,
@@ -443,6 +464,8 @@ class TrainingSessionBuilder:
                     "env": environment_fingerprint(),
                 },
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),
+                manifest_path=manifest_path(log_dir, self._timestamp),
+                command=command_line(sys.argv),
             )
             # System sampler (GPU/CPU/RAM every N s). Added before the sink so it stops
             # before `run_end` is written. 0 disables it; independent of the monitor.
@@ -514,7 +537,7 @@ class TrainingSessionBuilder:
         """``mode/model`` for BigEarthNet (the historical layout every existing run
         uses) and ``dataset/mode/model`` for any other dataset, so runs of different
         datasets never share a folder."""
-        model_slug = model_name.replace("/", "_")
+        model_slug = model_name.replace("/", "_").replace(":", "_")
         if spec.name == DEFAULT_DATASET:
             return Path(mode) / model_slug
         return Path(spec.name) / mode / model_slug
