@@ -9,7 +9,7 @@ import pytest
 
 from src.analysis.clinical import clinical_cutoffs
 from src.analysis.io import (
-    default_predictions_path, list_test_predictions, run_dir_of_checkpoint, run_stamp_for,
+    default_predictions_path, list_test_predictions, run_location, run_stamp_for,
     save_predictions,
 )
 from src.web import inspector_data as d
@@ -31,43 +31,84 @@ def _when(stamp: str) -> float:
 
 # ── Convención de ruta ──────────────────────────────────────────────────────────
 
-def test_run_dir_of_checkpoint_maps_checkpoints_to_logs():
-    assert run_dir_of_checkpoint("checkpoints/local/panda/single/vit/checkpoint_epoch_003.pt") \
-        == Path("logs/local/panda/single/vit")
-    assert run_dir_of_checkpoint("/data/checkpoints/verode/ddp/m/c.pt") \
-        == Path("/data/logs/verode/ddp/m")
-    assert run_dir_of_checkpoint("somewhere/else/c.pt") is None
+def test_run_location_swaps_checkpoints_for_logs_when_no_config():
+    assert run_location("checkpoints/local/panda/single/vit/checkpoint_epoch_003.pt") \
+        == (Path("logs/local/panda/single/vit"), None)
+    assert run_location("/data/checkpoints/verode/ddp/m/c.pt") == (Path("/data/logs/verode/ddp/m"),
+                                                                    None)
+    assert run_location("somewhere/else/c.pt") == (None, None)
+
+
+def test_run_location_uses_the_stamp_folder_of_new_checkpoints():
+    loc = run_location("checkpoints/local/panda/single/vit/20112026_101500/best.pt")
+    assert loc == (Path("logs/local/panda/single/vit"), "20112026_101500")
+
+
+def test_run_location_follows_the_config_not_the_text():
+    # checkpoint.dir = checkpoints/vit_tiny, output.env = local (configs/models/vit_tiny.yaml)
+    ckpt = "checkpoints/vit_tiny/single/vit_tiny/20112026_101500/last.pt"
+    assert run_location(ckpt, "checkpoints/vit_tiny", "local") \
+        == (Path("logs/local/single/vit_tiny"), "20112026_101500")
+    # un checkpoint fuera de checkpoint.dir cae a la deducción por texto
+    assert run_location("elsewhere/x.pt", "checkpoints/vit_tiny", "local") == (None, None)
 
 
 def test_run_stamp_picks_the_run_that_wrote_the_checkpoint(tmp_path):
-    for ts in ("01112026_100000", "05112026_100000", "18112026_090000"):
-        (tmp_path / f"train_{ts}.log").write_text("")
-    (tmp_path / "train_legacy.log").write_text("")
-    assert run_stamp_for(tmp_path, _when("06112026_120000")) == "05112026_100000"
-    assert run_stamp_for(tmp_path, _when("20112026_120000")) == "18112026_090000"
-    assert run_stamp_for(tmp_path, _when("01102026_000000")) == "18112026_090000"   # sin anterior
-    assert run_stamp_for(tmp_path) == "18112026_090000"
-    assert run_stamp_for(tmp_path / "missing") is None
+    for name in ("train_01112026_100000.log", "train_deep_05112026_100000.log",
+                 "events_18112026_090000.jsonl", "train_legacy.log"):
+        (tmp_path / name).write_text("")
+    assert run_stamp_for(tmp_path, _when("06112026_120000")) == ("05112026_100000", True)
+    assert run_stamp_for(tmp_path, _when("20112026_120000")) == ("18112026_090000", True)
+    assert run_stamp_for(tmp_path, _when("01102026_000000")) == ("18112026_090000", True)
+    assert run_stamp_for(tmp_path) == ("18112026_090000", True)
+    assert run_stamp_for(tmp_path / "missing") == (None, False)
 
 
-def test_default_predictions_path_uses_the_run_stamp(tmp_path):
+def test_run_stamp_single_run_is_not_ambiguous(tmp_path):
+    (tmp_path / "train_05112026_100000.log").write_text("")
+    assert run_stamp_for(tmp_path, _when("06112026_120000")) == ("05112026_100000", False)
+    assert run_stamp_for(tmp_path, _when("01112026_120000")) == ("05112026_100000", True)
+
+
+def test_default_predictions_path_old_shared_folder_warns_when_ambiguous(tmp_path):
     logs = tmp_path / "logs" / "local" / "single" / "vit"
     logs.mkdir(parents=True)
-    (logs / "train_05112026_100000.log").write_text("")
+    for ts in ("05112026_100000", "06112026_100000"):
+        (logs / f"train_{ts}.log").write_text("")
     ckpt = tmp_path / "checkpoints" / "local" / "single" / "vit" / "checkpoint_epoch_001.pt"
     ckpt.parent.mkdir(parents=True)
     ckpt.write_bytes(b"")
-    os.utime(ckpt, (_when("06112026_120000"),) * 2)
-    path = default_predictions_path(ckpt)
-    assert path == logs / "test_preds_05112026_100000.npz"
+    os.utime(ckpt, (_when("05112026_150000"),) * 2)
+    msgs = []
+    assert default_predictions_path(ckpt, warn=msgs.append) == logs / "test_preds_05112026_100000.npz"
+    assert len(msgs) == 1 and "05112026_100000" in msgs[0]
+
+
+def test_default_predictions_path_new_layout_uses_the_stamp_folder(tmp_path):
+    ckpt = tmp_path / "checkpoints" / "local" / "single" / "vit" / "20112026_101500" / "best.pt"
+    ckpt.parent.mkdir(parents=True)
+    ckpt.write_bytes(b"")
+    msgs = []
+    path = default_predictions_path(ckpt, warn=msgs.append)
+    assert path == tmp_path / "logs" / "local" / "single" / "vit" / "test_preds_20112026_101500.npz"
+    assert msgs == []
 
 
 def test_default_predictions_path_falls_back_to_evaluation_stamp(tmp_path):
     now = datetime(2026, 11, 20, 9, 30, 5)
-    path = default_predictions_path(tmp_path / "ckpt.pt", now)        # fuera de checkpoints/
-    assert path == Path("logs/test_preds_20112026_093005.npz")
-    nolog = tmp_path / "checkpoints" / "local" / "single" / "vit" / "c.pt"   # sin train_*.log
+    msgs = []
+    path = default_predictions_path(tmp_path / "ckpt.pt", now, warn=msgs.append)  # fuera
+    assert path == Path("logs/test_preds_20112026_093005.npz") and msgs
+    nolog = tmp_path / "checkpoints" / "local" / "single" / "vit" / "c.pt"   # sin logs
     assert default_predictions_path(nolog, now).name == "test_preds_20112026_093005.npz"
+
+
+def test_threshold_source_roundtrip_and_old_files(tmp_path):
+    from src.analysis.io import load_predictions
+    new = _save(tmp_path / "new.npz", threshold_source="test")
+    assert load_predictions(new).threshold_source == "test"
+    old = _save(tmp_path / "old.npz")          # sin la clave: sigue cargando
+    assert load_predictions(old).threshold_source is None
 
 
 # ── Descubrimiento y lectura segura ─────────────────────────────────────────────
@@ -141,3 +182,12 @@ def test_cutoffs_frame_matches_clinical_cutoffs():
     assert list(df.columns)[:3] == ["Cut-off", "n+", "n-"]
     assert df["Sensitivity"].tolist() == pytest.approx([1.0, 0.5])
     assert cutoffs_frame([]).empty
+
+
+def test_threshold_note_names_the_source(tmp_path):
+    from src.web.tabs.inspector._common import InspectorCtx, threshold_note
+    for src, word in (("checkpoint", "validation"), ("test", "test set itself"),
+                      (None, "not recorded")):
+        path = _save(tmp_path / "logs" / f"{src}.npz", threshold_source=src)
+        c = InspectorCtx.from_test(d.load_test_predictions(path, tmp_path), path)
+        assert word in threshold_note(c, 0.4)

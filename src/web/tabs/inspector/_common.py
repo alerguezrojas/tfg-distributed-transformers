@@ -116,6 +116,7 @@ class InspectorCtx:
     test: Predictions | None = None         # set: the context is the test set of `eval`
     test_path: Path | None = None
     ordinal: bool = False                   # test predictions of an ordinal task
+    threshold_source: str | None = None     # test: where `eval` tuned the threshold
     _test_epoch: EpochData | None = field(default=None, repr=False)
 
     @classmethod
@@ -125,7 +126,8 @@ class InspectorCtx:
         monitor, epoch = predictions_as_epoch(pred)
         ctx = cls(state=state, inspect_dir=None, monitor=monitor, epochs=[0], epoch=0,
                   task=pred.task, classes=list(pred.classes), groups=pred.groups or None,
-                  test=pred, test_path=path, ordinal=pred.ordinal)
+                  test=pred, test_path=path, ordinal=pred.ordinal,
+                  threshold_source=pred.threshold_source)
         ctx._test_epoch = epoch
         return ctx
 
@@ -181,6 +183,29 @@ class InspectorCtx:
                 eps.append(e)
                 arrs.append(np.asarray(getattr(d, key), dtype=np.float32))
         return eps, (np.stack(arrs) if arrs else np.empty((0, 0, 0)))
+
+
+THRESHOLD_SOURCES = {"checkpoint": "chosen on validation during training (stored in the checkpoint)",
+                     "val": "tuned on the validation split by `eval`"}
+TEST_THRESHOLD_WARNING = ("The threshold was tuned on the test set itself, so the figures at it are "
+                          "optimistic (`--threshold-from test`). Use a threshold fixed on "
+                          "validation.")
+
+
+def threshold_note(c: InspectorCtx, thr: float) -> str:
+    """Where the threshold recorded with the test predictions came from (empty if unknown)."""
+    src = c.threshold_source
+    text = f"Threshold {thr:.3f}: the one recorded by `eval`"
+    if src in THRESHOLD_SOURCES:
+        return f"{text}, {THRESHOLD_SOURCES[src]}."
+    if src == "test":
+        return f"{text}, tuned on the test set itself."
+    return text + " (its origin is not recorded: the file predates that key)."
+
+
+def threshold_warning(c: InspectorCtx) -> None:
+    if c.is_test and c.threshold_source == "test":
+        st.warning(TEST_THRESHOLD_WARNING)
 
 
 def need_monitor(c: InspectorCtx) -> bool:

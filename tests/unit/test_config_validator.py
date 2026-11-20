@@ -197,3 +197,21 @@ class TestMonitorSection:
     def test_monitor_must_be_a_mapping(self):
         with pytest.raises(ConfigError, match="mapping"):
             validate_config(self._with([1, 2]))
+
+
+class TestCheckpointKeep:
+    @pytest.mark.parametrize("keep", ["best_last", "all", None])
+    def test_valid(self, keep):
+        cfg = _base_cfg()
+        cfg["checkpoint"] = {"dir": "checkpoints/local", "keep": keep}
+        validate_config(cfg)
+
+    def test_absent_is_valid(self):
+        validate_config({**_base_cfg(), "checkpoint": {"dir": "checkpoints/local"}})
+
+    @pytest.mark.parametrize("keep", ["best", "last", "ALL", True, 3])
+    def test_invalid(self, keep):
+        cfg = _base_cfg()
+        cfg["checkpoint"] = {"keep": keep}
+        with pytest.raises(ConfigError, match="checkpoint.keep"):
+            validate_config(cfg)

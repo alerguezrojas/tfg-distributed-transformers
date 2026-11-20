@@ -84,7 +84,10 @@ def _list_configs() -> list[str]:
 
 def _list_checkpoints() -> list[str]:
     d = ROOT / "checkpoints"
-    return sorted(str(p.relative_to(ROOT)) for p in d.rglob("*.pt"))[:40] if d.exists() else []
+    if not d.exists():   # newest first; sees both best.pt/last.pt and old checkpoint_epoch_*.pt
+        return []
+    files = sorted(d.rglob("*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+    return [str(p.relative_to(ROOT)) for p in files[:40]]
 
 
 def _confirm_run(cmd: list[str]) -> None:

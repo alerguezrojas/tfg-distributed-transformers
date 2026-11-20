@@ -17,7 +17,9 @@ from src.web.inspector_stats import (
     CRITERIA, DEFAULT_SEED, N_BOOT_CHOICES, POINT_METRICS, ci_note, clinical_report,
     confusion_2x2, cutoffs_frame, point_frame,
 )
-from src.web.tabs.inspector._common import InspectorCtx, fmt, need_monitor
+from src.web.tabs.inspector._common import (
+    InspectorCtx, fmt, need_monitor, threshold_note, threshold_warning,
+)
 from src.web.tabs.inspector.curves import arrays, source_choice
 from src.web.ui.charts import _show
 
@@ -52,10 +54,10 @@ def _controls(c: InspectorCtx, targets, names: list[str]):
                         key="insp_clin_thr")
     elif criterion == "validation":
         thr = float(d.threshold)
-        st.caption(f"Threshold {thr:.3f}: the one recorded by `eval` with the predictions."
-                   if c.is_test else
+        st.caption(threshold_note(c, thr) if c.is_test else
                    f"Threshold {thr:.3f}: the validation-optimal one recorded by the run "
                    "(chosen on the full validation set).")
+        threshold_warning(c)
     elif criterion == "sensitivity":
         target = st.select_slider("Sensitivity at least", SENS_TARGETS, value=0.90,
                                   key="insp_clin_target")

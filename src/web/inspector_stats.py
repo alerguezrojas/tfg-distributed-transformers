@@ -87,7 +87,7 @@ def ci_column(cis: Sequence[dict[str, dict[str, float]]], metric: str) -> list[s
 
 # ── Operating point (Clinical view) ─────────────────────────────────────────────
 
-CRITERIA = {"fixed": "Fixed threshold", "validation": "Run's validation-optimal threshold",
+CRITERIA = {"fixed": "Fixed threshold", "validation": "Recorded threshold (validation-optimal)",
             "sensitivity": "Target sensitivity", "youden": "Youden's J"}
 _COUNTS = ("tp", "fp", "fn", "tn")
 POINT_METRICS = ("sensitivity", "specificity", "ppv", "npv", "f1", "accuracy")

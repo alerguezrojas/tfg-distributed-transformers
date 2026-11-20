@@ -26,6 +26,7 @@ from pathlib import Path
 import torch
 
 from src.training.base_trainer import BaseTrainer
+from src.training.checkpoints import DEFAULT_KEEP
 from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
@@ -260,7 +261,9 @@ class TrainingSessionBuilder:
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         precision = cfg["training"].get("precision", "fp32")
-        checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / run_subdir)
+        # One folder per run, named like its logs: .../<model>/<DDMMYYYY_HHMMSS>/
+        checkpoint_dir = str(Path(cfg["checkpoint"]["dir"]) / run_subdir / self._timestamp)
+        checkpoint_keep = cfg["checkpoint"].get("keep", DEFAULT_KEEP)
 
         # ── Loss / criterion (lever against the rare-class macro-F1 ceiling) ───
         # training.loss: task default ('bce' multi-label, 'ce' multi-class) | 'focal';
@@ -275,6 +278,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=model.output_device,   # logits/labels/loss live on the last stage
                 checkpoint_dir=checkpoint_dir,
+                checkpoint_keep=checkpoint_keep,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -290,6 +294,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                checkpoint_keep=checkpoint_keep,
                 criterion=criterion,      # its pos_weight carries into the summed loss
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -308,6 +313,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                checkpoint_keep=checkpoint_keep,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -324,6 +330,7 @@ class TrainingSessionBuilder:
                 scheduler=scheduler,
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
+                checkpoint_keep=checkpoint_keep,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,

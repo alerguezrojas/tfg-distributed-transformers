@@ -282,14 +282,22 @@ orden del split evaluado, lo necesario para rehacer cualquier análisis sin volv
 contiene solo las muestras evaluadas.
 
 **Dónde vive para que la web lo vea.** El Inspector busca `test_preds_<ts>.npz` en la carpeta de
-logs del run (`logs/<env>/<dataset>/<modo>/<modelo>/`), con el mismo sello `DDMMYYYY_HHMMSS` que
+logs del run (`logs/<output.env>/<run_subdir>/`), con el mismo sello `DDMMYYYY_HHMMSS` que
 `train_<ts>.log`. Basta `--save-predictions` **sin ruta** (en `paravit.py eval`,
-`--save-predictions-auto`): `eval` deduce la carpeta del checkpoint (`checkpoints/…` → `logs/…`,
-misma estructura) y el sello del run que lo escribió (el último `train_<ts>.log` anterior a la fecha
-del checkpoint, porque los nombres `checkpoint_epoch_NNN.pt` se repiten de un run a otro). Si no puede
-deducirlos (checkpoint fuera de `checkpoints/`, carpeta sin `train_*.log`) guarda en `logs/` con el
-sello de la evaluación. Con `--save-predictions RUTA.npz` guarda donde se le diga, pero la web solo
-lo encuentra si el nombre y la carpeta siguen la convención.
+`--save-predictions-auto`). `eval` lo deduce como el *builder*: la carpeta del checkpoint es
+`<checkpoint.dir>/<run_subdir>/<sello>/{best,last}.pt`, así que el sello es el nombre de esa carpeta
+y la de logs es `logs/<output.env>/<run_subdir>` (con `checkpoint.dir` y `output.env` de la
+config, no por sustitución de texto). Con la estructura antigua (`checkpoint_epoch_NNN.pt` en una
+carpeta compartida) el sello es el del último `train_<ts>.log`, `train_deep_<ts>.log` o
+`events_<ts>.jsonl` anterior a la fecha del checkpoint; si hay varios runs posibles o ninguno es
+anterior (p. ej. copiado con `scp`), `eval` avisa por consola con el sello elegido. Si no puede
+deducir la carpeta, guarda en `logs/` con el sello de la evaluación. Con `--save-predictions
+RUTA.npz` guarda donde se le diga, pero la web solo lo encuentra si nombre y carpeta siguen la
+convención.
+
+Clave opcional `threshold_source` (`()` cadena: `checkpoint`, `val` o `test`, según
+`--threshold-from`; ausente en ficheros antiguos y si la tarea no tiene umbral): la web la muestra
+en *Clinical* y *Curves* y avisa cuando vale `test` (umbral elegido sobre el propio test: optimista).
 
 ### Estadística para publicación
 

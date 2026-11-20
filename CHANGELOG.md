@@ -4,13 +4,34 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Seguridad
+- Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,
+  starlette, urllib3, jupyter-server, jupyterlab, mistune, filelock y otras; streamlit sube a
+  1.67 porque lo exige pillow 13). torch se queda en 2.11 hasta validar 2.13 en las GPU.
+- El job `audit` de la CI pasa a bloquear: cero avisos salvo cuatro aceptados con su motivo en
+  `ci.yml` (torch.jit, que no se usa, y dos de setuptools al construir paquetes).
+
+## [1.1.0] - 2026-11-20
+
+Primera versión posterior al TFG: soporte multi-dataset (fichas `DatasetSpec` y tareas), MedMNIST,
+PANDA con clases ordenadas y QWK, observabilidad del entrenamiento (flujo de eventos, vista *Live*,
+monitor de predicciones e *Inspector* en la web), evaluación clínica en test y perfilado automático
+de modelos de timm en el predictor.
+
 ### Añadido
 - El Inspector de la web lee las predicciones de test: si el run tiene `test_preds_<ts>.npz`,
   ofrece la fuente «Test (eval)» junto a «Validation (monitor)» en Curves, Clinical, Calibration y
   Subgroups; en tareas ordinales, Clinical muestra la tabla de cortes «grado ≥ k». `eval
   --save-predictions` sin ruta (`--save-predictions-auto` en `paravit.py eval`) guarda ese fichero
-  en la carpeta de logs del run con su sello, deducido del checkpoint (o el de la evaluación si no
-  se puede). La web solo abre ficheros dentro de `logs/` y carga el `.npz` con `allow_pickle=False`.
+  en la carpeta de logs del run con su sello, deducido del checkpoint con la estructura del
+  *builder* (`checkpoint.dir` y `output.env`; carpeta con sello o `checkpoint_epoch_*.pt` antiguos, con
+  aviso si es ambiguo) o el de la evaluación si no se puede. El `.npz` guarda `threshold_source` y la
+  web avisa si el umbral se eligió sobre el propio test. La web solo abre ficheros dentro de `logs/` y carga el `.npz` con `allow_pickle=False`.
+- Seguridad y calidad del repositorio: `SECURITY.md` (aviso privado de GitHub, alcance y reglas),
+  Dependabot semanal agrupado (`uv` y `github-actions`, hacia `develop`), análisis CodeQL de Python
+  (`.github/workflows/codeql.yml`), `permissions: contents: read` y `concurrency` en CI, job
+  `audit` con `pip-audit` sobre `uv export` (informativo por ahora: el lock tiene avisos en
+  dependencias de desarrollo) y hook de gitleaks en `pre-commit`. Historial escaneado: sin secretos.
 - PANDA, mejoras y generalización entre hospitales (18-19/11/2026, 14 runs): con tres semillas,
   base 0,794 ± 0,012 y pérdida ordinal 0,802 ± 0,009 de QWK en test, sin mejora clara (con una
   sola semilla parecía +0,025); el color tampoco mejora. Cortes clínicos (ISUP ≥ 1 y ≥ 2) y
@@ -209,6 +230,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- Checkpoints por run (20/11/2026): cada run guarda en su carpeta
+  `checkpoints/.../<modelo>/<DDMMYYYY_HHMMSS>/` y por defecto solo conserva `best.pt` y `last.pt`
+  (antes, un `checkpoint_epoch_NNN.pt` por época mejorada, todos los runs del modelo mezclados; llenó
+  el disco el 19/11/2026). Evita mezclar runs y deja dos ficheros por run (~0,5 GB con ViT-S), pero
+  los runs se acumulan y hay que limpiar los viejos a mano. Nueva clave `checkpoint.keep` (`best_last` | `all`, validada) y escritura
+  atómica. `eval`, `--resume` y el menú entienden ficheros antiguos, `best.pt`/`last.pt` y carpetas
+  de run (`resolve_checkpoint`). `last.pt` guarda la época global, el `GradScaler`, la mejor métrica y
+  la paciencia, y `--resume` los restaura; si falla su escritura se avisa y se sigue. Mismas reglas en las cuatro estrategias (DDP: solo rank 0).
 - `.gitignore`: `checkpoints/runs` y `checkpoints/local` (copias de checkpoints y predicciones de
   test por run; en el equipo local son enlaces al SSD).
 - Web: se eliminan `DashboardContext.refresh_interval` (nadie lo usaba) y los comentarios
@@ -239,6 +268,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   mayúsculas.
 
 ### Corregido
+- Importación de runs en la web: la comprobación de que el destino queda dentro de `logs/` usaba
+  un prefijo de texto (aceptaba `logs_evil/` vía enlace simbólico); ahora usa `is_relative_to`.
 - La línea `Configuración:` del log muestra la pérdida real de la tarea cuando el YAML no define `training.loss`
   (`ce` en multiclase, antes `bce`), con el helper `configured_loss_name`.
 - `PrecisionRecallReporter` imprime también `qwk` (datasets ordinales) y `auc` por época; el parser de la web ignora
@@ -286,5 +317,6 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...v1.1.0
 [v1.0-tfg]: https://github.com/alerguezrojas/tfg-distributed-transformers/releases/tag/v1.0-tfg

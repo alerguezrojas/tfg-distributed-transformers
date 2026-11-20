@@ -14,7 +14,9 @@ from src.analysis.thresholds import threshold_sweep
 from src.web.inspector_stats import (
     DEFAULT_SEED, N_BOOT_CHOICES, ci_column, ci_note, class_ci, macro_ci,
 )
-from src.web.tabs.inspector._common import InspectorCtx, fmt, need_monitor
+from src.web.tabs.inspector._common import (
+    InspectorCtx, fmt, need_monitor, threshold_note, threshold_warning,
+)
 from src.web.ui.charts import _show
 
 _MACRO_AUC, _MACRO_AP = "Macro AUC", "Macro AP"
@@ -151,6 +153,9 @@ def _threshold_section(c: InspectorCtx, sweep: dict) -> float | None:
     _show(fig, "insp_threshold")
     d = c.epoch_data()
     default = float(round(d.threshold, 2)) if d.threshold is not None else best["threshold"]
+    if c.is_test and d.threshold is not None:
+        st.caption(threshold_note(c, d.threshold))
+        threshold_warning(c)
     return st.slider("Threshold for the table below", 0.05, 0.95, min(max(default, 0.05), 0.95),
                      0.05, key="insp_curves_thr",
                      help="Defaults to the threshold recorded with the data (the "

@@ -1,0 +1,36 @@
+name: CodeQL
+
+# Análisis estático de seguridad de Python (consultas por defecto de GitHub).
+# Los resultados salen en la pestaña Security > Code scanning.
+
+"on":
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    - cron: "23 4 * * 1"          # lunes 04:23 UTC: pilla avisos nuevos aunque no haya commits
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      security-events: write      # subir los resultados
+    steps:
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: python
+          build-mode: none
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:python"

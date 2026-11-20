@@ -5,8 +5,8 @@ in the config (``data.name``, default BigEarthNet-S2), reporting per-class and
 aggregate metrics — with optimal threshold search for sigmoid tasks.
 
 Usage:
-    # Evaluate best checkpoint with default config
-    uv run python scripts/eval.py --checkpoint checkpoints/verode/checkpoint_epoch_007.pt
+    # Evaluate the best checkpoint of a run (a folder resolves to its best.pt)
+    uv run python scripts/eval.py --checkpoint checkpoints/verode/vit_small/05102026_101500
 
     # Override config (e.g. to use cluster dataset paths)
     uv run python scripts/eval.py \\
@@ -36,6 +36,7 @@ from src.analysis.io import default_predictions_path, save_predictions
 from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
+from src.training.checkpoints import resolve_checkpoint
 from src.training.tasks import MultiLabelTask, Task
 
 
@@ -45,7 +46,8 @@ AUTO_PATH = "@auto"     # value of --save-predictions given without a path
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained checkpoint on the test set")
     parser.add_argument("--checkpoint", type=str, required=True,
-                        help="Path to checkpoint .pt file")
+                        help="Checkpoint .pt file (best.pt, last.pt or an old "
+                             "checkpoint_epoch_NNN.pt); a run folder resolves to its best.pt")
     parser.add_argument("--config", type=str, default="configs/train.yaml",
                         help="Config YAML (used for dataset paths, model name, batch size)")
     parser.add_argument("--model", type=str, default=None,
@@ -215,7 +217,7 @@ def main():
     spec = dataset_spec_from_config(cfg)
     task = spec.make_task()
 
-    print(f"Checkpoint : {args.checkpoint}")
+    print(f"Checkpoint : {resolve_checkpoint(args.checkpoint)}")
     print(f"Dataset    : {spec.name} ({task.name}, {spec.num_classes} clases)")
     print(f"Modelo     : {model_name}")
     print(f"Split      : {args.split}")
@@ -231,7 +233,7 @@ def main():
         in_chans=spec.in_channels,
         img_size=cfg["model"].get("img_size"),
     )
-    ckpt = torch.load(args.checkpoint, map_location=device, weights_only=True)
+    ckpt = torch.load(resolve_checkpoint(args.checkpoint), map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state_dict"])
     model = model.to(device)
     resumed_epoch = ckpt.get("epoch", "?")
@@ -310,10 +312,13 @@ def main():
     if ordinal:
         print_clinical_cutoffs(probs_np, hard_np, spec.classes)
     if args.save_predictions:
-        target = (default_predictions_path(args.checkpoint)
+        target = (default_predictions_path(
+                      resolve_checkpoint(args.checkpoint), checkpoint_dir=cfg.get("checkpoint", {}).get("dir"),
+                      env=cfg.get("output", {}).get("env", "local"),
+                      warn=lambda msg: print(f"  aviso: {msg}"))
                   if args.save_predictions == AUTO_PATH else args.save_predictions)
         save_predictions(target, probs_np, hard_np, best_t, spec.classes, task.name, ordinal,
-                         groups)
+                         groups, threshold_source=source)
         print(f"\nPredicciones guardadas en: {target}")
 
     # ── Save CSV ──────────────────────────────────────────────────────────────
