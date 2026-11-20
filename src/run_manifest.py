@@ -160,18 +160,7 @@ def manifest_from_log(log_path: str | Path, *, dataset: str, model: str, mode: s
     left out, never invented.
     """
     cfg = read_config_line(log_path)
-    train: dict[str, Any] = {}
-    for key, name, conv in (("epochs", "epochs", _int), ("lr", "lr", _float),
-                            ("seed", "seed", _int), ("precision", "precision", str)):
-        value = conv(cfg.get(key)) if key in cfg and cfg[key] != "None" else None
-        if value is not None:
-            train[name] = value
-    if (bs := _int(cfg.get("batch"))) is not None:
-        train["batch_size"] = bs        # per GPU
-    if (loss := loss_name(cfg.get("loss"))):
-        train["loss"] = loss
-    if select_metric:
-        train["select_by"] = select_metric
+    train = _training_from_config_line(cfg, select_metric)
     config: dict[str, Any] = {"data": {"name": cfg.get("dataset", dataset)},
                               "model": {"name": cfg.get("modelo", model)},
                               "training": train}
@@ -180,15 +169,40 @@ def manifest_from_log(log_path: str | Path, *, dataset: str, model: str, mode: s
     run_start: dict[str, Any] = {"run_id": run_id, "dataset": cfg.get("dataset", dataset),
                                  "model": cfg.get("modelo", model), "mode": mode,
                                  "config": config}
-    if task:
-        run_start["task"] = task
-    if classes:
-        run_start["classes"] = classes
-    if select_metric:
-        run_start["select_metric"] = select_metric
-    if "epochs" in train:
-        run_start["epochs"] = train["epochs"]
-    for src, dst in (("train", "n_train"), ("val", "n_val")):
-        if (n := _int(cfg.get(src))) is not None:
-            run_start[dst] = n
+    optional = {"task": task, "classes": classes, "select_metric": select_metric,
+                "epochs": train.get("epochs"),
+                "n_train": _int(cfg.get("train")), "n_val": _int(cfg.get("val"))}
+    run_start.update({k: v for k, v in optional.items() if v not in (None, [], "")})
     return build_manifest(run_start, source="log")
+
+
+def _training_from_config_line(cfg: Mapping[str, str], select_metric: str | None) -> dict:
+    """The ``training`` section that a ``Configuración:`` line can tell (known fields only)."""
+    train: dict[str, Any] = {}
+    for key, conv in (("epochs", _int), ("lr", _float), ("seed", _int), ("precision", str)):
+        value = conv(cfg[key]) if key in cfg and cfg[key] != "None" else None
+        if value is not None:
+            train[key] = value
+    if (bs := _int(cfg.get("batch"))) is not None:
+        train["batch_size"] = bs        # per GPU
+    if (loss := loss_name(cfg.get("loss"))):
+        train["loss"] = loss
+    if select_metric:
+        train["select_by"] = select_metric
+    return train
+
+
+_SAFE_ARG = re.compile(r"[\w@%+=:,./-]+")
+
+
+def command_line(argv: list[str]) -> str:
+    """The command that launched the run, **for display only** (it is never executed): the
+    script name and its arguments, quoted POSIX-style when they contain spaces or symbols so
+    it can be copied back into a shell."""
+    def quote(arg: str) -> str:
+        if _SAFE_ARG.fullmatch(arg):
+            return arg
+        return "'" + arg.replace("'", "'\"'\"'") + "'"
+    if not argv:
+        return ""
+    return " ".join([Path(argv[0]).name, *(quote(a) for a in argv[1:])])

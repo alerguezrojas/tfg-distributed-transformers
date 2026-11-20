@@ -177,3 +177,13 @@ def test_failed_manifest_write_leaves_no_temp_file(tmp_path):
     with pytest.raises(ValueError):
         write_manifest(tmp_path / "run_t.json", {"v": 1, "x": float("nan")})
     assert list(tmp_path.iterdir()) == []
+
+
+def test_command_line_is_copyable_and_quotes_only_what_needs_it():
+    from src.run_manifest import command_line
+    assert command_line(["/x/scripts/train.py", "--config", "configs/a.yaml", "--seed", "43"]) \
+        == "train.py --config configs/a.yaml --seed 43"
+    assert command_line(["t.py", "--data-root", "/m/MEMORIA TFG", "it's"]) \
+        == "t.py --data-root '/m/MEMORIA TFG' 'it'\"'\"'s'"
+    assert command_line(["t.py", ""]) == "t.py ''"
+    assert command_line([]) == ""
