@@ -37,8 +37,24 @@ model:
   # pooling: mean            # 'mean' (por defecto) o 'cls'
 ```
 
-Si falta `transformers`, el error lo dice y da el comando de instalación. Los tests no la
-necesitan: usan un módulo falso.
+Si falta `transformers`, el error lo dice y da el comando de instalación. Los tests generales no
+la necesitan (usan un módulo falso); `tests/unit/test_backbones_transformers.py` prueba el
+adaptador con la librería real (modelos diminutos creados desde su configuración, sin descargas)
+y se salta si no está instalada.
+
+**Descargas y seguridad.** Con `pretrained: true` se descargan los pesos del repositorio. Con
+`pretrained: false` y `hf:` se sigue descargando el `config.json` (sin código ni pesos). El
+proyecto nunca activa `trust_remote_code`: solo se cargan arquitecturas incluidas en
+`transformers`.
+
+**Pooling.** `mean` promedia solo los tokens de parche: excluye el `[CLS]` y los *register tokens*
+(como el `avg` de timm), y en I-JEPA, que no los tiene, es la media de todos. `cls` toma el primer
+token. El pooling no está en el `state_dict`: `eval.py` y el benchmark lo leen de `model.pooling`,
+así que el config de evaluación debe ser el del entrenamiento.
+
+**DDP.** El adaptador quita el *pooler* de los ViT y congela el `mask_token` de DINOv2, que la
+pérdida nunca alcanza; sin eso DDP falla en la primera iteración por parámetros sin gradiente.
+No hace falta `find_unused_parameters`.
 
 ## Cómo añadir un modelo
 
@@ -65,8 +81,8 @@ necesitan: usan un módulo falso.
 3. **Usarlo** con `model.name: mi_modelo` en el config. No hace falta tocar el entrenamiento,
    las estrategias ni los decoradores. (Para un repositorio de Hugging Face sin código propio
    basta `hf:<repo>`, sin registrar nada.)
-4. **Probarlo** sin red: `tests/unit/test_backbones.py` muestra cómo simular el modelo con un
-   módulo falso.
+4. **Probarlo** sin red: `tests/unit/test_backbones.py` simula el modelo con un módulo falso y
+   `tests/unit/test_backbones_transformers.py` usa modelos diminutos de la librería real.
 
 ## Sonda lineal frente a ajuste fino
 
@@ -96,6 +112,9 @@ para no tocar los datasets por un caso que todavía no existe.
   escala de grises).
 - **Resolución**: si la entrada no mide lo que el modelo espera, se interpolan los embeddings de
   posición (`interpolate_pos_encoding`); depende de que el modelo lo admita.
+- **Logs y web**: la línea `Configuración:` añade `freeze_backbone=` y `backbone=` (origen). La
+  validación del predictor deja fuera los runs con `freeze_backbone=true`: su coste no es el del
+  ajuste completo que modela el predictor.
 - **Predictor** (`paravit estimate`, `src/model_profile.py`): solo perfila modelos de timm. Para
   I-JEPA ViT-H/14 se puede estimar con el equivalente de timm `vit_huge_patch14_224`.
 

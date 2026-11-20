@@ -16,6 +16,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   a ajuste fino, protocolo de comparación y licencias. Un nombre mal escrito (ni timm ni registrado)
   da un error que lista los backbones registrados. Probado con `transformers` 5.12 real (modelo
   I-JEPA diminuto desde config; el test se salta si no está instalado).
+- Adaptador `hf:`: sin *pooler* ni `mask_token` entrenable (DDP fallaba por parámetros sin
+  gradiente), la media excluye `[CLS]` y *register tokens*, `eval.py` y el benchmark respetan
+  `model.pooling`, y Grad-CAM funciona con `freeze_backbone`. La línea `Configuración:` añade
+  `freeze_backbone=` y `backbone=`; la validación del predictor ignora las sondas lineales.
 
 ### Seguridad
 - Dependencias con vulnerabilidades conocidas actualizadas en `uv.lock` (pillow 13, tornado,

@@ -205,6 +205,25 @@ def print_clinical_cutoffs(probs, hard, class_names) -> None:
               f"{_fmt(r['npv'])}  {_fmt(r['auc'])}")
 
 
+def build_eval_model(cfg: dict, model_name: str, spec):
+    """Architecture of the trained model, with random weights (the checkpoint fills them).
+
+    Everything that changes the architecture or the readout of the features must match the
+    training config: ``img_size`` and ``pooling`` (the latter is not in the state_dict, so a
+    mismatch would evaluate silently with the wrong pooling).
+    """
+    # dropout is a no-op at eval time (model.eval() disables it) and does not
+    # affect the state_dict shape, so build_model need not take it.
+    return build_model(
+        model_name=model_name,
+        num_classes=spec.num_classes,
+        pretrained=False,
+        in_chans=spec.in_channels,
+        img_size=cfg["model"].get("img_size"),
+        pooling=cfg["model"].get("pooling"),
+    )
+
+
 def main():
     args = parse_args()
 
@@ -224,15 +243,7 @@ def main():
     print(f"Dispositivo: {device}")
 
     # ── Build model ───────────────────────────────────────────────────────────
-    # dropout is a no-op at eval time (model.eval() disables it) and does not
-    # affect the state_dict shape, so build_model need not take it.
-    model = build_model(
-        model_name=model_name,
-        num_classes=spec.num_classes,
-        pretrained=False,
-        in_chans=spec.in_channels,
-        img_size=cfg["model"].get("img_size"),
-    )
+    model = build_eval_model(cfg, model_name, spec)
     ckpt = torch.load(resolve_checkpoint(args.checkpoint), map_location=device, weights_only=True)
     model.load_state_dict(ckpt["model_state_dict"])
     model = model.to(device)

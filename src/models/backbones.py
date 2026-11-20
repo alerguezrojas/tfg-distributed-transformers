@@ -118,8 +118,17 @@ class HFEncoder(nn.Module):
         super().__init__()
         if pooling not in POOLINGS:
             raise ValueError(f"pooling must be one of {POOLINGS}, got {pooling!r}")
+        # AutoModel leaves parameters the classification loss never reaches (the ViT pooler,
+        # DINOv2's mask token): DDP would fail on the first step waiting for their gradients.
+        if getattr(model, "pooler", None) is not None:
+            model.pooler = None
+        mask_token = getattr(getattr(model, "embeddings", None), "mask_token", None)
+        if mask_token is not None:
+            mask_token.requires_grad_(False)
         self.model = model
         self.pooling = pooling
+        patch = getattr(model.config, "patch_size", None)
+        self._patch = patch[0] if isinstance(patch, (tuple, list)) else patch
         self.num_features = int(model.config.hidden_size)
         self._native_size = getattr(model.config, "image_size", None)
 
@@ -128,7 +137,14 @@ class HFEncoder(nn.Module):
         if self._native_size is not None and x.shape[-1] != self._native_size:
             kwargs["interpolate_pos_encoding"] = True   # other input side: resize pos. embeddings
         tokens = self.model(pixel_values=x, **kwargs).last_hidden_state
-        return tokens.mean(dim=1) if self.pooling == "mean" else tokens[:, 0]
+        if self.pooling == "cls":
+            return tokens[:, 0]
+        # Mean over the patch tokens only: skip the prefix ([CLS], register tokens), like
+        # timm's 'avg'. I-JEPA has no prefix, so nothing changes for it.
+        prefix = 0
+        if self._patch:
+            prefix = max(0, tokens.shape[1] - (x.shape[-2] // self._patch) * (x.shape[-1] // self._patch))
+        return tokens[:, prefix:].mean(dim=1)
 
     def llrd_layout(self):
         """``(embedding params, [block params…], other params)`` as ``(name, param)`` lists."""
@@ -157,6 +173,14 @@ def _find_layers(model: nn.Module):
             if isinstance(layers, nn.ModuleList):
                 return layers
     return None
+
+
+def backbone_log_fields(model_cfg: dict, model_name: str) -> str:
+    """``freeze_backbone=… | backbone=…`` for the ``Configuración:`` line of the logs
+    (``backbone`` is the source: timm, transformers…). Only appended to existing keys."""
+    spec = resolve_backbone(model_name)
+    return (f"freeze_backbone={str(bool(model_cfg.get('freeze_backbone', False))).lower()} | "
+            f"backbone={spec.source if spec else 'timm'}")
 
 
 def build_hf_encoder(repo: str, cfg: dict, config=None) -> HFEncoder:

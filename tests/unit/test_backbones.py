@@ -308,3 +308,63 @@ class TestValidator:
 def test_misspelt_name_lists_registered_backbones():
     with pytest.raises(ValueError, match=r"ijepa_vith14_1k.*ijepa_vith14_22k"):
         TimmClassifier("ijepa_vith14_1", num_classes=2, pretrained=False)
+
+
+# ── Review fixes: eval pooling, log fields, Grad-CAM on a frozen backbone, prefix tokens ──
+
+def test_eval_builds_the_model_with_the_training_pooling(fake_transformers):
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[2] / "scripts" / "eval.py"
+    mod_spec = importlib.util.spec_from_file_location("eval_script_bb", path)
+    eval_script = importlib.util.module_from_spec(mod_spec)
+    mod_spec.loader.exec_module(eval_script)
+    ds = types.SimpleNamespace(num_classes=3, in_channels=3)
+    cfg = {"model": {"name": "hf:org/m", "pooling": "cls"}}
+    assert eval_script.build_eval_model(cfg, "hf:org/m", ds).backbone.pooling == "cls"
+    cfg = {"model": {"name": "hf:org/m"}}
+    assert eval_script.build_eval_model(cfg, "hf:org/m", ds).backbone.pooling == "mean"
+
+
+def test_log_fields_record_freeze_and_backbone_source():
+    from src.models.backbones import backbone_log_fields
+    assert backbone_log_fields({}, "resnet18") == "freeze_backbone=false | backbone=timm"
+    assert backbone_log_fields({"freeze_backbone": True}, "ijepa_vith14_1k") == \
+        "freeze_backbone=true | backbone=transformers"
+
+
+def test_config_line_parser_reads_the_new_keys(tmp_path):
+    from src.web.tabs.benchmark.validate import _is_linear_probe
+    line = ("Configuración: modelo=x | batch=8/GPU | dataset=panda | seed=1 | "
+            "freeze_backbone={} | backbone=transformers")
+    for value, expected in (("true", True), ("false", False)):
+        log = tmp_path / f"{value}.log"
+        log.write_text(line.format(value) + "\n")
+        assert _is_linear_probe(types.SimpleNamespace(log_path=log)) is expected
+
+
+@pytest.mark.parametrize("name,side", [("resnet18", 64), ("vit_tiny_patch16_224", 224)])
+def test_gradcam_works_with_a_frozen_backbone(name, side):
+    import numpy as np
+    from src.training.monitor import grad_cam
+    model = TimmClassifier(name, num_classes=3, pretrained=False, freeze_backbone=True).eval()
+    maps = grad_cam(model, model, torch.randn(2, 3, side, side), torch.tensor([0, 2]))
+    assert maps is not None and maps.dtype == np.uint8 and maps.max() == 255
+    assert all(p.grad is None for p in model.parameters())
+
+
+def test_mean_pooling_skips_prefix_tokens():
+    class Prefixed(nn.Module):       # 2 prefix tokens + (32/16)² = 4 patch tokens
+        def __init__(self):
+            super().__init__()
+            self.config = types.SimpleNamespace(hidden_size=4, image_size=32, patch_size=16)
+
+        def forward(self, pixel_values, **kw):
+            t = torch.arange(6, dtype=torch.float32)[None, :, None].expand(len(pixel_values), 6, 4)
+            return _Out(t.clone())
+
+    enc = backbones.HFEncoder(Prefixed(), pooling="mean")
+    x = torch.zeros(2, 3, 32, 32)
+    assert torch.allclose(enc(x), torch.full((2, 4), 3.5))     # mean of tokens 2..5, not 0..5
+    enc.pooling = "cls"
+    assert torch.allclose(enc(x), torch.zeros(2, 4))

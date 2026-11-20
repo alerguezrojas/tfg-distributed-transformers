@@ -64,3 +64,35 @@ def test_classifier_llrd_and_freeze(encoder, monkeypatch):
     frozen(torch.randn(2, 3, SIDE, SIDE)).sum().backward()
     assert all(p.grad is None for p in frozen.backbone.parameters())
     assert all(p.grad is not None for p in frozen.head.parameters())
+
+
+def _tiny_models():
+    from transformers import (Dinov2Config, Dinov2Model, Dinov2WithRegistersConfig,
+                              Dinov2WithRegistersModel, ViTConfig, ViTModel)
+    common = dict(hidden_size=HIDDEN, num_hidden_layers=LAYERS, num_attention_heads=2,
+                  image_size=SIDE, patch_size=PATCH)
+    return {
+        "ijepa": IJepaModel(_config(), add_pooling_layer=False),
+        "vit": ViTModel(ViTConfig(intermediate_size=64, **common)),          # has a pooler
+        "dinov2": Dinov2Model(Dinov2Config(mlp_ratio=2, **common)),          # [CLS], mask token
+        "dinov2reg": Dinov2WithRegistersModel(
+            Dinov2WithRegistersConfig(mlp_ratio=2, num_register_tokens=2, **common)),
+    }
+
+
+@pytest.mark.parametrize("kind", ["ijepa", "vit", "dinov2", "dinov2reg"])
+def test_every_trainable_parameter_receives_gradient(kind):
+    """DDP needs it: a parameter without gradient fails 'Expected to have finished reduction'."""
+    enc = HFEncoder(_tiny_models()[kind])
+    enc(torch.randn(2, 3, SIDE, SIDE)).sum().backward()
+    missing = [n for n, p in enc.named_parameters() if p.requires_grad and p.grad is None]
+    assert not missing
+
+
+@pytest.mark.parametrize("kind,prefix", [("ijepa", 0), ("vit", 1), ("dinov2", 1), ("dinov2reg", 3)])
+def test_mean_pooling_excludes_cls_and_register_tokens(kind, prefix):
+    enc = HFEncoder(_tiny_models()[kind]).eval()
+    x = torch.randn(2, 3, SIDE, SIDE)
+    tokens = enc.model(pixel_values=x).last_hidden_state
+    assert tokens.shape[1] == (SIDE // PATCH) ** 2 + prefix
+    assert torch.allclose(enc(x), tokens[:, prefix:].mean(dim=1), atol=1e-6)
