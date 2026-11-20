@@ -1,0 +1,48 @@
+{
+  "v": 1,
+  "type": "run_manifest",
+  "source": "log",
+  "run_id": "17102026_134408",
+  "dataset": "medmnist_chest",
+  "task": "multilabel",
+  "classes": [
+    "atelectasis",
+    "cardiomegaly",
+    "effusion",
+    "infiltration",
+    "mass",
+    "nodule",
+    "pneumonia",
+    "pneumothorax",
+    "consolidation",
+    "edema",
+    "emphysema",
+    "fibrosis",
+    "pleural",
+    "hernia"
+  ],
+  "model": "vit_tiny_patch16_224",
+  "mode": "single",
+  "config": {
+    "data": {
+      "name": "medmnist_chest"
+    },
+    "model": {
+      "name": "vit_tiny_patch16_224"
+    },
+    "training": {
+      "epochs": 5,
+      "lr": 0.0001,
+      "precision": "fp32",
+      "batch_size": 128,
+      "loss": "bce"
+    },
+    "output": {
+      "env": "local"
+    }
+  },
+  "epochs": 5,
+  "n_train": 78468,
+  "n_val": 11219,
+  "ordinal": false
+}
