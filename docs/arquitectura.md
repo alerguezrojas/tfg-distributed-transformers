@@ -288,7 +288,7 @@ uv run paravit.py --help
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2 --precision amp
 uv run paravit.py train --strategy {single|ddp|model-parallel|heterogeneous} --config ... [--dry-run]
 uv run paravit.py benchmark --model vit_base_patch16_224 --batch-sizes 32,64 --epochs 30
-uv run paravit.py eval --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
+uv run paravit.py eval --checkpoint checkpoints/local/single/vit_base_patch16_224/19112026_101500/best.pt --split test
 uv run paravit.py dashboard
 ```
 
@@ -477,16 +477,17 @@ logs/
     model_parallel/{model}/
 checkpoints/
   local/
-    single/{model}/   # excluidos de git (*.pt)
-    ddp/{model}/
+    single/{model}/{DDMMYYYY_HHMMSS}/   # un run por carpeta: best.pt + last.pt (excluidos de git)
+    ddp/{model}/{DDMMYYYY_HHMMSS}/
   verode/
-    single/{model}/
-    ddp/{model}/
+    single/{model}/{DDMMYYYY_HHMMSS}/
+    ddp/{model}/{DDMMYYYY_HHMMSS}/
 ```
 
 - El builder lee `output.env` del config y deduce `mode`/`model` automáticamente.
 - Los runs anteriores a mayo 2026 usan la estructura plana (`logs/{env}/`) — el dashboard los descubre igual vía `rglob`.
 - Los ficheros se nombran con formato **DDMMYYYY_HHMMSS**.
+- **Checkpoints:** `checkpoint.keep` (`best_last` por defecto, o `all` = un `checkpoint_epoch_NNN.pt` por época mejorada); escritura atómica (`src/training/checkpoints.py`); los runs anteriores a nov. 2026 tienen `checkpoint_epoch_*.pt` directamente en la carpeta del modelo y siguen siendo válidos.
 - **git:** todos los logs y CSVs bajo `logs/` se commitean (los `*.pt` de checkpoints, no).
 
 ---

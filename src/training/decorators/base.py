@@ -42,6 +42,9 @@ class TrainerDecorator(BaseTrainer):
     def save_checkpoint(self, epoch: int, metrics: dict):
         return self._trainer.save_checkpoint(epoch, metrics)
 
+    def save_last_checkpoint(self, epoch: int, metrics: dict):
+        return self._trainer.save_last_checkpoint(epoch, metrics)
+
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         return self._trainer.fit(train_loader, val_loader, epochs)
 
@@ -144,17 +147,18 @@ class EpochController(TrainerDecorator):
             # An undefined metric (NaN: e.g. QWK/AUC on a one-class split) never beats
             # the best, but the first epoch is still saved so there is a checkpoint.
             is_best = value > best_f1 or (epoch == 1 and math.isnan(value))
+            metrics_clean = {k: v for k, v in val_m.items() if not k.startswith("_")}
+            # Keep the threshold tuned on VALIDATION with the checkpoint, so the
+            # test evaluation applies it instead of tuning on the test set itself.
+            if val_m.get("_optimal_threshold") is not None:
+                metrics_clean["optimal_threshold"] = val_m["_optimal_threshold"]
             if is_best:
                 best_f1 = best_f1 if math.isnan(value) else value
                 epochs_no_improve = 0
-                metrics_clean = {k: v for k, v in val_m.items() if not k.startswith("_")}
-                # Keep the threshold tuned on VALIDATION with the checkpoint, so the
-                # test evaluation applies it instead of tuning on the test set itself.
-                if val_m.get("_optimal_threshold") is not None:
-                    metrics_clean["optimal_threshold"] = val_m["_optimal_threshold"]
                 self.save_checkpoint(epoch, metrics_clean)
             else:
                 epochs_no_improve += 1
+            self.save_last_checkpoint(epoch, metrics_clean)   # last.pt: resume point
 
             self._on_epoch_end(epoch, epochs, train_m, val_m, best_f1, epoch_times)
             progress["epochs_run"], progress["best"] = epoch, best_f1

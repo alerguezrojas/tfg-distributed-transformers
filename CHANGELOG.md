@@ -203,6 +203,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - `AGENTS.md`, `docs/roadmap.md` y este `CHANGELOG.md`.
 
 ### Cambiado
+- Checkpoints por run (20/11/2026): cada run guarda en su carpeta
+  `checkpoints/.../<modelo>/<DDMMYYYY_HHMMSS>/` y por defecto solo conserva `best.pt` y `last.pt`
+  (antes, un `checkpoint_epoch_NNN.pt` por época mejorada, todos los runs del modelo mezclados; llenó
+  el disco el 19/11/2026). Nueva clave `checkpoint.keep` (`best_last` | `all`, validada) y escritura
+  atómica. `eval`, `--resume` y el menú entienden ficheros antiguos, `best.pt`/`last.pt` y carpetas
+  de run (`resolve_checkpoint`). Mismas reglas en las cuatro estrategias (DDP: solo rank 0).
 - `.gitignore`: `checkpoints/runs` y `checkpoints/local` (copias de checkpoints y predicciones de
   test por run; en el equipo local son enlaces al SSD).
 - Web: se eliminan `DashboardContext.refresh_interval` (nadie lo usaba) y los comentarios

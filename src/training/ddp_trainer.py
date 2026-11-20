@@ -18,6 +18,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 
+from src.training.checkpoints import DEFAULT_KEEP
 from src.training.trainer import Trainer
 
 
@@ -48,10 +49,11 @@ class DDPTrainer(Trainer):
         task=None,
         rank: int = 0,
         world_size: int = 1,
+        checkpoint_keep: str = DEFAULT_KEEP,
     ):
         super().__init__(model, optimizer, scheduler, device, checkpoint_dir,
                          criterion, grad_clip, label_smoothing, mixup_alpha,
-                         precision=precision, task=task)
+                         precision=precision, task=task, checkpoint_keep=checkpoint_keep)
         self.rank = rank
         self.world_size = world_size
         self._epoch = 0
@@ -104,3 +106,7 @@ class DDPTrainer(Trainer):
         # Only rank 0 writes to disk; DDP.state_dict() delegates to module
         if self.rank == 0:
             super().save_checkpoint(epoch, metrics)
+
+    def save_last_checkpoint(self, epoch: int, metrics: dict):
+        if self.rank == 0:
+            super().save_last_checkpoint(epoch, metrics)

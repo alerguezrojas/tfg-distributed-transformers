@@ -23,6 +23,9 @@ class BaseTrainer(ABC):
     def save_checkpoint(self, epoch: int, metrics: dict):
         """Save a model checkpoint."""
 
+    def save_last_checkpoint(self, epoch: int, metrics: dict):
+        """Save the end-of-epoch checkpoint used to resume (no-op unless overridden)."""
+
     @abstractmethod
     def fit(self, train_loader: DataLoader, val_loader: DataLoader, epochs: int):
         """Full training loop for N epochs."""

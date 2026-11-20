@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 from src import precision as precision_mod
 from src.training.base_trainer import BaseTrainer
+from src.training.checkpoints import BEST_NAME, DEFAULT_KEEP, LAST_NAME, atomic_copy, atomic_save, resolve_checkpoint
 from src.training import metrics as m
 from src.training.augmentations import mixup_batch
 from src.training.tasks import MultiLabelTask, Task
@@ -59,6 +60,7 @@ class Trainer(BaseTrainer):
         mixup_alpha: float = 0.0,
         precision: str = "fp32",
         task: Task | None = None,
+        checkpoint_keep: str = DEFAULT_KEEP,
     ):
         self.task: Task = task if task is not None else MultiLabelTask()
         self.model = self._place_model(model, device)
@@ -67,6 +69,8 @@ class Trainer(BaseTrainer):
         self.device = device
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        self.checkpoint_keep = checkpoint_keep   # 'best_last' | 'all' (checkpoint.keep)
+        self._best_saved_epoch: int | None = None
         self.criterion = criterion if criterion is not None else self.task.build_criterion()
         self.grad_clip = grad_clip
         self.label_smoothing = label_smoothing
@@ -242,7 +246,24 @@ class Trainer(BaseTrainer):
         return result
 
     def save_checkpoint(self, epoch: int, metrics: dict):
-        path = self.checkpoint_dir / f"checkpoint_epoch_{epoch:03d}.pt"
+        """Guarda el checkpoint de una época que mejora: ``best.pt`` (se sobrescribe) o,
+        con ``keep: all``, un ``checkpoint_epoch_NNN.pt`` por época mejorada."""
+        name = f"checkpoint_epoch_{epoch:03d}.pt" if self.checkpoint_keep == "all" else BEST_NAME
+        atomic_save(self._checkpoint_state(epoch, metrics), self.checkpoint_dir / name)
+        self._best_saved_epoch = epoch
+
+    def save_last_checkpoint(self, epoch: int, metrics: dict):
+        """Guarda ``last.pt`` (última época, para reanudar); con ``keep: all`` no hace nada.
+        Si esta época acaba de guardar ``best.pt``, se copia en vez de serializar de nuevo."""
+        if self.checkpoint_keep == "all":
+            return
+        last, best = self.checkpoint_dir / LAST_NAME, self.checkpoint_dir / BEST_NAME
+        if self._best_saved_epoch == epoch and best.exists():
+            atomic_copy(best, last)
+        else:
+            atomic_save(self._checkpoint_state(epoch, metrics), last)
+
+    def _checkpoint_state(self, epoch: int, metrics: dict) -> dict:
         state = {
             "epoch": epoch,
             "model_state_dict": self.model.state_dict(),
@@ -251,14 +272,15 @@ class Trainer(BaseTrainer):
         }
         if self.scheduler is not None:
             state["scheduler_state_dict"] = self.scheduler.state_dict()
-        torch.save(state, path)
+        return state
 
     def load_checkpoint(self, path: str | Path) -> dict:
         """Restore model, optimizer and scheduler from a checkpoint file.
 
         Returns the checkpoint dict (contains 'epoch' and 'metrics').
         """
-        ckpt = torch.load(path, map_location=self.device, weights_only=True)
+        ckpt = torch.load(resolve_checkpoint(path, prefer="last"), map_location=self.device,
+                          weights_only=True)
         self.model.load_state_dict(ckpt["model_state_dict"])
         self.optimizer.load_state_dict(ckpt["optimizer_state_dict"])
         if "scheduler_state_dict" in ckpt and self.scheduler is not None:
