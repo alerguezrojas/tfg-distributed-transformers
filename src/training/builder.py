@@ -19,7 +19,6 @@ Usage:
 """
 
 import logging
-import shlex
 import sys
 import warnings
 from datetime import datetime
@@ -32,7 +31,7 @@ from src.training.checkpoints import DEFAULT_KEEP
 from src.training.trainer import Trainer
 from src.training.logger_setup import setup_logger
 from src.training.fn_decorators import timed, measure_energy
-from src.run_manifest import manifest_path
+from src.run_manifest import command_line, manifest_path
 from src.training.events import JsonlEventSink, environment_fingerprint
 from src.training.alerts import AlertMonitor, alerts_config
 from src.training.monitor import LayerStatsMonitor, PredictionMonitor, monitor_config
@@ -466,7 +465,7 @@ class TrainingSessionBuilder:
                 },
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),
                 manifest_path=manifest_path(log_dir, self._timestamp),
-                command=shlex.join([Path(sys.argv[0]).name, *sys.argv[1:]]),
+                command=command_line(sys.argv),
             )
             # System sampler (GPU/CPU/RAM every N s). Added before the sink so it stops
             # before `run_end` is written. 0 disables it; independent of the monitor.

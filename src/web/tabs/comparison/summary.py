@@ -1,6 +1,8 @@
 """Compare — summary."""
 from __future__ import annotations
 
+import math
+
 import pandas as pd
 import streamlit as st
 
@@ -24,7 +26,7 @@ def _epochs_cell(values: list[float]) -> str:
 
 
 def _hms(seconds: list[float]) -> str:
-    vals = [s for s in seconds if s == s]
+    vals = [s for s in seconds if isinstance(s, (int, float)) and not math.isnan(s)]
     if not vals:
         return _DASH
     mean = sum(vals) / len(vals)

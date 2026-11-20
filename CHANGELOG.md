@@ -63,6 +63,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   color y resolución.
 
 ### Corregido
+- Calidad (SonarCloud, PR a `main`): la línea de comando del manifiesto se compone con una función
+  propia de presentación (`command_line`, nunca se ejecuta) en vez de `shlex.join`, que el análisis
+  marcaba como inyección de comandos; la media de tiempos de *Compare* detecta NaN con `math.isnan`
+  y no con `s == s`; `manifest_from_log` baja de complejidad.
 - **`--seed` en DDP cambia también el orden de los datos**: el `DistributedSampler` (y el del
   heterogéneo) barajaba siempre con la semilla 0, así que las repeticiones con otra semilla solo
   cambiaban la inicialización y los aumentos. Ahora usan `training.seed`, igual en todas las
