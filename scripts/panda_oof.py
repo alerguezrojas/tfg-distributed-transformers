@@ -76,6 +76,9 @@ def collect_oof(out: Path, n_folds: int, labels: pd.DataFrame) -> pd.DataFrame:
         meta = labels.set_index("image_id").loc[ids]
         if not (meta["isup_grade"].to_numpy() == targets).all():
             raise ValueError(f"fold {k}: the saved targets do not match train.csv")
+        if "group__data_provider" in z.files and not (
+                z["group__data_provider"].astype(str) == meta["data_provider"].to_numpy()).all():
+            raise ValueError(f"fold {k}: the saved centres do not match train.csv")
         scores = oof_scores(probs, targets)
         scores.insert(0, "image_id", ids)
         scores.insert(1, "fold", k)

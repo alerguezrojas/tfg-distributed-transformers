@@ -335,7 +335,13 @@ La lógica está en `src/data/label_noise.py` y el procedimiento, en `scripts/pa
    las marcadas como `excluded`: **validación y test no se tocan**, así que el resultado se compara
    con la base sobre el mismo test.
 
-El umbral de 1,5 se fijó antes de ver ningún resultado. Los ficheros viven en
+El umbral de 1,5 se fijó antes de ver ningún resultado. Hay dos sesgos conocidos, y los dos son pequeños:
+- El checkpoint de cada pliegue se elige por su QWK en ese mismo pliegue, lo que acerca un poco
+  las predicciones a las etiquetas. Las etiquetas no entran en los pesos, así que el efecto es
+  conservador: se marcan algo menos biopsias, no más.
+- El grado esperado tiende al centro de la escala, de modo que las etiquetas 0 y 5 pueden
+  marcarse más. Por eso hay que mirar la tasa de marcadas por grado y por hospital que imprime
+  `clean`. Los ficheros viven en
 `/media/alejandro/SSD/paravit-oof/` y la cola, en `~/experimentos_paravit/cola_oof.sh`. Después se
 entrenan tres semillas con `train_clean.yaml` y se comparan con las tres semillas base.
 

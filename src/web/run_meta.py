@@ -175,7 +175,11 @@ def _num(value: Any, cast=float) -> Any:
 
 
 def _splits_name(value: Any) -> str | None:
-    """File stem of a non-default ``data.splits`` ('splits_clean'); None for the default."""
+    """File stem of a non-default ``data.splits`` ('splits_clean'); None for the default.
+
+    Any file named ``splits.csv`` counts as the default partition, wherever it lives, so a
+    different partition must get another name (the OOF script writes ``splits_fold<k>`` and
+    ``splits_clean``)."""
     if not value:
         return None
     stem = Path(str(value)).stem

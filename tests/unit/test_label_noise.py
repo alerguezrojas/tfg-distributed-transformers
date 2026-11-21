@@ -133,7 +133,9 @@ def test_script_folds_then_clean(tmp_path):
         if k == 0:                          # one confidently wrong prediction
             bad = ids[0]
             pred[0] = 5 if grades[0] < 3 else 0
-        np.savez(out / f"fold{k}_val_preds.npz", probs=np.eye(6)[pred], targets=np.eye(6)[grades])
+        prov = labels.set_index("image_id").loc[ids, "data_provider"].to_numpy().astype(str)
+        np.savez(out / f"fold{k}_val_preds.npz", probs=np.eye(6)[pred], targets=np.eye(6)[grades],
+                 group__data_provider=prov)
     mod.main(["clean", "--out", str(out), "--n-folds", "3", "--max-gap", "1.5"])
     clean = pd.read_csv(out / "splits_clean.csv").set_index("image_id")["split"]
     assert clean[bad] == EXCLUDED
@@ -160,4 +162,26 @@ def test_script_detects_misaligned_predictions(tmp_path):
         np.savez(out / f"fold{k}_val_preds.npz", probs=np.eye(6)[np.zeros(n, int)],
                  targets=np.eye(6)[np.full(n, 5)])
     with pytest.raises(ValueError, match="targets"):
+        mod.main(["clean", "--out", str(out), "--n-folds", "2"])
+
+
+def test_script_detects_swapped_centres(tmp_path):
+    splits, labels = _toy(n=60)
+    root = tmp_path / "panda"
+    root.mkdir()
+    splits.to_csv(root / "splits.csv", index=False)
+    labels.to_csv(root / "train.csv", index=False)
+    base = tmp_path / "base.yaml"
+    base.write_text(yaml.safe_dump({"data": {"root": str(root)}}))
+    out = tmp_path / "oof"
+    mod = _script()
+    mod.main(["folds", "--config", str(base), "--out", str(out), "--n-folds", "2"])
+    for k in range(2):
+        f = pd.read_csv(out / f"splits_fold{k}.csv")
+        ids = sorted(f.loc[f["split"] == "val", "image_id"])
+        meta = labels.set_index("image_id").loc[ids]
+        flipped = np.where(meta["data_provider"] == "radboud", "karolinska", "radboud")
+        np.savez(out / f"fold{k}_val_preds.npz", probs=np.eye(6)[meta["isup_grade"]],
+                 targets=np.eye(6)[meta["isup_grade"]], group__data_provider=flipped)
+    with pytest.raises(ValueError, match="centres"):
         mod.main(["clean", "--out", str(out), "--n-folds", "2"])
