@@ -6,6 +6,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- Limpieza de etiquetas fuera de pliegue (`src/data/label_noise.py`, `scripts/panda_oof.py`): crea
+  pliegues de train estratificados, junta las predicciones fuera de pliegue y deja fuera de train las
+  biopsias que se alejan de su etiqueta (val y test intactos). La web distingue los runs con otra
+  partición (`data.splits`).
 - OUSM contra etiquetas ruidosas (`training.ousm_k`, Xue et al. 2019): cada lote de entrenamiento
   ignora sus k muestras de mayor pérdida, con cualquier pérdida (CE, CE + EMD, BCE, focal). Solo
   actúa al entrenar, así que la `val_loss` sigue siendo comparable. Viene con

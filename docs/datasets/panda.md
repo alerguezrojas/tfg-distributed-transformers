@@ -318,6 +318,27 @@ etiquetas usaron predicciones **fuera de pliegue** (validación cruzada): una mu
 ruidosa por un modelo que no la ha visto, no por la pérdida del lote en curso. Promediar tres
 semillas sigue siendo la mejora más barata y fiable (0,819 frente a 0,794 de media).
 
+## Limpieza de etiquetas fuera de pliegue (21/11/2026, en curso)
+
+Es la receta del 1.er puesto ([research/panda.md](../research/panda.md)): cada biopsia de train la
+juzga un modelo que no la ha visto. Con OUSM, en cambio, la decide la pérdida del lote en curso.
+La lógica está en `src/data/label_noise.py` y el procedimiento, en `scripts/panda_oof.py`:
+
+1. `folds` reparte train en 5 pliegues, estratificados por hospital y grado y fijos con una
+   semilla. Por cada pliegue escribe una partición (`splits_fold<k>.csv`: el pliegue es `val`, el
+   resto de train es `train`, y val y test originales pasan a `excluded`) y su config
+   (`data.splits`).
+2. Se entrena un modelo por pliegue (la base a 512 px, semilla 42) y se guardan sus predicciones
+   sobre el pliegue apartado (`eval --split val --save-predictions`).
+3. `clean` junta las predicciones fuera de pliegue (`oof.csv`) y marca las biopsias cuyo grado
+   esperado (`Σ k·p_k`) se aleja de la etiqueta más de 1,5 grados. Escribe `splits_clean.csv`, con
+   las marcadas como `excluded`: **validación y test no se tocan**, así que el resultado se compara
+   con la base sobre el mismo test.
+
+El umbral de 1,5 se fijó antes de ver ningún resultado. Los ficheros viven en
+`/media/alejandro/SSD/paravit-oof/` y la cola, en `~/experimentos_paravit/cola_oof.sh`. Después se
+entrenan tres semillas con `train_clean.yaml` y se comparan con las tres semillas base.
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen

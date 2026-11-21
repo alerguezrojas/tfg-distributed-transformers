@@ -124,6 +124,18 @@ def test_ousm_is_a_tag_and_splits_the_seed_groups():
     assert meta({"ousm_k": 2}).group_key("a") != meta({}).group_key("b")
 
 
+def test_non_default_splits_is_a_tag_and_splits_the_groups():
+    def meta(data):
+        start = {**PANDA_START, "config": {"training": {"seed": 43}, "data": data}}
+        return resolve_meta(manifest=build_manifest(start), run_start=None, log_path=None,
+                            dataset="panda")
+    clean = meta({"splits": "/ssd/oof/splits_clean.csv"})
+    assert "splits splits_clean" in clean.tags()
+    assert meta({"splits": "/data/panda/splits.csv"}).splits is None
+    assert clean.group_key("a") != meta({}).group_key("b")
+    assert meta({"splits": "/x/splits.csv"}).group_key("a") == meta({}).group_key("b")
+
+
 def test_providers_label_mentions_val_only_when_it_differs():
     start = {**PANDA_START, "config": {"data": {"providers": {"train": ["radboud"],
                                                                "val": ["karolinska"]}}}}
