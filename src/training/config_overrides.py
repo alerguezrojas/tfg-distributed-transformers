@@ -5,10 +5,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def add_common_overrides(parser) -> None:
-    """Añade al parser las opciones que sobrescriben la config en todas las estrategias."""
+def add_data_root_override(parser) -> None:
+    """Añade ``--data-root`` (lo comparten los scripts de entrenamiento y ``eval.py``)."""
     parser.add_argument("--data-root", type=str, help="Override data.root (only that key: absolute data.metadata, "
                         "data.splits or data.mosaics paths in the YAML are not moved)")
+
+
+def add_common_overrides(parser) -> None:
+    """Añade al parser las opciones que sobrescriben la config en todas las estrategias."""
+    add_data_root_override(parser)
     parser.add_argument("--seed", type=int, help="Override training.seed (repetitions)")
 
 

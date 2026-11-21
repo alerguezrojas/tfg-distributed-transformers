@@ -191,6 +191,18 @@ class TestSpecAndDataset:
         assert ds[0][0].shape == (3, 16, 16)
         assert panda.RandomRot90()(torch.arange(6.).reshape(1, 2, 3)).numel() == 6
 
+    @pytest.mark.parametrize("sin_transform", [False, True])
+    def test_getitem_emits_no_numpy_warning(self, panda_root, sin_transform):
+        # np.asarray(PIL) es de solo lectura: torch.from_numpy (y ToTensor) avisan de ello
+        import warnings
+        ds = get_dataset_spec("panda").dataset({"root": str(panda_root), "image_size": 16}, "val")
+        if sin_transform:
+            ds.transform = None
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            img, _ = ds[0]
+        assert img.shape[0] == 3
+
     def test_class_counts(self, panda_root):
         counts, n = get_dataset_spec("panda").class_counts({"root": str(panda_root)}, "train")
         assert n == 2 and counts.tolist() == [0, 1, 0, 0, 1, 0]

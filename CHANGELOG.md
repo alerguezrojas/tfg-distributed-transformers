@@ -11,6 +11,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   actúa al entrenar, así que la `val_loss` sigue siendo comparable. Viene con
   `configs/train_panda_ousm.yaml` y con la etiqueta `OUSM k` en la web.
 
+### Corregido
+
+- `scripts/eval.py` y `paravit eval` aceptan `--data-root` (con la misma semántica que en
+  entrenamiento: solo sustituye `data.root`), reutilizando `src/training/config_overrides.py`.
+- `PandaDataset` ya no provoca el aviso de NumPy por array no escribible: copia el array que
+  entrega PIL antes de pasarlo a `torch`. Los valores del Dataset no cambian.
+
 ### Experimentos
 
 - PANDA, tres semillas de la base a 1.024 px en Kaggle (2 × T4, DDP) frente a las tres locales a

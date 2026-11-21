@@ -13,6 +13,10 @@ Usage:
         --checkpoint checkpoints/verode/checkpoint_epoch_007.pt \\
         --config configs/train_cluster_v3.yaml
 
+    # Dataset in another location (only data.root moves)
+    uv run python scripts/eval.py --checkpoint checkpoints/verode/vit_small/05102026_101500 \\
+        --data-root /data/bigearthnet
+
     # Save per-class results to CSV
     uv run python scripts/eval.py \\
         --checkpoint checkpoints/verode/checkpoint_epoch_007.pt \\
@@ -37,6 +41,7 @@ from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
 from src.training.checkpoints import resolve_checkpoint, strip_wrapper_prefix
+from src.training.config_overrides import add_data_root_override, apply_common_overrides
 from src.training.tasks import MultiLabelTask, Task
 
 
@@ -52,6 +57,7 @@ def parse_args():
                         help="Config YAML (used for dataset paths, model name, batch size)")
     parser.add_argument("--model", type=str, default=None,
                         help="Override model name from config")
+    add_data_root_override(parser)
     parser.add_argument("--batch-size", type=int, default=None,
                         help="Override batch size (default: from config)")
     parser.add_argument("--output", type=str, default=None,
@@ -229,6 +235,7 @@ def main():
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
+    apply_common_overrides(cfg, args)       # --data-root (eval has no --seed/--epochs)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_name = args.model or cfg["model"]["name"]

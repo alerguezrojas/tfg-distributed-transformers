@@ -139,6 +139,11 @@ def test_eval_basic():
     assert "--output logs/test.csv" in s
 
 
+def test_eval_forwards_data_root():
+    assert "--data-root /data/x" in _join(build_eval_cmd("ckpt.pt", "c.yaml", data_root="/data/x"))
+    assert "--data-root" not in _join(build_eval_cmd("ckpt.pt", "c.yaml"))
+
+
 def test_eval_optional_flags():
     cmd = build_eval_cmd("ckpt.pt", "c.yaml", model="vit_tiny_patch16_224",
                          metadata="meta.parquet", max_batches=10)

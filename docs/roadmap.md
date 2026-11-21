@@ -158,8 +158,7 @@ médico); normalización de tinción (Macenko). (3) Grad-CAM frente a las másca
 PR de Dependabot #213 (17 paquetes: numpy 2.5, pandas 3.1, plotly 7, timm…) con el test *golden*,
 la web y un entrenamiento corto en GPU.
 
-Técnicos: aumentos de color en GPU, el aviso de array NumPy no escribible en `src/data/panda.py` y
-el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es un aviso, no detiene el run). Pendientes
+Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es un aviso, no detiene el run). Pendientes
 de la fase 4: `paravit predict`/`explain` con la prueba de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
