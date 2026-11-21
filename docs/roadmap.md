@@ -158,8 +158,8 @@ base y documentarlo en [datasets/panda.md](datasets/panda.md).
 de PANDA: entrenar 5 modelos en validación cruzada sobre train, marcar las biopsias en las que el
 modelo que no las vio discrepa mucho de la etiqueta y reentrenar sin ellas (3 semillas). Cuesta
 unas 3,5 h en la GPU local (~24 min por run). Necesita pliegues en la partición, sin tocar el
-bucle. (2) Hacer del **conjunto de semillas** una opción de `eval` (promediar las probabilidades
-de varios checkpoints). (3) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro
+bucle. (2) ~~Hacer del **conjunto de semillas** una opción de `eval`~~ (hecho: `--checkpoint` repetido promedia las probabilidades
+de varios checkpoints; falta medirlo en el test de PANDA con las tres semillas). (3) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro
 centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
 normalización de tinción (Macenko). (4) Grad-CAM frente a las máscaras de PANDA. (5) Predictor:
 el tiempo en T4 (limitación por potencia, lotes pequeños por GPU). (6) Validar el PR de Dependabot

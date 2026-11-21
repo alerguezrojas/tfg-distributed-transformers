@@ -162,6 +162,24 @@ uv run paravit.py eval --checkpoint checkpoints/verode/single/vit_base_patch16_2
 de un run, que se resuelve a su `best.pt`. `--data-root RUTA` sustituye `data.root` del config (igual
 que en `train`: solo esa clave), útil para evaluar en otra máquina donde el dataset está en otro sitio.
 
+**Conjunto de checkpoints.** Repetir `--checkpoint` evalúa un *ensemble*: se infiere el mismo split
+con cada modelo (cargados de uno en uno, para no acumular memoria), se **promedian las
+probabilidades** y todo lo demás (métricas, umbral, grupos, cortes clínicos, CSV) se calcula sobre
+ese promedio con el mismo código. Todos deben dar la misma forma de salida y los mismos objetivos;
+si no, falla con un error claro.
+
+```bash
+uv run paravit.py eval --config configs/train_panda.yaml \
+    --checkpoint RUN_S42/best.pt --checkpoint RUN_S43/best.pt --checkpoint RUN_S44/best.pt \
+    --save-predictions logs/local/panda/ensemble_preds.npz
+```
+
+El log abre con una línea `Conjunto   : N checkpoints (...)` y otra `Epochs     : ...`; el resto del
+formato no cambia. La pérdida es la media de las de los miembros; con `--threshold-from checkpoint`
+el umbral es la media de los guardados en los miembros (si falta alguno, se ajusta en validación).
+`--save-predictions` **exige ruta explícita** con un conjunto (no hay un único run del que deducir el
+sello); con un solo checkpoint no cambia nada.
+
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
 agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
 
