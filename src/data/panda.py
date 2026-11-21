@@ -130,7 +130,7 @@ class PandaDataset(Dataset):
             im = im.convert("RGB")
             if im.size != (self.image_size, self.image_size):
                 im = im.resize((self.image_size, self.image_size), Image.Resampling.BILINEAR)
-            image = np.asarray(im)                  # (H, W, 3) uint8
+            image = np.array(im)                    # (H, W, 3) uint8; copia: asarray da solo lectura
         if self.transform is not None:
             image = self.transform(image)
         else:

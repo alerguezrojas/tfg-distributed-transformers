@@ -144,7 +144,8 @@ def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
                    metadata: str | None = None, batch_size: int | None = None,
                    max_batches: int | None = None,
                    save_predictions: str | None = None,
-                   save_predictions_auto: bool = False) -> list[str]:
+                   save_predictions_auto: bool = False,
+                   data_root: str | None = None) -> list[str]:
     """Build the eval.py command (held-out evaluation)."""
     cmd = [sys.executable, "scripts/eval.py", "--checkpoint", checkpoint,
            "--config", config, "--split", split]
@@ -154,6 +155,8 @@ def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
         cmd += ["--output", output]
     if metadata:
         cmd += ["--metadata", metadata]
+    if data_root:
+        cmd += ["--data-root", data_root]
     if batch_size:
         cmd += ["--batch-size", str(batch_size)]
     if max_batches:
@@ -435,6 +438,7 @@ def eval(
     split: str = typer.Option("test", help="test | val."),
     output: Optional[str] = typer.Option(None, help="CSV path for per-class results."),
     metadata: Optional[str] = typer.Option(None, help="Override metadata.parquet."),
+    data_root: Optional[str] = typer.Option(None, help="Override data.root (dataset location)."),
     batch_size: Optional[int] = typer.Option(None, help="Batch size."),
     max_batches: Optional[int] = typer.Option(None, help="Stop after N batches (sanity)."),
     save_predictions: Optional[str] = typer.Option(
@@ -448,7 +452,7 @@ def eval(
     """Evaluate a checkpoint on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
-                         save_predictions=save_predictions,
+                         data_root=data_root, save_predictions=save_predictions,
                          save_predictions_auto=save_predictions_auto)
     _run(cmd, dry_run)
 

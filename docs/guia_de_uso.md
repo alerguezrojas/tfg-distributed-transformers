@@ -159,7 +159,8 @@ uv run paravit.py eval --checkpoint checkpoints/verode/single/vit_base_patch16_2
 ```
 
 `--checkpoint` acepta un fichero (`best.pt`, `last.pt` o un `checkpoint_epoch_NNN.pt` antiguo) o la carpeta
-de un run, que se resuelve a su `best.pt`.
+de un run, que se resuelve a su `best.pt`. `--data-root RUTA` sustituye `data.root` del config (igual
+que en `train`: solo esa clave), útil para evaluar en otra máquina donde el dataset está en otro sitio.
 
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
 agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
