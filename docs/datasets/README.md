@@ -46,7 +46,8 @@ no se compara con la de un run `ce` (el QWK, el F1 y la selección del checkpoin
 
 Contra las etiquetas ruidosas, cualquier pérdida admite **OUSM** (`training.ousm_k: k`; Xue et
 al., 2019): en cada lote de entrenamiento se ignoran las `k` muestras con mayor pérdida, que
-suelen ser las mal etiquetadas. Solo actúa al entrenar; la `val_loss` es la media de todas las
+suelen ser las mal etiquetadas (es la versión simple, sin la re-ponderación de las muestras
+difíciles que añade el artículo). Solo actúa al entrenar; la `val_loss` es la media de todas las
 muestras, como sin OUSM. En DDP cada proceso descarta `k` de su parte del lote, y el trainer
 heterogéneo no lo admite.
 

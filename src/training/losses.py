@@ -115,6 +115,8 @@ class OUSMLoss(nn.Module):
     noisy ISUP grades of PANDA by the 6th-placed team (``docs/research/panda.md``). A
     sample whose label is wrong tends to keep a high loss, so leaving the ``k`` highest
     losses of each batch out of the mean keeps those labels from pulling the model.
+    This is the plain top-k exclusion; the paper also re-weights the hard samples it keeps,
+    which is not implemented here.
 
     ``base`` is any loss with a ``reduction`` attribute (CE, CE + EMD, BCE, focal); it is
     switched to per-element output and averaged per sample. Mining only happens while
