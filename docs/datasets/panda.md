@@ -140,7 +140,7 @@ tres semillas.
 - La desviación entre semillas de la base (0,012) es del orden de la diferencia: a esta
   resolución el límite parece estar en la entrada (16 tiles reducidos a la mitad), no en la pérdida.
 - Promediar las probabilidades de las tres semillas sube el QWK de la base de 0,794 (media) a 0,819.
-  Se reproduce con `paravit.py eval --config configs/train_panda.yaml --checkpoint <run 42>/best.pt
+  Se reproduce (0,8193, comprobado el 21/11/2026) con `paravit.py eval --config configs/train_panda.yaml --checkpoint <run 42>/best.pt
   --checkpoint <run 43>/best.pt --checkpoint <run 44>/best.pt --save-predictions RUTA.npz`
   (ver [`guia_de_uso.md`](../guia_de_uso.md)).
 
@@ -322,7 +322,7 @@ etiquetas usaron predicciones **fuera de pliegue** (validación cruzada): una mu
 ruidosa por un modelo que no la ha visto, no por la pérdida del lote en curso. Promediar tres
 semillas sigue siendo la mejora más barata y fiable (0,819 frente a 0,794 de media).
 
-## Limpieza de etiquetas fuera de pliegue (21/11/2026, en curso)
+## Limpieza de etiquetas fuera de pliegue (21/11/2026)
 
 Es la receta del 1.er puesto ([research/panda.md](../research/panda.md)): cada biopsia de train la
 juzga un modelo que no la ha visto. Con OUSM, en cambio, la decide la pérdida del lote en curso.
@@ -345,9 +345,63 @@ El umbral de 1,5 se fijó antes de ver ningún resultado. Hay dos sesgos conocid
   conservador: se marcan algo menos biopsias, no más.
 - El grado esperado tiende al centro de la escala, de modo que las etiquetas 0 y 5 pueden
   marcarse más. Por eso hay que mirar la tasa de marcadas por grado y por hospital que imprime
-  `clean`. Los ficheros viven en
-`/media/alejandro/SSD/paravit-oof/` y la cola, en `~/experimentos_paravit/cola_oof.sh`. Después se
-entrenan tres semillas con `train_clean.yaml` y se comparan con las tres semillas base.
+  `clean`.
+
+Los ficheros viven en `/media/alejandro/SSD/paravit-oof/` y la cola, en
+`~/experimentos_paravit/cola_oof.sh`. Después se entrenan tres semillas con `train_clean.yaml` y
+se comparan con las tres semillas base sobre el mismo test.
+
+**Qué se marcó.** Los cinco modelos de pliegue tienen un QWK de 0,773-0,804 en su pliegue apartado
+(0,781 sobre las 7.433 biopsias de train juntas, con una exactitud de 0,617): son tan buenos como
+el modelo final, ni más ni menos. Con el umbral de 1,5 se marcan **873 biopsias (11,7 %)**, entre
+el 11 % y el 12,5 % en cada pliegue. El reparto no es uniforme:
+
+| Grado ISUP | 0 | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| Karolinska | 3,3 % | 2,8 % | 10,9 % | 20,3 % | **33,8 %** | 26,1 % |
+| Radboud | 15,4 % | 10,9 % | 9,7 % | 19,1 % | 14,5 % | 17,8 % |
+
+En total se marca el 8,8 % de Karolinska y el 14,9 % de Radboud, el hospital con fama de ruidoso.
+Pero se va **uno de cada cinco ejemplos de los grados 3-5** (de 870, 875 y 857 quedan 701, 683 y
+690), frente a un 5-7 % de los grados 0-1. En el 42 % de las marcadas el modelo predice un grado
+mayor que la etiqueta y en el 58 %, uno menor.
+
+**Resultado en test** (QWK, mismo test que la base):
+
+| Run | QWK | Exactitud | Karolinska | Radboud | AUC ISUP ≥ 1 |
+|---|---|---|---|---|---|
+| Limpio, semilla 42 | 0,787 | 0,630 | 0,765 | 0,750 | 0,940 |
+| Limpio, semilla 43 | 0,784 | 0,638 | 0,727 | 0,777 | 0,932 |
+| Limpio, semilla 44 | 0,765 | 0,609 | 0,731 | 0,730 | 0,932 |
+| **Limpio, media** | **0,779 ± 0,012** | 0,626 | 0,741 ± 0,021 | 0,752 ± 0,024 | 0,935 |
+| Base, media | 0,794 ± 0,012 | 0,636 | 0,743 ± 0,005 | 0,783 ± 0,020 | 0,941 |
+| Conjunto limpio (3) | 0,782 | 0,645 | 0,729 | 0,766 | 0,943 |
+| Conjunto base (3) | 0,819 | 0,674 | 0,772 | 0,810 | 0,949 |
+
+*Bootstrap* emparejado (2.000 remuestreos del test) de limpio − base:
+
+- media de las tres semillas: **−0,015 [−0,032; +0,000]** (el 97 % de los remuestreos dan una
+  diferencia negativa);
+- conjunto de tres: **−0,038 [−0,060; −0,017]**, significativo;
+- por semilla: +0,005, −0,019 y −0,032;
+- exactitud: −0,011 [−0,025; +0,004];
+- AUC de ISUP ≥ 1: −0,006 [−0,012; −0,001].
+
+**Conclusión: la limpieza empeora el resultado, sobre todo en Radboud (−0,031 de media).**
+Karolinska queda igual. La especificidad del corte ISUP ≥ 1 sube (0,79-0,83 frente a
+0,72-0,81), pero a costa de la sensibilidad y del QWK. La explicación más probable es que, con un
+modelo de QWK ≈ 0,78 (el 8.º puesto de Kaggle llegó a 0,920 en el test privado), la discrepancia fuera de pliegue
+mide sobre todo los **errores del modelo** en los grados altos, que son los difíciles, y no el
+ruido de las etiquetas. Al quitar el 20 % de esos ejemplos, el modelo aprende peor justo lo que ya
+le costaba. No se prueban otros umbrales: elegirlos mirando el test sería hacer trampa, y la señal
+es clara. **Con esto se cierra la línea de etiquetas ruidosas:** ni OUSM ni la limpieza fuera de
+pliegue ayudan con este modelo. El cuello de botella es el modelo, no las etiquetas. Lo único que
+sube el QWK sigue siendo promediar semillas.
+
+Los logs están en `logs/local/panda/single/vit_small_patch16_224/`: los cinco pliegues son
+`train_21112026_{093959,095337,101332,103327,104931}` y los tres runs limpios,
+`train_21112026_{110930,112826,115012}`. La web los distingue por la etiqueta
+`splits splits_fold<k>` o `splits splits_clean`.
 
 ## Riesgos
 

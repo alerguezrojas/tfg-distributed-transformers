@@ -148,23 +148,26 @@ verdad y no solo mal etiquetadas. Detalle en
 ahora: ni la resolución, ni la pérdida ordinal, ni los aumentos de color, ni OUSM mueven el QWK
 medio (≈ 0,79-0,80). Lo único que lo sube es **promediar tres semillas (0,819)**.
 
-**En curso (21/11/2026):** limpieza de etiquetas fuera de pliegue (`scripts/panda_oof.py`,
-`src/data/label_noise.py`). Cola en la GPU local (`~/experimentos_paravit/cola_oof.sh`, ~3,5 h):
-5 pliegues → `clean` con umbral 1,5 grados → 3 semillas con train limpio; predicciones de test en
-`checkpoints/runs/panda_clean_s<semilla>/`. Al terminar, *bootstrap* frente a las tres semillas
-base y documentarlo en [datasets/panda.md](datasets/panda.md).
+**Limpieza de etiquetas fuera de pliegue (21/11/2026), pregunta cerrada:** cinco modelos en
+validación cruzada sobre train marcan el 11,7 % de las biopsias (umbral de 1,5 grados fijado de
+antemano), pero uno de cada cinco ejemplos de los grados 3-5. Con tres semillas sobre el train
+limpio, el QWK de test baja a 0,779 ± 0,012 (−0,015 [−0,032; +0,000]; el conjunto de tres,
+−0,038 [−0,060; −0,017]) y cae sobre todo Radboud. Con un modelo de QWK ≈ 0,78, la discrepancia
+fuera de pliegue mide los errores del modelo en los grados altos más que el ruido de las
+etiquetas. **Se cierra la línea de etiquetas ruidosas** (ni OUSM ni la limpieza ayudan). Detalle
+en [datasets/panda.md](datasets/panda.md#limpieza-de-etiquetas-fuera-de-pliegue-21112026).
 
-**Siguiente paso recomendado:** (1) **limpieza de etiquetas fuera de pliegue**, como el 1.er puesto
-de PANDA: entrenar 5 modelos en validación cruzada sobre train, marcar las biopsias en las que el
-modelo que no las vio discrepa mucho de la etiqueta y reentrenar sin ellas (3 semillas). Cuesta
-unas 3,5 h en la GPU local (~24 min por run). Necesita pliegues en la partición, sin tocar el
-bucle. (2) ~~Hacer del **conjunto de semillas** una opción de `eval`~~ (hecho: `--checkpoint` repetido promedia las probabilidades
-de varios checkpoints; falta medirlo en el test de PANDA con las tres semillas). (3) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro
-centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
-normalización de tinción (Macenko). (4) Grad-CAM frente a las máscaras de PANDA. (5) Predictor:
-el tiempo en T4 (limitación por potencia, lotes pequeños por GPU). (6) Validar el PR de Dependabot
-#213 (17 paquetes: numpy 2.5, pandas 3.1, plotly 7, timm…) con el test *golden*, la web y un
-entrenamiento corto en GPU.
+**Conjunto de checkpoints en `eval` (21/11/2026):** `--checkpoint` repetido promedia las
+probabilidades de varios modelos (cargados de uno en uno). Con las tres semillas base reproduce el
+QWK de test de 0,819 (0,8193, exactitud 0,674).
+
+**Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro centro y medir cuántas
+hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
+(Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con atención sobre los tiles,
+o un backbone mayor), ya que el cuello de botella es el modelo y no los datos. (3) Grad-CAM
+frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación por potencia, lotes
+pequeños por GPU). (5) Validar el PR de Dependabot #213 (17 paquetes: numpy 2.5, pandas 3.1,
+plotly 7, timm…) con el test *golden*, la web y un entrenamiento corto en GPU.
 
 Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es
 un aviso, no detiene el run). Pendientes de la fase 4: `paravit predict`/`explain` con la prueba
@@ -304,8 +307,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] Más resolución: 1.024 px en Kaggle con tres semillas (21/11/2026). No mejora el QWK de
     forma significativa.
   - [x] Etiquetas ruidosas con OUSM (21/11/2026): no mejora el QWK.
-  - [ ] Limpieza de etiquetas fuera de pliegue, adaptación a otro hospital y normalización de
-    tinción.
+  - [x] Limpieza de etiquetas fuera de pliegue (21/11/2026): empeora el QWK (−0,015).
+  - [ ] Adaptación a otro hospital y normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).

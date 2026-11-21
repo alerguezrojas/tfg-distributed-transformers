@@ -28,6 +28,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Experimentos
 
+- PANDA con limpieza de etiquetas fuera de pliegue (5 pliegues, umbral de 1,5 grados, 11,7 % de
+  train fuera), tres semillas a 512 px: QWK de test 0,779 ± 0,012 frente a 0,794 ± 0,012 de la
+  base (*bootstrap* −0,015 [−0,032; +0,000]; conjunto de tres, −0,038). Empeora: quita uno de cada
+  cinco ejemplos de los grados 3-5. Logs en `logs/local/panda/single/` y análisis en
+  `docs/datasets/panda.md`.
 - PANDA con OUSM (k = 2 de 16), tres semillas a 512 px: QWK de test 0,793 ± 0,006 frente a
   0,794 ± 0,012 de la base (*bootstrap* −0,001 [−0,014; +0,013]). No ayuda. Logs en
   `logs/local/panda/single/` y análisis en `docs/datasets/panda.md`.
