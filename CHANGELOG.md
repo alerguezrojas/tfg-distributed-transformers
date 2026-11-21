@@ -6,6 +6,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- Evaluación de un conjunto de checkpoints (*ensemble*): `scripts/eval.py` y `paravit eval` aceptan
+  `--checkpoint` repetido y promedian las probabilidades de los modelos (cargados de uno en uno)
+  antes de calcular métricas, umbral e informes. Con un solo checkpoint, nada cambia. Con
+  conjunto, `--save-predictions` exige ruta explícita. Función pura `average_probabilities`.
 - Limpieza de etiquetas fuera de pliegue (`src/data/label_noise.py`, `scripts/panda_oof.py`): crea
   pliegues de train estratificados, junta las predicciones fuera de pliegue y deja fuera de train las
   biopsias que se alejan de su etiqueta (val y test intactos). La web distingue los runs con otra

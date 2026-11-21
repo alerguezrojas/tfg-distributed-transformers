@@ -157,14 +157,16 @@ fuera de pliegue mide los errores del modelo en los grados altos más que el rui
 etiquetas. **Se cierra la línea de etiquetas ruidosas** (ni OUSM ni la limpieza ayudan). Detalle
 en [datasets/panda.md](datasets/panda.md#limpieza-de-etiquetas-fuera-de-pliegue-21112026).
 
-**Siguiente paso recomendado:** (1) Hacer del **conjunto de semillas** una opción de `eval`
-(promediar las probabilidades de varios checkpoints), porque es lo único que sube el QWK (0,819).
-(2) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro centro y medir cuántas
-hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
-(Macenko). (3) Un modelo más capaz que el ViT-S sobre mosaico (MIL con atención sobre los tiles,
-o un backbone mayor), ya que el cuello de botella es el modelo y no los datos. (4) Grad-CAM
-frente a las máscaras de PANDA. (5) Predictor: el tiempo en T4 (limitación por potencia, lotes
-pequeños por GPU). (6) Validar el PR de Dependabot #213 (17 paquetes: numpy 2.5, pandas 3.1,
+**Conjunto de checkpoints en `eval` (21/11/2026):** `--checkpoint` repetido promedia las
+probabilidades de varios modelos (cargados de uno en uno). Con las tres semillas base reproduce el
+QWK de test de 0,819 (0,8193, exactitud 0,674).
+
+**Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
+del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
+normalización de tinción (Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con atención sobre los tiles,
+o un backbone mayor), ya que el cuello de botella es el modelo y no los datos. (3) Grad-CAM
+frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación por potencia, lotes
+pequeños por GPU). (5) Validar el PR de Dependabot #213 (17 paquetes: numpy 2.5, pandas 3.1,
 plotly 7, timm…) con el test *golden*, la web y un entrenamiento corto en GPU.
 
 Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es

@@ -139,6 +139,10 @@ tres semillas.
   test por semilla: [+0,003; +0,048], [−0,013; +0,022] y [−0,027; +0,017].
 - La desviación entre semillas de la base (0,012) es del orden de la diferencia: a esta
   resolución el límite parece estar en la entrada (16 tiles reducidos a la mitad), no en la pérdida.
+- Promediar las probabilidades de las tres semillas sube el QWK de la base de 0,794 (media) a 0,819.
+  Se reproduce (0,8193, comprobado el 21/11/2026) con `paravit.py eval --config configs/train_panda.yaml --checkpoint <run 42>/best.pt
+  --checkpoint <run 43>/best.pt --checkpoint <run 44>/best.pt --save-predictions RUTA.npz`
+  (ver [`guia_de_uso.md`](../guia_de_uso.md)).
 
 **Primera ronda, una semilla (42)** (la última columna es el *bootstrap* emparejado del test,
 2000 remuestreos de biopsias):
