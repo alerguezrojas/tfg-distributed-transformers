@@ -4,6 +4,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-11-21
+
 ### Seguridad
 
 - setuptools 81 → 84.2.1 (cierra GHSA-xmj3-9gf7-h52w y GHSA-h35f-9h28-mq5c / PYSEC-2026-3447): la
@@ -414,7 +416,8 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.1...HEAD
+[1.2.1]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...v1.1.0
 [v1.0-tfg]: https://github.com/alerguezrojas/tfg-distributed-transformers/releases/tag/v1.0-tfg

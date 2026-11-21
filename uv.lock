@@ -2891,7 +2891,7 @@ wheels = [
 
 [[package]]
 name = "tfg-distributed-transformers"
-version = "1.2.0"
+version = "1.2.1"
 source = { virtual = "." }
 dependencies = [
     { name = "imagecodecs" },
