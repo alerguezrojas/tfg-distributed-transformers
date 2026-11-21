@@ -140,7 +140,11 @@ del repo, en la carpeta de reuniones del autor).
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** nada en marcha.
+**En curso:** OUSM (`training.ousm_k`, PR #226) con tres semillas a 512 px en la GPU local
+(`configs/train_panda_ousm.yaml`, k = 2 de 16; ~52 min por run). Cola en
+`~/experimentos_paravit/cola_ousm.sh` (fuera del repo): predicciones de test en
+`checkpoints/runs/panda_ousm_s<semilla>/test_preds.npz`. Al terminar, comparar con las tres semillas
+base a 512 (0,794 ± 0,012) con *bootstrap* emparejado y documentarlo en `docs/datasets/panda.md`.
 
 **Siguiente paso recomendado:** (1) **etiquetas ruidosas a 512 px** en la GPU local, que es donde
 la literatura de PANDA encontró margen ([research/panda.md](research/panda.md)). Primero OUSM

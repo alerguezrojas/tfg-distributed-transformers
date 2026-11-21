@@ -42,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.data.registry import dataset_spec_from_config
 from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
+from src.training.losses import ousm_log_field
 from src.training.config_overrides import add_common_overrides, apply_common_overrides
 from src.training.reproducibility import set_seed, make_generator, sampler_seed, seed_worker
 
@@ -211,6 +212,7 @@ def main():
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
             f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)} | "
             f"dataset={spec.name} | {backbone_log_fields(cfg['model'], model_name)}"
+            f"{ousm_log_field(cfg['training'])}"
         )
 
     # ── Entrenamiento ────────────────────────────────────────────────────────

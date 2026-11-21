@@ -4,6 +4,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Añadido
+
+- OUSM contra etiquetas ruidosas (`training.ousm_k`, Xue et al. 2019): cada lote de entrenamiento
+  ignora sus k muestras de mayor pérdida, con cualquier pérdida (CE, CE + EMD, BCE, focal). Solo
+  actúa al entrenar, así que la `val_loss` sigue siendo comparable. Viene con
+  `configs/train_panda_ousm.yaml` y con la etiqueta `OUSM k` en la web.
+
 ### Experimentos
 
 - PANDA, tres semillas de la base a 1.024 px en Kaggle (2 × T4, DDP) frente a las tres locales a
