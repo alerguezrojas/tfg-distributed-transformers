@@ -161,9 +161,9 @@ en [datasets/panda.md](datasets/panda.md#limpieza-de-etiquetas-fuera-de-pliegue-
 probabilidades de varios modelos (cargados de uno en uno). Con las tres semillas base reproduce el
 QWK de test de 0,819 (0,8193, exactitud 0,674).
 
-**Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro centro y medir cuántas
-hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
-(Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con atención sobre los tiles,
+**Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
+del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
+normalización de tinción (Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con atención sobre los tiles,
 o un backbone mayor), ya que el cuello de botella es el modelo y no los datos. (3) Grad-CAM
 frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación por potencia, lotes
 pequeños por GPU). (5) Validar el PR de Dependabot #213 (17 paquetes: numpy 2.5, pandas 3.1,
