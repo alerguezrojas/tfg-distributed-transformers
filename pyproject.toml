@@ -1,6 +1,6 @@
 [project]
 name = "tfg-distributed-transformers"
-version = "1.2.1"
+version = "1.3.0"
 description = "ParaViT-Lab: distributed training, analytic estimation and benchmarking of Vision Transformers on BigEarthNet-S2"
 readme = "README.md"
 license = "GPL-3.0-or-later"
