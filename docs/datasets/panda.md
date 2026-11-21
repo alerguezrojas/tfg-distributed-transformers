@@ -139,6 +139,10 @@ tres semillas.
   test por semilla: [+0,003; +0,048], [−0,013; +0,022] y [−0,027; +0,017].
 - La desviación entre semillas de la base (0,012) es del orden de la diferencia: a esta
   resolución el límite parece estar en la entrada (16 tiles reducidos a la mitad), no en la pérdida.
+- Promediar las probabilidades de las tres semillas sube el QWK de la base de 0,794 (media) a 0,819.
+  Se reproduce (0,8193, comprobado el 21/11/2026) con `paravit.py eval --config configs/train_panda.yaml --checkpoint <run 42>/best.pt
+  --checkpoint <run 43>/best.pt --checkpoint <run 44>/best.pt --save-predictions RUTA.npz`
+  (ver [`guia_de_uso.md`](../guia_de_uso.md)).
 
 **Primera ronda, una semilla (42)** (la última columna es el *bootstrap* emparejado del test,
 2000 remuestreos de biopsias):
@@ -237,11 +241,167 @@ Semilla 42 en los tres. *Bootstrap* emparejado del test (2000 remuestreos):
 
 Coste: a 1024 px cada época tarda ~11 min y un run de 15 épocas, ~2,9 h (frente a 37 min a 512).
 La GPU 0 llega al 98 % de memoria, porque el Grad-CAM del monitor se queda sin memoria: es solo un
-aviso, el run sigue y se guardan las predicciones. **En curso:** semillas 43 y 44 de la base a
-1024 px (lote `seeds_1024` del kernel), relanzadas tras el PR #216. Hasta ese arreglo,
-`DistributedSampler` barajaba siempre con la semilla 0, así que en DDP las semillas solo cambiaban
-la inicialización y los aumentos, no el orden de los datos. Los runs a 512 px de una GPU no se
-ven afectados.
+aviso, el run sigue y se guardan las predicciones.
+
+### Tres semillas a 1024 px (21/11/2026)
+
+Semillas 43 y 44 de la base a 1024 px (lote `seeds_1024` del kernel), lanzadas tras el PR #216.
+Hasta ese arreglo, `DistributedSampler` barajaba siempre con la semilla 0, así que en DDP las
+semillas solo cambiaban la inicialización y los aumentos, no el orden de los datos. La semilla 42
+de la tabla anterior se entrenó así, lo que equivale a un orden de datos más; los runs a 512 px de
+una GPU no se ven afectados. Esta vez la evaluación en test se hizo en Kaggle sin errores.
+
+| Run (`logs/kaggle/panda/ddp/`) | Semilla | Mejor val | QWK test | Exact. | ±1 grado | Karolinska | Radboud | ISUP ≥ 1 sens. / espec. / AUC | ISUP ≥ 2 sens. / espec. / AUC |
+|---|---|---|---|---|---|---|---|---|---|
+| `20112026_171003` | 42 | 0,803 | 0,821 | 0,667 | 0,896 | 0,762 | 0,821 | 0,925 / 0,834 / 0,956 | 0,856 / 0,885 / 0,936 |
+| `20112026_233503` | 43 | 0,804 | 0,787 | 0,665 | 0,889 | 0,732 | 0,785 | 0,916 / 0,820 / 0,956 | 0,834 / 0,886 / 0,927 |
+| `21112026_024444` | 44 | 0,814 | 0,805 | 0,669 | 0,892 | 0,748 | 0,802 | 0,924 / 0,822 / 0,954 | 0,852 / 0,869 / 0,930 |
+
+| Resolución (3 semillas) | QWK test | Karolinska | Radboud | Exact. | Conjunto de las 3 (QWK) |
+|---|---|---|---|---|---|
+| 512 px (local, una GPU) | 0,794 ± 0,012 | 0,743 ± 0,005 | 0,783 ± 0,020 | 0,636 | 0,819 |
+| 1024 px (Kaggle, DDP) | 0,804 ± 0,017 | 0,747 ± 0,015 | 0,803 ± 0,018 | 0,667 | 0,815 |
+
+*Bootstrap* emparejado del test (2000 remuestreos, el mismo índice para las seis semillas) sobre
+la media de las tres semillas, 1024 − 512:
+
+- **QWK: +0,010 [−0,010; +0,030].** No es significativo. Por semilla, la diferencia va de −0,017
+  a +0,040: el 0,821 de la semilla 42 fue una semilla buena, no el efecto de la resolución.
+- **Exactitud: +0,030 [+0,013; +0,048]** y **AUC de ISUP ≥ 1 (cáncer sí o no): +0,014
+  [+0,006; +0,022].** Las dos son significativas. A 1024 px el modelo acierta más veces el grado
+  exacto y separa mejor tejido sano de tumoral, pero el QWK, que pesa poco los errores de un
+  grado, apenas lo recoge.
+- Promediar las probabilidades de las tres semillas (conjunto) da 0,815-0,819 a las dos
+  resoluciones (diferencia −0,004 [−0,029; +0,022]). Las semillas a 512 px se equivocan en casos
+  más distintos entre sí y el conjunto compensa la menor resolución.
+
+Las dos semillas nuevas se entrenaron en Kaggle con DDP y las de 512 px en local con una GPU.
+Esa diferencia no explica el resultado: el control a 512 px en Kaggle (0,801, exactitud 0,636,
+AUC 0,942) coincide con las semillas locales.
+
+**Conclusión:** subir a 1024 px cuadruplica el coste (11 min por época frente a 2,4 en las T4) a
+cambio de unos 3 puntos de exactitud y nada de QWK. La resolución no es el cuello de botella del
+QWK. Lo siguiente con más margen es el ruido de etiquetas y la diferencia entre hospitales
+(Karolinska sigue en 0,75 a las dos resoluciones). La literatura de PANDA apunta a lo mismo: los
+mejores equipos limpiaron las etiquetas ruidosas (sobre todo las de Radboud) y usaron 36-64
+mosaicos en lugar de 16 ([research/panda.md](../research/panda.md)).
+
+## Etiquetas ruidosas: OUSM (21/11/2026)
+
+**Pregunta:** si el límite está en las etiquetas (el grado ISUP tiene discrepancias conocidas
+entre patólogos, sobre todo en Radboud), ¿ayuda ignorar en cada lote las muestras que el modelo no
+consigue ajustar? Se prueba OUSM (`training.ousm_k`, Xue et al. 2019; lo usó el 6.º equipo de
+PANDA, [research/panda.md](../research/panda.md)): `configs/train_panda_ousm.yaml`, la base a
+512 px en la GPU local con k = 2 de cada lote de 16 (12,5 %). Tres semillas, con el mismo test.
+
+| Run (`logs/local/panda/single/`) | Semilla | Mejor val | QWK test | Exact. | ±1 grado | Karolinska | Radboud | ISUP ≥ 1 sens. / espec. / AUC | ISUP ≥ 2 sens. / espec. / AUC |
+|---|---|---|---|---|---|---|---|---|---|
+| `21112026_061527` | 42 | 0,792 | 0,796 | 0,647 | 0,877 | 0,758 | 0,776 | 0,884 / 0,864 / 0,940 | 0,782 / 0,934 / 0,929 |
+| `21112026_064000` | 43 | 0,813 | 0,787 | 0,630 | 0,884 | 0,747 | 0,765 | 0,876 / 0,861 / 0,940 | 0,786 / 0,911 / 0,929 |
+| `21112026_070409` | 44 | 0,801 | 0,797 | 0,652 | 0,883 | 0,759 | 0,777 | 0,903 / 0,838 / 0,943 | 0,802 / 0,912 / 0,926 |
+
+| 512 px, tres semillas | QWK test | Karolinska | Radboud | Conjunto de las 3 (QWK) |
+|---|---|---|---|---|
+| Base | 0,794 ± 0,012 | 0,743 ± 0,005 | 0,783 ± 0,020 | 0,819 |
+| OUSM (k = 2) | 0,793 ± 0,006 | 0,755 ± 0,007 | 0,773 ± 0,006 | 0,809 |
+
+*Bootstrap* emparejado (2000 remuestreos) de la media de las tres semillas, OUSM − base:
+
+- **QWK −0,001 [−0,014; +0,013]**, exactitud +0,006 [−0,006; +0,019] y AUC de ISUP ≥ 1
+  −0,000 [−0,005; +0,005]. Con k = 2, **OUSM no cambia el resultado**.
+- Cambia el reparto. Karolinska sube un poco y Radboud baja, justo el hospital con más ruido y
+  con los grados altos. Además, la especificidad de ISUP ≥ 1 sube (0,78 → 0,85) y la
+  sensibilidad baja (0,91 → 0,89).
+- Lectura (no comprobada): con mosaicos de 16 tiles, las biopsias de mayor pérdida no son solo
+  las mal etiquetadas. También lo son las difíciles de verdad (grados altos, poco tumor en el
+  mosaico), y descartarlas quita señal útil. Las semillas varían menos (± 0,006), pero con tres
+  no se puede afirmar.
+
+**Conclusión:** OUSM en su forma simple no ayuda aquí. Los equipos que ganaron con limpieza de
+etiquetas usaron predicciones **fuera de pliegue** (validación cruzada): una muestra se marca como
+ruidosa por un modelo que no la ha visto, no por la pérdida del lote en curso. Promediar tres
+semillas sigue siendo la mejora más barata y fiable (0,819 frente a 0,794 de media).
+
+## Limpieza de etiquetas fuera de pliegue (21/11/2026)
+
+Es la receta del 1.er puesto ([research/panda.md](../research/panda.md)): cada biopsia de train la
+juzga un modelo que no la ha visto. Con OUSM, en cambio, la decide la pérdida del lote en curso.
+La lógica está en `src/data/label_noise.py` y el procedimiento, en `scripts/panda_oof.py`:
+
+1. `folds` reparte train en 5 pliegues, estratificados por hospital y grado y fijos con una
+   semilla. Por cada pliegue escribe una partición (`splits_fold<k>.csv`: el pliegue es `val`, el
+   resto de train es `train`, y val y test originales pasan a `excluded`) y su config
+   (`data.splits`).
+2. Se entrena un modelo por pliegue (la base a 512 px, semilla 42) y se guardan sus predicciones
+   sobre el pliegue apartado (`eval --split val --save-predictions`).
+3. `clean` junta las predicciones fuera de pliegue (`oof.csv`) y marca las biopsias cuyo grado
+   esperado (`Σ k·p_k`) se aleja de la etiqueta más de 1,5 grados. Escribe `splits_clean.csv`, con
+   las marcadas como `excluded`: **validación y test no se tocan**, así que el resultado se compara
+   con la base sobre el mismo test.
+
+El umbral de 1,5 se fijó antes de ver ningún resultado. Hay dos sesgos conocidos, y los dos son pequeños:
+- El checkpoint de cada pliegue se elige por su QWK en ese mismo pliegue, lo que acerca un poco
+  las predicciones a las etiquetas. Las etiquetas no entran en los pesos, así que el efecto es
+  conservador: se marcan algo menos biopsias, no más.
+- El grado esperado tiende al centro de la escala, de modo que las etiquetas 0 y 5 pueden
+  marcarse más. Por eso hay que mirar la tasa de marcadas por grado y por hospital que imprime
+  `clean`.
+
+Los ficheros viven en `/media/alejandro/SSD/paravit-oof/` y la cola, en
+`~/experimentos_paravit/cola_oof.sh`. Después se entrenan tres semillas con `train_clean.yaml` y
+se comparan con las tres semillas base sobre el mismo test.
+
+**Qué se marcó.** Los cinco modelos de pliegue tienen un QWK de 0,773-0,804 en su pliegue apartado
+(0,781 sobre las 7.433 biopsias de train juntas, con una exactitud de 0,617): son tan buenos como
+el modelo final, ni más ni menos. Con el umbral de 1,5 se marcan **873 biopsias (11,7 %)**, entre
+el 11 % y el 12,5 % en cada pliegue. El reparto no es uniforme:
+
+| Grado ISUP | 0 | 1 | 2 | 3 | 4 | 5 |
+|---|---|---|---|---|---|---|
+| Karolinska | 3,3 % | 2,8 % | 10,9 % | 20,3 % | **33,8 %** | 26,1 % |
+| Radboud | 15,4 % | 10,9 % | 9,7 % | 19,1 % | 14,5 % | 17,8 % |
+
+En total se marca el 8,8 % de Karolinska y el 14,9 % de Radboud, el hospital con fama de ruidoso.
+Pero se va **uno de cada cinco ejemplos de los grados 3-5** (de 870, 875 y 857 quedan 701, 683 y
+690), frente a un 5-7 % de los grados 0-1. En el 42 % de las marcadas el modelo predice un grado
+mayor que la etiqueta y en el 58 %, uno menor.
+
+**Resultado en test** (QWK, mismo test que la base):
+
+| Run | QWK | Exactitud | Karolinska | Radboud | AUC ISUP ≥ 1 |
+|---|---|---|---|---|---|
+| Limpio, semilla 42 | 0,787 | 0,630 | 0,765 | 0,750 | 0,940 |
+| Limpio, semilla 43 | 0,784 | 0,638 | 0,727 | 0,777 | 0,932 |
+| Limpio, semilla 44 | 0,765 | 0,609 | 0,731 | 0,730 | 0,932 |
+| **Limpio, media** | **0,779 ± 0,012** | 0,626 | 0,741 ± 0,021 | 0,752 ± 0,024 | 0,935 |
+| Base, media | 0,794 ± 0,012 | 0,636 | 0,743 ± 0,005 | 0,783 ± 0,020 | 0,941 |
+| Conjunto limpio (3) | 0,782 | 0,645 | 0,729 | 0,766 | 0,943 |
+| Conjunto base (3) | 0,819 | 0,674 | 0,772 | 0,810 | 0,949 |
+
+*Bootstrap* emparejado (2.000 remuestreos del test) de limpio − base:
+
+- media de las tres semillas: **−0,015 [−0,032; +0,000]** (el 97 % de los remuestreos dan una
+  diferencia negativa);
+- conjunto de tres: **−0,038 [−0,060; −0,017]**, significativo;
+- por semilla: +0,005, −0,019 y −0,032;
+- exactitud: −0,011 [−0,025; +0,004];
+- AUC de ISUP ≥ 1: −0,006 [−0,012; −0,001].
+
+**Conclusión: la limpieza empeora el resultado, sobre todo en Radboud (−0,031 de media).**
+Karolinska queda igual. La especificidad del corte ISUP ≥ 1 sube (0,79-0,83 frente a
+0,72-0,81), pero a costa de la sensibilidad y del QWK. La explicación más probable es que, con un
+modelo de QWK ≈ 0,78 (el 8.º puesto de Kaggle llegó a 0,920 en el test privado), la discrepancia fuera de pliegue
+mide sobre todo los **errores del modelo** en los grados altos, que son los difíciles, y no el
+ruido de las etiquetas. Al quitar el 20 % de esos ejemplos, el modelo aprende peor justo lo que ya
+le costaba. No se prueban otros umbrales: elegirlos mirando el test sería hacer trampa, y la señal
+es clara. **Con esto se cierra la línea de etiquetas ruidosas:** ni OUSM ni la limpieza fuera de
+pliegue ayudan con este modelo. El cuello de botella es el modelo, no las etiquetas. Lo único que
+sube el QWK sigue siendo promediar semillas.
+
+Los logs están en `logs/local/panda/single/vit_small_patch16_224/`: los cinco pliegues son
+`train_21112026_{093959,095337,101332,103327,104931}` y los tres runs limpios,
+`train_21112026_{110930,112826,115012}`. La web los distingue por la etiqueta
+`splits splits_fold<k>` o `splits splits_clean`.
 
 ## Riesgos
 

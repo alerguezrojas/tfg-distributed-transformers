@@ -4,6 +4,53 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-21
+
+### Añadido
+
+- Evaluación de un conjunto de checkpoints (*ensemble*): `scripts/eval.py` y `paravit eval` aceptan
+  `--checkpoint` repetido y promedian las probabilidades de los modelos (cargados de uno en uno)
+  antes de calcular métricas, umbral e informes. Con un solo checkpoint, nada cambia. Con
+  conjunto, `--save-predictions` exige ruta explícita. Función pura `average_probabilities`.
+- Limpieza de etiquetas fuera de pliegue (`src/data/label_noise.py`, `scripts/panda_oof.py`): crea
+  pliegues de train estratificados, junta las predicciones fuera de pliegue y deja fuera de train las
+  biopsias que se alejan de su etiqueta (val y test intactos). La web distingue los runs con otra
+  partición (`data.splits`).
+- OUSM contra etiquetas ruidosas (`training.ousm_k`, Xue et al. 2019): cada lote de entrenamiento
+  ignora sus k muestras de mayor pérdida, con cualquier pérdida (CE, CE + EMD, BCE, focal). Solo
+  actúa al entrenar, así que la `val_loss` sigue siendo comparable. Viene con
+  `configs/train_panda_ousm.yaml` y con la etiqueta `OUSM k` en la web.
+
+### Corregido
+
+- `scripts/eval.py` y `paravit eval` aceptan `--data-root` (con la misma semántica que en
+  entrenamiento: solo sustituye `data.root`), reutilizando `src/training/config_overrides.py`.
+- `PandaDataset` ya no provoca el aviso de NumPy por array no escribible: copia el array que
+  entrega PIL antes de pasarlo a `torch`. Los valores del Dataset no cambian.
+
+### Dependencias
+
+- 17 paquetes al día (PR #213 de Dependabot): numpy 2.5.5, pandas 3.1.1, plotly 7.1.0, matplotlib
+  3.11.2, pyarrow 26, timm 1.0.31, transformers 5.23, typer 0.29, tqdm 4.70, tensorboard 2.21,
+  pytest 9.2, ruff 0.17.5 y otros. Validado con la suite completa, una época de PANDA en GPU con
+  el entorno viejo y el nuevo (mismas métricas y tiempo) y un recorrido de la web con `AppTest`.
+
+### Experimentos
+
+- PANDA con limpieza de etiquetas fuera de pliegue (5 pliegues, umbral de 1,5 grados, 11,7 % de
+  train fuera), tres semillas a 512 px: QWK de test 0,779 ± 0,012 frente a 0,794 ± 0,012 de la
+  base (*bootstrap* −0,015 [−0,032; +0,000]; conjunto de tres, −0,038). Empeora: quita uno de cada
+  cinco ejemplos de los grados 3-5. Logs en `logs/local/panda/single/` y análisis en
+  `docs/datasets/panda.md`.
+- PANDA con OUSM (k = 2 de 16), tres semillas a 512 px: QWK de test 0,793 ± 0,006 frente a
+  0,794 ± 0,012 de la base (*bootstrap* −0,001 [−0,014; +0,013]). No ayuda. Logs en
+  `logs/local/panda/single/` y análisis en `docs/datasets/panda.md`.
+- PANDA, tres semillas de la base a 1.024 px en Kaggle (2 × T4, DDP) frente a las tres locales a
+  512 px. El QWK de test no mejora de forma significativa (0,804 ± 0,017 frente a 0,794 ± 0,012;
+  *bootstrap* +0,010 [−0,010; +0,030]). Sí mejoran la exactitud (+0,030) y el AUC de ISUP ≥ 1
+  (+0,014). Se sigue a 512 px. Logs en `logs/kaggle/panda/ddp/` y análisis en
+  `docs/datasets/panda.md`.
+
 ## [1.2.1] - 2026-11-21
 
 ### Seguridad
@@ -416,7 +463,8 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...v1.1.0

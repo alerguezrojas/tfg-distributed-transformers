@@ -139,6 +139,23 @@ def test_eval_basic():
     assert "--output logs/test.csv" in s
 
 
+def test_eval_ensemble_repeats_checkpoint():
+    cmd = build_eval_cmd(["a/best.pt", "b/best.pt", "c/best.pt"], "c.yaml",
+                         save_predictions="logs/ens.npz")
+    assert [cmd[i + 1] for i, t in enumerate(cmd) if t == "--checkpoint"] == [
+        "a/best.pt", "b/best.pt", "c/best.pt"]
+    assert "--save-predictions logs/ens.npz" in _join(cmd)
+
+
+def test_eval_single_checkpoint_as_list_equals_string():
+    assert build_eval_cmd(["a.pt"], "c.yaml") == build_eval_cmd("a.pt", "c.yaml")
+
+
+def test_eval_forwards_data_root():
+    assert "--data-root /data/x" in _join(build_eval_cmd("ckpt.pt", "c.yaml", data_root="/data/x"))
+    assert "--data-root" not in _join(build_eval_cmd("ckpt.pt", "c.yaml"))
+
+
 def test_eval_optional_flags():
     cmd = build_eval_cmd("ckpt.pt", "c.yaml", model="vit_tiny_patch16_224",
                          metadata="meta.parquet", max_batches=10)

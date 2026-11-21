@@ -80,3 +80,107 @@ class TestChooseThreshold:
         t, source = self._choose("test", {"optimal_threshold": 0.5})
         assert source == "test"
         assert t < 0.3                      # tuned on the evaluated split
+
+
+# ── Ensemble of checkpoints ──────────────────────────────────────────────────────
+
+class _Lin(torch.nn.Module):
+    def __init__(self, n_out=3):
+        super().__init__()
+        self.fc = torch.nn.Linear(4, n_out)
+
+    def forward(self, x):
+        return self.fc(x)
+
+
+def _save_member(path, seed, epoch=1, metrics=None, prefix="", n_out=3):
+    torch.manual_seed(seed)
+    model = _Lin(n_out)
+    sd = {prefix + k: v for k, v in model.state_dict().items()}
+    torch.save({"model_state_dict": sd, "epoch": epoch, "metrics": metrics or {}}, path)
+    return model
+
+
+def _data():
+    g = torch.Generator().manual_seed(0)
+    return [(torch.randn(5, 4, generator=g), (torch.rand(5, 3, generator=g) > 0.5).float())
+            for _ in range(3)]
+
+
+def _members(monkeypatch, paths, n_outs=None):
+    from src.training.tasks import MultiLabelTask
+    outs = iter(n_outs or [3] * len(paths))
+    monkeypatch.setattr(eval_script, "build_eval_model",
+                        lambda cfg, name, spec: _Lin(next(outs)))
+    return eval_script.evaluate_members(paths, {}, "tiny", None, _data(), torch.device("cpu"),
+                                        MultiLabelTask())
+
+
+def test_average_probabilities_is_the_arithmetic_mean():
+    a, b = torch.tensor([[0.2, 0.8]]), torch.tensor([[0.6, 0.4]])
+    y = torch.tensor([[0.0, 1.0]])
+    probs, labels = eval_script.average_probabilities([a, b], [y, y.clone()])
+    assert torch.allclose(probs, torch.tensor([[0.4, 0.6]]))
+    assert torch.equal(labels, y)
+
+
+def test_average_probabilities_single_member_is_untouched():
+    a, y = torch.tensor([[0.2, 0.8]]), torch.tensor([[0.0, 1.0]])
+    probs, _ = eval_script.average_probabilities([a], [y])
+    assert probs is a
+
+
+def test_average_probabilities_rejects_different_shapes_and_targets():
+    import pytest
+    a, y = torch.zeros(2, 3), torch.zeros(2, 3)
+    with pytest.raises(ValueError, match="forma"):
+        eval_script.average_probabilities([a, torch.zeros(2, 4)], [y, y])
+    with pytest.raises(ValueError, match="objetivos"):
+        eval_script.average_probabilities([a, a], [y, torch.ones(2, 3)])
+
+
+def test_ensemble_is_the_mean_of_the_individual_probabilities(tmp_path, monkeypatch):
+    p1, p2 = tmp_path / "a.pt", tmp_path / "b.pt"
+    _save_member(p1, 1)
+    _save_member(p2, 2, prefix="module.")          # a DDP checkpoint loads too
+    pa, _, la, _ = _members(monkeypatch, [p1])
+    pb, _, lb, _ = _members(monkeypatch, [p2])
+    pe, labels, le, infos = _members(monkeypatch, [p1, p2])
+    assert torch.allclose(pe, (pa + pb) / 2)
+    assert le == (la + lb) / 2
+    assert len(infos) == 2 and labels.shape == (15, 3)
+
+
+def test_single_checkpoint_matches_plain_evaluation(tmp_path, monkeypatch):
+    from src.training.tasks import MultiLabelTask
+    p = tmp_path / "a.pt"
+    model = _save_member(p, 1)
+    probs, labels, loss, infos = _members(monkeypatch, [p])
+    ref_p, ref_l, ref_loss = eval_script.evaluate(model, _data(), torch.device("cpu"),
+                                                  task=MultiLabelTask())
+    assert torch.equal(probs, ref_p) and torch.equal(labels, ref_l) and loss == ref_loss
+    assert infos == [{"epoch": 1, "metrics": {}}]
+
+
+def test_ensemble_with_different_targets_fails_clearly(tmp_path, monkeypatch):
+    import pytest
+    from src.training.tasks import MultiLabelTask
+    p1, p2 = tmp_path / "a.pt", tmp_path / "b.pt"
+    _save_member(p1, 1)
+    _save_member(p2, 2)
+    monkeypatch.setattr(eval_script, "build_eval_model", lambda cfg, name, spec: _Lin())
+    loaders = iter([_data(), [(x, 1 - y) for x, y in _data()]])    # the 2nd sees other targets
+    real = eval_script.evaluate
+    monkeypatch.setattr(eval_script, "evaluate",
+                        lambda model, loader, *a, **k: real(model, next(loaders), *a, **k))
+    with pytest.raises(ValueError, match="objetivos"):
+        eval_script.evaluate_members([p1, p2], {}, "tiny", None, None, torch.device("cpu"),
+                                     MultiLabelTask())
+
+
+def test_stored_threshold_metrics_single_and_ensemble():
+    one = [{"epoch": 1, "metrics": {"optimal_threshold": 0.3}}]
+    assert eval_script.stored_threshold_metrics(one) == {"optimal_threshold": 0.3}
+    two = one + [{"epoch": 2, "metrics": {"optimal_threshold": 0.5}}]
+    assert eval_script.stored_threshold_metrics(two)["optimal_threshold"] == 0.4
+    assert eval_script.stored_threshold_metrics(one + [{"epoch": 3, "metrics": {}}]) == {}

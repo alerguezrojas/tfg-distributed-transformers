@@ -48,6 +48,8 @@ BATCHES = {
     # Relaunched after PR #216: the first launch ran with the DistributedSampler always on seed 0
     # (same data order for every seed) and was stopped. The seed-42 run of "resolution" also used
     # sampler seed 0, which is just one more data order.
+    # Result (21/11/2026): test QWK 0.787 and 0.805 -> 0.804 +- 0.017 over 3 seeds, no significant
+    # gain over 512 px (docs/datasets/panda.md).
     "seeds_1024": [
         ("panda_ddp_1024_s43", "configs/train_panda.yaml", res(1024, 43)),
         ("panda_ddp_1024_s44", "configs/train_panda.yaml", res(1024, 44)),

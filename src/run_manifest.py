@@ -187,6 +187,8 @@ def _training_from_config_line(cfg: Mapping[str, str], select_metric: str | None
         train["batch_size"] = bs        # per GPU
     if (loss := loss_name(cfg.get("loss"))):
         train["loss"] = loss
+    if (ousm_k := _int(cfg.get("ousm"))):
+        train["ousm_k"] = ousm_k
     if select_metric:
         train["select_by"] = select_metric
     return train

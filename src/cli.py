@@ -24,7 +24,7 @@ import math
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 from rich.console import Console
@@ -139,21 +139,28 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
     return cmd
 
 
-def build_eval_cmd(checkpoint: str, config: str, *, model: str | None = None,
+def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | None = None,
                    split: str = "test", output: str | None = None,
                    metadata: str | None = None, batch_size: int | None = None,
                    max_batches: int | None = None,
                    save_predictions: str | None = None,
-                   save_predictions_auto: bool = False) -> list[str]:
-    """Build the eval.py command (held-out evaluation)."""
-    cmd = [sys.executable, "scripts/eval.py", "--checkpoint", checkpoint,
-           "--config", config, "--split", split]
+                   save_predictions_auto: bool = False,
+                   data_root: str | None = None) -> list[str]:
+    """Build the eval.py command (held-out evaluation). Several checkpoints = an ensemble
+    (eval.py averages their probabilities)."""
+    checkpoints = [checkpoint] if isinstance(checkpoint, str) else list(checkpoint)
+    cmd = [sys.executable, "scripts/eval.py"]
+    for ckpt in checkpoints:
+        cmd += ["--checkpoint", ckpt]
+    cmd += ["--config", config, "--split", split]
     if model:
         cmd += ["--model", model]
     if output:
         cmd += ["--output", output]
     if metadata:
         cmd += ["--metadata", metadata]
+    if data_root:
+        cmd += ["--data-root", data_root]
     if batch_size:
         cmd += ["--batch-size", str(batch_size)]
     if max_batches:
@@ -429,12 +436,15 @@ def benchmark(
 
 @app.command()
 def eval(
-    checkpoint: str = typer.Option(..., help="Path to the .pt checkpoint."),
+    checkpoint: List[str] = typer.Option(
+        ..., help="Path to the .pt checkpoint. Repeat it to evaluate an ensemble "
+                  "(the probabilities of the checkpoints are averaged)."),
     config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model)."),
     model: Optional[str] = typer.Option(None, help="Override the model."),
     split: str = typer.Option("test", help="test | val."),
     output: Optional[str] = typer.Option(None, help="CSV path for per-class results."),
     metadata: Optional[str] = typer.Option(None, help="Override metadata.parquet."),
+    data_root: Optional[str] = typer.Option(None, help="Override data.root (dataset location)."),
     batch_size: Optional[int] = typer.Option(None, help="Batch size."),
     max_batches: Optional[int] = typer.Option(None, help="Stop after N batches (sanity)."),
     save_predictions: Optional[str] = typer.Option(
@@ -445,10 +455,10 @@ def eval(
              "(the web Inspector reads them)."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
-    """Evaluate a checkpoint on the held-out test (or val) split."""
+    """Evaluate a checkpoint (or an ensemble of several) on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
-                         save_predictions=save_predictions,
+                         data_root=data_root, save_predictions=save_predictions,
                          save_predictions_auto=save_predictions_auto)
     _run(cmd, dry_run)
 

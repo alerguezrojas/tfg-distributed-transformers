@@ -65,6 +65,23 @@ def test_add_common_overrides_registers_options():
     assert a.seed == 1 and a.data_root == "x"
 
 
+def test_scoring_script_applies_data_root(monkeypatch):
+    mod = _load_script("eval")
+    monkeypatch.setattr(sys, "argv", ["x", "--checkpoint", "c.pt", "--data-root", "/d"])
+    args = mod.parse_args()
+    cfg = _cfg()
+    apply_common_overrides(cfg, args)       # sin --epochs ni --seed: no se tocan
+    assert cfg["data"]["root"] == "/d" and cfg["training"] == _cfg()["training"]
+
+
+def test_scoring_script_without_data_root_keeps_config(monkeypatch):
+    mod = _load_script("eval")
+    monkeypatch.setattr(sys, "argv", ["x", "--checkpoint", "c.pt"])
+    cfg = _cfg()
+    apply_common_overrides(cfg, mod.parse_args())
+    assert cfg["data"]["root"] == "/orig"
+
+
 def test_epochs_one_lowers_warmup_to_zero(caplog):
     cfg = _cfg()
     with caplog.at_level(logging.WARNING):

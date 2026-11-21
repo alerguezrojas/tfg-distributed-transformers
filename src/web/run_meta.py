@@ -90,11 +90,13 @@ class RunMeta:
     select: str | None = None          # training.select_by as run (None = unknown)
     loss: str | None = None            # 'bce' | 'ce' | 'ce_emd' | 'focal' …
     emd_weight: float | None = None
+    ousm_k: int | None = None          # OUSM: highest-loss samples dropped per batch
     seed: int | None = None
     providers_train: tuple[str, ...] = ()
     providers_val: tuple[str, ...] = ()
     providers_test: tuple[str, ...] = ()
     color_jitter: float | None = None
+    splits: str | None = None          # data.splits file name when not the default partition
     img_size: int | None = None
     batch_size: int | None = None
     lr: float | None = None
@@ -141,10 +143,14 @@ class RunMeta:
         out: list[str] = []
         if self.loss and self.loss != self.default_loss and self.loss not in ("bce", "ce"):
             out.append(self.loss)
+        if self.ousm_k:
+            out.append(f"OUSM {self.ousm_k}")
         if with_seed and self.seed not in (None, DEFAULT_SEED):
             out.append(f"seed {self.seed}")
         if (p := self.providers_label):
             out.append(p)
+        if self.splits:
+            out.append(f"splits {self.splits}")
         if self.color_jitter:
             out.append(f"color {self.color_jitter:g}")
         if self.img_size and self.img_size != DEFAULT_IMG_SIZE:
@@ -156,8 +162,8 @@ class RunMeta:
         seed never joins a group (its key is its own id)."""
         if self.seed is None:
             return ("single", run_id)
-        return (self.dataset, self.loss, self.emd_weight, self.providers_train,
-                self.providers_val, self.color_jitter, self.img_size, self.batch_size,
+        return (self.dataset, self.loss, self.emd_weight, self.ousm_k, self.providers_train,
+                self.providers_val, self.splits, self.color_jitter, self.img_size, self.batch_size,
                 self.lr, self.epochs, self.precision, self.select)
 
 
@@ -166,6 +172,18 @@ def _num(value: Any, cast=float) -> Any:
         return cast(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _splits_name(value: Any) -> str | None:
+    """File stem of a non-default ``data.splits`` ('splits_clean'); None for the default.
+
+    Any file named ``splits.csv`` counts as the default partition, wherever it lives, so a
+    different partition must get another name (the OOF script writes ``splits_fold<k>`` and
+    ``splits_clean``)."""
+    if not value:
+        return None
+    stem = Path(str(value)).stem
+    return None if stem == "splits" else stem
 
 
 def _providers(cfg: Mapping, split: str) -> tuple[str, ...]:
@@ -189,10 +207,12 @@ def _from_run_start(d: Mapping, source: str, fallback_dataset: str) -> RunMeta:
         select=str(d.get("select_metric") or train.get("select_by") or "").lower() or None,
         loss=loss_name(train.get("loss")),
         emd_weight=_num(train.get("emd_weight")),
+        ousm_k=_num(train.get("ousm_k"), int) or None,
         seed=_num(train.get("seed"), int),
         providers_train=_providers(cfg, "train"), providers_val=_providers(cfg, "val"),
         providers_test=_providers(cfg, "test"),
         color_jitter=_num(data.get("color_jitter")),
+        splits=_splits_name(data.get("splits")),
         img_size=_num(model.get("img_size") or data.get("image_size"), int),
         batch_size=_num(train.get("batch_size"), int),
         lr=_num(train.get("lr")),
@@ -215,6 +235,7 @@ def _merge_log(meta: RunMeta, log_path: Path | None) -> RunMeta:
 
     fill("seed", _num(cfg.get("seed") if cfg.get("seed") != "None" else None, int))
     fill("loss", loss_name(cfg.get("loss")))
+    fill("ousm_k", _num(cfg.get("ousm"), int) or None)
     fill("precision", cfg.get("precision"))
     fill("lr", _num(cfg.get("lr")))
     fill("epochs", _num(cfg.get("epochs"), int))

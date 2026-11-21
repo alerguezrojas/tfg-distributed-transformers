@@ -13,6 +13,15 @@ Usage:
         --checkpoint checkpoints/verode/checkpoint_epoch_007.pt \\
         --config configs/train_cluster_v3.yaml
 
+    # Dataset in another location (only data.root moves)
+    uv run python scripts/eval.py --checkpoint checkpoints/verode/vit_small/05102026_101500 \\
+        --data-root /data/bigearthnet
+
+    # Ensemble: average the probabilities of several checkpoints (e.g. three seeds)
+    uv run python scripts/eval.py --config configs/train_panda.yaml \\
+        --checkpoint runA/best.pt --checkpoint runB/best.pt --checkpoint runC/best.pt \\
+        --save-predictions logs/local/panda/ensemble_preds.npz
+
     # Save per-class results to CSV
     uv run python scripts/eval.py \\
         --checkpoint checkpoints/verode/checkpoint_epoch_007.pt \\
@@ -37,6 +46,7 @@ from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
 from src.training.checkpoints import resolve_checkpoint, strip_wrapper_prefix
+from src.training.config_overrides import add_data_root_override, apply_common_overrides
 from src.training.tasks import MultiLabelTask, Task
 
 
@@ -45,13 +55,16 @@ AUTO_PATH = "@auto"     # value of --save-predictions given without a path
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate a trained checkpoint on the test set")
-    parser.add_argument("--checkpoint", type=str, required=True,
+    parser.add_argument("--checkpoint", type=str, action="append", required=True,
                         help="Checkpoint .pt file (best.pt, last.pt or an old "
-                             "checkpoint_epoch_NNN.pt); a run folder resolves to its best.pt")
+                             "checkpoint_epoch_NNN.pt); a run folder resolves to its best.pt. "
+                             "Repeat it to evaluate an ensemble: the members' probabilities are "
+                             "averaged and every metric is computed on that average")
     parser.add_argument("--config", type=str, default="configs/train.yaml",
                         help="Config YAML (used for dataset paths, model name, batch size)")
     parser.add_argument("--model", type=str, default=None,
                         help="Override model name from config")
+    add_data_root_override(parser)
     parser.add_argument("--batch-size", type=int, default=None,
                         help="Override batch size (default: from config)")
     parser.add_argument("--output", type=str, default=None,
@@ -101,6 +114,26 @@ def evaluate(model, loader, device, max_batches=None, task: Task | None = None):
     probs = torch.cat(all_probs)
     labels = torch.cat(all_labels)
     return probs, labels, total_loss / n_batches
+
+
+def average_probabilities(probs_list, labels_list):
+    """Mean of the members' probabilities (an ensemble) and their shared targets.
+
+    Pure: every member must have produced the same output shape and evaluated the same
+    targets (same split, same order); otherwise it raises ``ValueError``. A single member
+    is returned untouched."""
+    if not probs_list or len(probs_list) != len(labels_list):
+        raise ValueError("Se necesita al menos un miembro, con sus probabilidades y objetivos")
+    for i, (p, y) in enumerate(zip(probs_list, labels_list)):
+        if p.shape != probs_list[0].shape:
+            raise ValueError(f"El miembro {i + 1} produce probabilidades de forma "
+                             f"{tuple(p.shape)}, distinta de la del primero "
+                             f"{tuple(probs_list[0].shape)}")
+        if y.shape != labels_list[0].shape or not torch.equal(y, labels_list[0]):
+            raise ValueError(f"El miembro {i + 1} no evalúa los mismos objetivos que el primero")
+    if len(probs_list) == 1:
+        return probs_list[0], labels_list[0]
+    return torch.stack(probs_list).mean(dim=0), labels_list[0]
 
 
 def threshold_search(probs, labels, task: Task | None = None):
@@ -224,11 +257,61 @@ def build_eval_model(cfg: dict, model_name: str, spec):
     )
 
 
+def load_member(path, cfg: dict, model_name: str, spec, device):
+    """Model with the checkpoint's weights (DDP / model-parallel prefixes stripped), and the
+    checkpoint dict (epoch, metrics)."""
+    model = build_eval_model(cfg, model_name, spec)
+    ckpt = torch.load(resolve_checkpoint(path), map_location=device, weights_only=True)
+    model.load_state_dict(strip_wrapper_prefix(ckpt["model_state_dict"]))
+    return model.to(device), ckpt
+
+
+def evaluate_members(paths, cfg: dict, model_name: str, spec, loader, device, task,
+                     max_batches=None, preloaded=None):
+    """Probabilities, targets, mean loss and per-member checkpoint info of one checkpoint or
+    of an ensemble (the average of the members' probabilities).
+
+    Members are loaded one at a time and freed before the next, so only one model lives in
+    memory. ``preloaded`` is the already-loaded first member ``(model, ckpt)``, if any."""
+    all_probs, all_labels, losses, infos = [], [], [], []
+    for i, path in enumerate(paths):
+        model, ckpt = preloaded if (i == 0 and preloaded) else load_member(
+            path, cfg, model_name, spec, device)
+        infos.append({"epoch": ckpt.get("epoch", "?"), "metrics": ckpt.get("metrics", {})})
+        probs, labels, loss = evaluate(model, loader, device, max_batches=max_batches, task=task)
+        all_probs.append(probs)
+        all_labels.append(labels)
+        losses.append(loss)
+        del model, ckpt
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    probs, labels = average_probabilities(all_probs, all_labels)
+    return probs, labels, sum(losses) / len(losses), infos
+
+
+def stored_threshold_metrics(infos: list[dict]) -> dict:
+    """Metrics dict for ``choose_threshold``: a single checkpoint keeps its own; an ensemble
+    uses the mean of the members' validation-tuned thresholds (if any lacks it → {} and the
+    threshold is tuned on validation)."""
+    if len(infos) == 1:
+        return infos[0]["metrics"]
+    stored = [i["metrics"].get("optimal_threshold") for i in infos]
+    if any(t is None for t in stored):
+        return {}
+    return {"optimal_threshold": float(np.mean(stored))}
+
+
 def main():
     args = parse_args()
+    paths = [resolve_checkpoint(c) for c in args.checkpoint]
+    is_ensemble = len(paths) > 1
+    if is_ensemble and args.save_predictions == AUTO_PATH:
+        sys.exit("ERROR: con varios checkpoints (conjunto), --save-predictions necesita una "
+                 "ruta explícita: no hay un único run del que deducir el sello.")
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
+    apply_common_overrides(cfg, args)       # --data-root (eval has no --seed/--epochs)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_name = args.model or cfg["model"]["name"]
@@ -236,19 +319,22 @@ def main():
     spec = dataset_spec_from_config(cfg)
     task = spec.make_task()
 
-    print(f"Checkpoint : {resolve_checkpoint(args.checkpoint)}")
+    if is_ensemble:
+        print(f"Conjunto   : {len(paths)} checkpoints (probabilidades promediadas): "
+              + ", ".join(str(p) for p in paths))
+    else:
+        print(f"Checkpoint : {paths[0]}")
     print(f"Dataset    : {spec.name} ({task.name}, {spec.num_classes} clases)")
     print(f"Modelo     : {model_name}")
     print(f"Split      : {args.split}")
     print(f"Dispositivo: {device}")
 
     # ── Build model ───────────────────────────────────────────────────────────
-    model = build_eval_model(cfg, model_name, spec)
-    ckpt = torch.load(resolve_checkpoint(args.checkpoint), map_location=device, weights_only=True)
-    model.load_state_dict(strip_wrapper_prefix(ckpt["model_state_dict"]))
-    model = model.to(device)
-    resumed_epoch = ckpt.get("epoch", "?")
-    print(f"Epoch      : {resumed_epoch}")
+    # A single checkpoint is loaded here (fails before the dataset is built); an ensemble
+    # loads its members one at a time inside evaluate_members, so only one lives in memory.
+    first = None if is_ensemble else load_member(paths[0], cfg, model_name, spec, device)
+    if first is not None:
+        print(f"Epoch      : {first[1].get('epoch', '?')}")
 
     # ── Dataset ───────────────────────────────────────────────────────────────
     data_cfg = dict(cfg["data"])
@@ -272,8 +358,12 @@ def main():
         sys.exit(1)
 
     # ── Evaluate ──────────────────────────────────────────────────────────────
-    probs, labels, avg_loss = evaluate(model, loader, device,
-                                       max_batches=args.max_batches, task=task)
+    probs, labels, avg_loss, infos = evaluate_members(
+        paths, cfg, model_name, spec, loader, device, task,
+        max_batches=args.max_batches, preloaded=first)
+    del first
+    if is_ensemble:
+        print("Epochs     : " + ", ".join(str(i["epoch"]) for i in infos))
     hard = task.hard_targets(labels)
     agg = task.metrics(task.predict(probs), hard)
     f1_05, acc_05 = agg["f1"], agg["accuracy"]
@@ -284,10 +374,11 @@ def main():
     if task.searches_threshold:
         def _val_outputs():
             print("  (ajustando el umbral sobre el split de validación...)")
-            val_probs, val_labels, _ = evaluate(model, _loader("val")[1], device,
-                                                max_batches=args.max_batches, task=task)
+            val_probs, val_labels, _, _ = evaluate_members(
+                paths, cfg, model_name, spec, _loader("val")[1], device, task,
+                max_batches=args.max_batches)
             return val_probs, val_labels
-        best_t, source = choose_threshold(args.threshold_from, ckpt.get("metrics", {}),
+        best_t, source = choose_threshold(args.threshold_from, stored_threshold_metrics(infos),
                                           task, probs, labels, _val_outputs)
         best_f1 = m.f1_score(task.predict(probs, best_t), hard)
 
@@ -324,7 +415,7 @@ def main():
         print_clinical_cutoffs(probs_np, hard_np, spec.classes)
     if args.save_predictions:
         target = (default_predictions_path(
-                      resolve_checkpoint(args.checkpoint), checkpoint_dir=cfg.get("checkpoint", {}).get("dir"),
+                      paths[0], checkpoint_dir=cfg.get("checkpoint", {}).get("dir"),
                       env=cfg.get("output", {}).get("env", "local"),
                       warn=lambda msg: print(f"  aviso: {msg}"))
                   if args.save_predictions == AUTO_PATH else args.save_predictions)

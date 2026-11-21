@@ -234,6 +234,14 @@ def _check_loss(train: dict, spec: DatasetSpec | None, errors: list) -> None:
         elif str(train.get("loss") or "").lower() != "ce_emd":
             errors.append("training.emd_weight only applies to loss: ce_emd")
 
+    if "ousm_k" in train:
+        k = train["ousm_k"]
+        if isinstance(k, bool) or not isinstance(k, int) or k < 0:
+            errors.append(f"training.ousm_k must be an integer >= 0, got {k!r}")
+        elif isinstance(train.get("batch_size"), int) and k >= train["batch_size"]:
+            errors.append(f"training.ousm_k ({k}) must be smaller than "
+                          f"training.batch_size ({train['batch_size']})")
+
     if "pos_weight" not in train:
         return
     pw = train["pos_weight"]
