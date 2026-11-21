@@ -4,6 +4,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Experimentos
+
+- PANDA, tres semillas de la base a 1.024 px en Kaggle (2 × T4, DDP) frente a las tres locales a
+  512 px. El QWK de test no mejora de forma significativa (0,804 ± 0,017 frente a 0,794 ± 0,012;
+  *bootstrap* +0,010 [−0,010; +0,030]). Sí mejoran la exactitud (+0,030) y el AUC de ISUP ≥ 1
+  (+0,014). Se sigue a 512 px. Logs en `logs/kaggle/panda/ddp/` y análisis en
+  `docs/datasets/panda.md`.
+
 ## [1.2.1] - 2026-11-21
 
 ### Seguridad

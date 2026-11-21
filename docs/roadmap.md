@@ -6,23 +6,23 @@
 
 ## Estado actual
 
-> Actualizado el 20/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 21/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
-**PANDA a 1.024 px en Kaggle (20/11/2026):** primera tanda en 2 × T4 con DDP (lote global 16,
-como en local). El control a 512 px da 0,801 en test, dentro de la variación de las tres semillas
-locales (0,794 ± 0,012): Kaggle y la máquina local son comparables. A 1.024 px la base da
-**0,821** (mejor run hasta ahora; sube en los dos hospitales y la sensibilidad de ISUP ≥ 2 pasa de
-0,76 a 0,86), pero la ordinal a 1.024 se queda en 0,806, igual que a 512. Con una semilla no se
-puede afirmar que la resolución mejore (frente al 512 de Kaggle, +0,021 [−0,005; +0,048]); **en
-curso**, las semillas 43 y 44 de la base a 1.024 px en Kaggle (~6 h; relanzadas tras el PR #216,
-porque en DDP `--seed` no cambiaba el orden de los datos). Cada run a 1.024 tarda
-~2,9 h. El predictor subestima el tiempo en T4 (−40 % a 512, −16 % a 1.024): las T4 trabajan
-limitadas por potencia (reloj mediano 960 MHz frente a 1.590). Tablas en
-[datasets/panda.md](datasets/panda.md#resolución-1024-px-en-kaggle-20112026) y
-[performance_model.md](performance_model.md). La evaluación en test falló en Kaggle porque los
-checkpoints DDP guardaban el prefijo `module.` (PR #214, corregido también para el paralelismo de
-modelo); los tres modelos se evaluaron después en la GPU local.
+**PANDA a 1.024 px en Kaggle (20-21/11/2026), pregunta cerrada:** con tres semillas por
+resolución (1.024 px en 2 × T4 con DDP; 512 px en local), el QWK de test pasa de 0,794 ± 0,012 a
+0,804 ± 0,017, una diferencia de **+0,010 [−0,010; +0,030] que no es significativa**. El 0,821 de
+la primera semilla fue suerte. Sí mejoran de forma significativa la exactitud (+0,030
+[+0,013; +0,048]) y el AUC de cáncer sí o no (+0,014 [+0,006; +0,022]). El conjunto de las tres
+semillas da 0,815-0,819 a las dos resoluciones. A 1.024 px cada época cuesta 4,5 veces más, así
+que **el QWK no está limitado por la resolución** y se sigue a 512 px. El control a 512 px en
+Kaggle (0,801) confirma que Kaggle y la máquina local son comparables. El predictor subestima el
+tiempo en T4 (−40 % a 512, −16 % a 1.024), porque las T4 trabajan limitadas por potencia (reloj
+mediano 960 MHz frente a 1.590). Tablas en
+[datasets/panda.md](datasets/panda.md#tres-semillas-a-1024-px-21112026) y
+[performance_model.md](performance_model.md). Por el camino se corrigieron dos fallos de DDP: los
+checkpoints guardaban el prefijo `module.` (PR #214) y `--seed` no cambiaba el orden de los datos
+(PR #216).
 
 **Web multi-dataset (20/11/2026):** el panel conoce el dataset y la métrica de cada run (QWK en
 PANDA, AUC en MedMNIST, F1 en BigEarthNet), con etiquetas que distinguen semilla, pérdida, hospital,
@@ -140,20 +140,23 @@ del repo, en la carpeta de reuniones del autor).
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** semillas 43 y 44 de PANDA base a 1.024 px en Kaggle (lote `seeds_1024` de
-`kaggle/panda_train/run.py`). Al terminar: descargar la salida, evaluar si hiciera falta
-(`results/<nombre>/test_preds.npz`), comparar con las tres semillas a 512 y documentarlo.
+**En curso:** nada en marcha.
 
-**Siguiente paso recomendado:** (1) **cerrar la pregunta de la resolución** con las tres semillas
-a 1.024 px. Si mejora, rehacer a 1.024 la prueba entre hospitales y probar más tiles por biopsia;
-si no, el límite no está en los píxeles y toca MIL o limpiar etiquetas ruidosas.
-(2) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro centro y medir cuántas
-hacen falta (lo que habrá que hacer con el dataset del médico); normalización de tinción
-(Macenko). (3) Grad-CAM frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 a alta
-resolución (limitación por potencia, lotes pequeños por GPU). Toda comparación, con 3 semillas.
-Técnicos: aumentos de color en GPU, el aviso de array NumPy no escribible en `src/data/panda.py`,
-Grad-CAM del monitor sin memoria a 1.024 px en la T4 (aviso, no detiene el run). Pendientes de la
-fase 4: `paravit predict`/`explain` con la prueba de cordura de Grad-CAM.
+**Siguiente paso recomendado:** (1) **etiquetas ruidosas a 512 px** en la GPU local, que es donde
+la literatura de PANDA encontró margen ([research/panda.md](research/panda.md)). Primero OUSM
+(descartar en cada lote las muestras de mayor pérdida), que es una opción de la pérdida en la
+`Task`, sin tocar el bucle. Después, si compensa, limpiar con predicciones fuera de pliegue. Se
+compara con tres semillas y con el conjunto de semillas como referencia (0,819), ya que promediar
+tres modelos es la mejora más barata. (2) **Adaptación a otro hospital:** ajustar con pocas
+biopsias del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del
+médico); normalización de tinción (Macenko). (3) Grad-CAM frente a las máscaras de PANDA.
+(4) Predictor: el tiempo en T4 (limitación por potencia, lotes pequeños por GPU). (5) Validar el
+PR de Dependabot #213 (17 paquetes: numpy 2.5, pandas 3.1, plotly 7, timm…) con el test *golden*,
+la web y un entrenamiento corto en GPU.
+
+Técnicos: aumentos de color en GPU, el aviso de array NumPy no escribible en `src/data/panda.py` y
+el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es un aviso, no detiene el run). Pendientes
+de la fase 4: `paravit predict`/`explain` con la prueba de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
 - Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
@@ -286,7 +289,10 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal (sin mejora clara con 3 semillas).
   - [x] Aumentos de color y entrenamiento por hospital (generalización entre centros).
   - [x] Tres semillas de base y ordinal; ordinal y color entrenando en un solo hospital.
-  - [ ] Más resolución (otra máquina), adaptación a otro hospital y normalización de tinción.
+  - [x] Más resolución: 1.024 px en Kaggle con tres semillas (21/11/2026). No mejora el QWK de
+    forma significativa.
+  - [ ] Etiquetas ruidosas (OUSM o limpieza fuera de pliegue), adaptación a otro hospital y
+    normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).
