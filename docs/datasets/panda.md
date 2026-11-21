@@ -237,11 +237,50 @@ Semilla 42 en los tres. *Bootstrap* emparejado del test (2000 remuestreos):
 
 Coste: a 1024 px cada época tarda ~11 min y un run de 15 épocas, ~2,9 h (frente a 37 min a 512).
 La GPU 0 llega al 98 % de memoria, porque el Grad-CAM del monitor se queda sin memoria: es solo un
-aviso, el run sigue y se guardan las predicciones. **En curso:** semillas 43 y 44 de la base a
-1024 px (lote `seeds_1024` del kernel), relanzadas tras el PR #216. Hasta ese arreglo,
-`DistributedSampler` barajaba siempre con la semilla 0, así que en DDP las semillas solo cambiaban
-la inicialización y los aumentos, no el orden de los datos. Los runs a 512 px de una GPU no se
-ven afectados.
+aviso, el run sigue y se guardan las predicciones.
+
+### Tres semillas a 1024 px (21/11/2026)
+
+Semillas 43 y 44 de la base a 1024 px (lote `seeds_1024` del kernel), lanzadas tras el PR #216.
+Hasta ese arreglo, `DistributedSampler` barajaba siempre con la semilla 0, así que en DDP las
+semillas solo cambiaban la inicialización y los aumentos, no el orden de los datos. La semilla 42
+de la tabla anterior se entrenó así, lo que equivale a un orden de datos más; los runs a 512 px de
+una GPU no se ven afectados. Esta vez la evaluación en test se hizo en Kaggle sin errores.
+
+| Run (`logs/kaggle/panda/ddp/`) | Semilla | Mejor val | QWK test | Exact. | ±1 grado | Karolinska | Radboud | ISUP ≥ 1 sens. / espec. / AUC | ISUP ≥ 2 sens. / espec. / AUC |
+|---|---|---|---|---|---|---|---|---|---|
+| `20112026_171003` | 42 | 0,803 | 0,821 | 0,667 | 0,896 | 0,762 | 0,821 | 0,925 / 0,834 / 0,956 | 0,856 / 0,885 / 0,936 |
+| `20112026_233503` | 43 | 0,804 | 0,787 | 0,665 | 0,889 | 0,732 | 0,785 | 0,916 / 0,820 / 0,956 | 0,834 / 0,886 / 0,927 |
+| `21112026_024444` | 44 | 0,814 | 0,805 | 0,669 | 0,892 | 0,748 | 0,802 | 0,924 / 0,822 / 0,954 | 0,852 / 0,869 / 0,930 |
+
+| Resolución (3 semillas) | QWK test | Karolinska | Radboud | Exact. | Conjunto de las 3 (QWK) |
+|---|---|---|---|---|---|
+| 512 px (local, una GPU) | 0,794 ± 0,012 | 0,743 ± 0,005 | 0,783 ± 0,020 | 0,636 | 0,819 |
+| 1024 px (Kaggle, DDP) | 0,804 ± 0,017 | 0,747 ± 0,015 | 0,803 ± 0,018 | 0,667 | 0,815 |
+
+*Bootstrap* emparejado del test (2000 remuestreos, el mismo índice para las seis semillas) sobre
+la media de las tres semillas, 1024 − 512:
+
+- **QWK: +0,010 [−0,010; +0,030].** No es significativo. Por semilla, la diferencia va de −0,017
+  a +0,040: el 0,821 de la semilla 42 fue una semilla buena, no el efecto de la resolución.
+- **Exactitud: +0,030 [+0,013; +0,048]** y **AUC de ISUP ≥ 1 (cáncer sí o no): +0,014
+  [+0,006; +0,022].** Las dos son significativas. A 1024 px el modelo acierta más veces el grado
+  exacto y separa mejor tejido sano de tumoral, pero el QWK, que pesa poco los errores de un
+  grado, apenas lo recoge.
+- Promediar las probabilidades de las tres semillas (conjunto) da 0,815-0,819 a las dos
+  resoluciones (diferencia −0,004 [−0,029; +0,022]). Las semillas a 512 px se equivocan en casos
+  más distintos entre sí y el conjunto compensa la menor resolución.
+
+Las dos semillas nuevas se entrenaron en Kaggle con DDP y las de 512 px en local con una GPU.
+Esa diferencia no explica el resultado: el control a 512 px en Kaggle (0,801, exactitud 0,636,
+AUC 0,942) coincide con las semillas locales.
+
+**Conclusión:** subir a 1024 px cuadruplica el coste (11 min por época frente a 2,4 en las T4) a
+cambio de unos 3 puntos de exactitud y nada de QWK. La resolución no es el cuello de botella del
+QWK. Lo siguiente con más margen es el ruido de etiquetas y la diferencia entre hospitales
+(Karolinska sigue en 0,75 a las dos resoluciones). La literatura de PANDA apunta a lo mismo: los
+mejores equipos limpiaron las etiquetas ruidosas (sobre todo las de Radboud) y usaron 36-64
+mosaicos en lugar de 16 ([research/panda.md](../research/panda.md)).
 
 ## Riesgos
 
