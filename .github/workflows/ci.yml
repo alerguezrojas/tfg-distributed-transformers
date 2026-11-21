@@ -50,11 +50,8 @@ jobs:
         run: uv run pytest -q
 
   # Auditoría de dependencias con vulnerabilidades conocidas (base OSV/PyPI). Bloquea el PR.
-  # Avisos aceptados (cada uno con su motivo; revisar al actualizar torch):
-  #   GHSA-xmj3-9gf7-h52w y PYSEC-2026-3447 (setuptools < 83/84, lo fija torch): fallos al
-  #     instalar ruedas antiguas en Windows y al aplicar MANIFEST.in al construir paquetes; aquí
-  #     no se construyen paquetes ni se instala en Windows.
-  # Ignorar otro aviso: añadir `--ignore-vuln <ID>` con su motivo en este comentario.
+  # Sin avisos aceptados desde la 1.2.0 (setuptools 84.2.1 cierra los dos que se ignoraban).
+  # Ignorar un aviso: añadir `--ignore-vuln <ID>` con su motivo en este comentario.
   audit:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -70,4 +67,3 @@ jobs:
       - name: pip-audit
         run: >-
           uvx pip-audit -r requirements-audit.txt --no-deps --disable-pip
-          --ignore-vuln GHSA-xmj3-9gf7-h52w --ignore-vuln PYSEC-2026-3447
