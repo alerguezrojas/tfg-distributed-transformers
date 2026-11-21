@@ -148,7 +148,11 @@ verdad y no solo mal etiquetadas. Detalle en
 ahora: ni la resolución, ni la pérdida ordinal, ni los aumentos de color, ni OUSM mueven el QWK
 medio (≈ 0,79-0,80). Lo único que lo sube es **promediar tres semillas (0,819)**.
 
-**En curso:** nada en marcha.
+**En curso (21/11/2026):** limpieza de etiquetas fuera de pliegue (`scripts/panda_oof.py`,
+`src/data/label_noise.py`). Cola en la GPU local (`~/experimentos_paravit/cola_oof.sh`, ~3,5 h):
+5 pliegues → `clean` con umbral 1,5 grados → 3 semillas con train limpio; predicciones de test en
+`checkpoints/runs/panda_clean_s<semilla>/`. Al terminar, *bootstrap* frente a las tres semillas
+base y documentarlo en [datasets/panda.md](datasets/panda.md).
 
 **Siguiente paso recomendado:** (1) **limpieza de etiquetas fuera de pliegue**, como el 1.er puesto
 de PANDA: entrenar 5 modelos en validación cruzada sobre train, marcar las biopsias en las que el

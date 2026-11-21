@@ -96,6 +96,7 @@ class RunMeta:
     providers_val: tuple[str, ...] = ()
     providers_test: tuple[str, ...] = ()
     color_jitter: float | None = None
+    splits: str | None = None          # data.splits file name when not the default partition
     img_size: int | None = None
     batch_size: int | None = None
     lr: float | None = None
@@ -148,6 +149,8 @@ class RunMeta:
             out.append(f"seed {self.seed}")
         if (p := self.providers_label):
             out.append(p)
+        if self.splits:
+            out.append(f"splits {self.splits}")
         if self.color_jitter:
             out.append(f"color {self.color_jitter:g}")
         if self.img_size and self.img_size != DEFAULT_IMG_SIZE:
@@ -160,7 +163,7 @@ class RunMeta:
         if self.seed is None:
             return ("single", run_id)
         return (self.dataset, self.loss, self.emd_weight, self.ousm_k, self.providers_train,
-                self.providers_val, self.color_jitter, self.img_size, self.batch_size,
+                self.providers_val, self.splits, self.color_jitter, self.img_size, self.batch_size,
                 self.lr, self.epochs, self.precision, self.select)
 
 
@@ -169,6 +172,18 @@ def _num(value: Any, cast=float) -> Any:
         return cast(value) if value is not None else None
     except (TypeError, ValueError):
         return None
+
+
+def _splits_name(value: Any) -> str | None:
+    """File stem of a non-default ``data.splits`` ('splits_clean'); None for the default.
+
+    Any file named ``splits.csv`` counts as the default partition, wherever it lives, so a
+    different partition must get another name (the OOF script writes ``splits_fold<k>`` and
+    ``splits_clean``)."""
+    if not value:
+        return None
+    stem = Path(str(value)).stem
+    return None if stem == "splits" else stem
 
 
 def _providers(cfg: Mapping, split: str) -> tuple[str, ...]:
@@ -197,6 +212,7 @@ def _from_run_start(d: Mapping, source: str, fallback_dataset: str) -> RunMeta:
         providers_train=_providers(cfg, "train"), providers_val=_providers(cfg, "val"),
         providers_test=_providers(cfg, "test"),
         color_jitter=_num(data.get("color_jitter")),
+        splits=_splits_name(data.get("splits")),
         img_size=_num(model.get("img_size") or data.get("image_size"), int),
         batch_size=_num(train.get("batch_size"), int),
         lr=_num(train.get("lr")),
