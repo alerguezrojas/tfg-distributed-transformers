@@ -561,9 +561,9 @@ class TrainingSessionBuilder:
                   "se usará BCE en ese path.")
             train_cfg = {**train_cfg, "loss": None}
         if self._hetero_local_batch_size is not None and train_cfg.get("ousm_k"):
-            print("  [aviso] ousm_k no soportado en el trainer heterogéneo (usa su propia "
-                  "BCE sumada); se ignora.")
-            train_cfg = {**train_cfg, "ousm_k": 0}
+            # Error, not a warning: the manifest would otherwise record an OUSM that never ran.
+            raise ValueError("training.ousm_k is not supported by the heterogeneous trainer "
+                             "(it uses its own summed BCE); remove it or set it to 0")
 
         pos_weight = None
         if pos_weight_cfg is not None and loss_kind != "focal":

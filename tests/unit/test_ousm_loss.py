@@ -114,7 +114,7 @@ class TestFactory:
         assert isinstance(crit, OUSMLoss) and crit.k == 2
         assert isinstance(crit.base, CrossEntropyEMDLoss) and crit.base.emd_weight == pytest.approx(0.5)
 
-    def test_heterogeneous_builder_ignores_it(self):
+    def test_heterogeneous_builder_rejects_it(self):
         from src.data.registry import get_dataset_spec
         from src.training.builder import TrainingSessionBuilder
         cfg = {"data": {"root": ".", "metadata": "x.parquet"},
@@ -123,8 +123,8 @@ class TestFactory:
                "checkpoint": {"dir": "checkpoints"}}
         builder = TrainingSessionBuilder(cfg, torch.device("cpu"))
         builder._hetero_local_batch_size = 4
-        crit = builder._build_criterion(cfg, get_dataset_spec("bigearthnet"))
-        assert isinstance(crit, nn.BCEWithLogitsLoss)
+        with pytest.raises(ValueError, match="heterogeneous"):
+            builder._build_criterion(cfg, get_dataset_spec("bigearthnet"))
 
 
 class TestValidator:
@@ -165,3 +165,23 @@ def test_trainer_mines_only_in_training(tmp_path):
     mined = trainer(OUSMLoss(nn.CrossEntropyLoss(), k=3))
     assert mined.eval_epoch(loader)["loss"] == pytest.approx(plain.eval_epoch(loader)["loss"])
     assert mined.train_epoch(loader)["loss"] < plain.train_epoch(loader)["loss"]
+
+
+def test_log_field_and_its_parsers():
+    """``ousm=k`` in the ``Configuración:`` line, read back by the backfill and the web."""
+    from src.run_manifest import _training_from_config_line
+    from src.training.losses import ousm_log_field
+    assert ousm_log_field({"ousm_k": 2}) == " | ousm=2"
+    assert ousm_log_field({}) == "" and ousm_log_field({"ousm_k": 0}) == ""
+    assert _training_from_config_line({"ousm": "2", "seed": "43"}, None)["ousm_k"] == 2
+    assert "ousm_k" not in _training_from_config_line({"seed": "43"}, None)
+
+
+def test_web_reads_ousm_from_the_log_when_there_is_no_manifest(tmp_path):
+    from src.web.run_meta import resolve_meta
+    log = tmp_path / "train_21112026_061525.log"
+    log.write_text("2026-11-21 06:15:28 [INFO ] Configuración: modelo=vit_small_patch16_224 | "
+                   "batch=16/GPU (global=16) | loss=ce | dataset=panda | seed=42 | "
+                   "backbone=timm | ousm=2\n", encoding="utf-8")
+    meta = resolve_meta(manifest=None, run_start=None, log_path=log, dataset="panda")
+    assert meta.ousm_k == 2 and "OUSM 2" in meta.tags()

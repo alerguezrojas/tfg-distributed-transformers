@@ -29,7 +29,7 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
-from src.training.losses import configured_loss_name
+from src.training.losses import configured_loss_name, ousm_log_field
 from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.config_overrides import add_common_overrides, apply_common_overrides
@@ -155,6 +155,7 @@ def main():
         f"lr={cfg['training']['lr']} | precision={_prec} | loss={_loss} | "
         f"train={len(train_ds)} | val={len(val_ds)} | dataset={spec.name} | "
         f"{backbone_log_fields(cfg['model'], model_name)}"
+        f"{ousm_log_field(cfg['training'])}"
     )
 
     trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])

@@ -219,6 +219,7 @@ def _merge_log(meta: RunMeta, log_path: Path | None) -> RunMeta:
 
     fill("seed", _num(cfg.get("seed") if cfg.get("seed") != "None" else None, int))
     fill("loss", loss_name(cfg.get("loss")))
+    fill("ousm_k", _num(cfg.get("ousm"), int) or None)
     fill("precision", cfg.get("precision"))
     fill("lr", _num(cfg.get("lr")))
     fill("epochs", _num(cfg.get("epochs"), int))

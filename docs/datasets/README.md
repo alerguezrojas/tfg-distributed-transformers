@@ -48,7 +48,9 @@ Contra las etiquetas ruidosas, cualquier pérdida admite **OUSM** (`training.ous
 al., 2019): en cada lote de entrenamiento se ignoran las `k` muestras con mayor pérdida, que
 suelen ser las mal etiquetadas (es la versión simple, sin la re-ponderación de las muestras
 difíciles que añade el artículo). Solo actúa al entrenar; la `val_loss` es la media de todas las
-muestras, como sin OUSM. En DDP cada proceso descarta `k` de su parte del lote, y el trainer
+muestras, como sin OUSM; la pérdida de entrenamiento, en cambio, es la media sin las `k`
+descartadas y queda por debajo de la de un run sin OUSM. El log lo indica con `ousm=k` en la línea
+`Configuración:`. En DDP cada proceso descarta `k` de su parte del lote, y el trainer
 heterogéneo no lo admite.
 
 Las etiquetas viajan siempre como tensores `float` de forma `(N, C)`: multi-hot en

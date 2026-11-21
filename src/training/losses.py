@@ -190,6 +190,12 @@ def build_criterion(train_cfg: dict, pos_weight: torch.Tensor | None = None,
     return OUSMLoss(criterion, ousm_k) if ousm_k else criterion
 
 
+def ousm_log_field(train_cfg: dict) -> str:
+    """`` | ousm=k`` for the log's ``Configuración:`` line when OUSM is on, else ``""``."""
+    k = train_cfg.get("ousm_k") or 0
+    return f" | ousm={k}" if k else ""
+
+
 def configured_loss_name(train_cfg: dict, task) -> str:
     """Name of the loss in effect: ``training.loss`` or, if unset, the task's default.
 
