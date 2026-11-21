@@ -330,8 +330,10 @@ def main():
     print(f"Dispositivo: {device}")
 
     # ── Build model ───────────────────────────────────────────────────────────
-    first = load_member(paths[0], cfg, model_name, spec, device)   # the rest load one by one
-    if not is_ensemble:
+    # A single checkpoint is loaded here (fails before the dataset is built); an ensemble
+    # loads its members one at a time inside evaluate_members, so only one lives in memory.
+    first = None if is_ensemble else load_member(paths[0], cfg, model_name, spec, device)
+    if first is not None:
         print(f"Epoch      : {first[1].get('epoch', '?')}")
 
     # ── Dataset ───────────────────────────────────────────────────────────────
