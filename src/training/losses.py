@@ -15,6 +15,9 @@ For multi-class tasks with ordered classes (a cancer grade) there is also
 Mover's Distance between the predicted and the target class distributions (Hou et
 al. 2017), so predicting a grade several steps away costs more than a neighbour.
 
+Against noisy labels, any of these losses can be wrapped in ``OUSMLoss``
+(``training.ousm_k``): each training batch ignores its k highest-loss samples.
+
 ``build_criterion`` is a pure factory selected by ``training.loss`` in the config;
 which losses are valid depends on the task (see :mod:`src.training.tasks`). The
 class frequencies behind ``pos_weight: auto`` come from the dataset spec
@@ -89,15 +92,63 @@ class CrossEntropyEMDLoss(nn.Module):
     Same head and predictions as plain multi-class (argmax).
     """
 
-    def __init__(self, emd_weight: float = 1.0):
+    def __init__(self, emd_weight: float = 1.0, reduction: str = "mean"):
         super().__init__()
         if not math.isfinite(emd_weight) or emd_weight < 0:
             raise ValueError(f"emd_weight must be a finite number >= 0, got {emd_weight}")
         self.emd_weight = float(emd_weight)
-        self._ce = nn.CrossEntropyLoss()
+        self.reduction = reduction            # 'mean' | 'none' (per sample, for OUSMLoss)
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        return self._ce(logits, targets) + self.emd_weight * squared_emd(logits, targets).mean()
+        if self.reduction == "none":
+            return (F.cross_entropy(logits, targets, reduction="none")
+                    + self.emd_weight * squared_emd(logits, targets))
+        return (F.cross_entropy(logits, targets)
+                + self.emd_weight * squared_emd(logits, targets).mean())
+
+
+class OUSMLoss(nn.Module):
+    """Online Uncertainty Sample Mining: the batch loss without its ``k`` worst samples.
+
+    Xue, Dou, Shi, Chen & Heng (2019), *Robust learning at noisy labeled medical images:
+    applied to skin lesion classification* (ISBI, arXiv:1901.07759); used against the
+    noisy ISUP grades of PANDA by the 6th-placed team (``docs/research/panda.md``). A
+    sample whose label is wrong tends to keep a high loss, so leaving the ``k`` highest
+    losses of each batch out of the mean keeps those labels from pulling the model.
+
+    ``base`` is any loss with a ``reduction`` attribute (CE, CE + EMD, BCE, focal); it is
+    switched to per-element output and averaged per sample. Mining only happens while
+    gradients are being recorded (the training step): under ``torch.no_grad()`` (the
+    validation loop) the plain mean of every sample is returned, so the validation loss
+    stays comparable with runs without OUSM. At least one sample is always kept. Under
+    DDP each rank drops ``k`` from its own share of the batch.
+    """
+
+    def __init__(self, base: nn.Module, k: int):
+        super().__init__()
+        if isinstance(k, bool) or not isinstance(k, int) or k < 0:
+            raise ValueError(f"ousm_k must be an integer >= 0, got {k!r}")
+        if not hasattr(base, "reduction"):
+            raise ValueError(f"{type(base).__name__} has no 'reduction': OUSM needs "
+                             f"per-sample losses")
+        base.reduction = "none"
+        self.base = base
+        self.k = k
+
+    @property
+    def pos_weight(self) -> torch.Tensor | None:
+        """The wrapped loss's ``pos_weight`` (read by the heterogeneous trainer)."""
+        return getattr(self.base, "pos_weight", None)
+
+    def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        per_sample = self.base(logits, targets)
+        if per_sample.dim() > 1:                   # (N, C) element losses -> (N,)
+            per_sample = per_sample.flatten(1).mean(dim=1)
+        drop = min(self.k, per_sample.numel() - 1) if torch.is_grad_enabled() else 0
+        if drop <= 0:
+            return per_sample.mean()
+        kept = torch.topk(per_sample, per_sample.numel() - drop, largest=False).values
+        return kept.mean()
 
 
 def pos_weight_from_counts(pos_counts: torch.Tensor, n_samples: int,
@@ -119,18 +170,22 @@ def build_criterion(train_cfg: dict, pos_weight: torch.Tensor | None = None,
 
     Multi-label / binary: 'bce' (default, optionally with ``pos_weight``) | 'focal'.
     Multi-class: 'ce' (default); with ordered classes also 'ce_emd'
-    (``training.emd_weight``, default 1.0). ``task`` is a task name or a
+    (``training.emd_weight``, default 1.0). ``training.ousm_k`` > 0 wraps the loss in
+    :class:`OUSMLoss` (the k highest-loss samples of each training batch are ignored).
+    ``task`` is a task name or a
     :class:`Task` instance — pass the dataset's own task (``spec.make_task()``) so
     that its ordered classes are known.
     """
     task_obj = task if isinstance(task, Task) else get_task(task)
-    return task_obj.build_criterion(
+    criterion = task_obj.build_criterion(
         train_cfg.get("loss"),
         pos_weight=pos_weight,
         focal_gamma=train_cfg.get("focal_gamma", 2.0),
         focal_alpha=train_cfg.get("focal_alpha", -1.0),
         emd_weight=train_cfg.get("emd_weight", 1.0),
     )
+    ousm_k = train_cfg.get("ousm_k") or 0
+    return OUSMLoss(criterion, ousm_k) if ousm_k else criterion
 
 
 def configured_loss_name(train_cfg: dict, task) -> str:

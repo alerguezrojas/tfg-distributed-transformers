@@ -44,6 +44,12 @@ salida y la predicción (la clase más probable) no cambian. La pérdida de `eva
 monitor por imagen siguen siendo la entropía cruzada, así que la `val_loss` de un run `ce_emd`
 no se compara con la de un run `ce` (el QWK, el F1 y la selección del checkpoint sí).
 
+Contra las etiquetas ruidosas, cualquier pérdida admite **OUSM** (`training.ousm_k: k`; Xue et
+al., 2019): en cada lote de entrenamiento se ignoran las `k` muestras con mayor pérdida, que
+suelen ser las mal etiquetadas. Solo actúa al entrenar; la `val_loss` es la media de todas las
+muestras, como sin OUSM. En DDP cada proceso descarta `k` de su parte del lote, y el trainer
+heterogéneo no lo admite.
+
 Las etiquetas viajan siempre como tensores `float` de forma `(N, C)`: multi-hot en
 multi-etiqueta, one-hot en multiclase y `(N, 1)` en binaria. Así el mixup, los trainers y
 los decoradores no necesitan saber qué tarea es.

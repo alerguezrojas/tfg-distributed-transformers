@@ -90,6 +90,7 @@ class RunMeta:
     select: str | None = None          # training.select_by as run (None = unknown)
     loss: str | None = None            # 'bce' | 'ce' | 'ce_emd' | 'focal' …
     emd_weight: float | None = None
+    ousm_k: int | None = None          # OUSM: highest-loss samples dropped per batch
     seed: int | None = None
     providers_train: tuple[str, ...] = ()
     providers_val: tuple[str, ...] = ()
@@ -141,6 +142,8 @@ class RunMeta:
         out: list[str] = []
         if self.loss and self.loss != self.default_loss and self.loss not in ("bce", "ce"):
             out.append(self.loss)
+        if self.ousm_k:
+            out.append(f"OUSM {self.ousm_k}")
         if with_seed and self.seed not in (None, DEFAULT_SEED):
             out.append(f"seed {self.seed}")
         if (p := self.providers_label):
@@ -156,7 +159,7 @@ class RunMeta:
         seed never joins a group (its key is its own id)."""
         if self.seed is None:
             return ("single", run_id)
-        return (self.dataset, self.loss, self.emd_weight, self.providers_train,
+        return (self.dataset, self.loss, self.emd_weight, self.ousm_k, self.providers_train,
                 self.providers_val, self.color_jitter, self.img_size, self.batch_size,
                 self.lr, self.epochs, self.precision, self.select)
 
@@ -189,6 +192,7 @@ def _from_run_start(d: Mapping, source: str, fallback_dataset: str) -> RunMeta:
         select=str(d.get("select_metric") or train.get("select_by") or "").lower() or None,
         loss=loss_name(train.get("loss")),
         emd_weight=_num(train.get("emd_weight")),
+        ousm_k=_num(train.get("ousm_k"), int) or None,
         seed=_num(train.get("seed"), int),
         providers_train=_providers(cfg, "train"), providers_val=_providers(cfg, "val"),
         providers_test=_providers(cfg, "test"),

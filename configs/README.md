@@ -64,6 +64,7 @@ Cada `.yaml` describe **un escenario** (modelo, dataset, hardware, estrategia). 
 | `medmnist_*_local.yaml` | MedMNIST (breast, chest, derma, path) | Baselines de MedMNIST con vit_tiny en local ([ficha](../docs/datasets/medmnist.md)). |
 | `train_panda.yaml` | PANDA (ISUP 0-5) | Biopsias de próstata como mosaicos de 1024 px reescalados a 512 ([ficha](../docs/datasets/panda.md)). Requiere preparar los mosaicos con `scripts/prepare_panda.py`. |
 | `train_panda_ordinal.yaml` | PANDA | Igual que `train_panda.yaml` con la pérdida ordinal `ce_emd` (entropía cruzada + EMD²). |
+| `train_panda_ousm.yaml` | PANDA | Igual que `train_panda.yaml` con OUSM (`training.ousm_k: 2`): cada lote ignora sus 2 muestras de mayor pérdida, contra las etiquetas ruidosas. |
 | `train_panda_ordinal_color.yaml` | PANDA | Pérdida ordinal y aumentos de color a la vez. |
 | `train_panda_color.yaml` | PANDA | Igual que `train_panda.yaml` con `data.color_jitter: 0.2` (aumentos de color solo en train). |
 | `train_panda_radboud.yaml` | PANDA | Generalización entre centros: train y val solo Radboud, test solo Karolinska (`data.providers`). |

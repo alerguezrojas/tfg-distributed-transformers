@@ -560,6 +560,10 @@ class TrainingSessionBuilder:
             print("  [aviso] loss=focal no soportado en el trainer heterogéneo; "
                   "se usará BCE en ese path.")
             train_cfg = {**train_cfg, "loss": None}
+        if self._hetero_local_batch_size is not None and train_cfg.get("ousm_k"):
+            print("  [aviso] ousm_k no soportado en el trainer heterogéneo (usa su propia "
+                  "BCE sumada); se ignora.")
+            train_cfg = {**train_cfg, "ousm_k": 0}
 
         pos_weight = None
         if pos_weight_cfg is not None and loss_kind != "focal":
@@ -581,6 +585,9 @@ class TrainingSessionBuilder:
         if loss_kind == "focal" and self._hetero_local_batch_size is None:
             print(f"  [loss] focal (gamma={train_cfg.get('focal_gamma', 2.0)}, "
                   f"alpha={train_cfg.get('focal_alpha', -1.0)})")
+        if train_cfg.get("ousm_k"):
+            print(f"  [loss] OUSM: cada lote de entrenamiento descarta sus "
+                  f"{train_cfg['ousm_k']} muestras de mayor pérdida")
         return criterion
 
     # ── Informational summary ─────────────────────────────────────────────────
