@@ -140,26 +140,31 @@ del repo, en la carpeta de reuniones del autor).
   `LayerHooksDecorator` al logger, tests de los metric reporters, `psutil` declarado y
   `--trace deep` con `batch-table` ya alimenta a `batch-monitor`.
 
-**En curso:** OUSM (`training.ousm_k`, PR #226) con tres semillas a 512 px en la GPU local
-(`configs/train_panda_ousm.yaml`, k = 2 de 16; ~52 min por run). Cola en
-`~/experimentos_paravit/cola_ousm.sh` (fuera del repo): predicciones de test en
-`checkpoints/runs/panda_ousm_s<semilla>/test_preds.npz`. Al terminar, comparar con las tres semillas
-base a 512 (0,794 ± 0,012) con *bootstrap* emparejado y documentarlo en `docs/datasets/panda.md`.
+**OUSM (21/11/2026):** con tres semillas a 512 px (k = 2 de 16), el QWK de test queda en
+0,793 ± 0,006 frente a 0,794 ± 0,012 de la base (−0,001 [−0,014; +0,013]): **no ayuda**. Sube algo
+Karolinska y baja Radboud, el hospital ruidoso, lo que sugiere que descarta biopsias difíciles de
+verdad y no solo mal etiquetadas. Detalle en
+[datasets/panda.md](datasets/panda.md#etiquetas-ruidosas-ousm-21112026). Balance de PANDA hasta
+ahora: ni la resolución, ni la pérdida ordinal, ni los aumentos de color, ni OUSM mueven el QWK
+medio (≈ 0,79-0,80). Lo único que lo sube es **promediar tres semillas (0,819)**.
 
-**Siguiente paso recomendado:** (1) **etiquetas ruidosas a 512 px** en la GPU local, que es donde
-la literatura de PANDA encontró margen ([research/panda.md](research/panda.md)). Primero OUSM
-(descartar en cada lote las muestras de mayor pérdida), que es una opción de la pérdida en la
-`Task`, sin tocar el bucle. Después, si compensa, limpiar con predicciones fuera de pliegue. Se
-compara con tres semillas y con el conjunto de semillas como referencia (0,819), ya que promediar
-tres modelos es la mejora más barata. (2) **Adaptación a otro hospital:** ajustar con pocas
-biopsias del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del
-médico); normalización de tinción (Macenko). (3) Grad-CAM frente a las máscaras de PANDA.
-(4) Predictor: el tiempo en T4 (limitación por potencia, lotes pequeños por GPU). (5) Validar el
-PR de Dependabot #213 (17 paquetes: numpy 2.5, pandas 3.1, plotly 7, timm…) con el test *golden*,
-la web y un entrenamiento corto en GPU.
+**En curso:** nada en marcha.
 
-Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es un aviso, no detiene el run). Pendientes
-de la fase 4: `paravit predict`/`explain` con la prueba de cordura de Grad-CAM.
+**Siguiente paso recomendado:** (1) **limpieza de etiquetas fuera de pliegue**, como el 1.er puesto
+de PANDA: entrenar 5 modelos en validación cruzada sobre train, marcar las biopsias en las que el
+modelo que no las vio discrepa mucho de la etiqueta y reentrenar sin ellas (3 semillas). Cuesta
+unas 3,5 h en la GPU local (~24 min por run). Necesita pliegues en la partición, sin tocar el
+bucle. (2) Hacer del **conjunto de semillas** una opción de `eval` (promediar las probabilidades
+de varios checkpoints). (3) **Adaptación a otro hospital:** ajustar con pocas biopsias del otro
+centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
+normalización de tinción (Macenko). (4) Grad-CAM frente a las máscaras de PANDA. (5) Predictor:
+el tiempo en T4 (limitación por potencia, lotes pequeños por GPU). (6) Validar el PR de Dependabot
+#213 (17 paquetes: numpy 2.5, pandas 3.1, plotly 7, timm…) con el test *golden*, la web y un
+entrenamiento corto en GPU.
+
+Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es
+un aviso, no detiene el run). Pendientes de la fase 4: `paravit predict`/`explain` con la prueba
+de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
 - Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
@@ -294,8 +299,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] Tres semillas de base y ordinal; ordinal y color entrenando en un solo hospital.
   - [x] Más resolución: 1.024 px en Kaggle con tres semillas (21/11/2026). No mejora el QWK de
     forma significativa.
-  - [ ] Etiquetas ruidosas (OUSM o limpieza fuera de pliegue), adaptación a otro hospital y
-    normalización de tinción.
+  - [x] Etiquetas ruidosas con OUSM (21/11/2026): no mejora el QWK.
+  - [ ] Limpieza de etiquetas fuera de pliegue, adaptación a otro hospital y normalización de
+    tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
 - [ ] Un dataset de cáncer: PatchCamelyon (binaria, HDF5, parches de 96²) o ISIC (multiclase).

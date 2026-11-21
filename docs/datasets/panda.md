@@ -282,6 +282,42 @@ QWK. Lo siguiente con más margen es el ruido de etiquetas y la diferencia entre
 mejores equipos limpiaron las etiquetas ruidosas (sobre todo las de Radboud) y usaron 36-64
 mosaicos en lugar de 16 ([research/panda.md](../research/panda.md)).
 
+## Etiquetas ruidosas: OUSM (21/11/2026)
+
+**Pregunta:** si el límite está en las etiquetas (el grado ISUP tiene discrepancias conocidas
+entre patólogos, sobre todo en Radboud), ¿ayuda ignorar en cada lote las muestras que el modelo no
+consigue ajustar? Se prueba OUSM (`training.ousm_k`, Xue et al. 2019; lo usó el 6.º equipo de
+PANDA, [research/panda.md](../research/panda.md)): `configs/train_panda_ousm.yaml`, la base a
+512 px en la GPU local con k = 2 de cada lote de 16 (12,5 %). Tres semillas, con el mismo test.
+
+| Run (`logs/local/panda/single/`) | Semilla | Mejor val | QWK test | Exact. | ±1 grado | Karolinska | Radboud | ISUP ≥ 1 sens. / espec. / AUC | ISUP ≥ 2 sens. / espec. / AUC |
+|---|---|---|---|---|---|---|---|---|---|
+| `21112026_061527` | 42 | 0,792 | 0,796 | 0,647 | 0,877 | 0,758 | 0,776 | 0,884 / 0,864 / 0,940 | 0,782 / 0,934 / 0,929 |
+| `21112026_064000` | 43 | 0,813 | 0,787 | 0,630 | 0,884 | 0,747 | 0,765 | 0,876 / 0,861 / 0,940 | 0,786 / 0,911 / 0,929 |
+| `21112026_070409` | 44 | 0,801 | 0,797 | 0,652 | 0,883 | 0,759 | 0,777 | 0,903 / 0,838 / 0,943 | 0,802 / 0,912 / 0,926 |
+
+| 512 px, tres semillas | QWK test | Karolinska | Radboud | Conjunto de las 3 (QWK) |
+|---|---|---|---|---|
+| Base | 0,794 ± 0,012 | 0,743 ± 0,005 | 0,783 ± 0,020 | 0,819 |
+| OUSM (k = 2) | 0,793 ± 0,006 | 0,755 ± 0,007 | 0,773 ± 0,006 | 0,809 |
+
+*Bootstrap* emparejado (2000 remuestreos) de la media de las tres semillas, OUSM − base:
+
+- **QWK −0,001 [−0,014; +0,013]**, exactitud +0,006 [−0,006; +0,019] y AUC de ISUP ≥ 1
+  −0,000 [−0,005; +0,005]. Con k = 2, **OUSM no cambia el resultado**.
+- Cambia el reparto. Karolinska sube un poco y Radboud baja, justo el hospital con más ruido y
+  con los grados altos. Además, la especificidad de ISUP ≥ 1 sube (0,78 → 0,85) y la
+  sensibilidad baja (0,91 → 0,89).
+- Lectura (no comprobada): con mosaicos de 16 tiles, las biopsias de mayor pérdida no son solo
+  las mal etiquetadas. También lo son las difíciles de verdad (grados altos, poco tumor en el
+  mosaico), y descartarlas quita señal útil. Las semillas varían menos (± 0,006), pero con tres
+  no se puede afirmar.
+
+**Conclusión:** OUSM en su forma simple no ayuda aquí. Los equipos que ganaron con limpieza de
+etiquetas usaron predicciones **fuera de pliegue** (validación cruzada): una muestra se marca como
+ruidosa por un modelo que no la ha visto, no por la pérdida del lote en curso. Promediar tres
+semillas sigue siendo la mejora más barata y fiable (0,819 frente a 0,794 de media).
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen
