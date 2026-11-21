@@ -4,6 +4,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-21
+
 ### Añadido
 
 - Evaluación de un conjunto de checkpoints (*ensemble*): `scripts/eval.py` y `paravit eval` aceptan
@@ -25,6 +27,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   entrenamiento: solo sustituye `data.root`), reutilizando `src/training/config_overrides.py`.
 - `PandaDataset` ya no provoca el aviso de NumPy por array no escribible: copia el array que
   entrega PIL antes de pasarlo a `torch`. Los valores del Dataset no cambian.
+
+### Dependencias
+
+- 17 paquetes al día (PR #213 de Dependabot): numpy 2.5.5, pandas 3.1.1, plotly 7.1.0, matplotlib
+  3.11.2, pyarrow 26, timm 1.0.31, transformers 5.23, typer 0.29, tqdm 4.70, tensorboard 2.21,
+  pytest 9.2, ruff 0.17.5 y otros. Validado con la suite completa, una época de PANDA en GPU con
+  el entorno viejo y el nuevo (mismas métricas y tiempo) y un recorrido de la web con `AppTest`.
 
 ### Experimentos
 
@@ -454,7 +463,8 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.1...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.0-tfg...v1.1.0

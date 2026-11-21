@@ -62,6 +62,12 @@ generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset d
 del repo, en la carpeta de reuniones del autor).
 
 **Hecho:**
+- **Versión 1.3.0 en `main` (21/11/2026):** OUSM, limpieza de etiquetas fuera de pliegue,
+  conjunto de checkpoints en `eval` y 17 dependencias al día (numpy 2.5, pandas 3.1, plotly 7,
+  timm 1.0.31…; PR #213). Las dependencias se validaron con la suite completa (también con los
+  avisos de deprecación como errores), una época de PANDA en GPU con el entorno viejo y el nuevo
+  (Val QWK 0,7177 frente a 0,7176, mismo tiempo) y un recorrido de la web con `AppTest` (6 páginas
+  y 13 vistas del Inspector, sin excepciones e idénticas en los dos entornos).
 - **Versiones 1.1.0 y 1.2.0 en `main` (20/11/2026)**, con etiqueta y release. La 1.1.0 llevó
   PANDA, la medición clínica, la inspección del entrenamiento y la seguridad del repositorio
   (secret scanning, Dependabot, CodeQL, gitleaks, ramas protegidas). La 1.2.0 lleva las
@@ -163,11 +169,10 @@ QWK de test de 0,819 (0,8193, exactitud 0,674).
 
 **Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
 del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
-normalización de tinción (Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con atención sobre los tiles,
-o un backbone mayor), ya que el cuello de botella es el modelo y no los datos. (3) Grad-CAM
-frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación por potencia, lotes
-pequeños por GPU). (5) Validar el PR de Dependabot #213 (17 paquetes: numpy 2.5, pandas 3.1,
-plotly 7, timm…) con el test *golden*, la web y un entrenamiento corto en GPU.
+normalización de tinción (Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con
+atención sobre los tiles, o un backbone mayor), ya que el cuello de botella es el modelo y no los
+datos. (3) Grad-CAM frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación
+por potencia, lotes pequeños por GPU).
 
 Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es
 un aviso, no detiene el run). Pendientes de la fase 4: `paravit predict`/`explain` con la prueba
