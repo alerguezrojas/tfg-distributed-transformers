@@ -111,3 +111,13 @@ def test_warns_when_groups_start_below_lr_min(capsys):
     assert warn_if_below_lr_min(opt, 1e-6) > 0 and "lr_min" in capsys.readouterr().out
     opt = build_llrd_optimizer(m, 1e-4, WD, 0.75)       # 0.75^14 * 1e-4 = 1.8e-6
     assert warn_if_below_lr_min(opt, 1e-6) == 0
+
+
+def test_timm_head_module_is_not_a_block():
+    """ConvNeXt keeps ``head.norm`` after num_classes=0: it is "other" (decay^1), not a block."""
+    m = TimmClassifier("convnext_atto", num_classes=2, pretrained=False)
+    _, blocks, top = _group_matcher_layout(m.backbone)
+    assert top and all(n.startswith("head.") for n, _ in top)
+    assert not any(n.startswith("head.") for blk in blocks for n, _ in blk)
+    lr = _lr_of(build_llrd_optimizer(m, LR, WD, DECAY))
+    assert all(lr[id(p)] == pytest.approx(LR * DECAY) for _, p in top)

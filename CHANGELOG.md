@@ -13,7 +13,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   entrada cae lo mismo que en un ViT-S/B, sea cual sea la profundidad (5 grupos en MaxViT-T, 37
   en ConvNeXt-S). Antes, las CNN se entrenaban sin LLRD aunque la config lo pidiera: para
   reproducir los runs de ResNet-50 del TFG hay que poner `llrd_decay: 0.0` (como en
-  `configs/models/resnet50.yaml`). El camino de los ViT no cambia (test *golden* intacto).
+  `configs/models/resnet50.yaml`). El camino de los ViT no cambia (test *golden* intacto) salvo
+  el *weight decay* de los *layer-scale* 1-D (ViT con `init_values`, DINOv2), que ahora no llevan.
 - LLRD: CaiT y XCiT dejaban fuera del optimizador sus bloques de atención de clase (el "resto"
   se calculaba por nombre); ahora se comprueba que cada parámetro entrenable está en un solo
   grupo. Los parámetros 1-D (BatchNorm, layer-scale) ya no llevan *weight decay*, como en timm,

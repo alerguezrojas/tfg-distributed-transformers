@@ -215,19 +215,24 @@ def _group_matcher_layout(backbone: nn.Module):
     """The same ``(embedding, [block…], other)`` split for any timm model, from its own
     fine-grained ``group_matcher()`` (the grouping timm uses for layer decay): the first
     group is the stem / patch embedding and every later group is one block, in
-    input-to-output order. timm already folds the final norm into the last block and puts
-    any unmatched parameter in a last group of its own, so "other" is empty."""
+    input-to-output order (timm folds the final norm into the last block). "other" holds
+    what is left of timm's classifier ``head`` module (``head.norm``…), which timm leaves
+    unmatched in a last group of its own: like a ViT's final norm, it gets ``decay^1``."""
     from timm.models import group_parameters
     if not hasattr(backbone, "group_matcher"):
         raise ValueError(f"LLRD needs a backbone with blocks or group_matcher(), "
                          f"got {type(backbone).__name__}: set training.llrd_decay: 0.0")
     named = dict(backbone.named_parameters())
     layers = group_parameters(backbone, backbone.group_matcher(coarse=False))
-    groups = [[(n, named[n]) for n in layers[k]] for k in sorted(layers)]
+    # what is left of timm's classifier ``head`` module (``head.norm``, ``head.pre_logits``
+    # in ConvNeXt/MaxViT…) is not a block: it goes to "other", next to the head.
+    top = [(n, named[n]) for k in sorted(layers) for n in layers[k] if n.startswith("head.")]
+    groups = [g for g in ([(n, named[n]) for n in layers[k] if not n.startswith("head.")]
+                          for k in sorted(layers)) if g]
     if len(groups) < 2:
         raise ValueError(f"{type(backbone).__name__}.group_matcher() gives a single group; "
                          "LLRD needs a stem and blocks: set training.llrd_decay: 0.0")
-    return groups[0], groups[1:], []
+    return groups[0], groups[1:], top
 
 
 def build_llrd_optimizer(
