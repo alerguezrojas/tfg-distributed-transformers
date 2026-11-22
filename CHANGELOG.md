@@ -30,6 +30,15 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   y hay un aviso si algún grupo empieza por debajo de `lr_min` (el coseno le subiría la tasa).
 - Test de Grad-CAM con backbone congelado: semilla fija (fallaba de vez en cuando).
 
+### Experimentos
+
+- PANDA, criba de modelos a 512 px con la receta de la base (una semilla; los dos mejores, con
+  tres): **Swin-T mejora el QWK de test de forma significativa**, 0,821 ± 0,011 frente a
+  0,794 ± 0,012 del ViT-S (+0,027 [+0,008; +0,046]), con mejor exactitud (+0,058) y AUC de cáncer
+  sí o no (+0,017). ConvNeXt-T (+0,002 con tres semillas), DeiT-III-S, EVA-02-S, EfficientNet-B0
+  y EfficientNetV2-S empatan con la base; ResNet-50 queda por debajo (−0,075). Detalle en
+  `docs/datasets/panda.md`; logs en `logs/local/panda/single/<modelo>/`.
+
 ## [1.3.0] - 2026-11-21
 
 ### Añadido

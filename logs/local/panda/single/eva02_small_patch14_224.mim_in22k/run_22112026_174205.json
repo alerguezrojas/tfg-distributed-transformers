@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "type": "run_manifest",
+  "source": "training",
+  "run_id": "22112026_174205",
+  "dataset": "panda",
+  "task": "multiclass",
+  "classes": [
+    "ISUP 0",
+    "ISUP 1",
+    "ISUP 2",
+    "ISUP 3",
+    "ISUP 4",
+    "ISUP 5"
+  ],
+  "model": "eva02_small_patch14_224.mim_in22k",
+  "mode": "single",
+  "world_size": 1,
+  "select_metric": "qwk",
+  "ordinal": true,
+  "config": {
+    "data": {
+      "name": "panda",
+      "root": "/media/alejandro/SSD/datasets/panda",
+      "image_size": 512,
+      "num_workers": 4
+    },
+    "model": {
+      "name": "vit_small_patch16_224",
+      "pretrained": true,
+      "dropout": 0.1,
+      "img_size": 512
+    },
+    "training": {
+      "epochs": 15,
+      "batch_size": 16,
+      "lr": 0.0001,
+      "lr_min": 1e-06,
+      "weight_decay": 0.05,
+      "warmup_epochs": 1,
+      "llrd_decay": 0.75,
+      "grad_clip": 1.0,
+      "early_stopping_patience": 5,
+      "log_batch_every": 10,
+      "seed": 42,
+      "select_by": "qwk",
+      "precision": "amp"
+    },
+    "checkpoint": {
+      "dir": "checkpoints/local"
+    },
+    "output": {
+      "env": "local"
+    }
+  },
+  "env": {
+    "host": "pc-ubuntu",
+    "python": "3.12.3",
+    "torch": "2.15.0+cu132",
+    "timm": "1.0.31",
+    "git_commit": "0a2abd4",
+    "devices": [
+      "NVIDIA GeForce RTX 3060 Ti"
+    ]
+  },
+  "epochs": 15,
+  "command": "train_single_gpu.py --config configs/train_panda.yaml --model eva02_small_patch14_224.mim_in22k --seed 42 --trace simple --monitor --precision amp"
+}
