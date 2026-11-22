@@ -310,7 +310,7 @@ uv run paravit.py dashboard
 
 --model NAME               Override del modelo timm (default: cfg model.name)
                              Ejemplos: vit_tiny_patch16_224, resnet50, efficientnet_b0
-                             Si el modelo no es ViT/DeiT/Swin → AdamW estándar (sin LLRD)
+                             LLRD con cualquier modelo de timm (los no ViT, por su group_matcher())
 
 --layers [plot] [hooks] [confusion] [batch-monitor]
                            Decoradores de aspecto (combinables):

@@ -347,6 +347,7 @@ def test_config_line_parser_reads_the_new_keys(tmp_path):
 def test_gradcam_works_with_a_frozen_backbone(name, side):
     import numpy as np
     from src.training.monitor import grad_cam
+    torch.manual_seed(0)              # random weights/input: an all-zero map is possible
     model = TimmClassifier(name, num_classes=3, pretrained=False, freeze_backbone=True).eval()
     maps = grad_cam(model, model, torch.randn(2, 3, side, side), torch.tensor([0, 2]))
     assert maps is not None and maps.dtype == np.uint8 and maps.max() == 255

@@ -17,7 +17,7 @@ training:
   lr_min: 0.000001
   weight_decay: 0.05        # estándar AdamW+ViT (DeiT, timm recipes)
   warmup_epochs: 5          # LinearLR warmup antes del cosine decay
-  llrd_decay: 0.75          # layer-wise LR decay para ViT; 0.0 = AdamW estándar
+  llrd_decay: 0.75          # layer-wise LR decay (cualquier modelo de timm); 0.0 = AdamW estándar
   grad_clip: 1.0            # max_norm para clip_grad_norm_
   early_stopping_patience: 10
   log_batch_every: 50       # DeepTracingDecorator / BatchMonitor: log cada N batches

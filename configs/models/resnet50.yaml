@@ -15,7 +15,7 @@ training:
   lr_min: 0.000001
   weight_decay: 0.01        # lower WD for CNNs
   warmup_epochs: 3
-  llrd_decay: 0.0           # LLRD not supported for CNNs — uses standard AdamW
+  llrd_decay: 0.0           # plain AdamW, as in the TFG ResNet-50 runs (LLRD works for CNNs too)
   grad_clip: 1.0
   early_stopping_patience: 10
   log_batch_every: 50

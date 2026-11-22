@@ -43,8 +43,8 @@ Flags
       vit_tiny_patch16_224    — ~5.7M params, fast for local testing
       vit_small_patch16_224   — ~22M params
       vit_base_patch16_224    — ~85M params (default)
-      resnet50                — ~25M params, CNN (no LLRD)
-      efficientnet_b0         — ~5.3M params, CNN (no LLRD)
+      resnet50                — ~25M params, CNN
+      efficientnet_b0         — ~5.3M params, CNN
 """
 
 import argparse
