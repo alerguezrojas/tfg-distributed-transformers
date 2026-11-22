@@ -6,8 +6,19 @@
 
 ## Estado actual
 
-> Actualizado el 21/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 22/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
+
+**Criba de modelos en PANDA (22/11/2026): Swin-T mejora a la base.** Con la misma receta que el
+ViT-S a 512 px (el LLRD ya funciona con cualquier modelo de timm, PR #234) se probaron siete
+modelos con una semilla en la GPU local. Solo Swin-T (`swin_tiny_patch4_window7_224`) se sale:
+con tres semillas, **QWK de test 0,821 ± 0,011 frente a 0,794 ± 0,012, +0,027 [+0,008; +0,046]**,
+la primera mejora significativa del QWK en el proyecto; también la exactitud (+0,058) y el AUC de
+cáncer sí o no (+0,017). Un Swin-T rinde como el conjunto de tres ViT-S (0,819), con un 60 % más
+de tiempo por run (38 min). ConvNeXt-T, que parecía mejorar con la semilla 42, queda igual con tres
+(+0,002); DeiT-III-S, EVA-02-S, EfficientNet-B0 y EfficientNetV2-S empatan con la base y ResNet-50
+queda por debajo (−0,075). Swin-T pasa a ser el modelo de referencia. Tablas en
+[datasets/panda.md](datasets/panda.md#criba-de-modelos-22112026).
 
 **PANDA a 1.024 px en Kaggle (20-21/11/2026), pregunta cerrada:** con tres semillas por
 resolución (1.024 px en 2 × T4 con DDP; 512 px en local), el QWK de test pasa de 0,794 ± 0,012 a
@@ -167,24 +178,18 @@ en [datasets/panda.md](datasets/panda.md#limpieza-de-etiquetas-fuera-de-pliegue-
 probabilidades de varios modelos (cargados de uno en uno). Con las tres semillas base reproduce el
 QWK de test de 0,819 (0,8193, exactitud 0,674).
 
-**En curso (22/11/2026): criba de modelos en PANDA.** El autor pidió probar otros modelos
-(transformers y CNN) para mejorar el resultado y, con un buen modelo, otras estrategias de
-distribución y otras máquinas gratuitas. Antes se generalizó el LLRD a cualquier modelo de timm
-con el reparto normalizado a 12 bloques (PR #234), para comparar familias con la misma receta.
-Una semilla por modelo, misma receta que la base ViT-S a 512 px:
-- GPU local (`~/experimentos_paravit/cola_modelos.sh`, ~4 h): EfficientNet-B0, ConvNeXt-T
-  (in22k), DeiT-III-S, Swin-T, ResNet-50, EfficientNetV2-S y EVA-02-S. Predicciones de test en
-  `checkpoints/runs/panda_m_<modelo>/`.
-- Kaggle, 2 × T4 (lote `models_512` del kernel, versión 4): ViT-B (in21k), ConvNeXt-S (in22k),
-  SwinV2-T, EfficientNet-B3 y MaxViT-T, que no caben en 8 GB.
-Los que superen claramente a la base (QWK de test 0,781 con la semilla 42; la desviación entre
-semillas es ±0,012) pasan a tres semillas. VERODE no es accesible sin la VPN de la ULL.
+**En curso (22/11/2026): modelos grandes en Kaggle.** El lote `models_512` del kernel (versión 4,
+2 × T4 con DDP) entrena con una semilla los modelos que no caben en 8 GB a 512 px: ViT-B (in21k),
+ConvNeXt-S (in22k), SwinV2-T, EfficientNet-B3 y MaxViT-T. Las colas locales de la criba están en
+`~/experimentos_paravit/cola_{modelos,semillas}.sh` y las predicciones de test, en
+`checkpoints/runs/panda_m_<modelo>[_s43|_s44]/`. VERODE no es accesible sin la VPN de la ULL.
 
 **Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
 del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
-normalización de tinción (Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con
-atención sobre los tiles, o un backbone mayor), ya que el cuello de botella es el modelo y no los
-datos. (3) Grad-CAM frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación
+normalización de tinción (Macenko). (2) Con Swin-T como referencia: ver si los modelos grandes de
+Kaggle (SwinV2-T sobre todo) suben más, y llevar Swin-T a las estrategias de distribución (DDP en
+2 × T4 frente a una GPU, y el tiempo medido frente al del predictor). Después, MIL con atención
+sobre los tiles si el mosaico se queda corto. (3) Grad-CAM frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación
 por potencia, lotes pequeños por GPU).
 
 Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es
@@ -327,6 +332,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
     forma significativa.
   - [x] Etiquetas ruidosas con OUSM (21/11/2026): no mejora el QWK.
   - [x] Limpieza de etiquetas fuera de pliegue (21/11/2026): empeora el QWK (−0,015).
+  - [x] Criba de modelos a 512 px (22/11/2026): Swin-T mejora el QWK de forma significativa
+    (0,821 ± 0,011, tres semillas); ConvNeXt-T, DeiT-III, EVA-02 y EfficientNet empatan.
+  - [ ] Modelos grandes en Kaggle (ViT-B, ConvNeXt-S, SwinV2-T, EfficientNet-B3, MaxViT-T).
   - [ ] Adaptación a otro hospital y normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).

@@ -403,6 +403,73 @@ Los logs están en `logs/local/panda/single/vit_small_patch16_224/`: los cinco p
 `train_21112026_{110930,112826,115012}`. La web los distingue por la etiqueta
 `splits splits_fold<k>` o `splits splits_clean`.
 
+## Criba de modelos (22/11/2026)
+
+**Pregunta:** con la receta de la base fija (`configs/train_panda.yaml`: 512 px, 15 épocas, lr
+0,0001, LLRD 0,75, batch 16, AMP, `select_by: qwk`), ¿hay otra arquitectura que sume más que la
+resolución o la limpieza de etiquetas? Desde el PR #234 el LLRD funciona con cualquier modelo de
+timm (reparto normalizado a 12 bloques), así que todos se entrenan igual; solo cambia `--model`.
+Primero una semilla (42) por modelo en la RTX 3060 Ti local; los que destacan pasan a tres. La
+comparación es con `paravit compare-preds` sobre los `test_preds.npz` (*bootstrap* emparejado de
+2.000 remuestreos).
+
+| Modelo (timm) | Pesos | Parám. | Min/run | Mejor val | QWK test | Exact. | Karolinska | Radboud | QWK − base [IC 95 %] |
+|---|---|---|---|---|---|---|---|---|---|
+| ViT-S/16 (base) | in21k → in1k | 22,0 M | 24 | 0,814 | 0,781 | 0,609 | 0,745 | 0,760 | — |
+| `swin_tiny_patch4_window7_224` | in1k | 27,5 M | 38 | 0,826 | **0,830** | 0,701 | 0,762 | 0,837 | **+0,048 [+0,021; +0,076]** |
+| `convnext_tiny.fb_in22k` | in22k | 27,8 M | 26 | 0,794 | 0,798 | 0,628 | 0,772 | 0,770 | +0,017 [−0,010; +0,045] |
+| `eva02_small_patch14_224.mim_in22k` | MIM in22k | 21,6 M | 39 | 0,826 | 0,787 | 0,654 | 0,758 | 0,757 | +0,006 [−0,022; +0,035] |
+| `deit3_small_patch16_224.fb_in22k_ft_in1k` | in22k → in1k | 21,7 M | 20 | 0,790 | 0,787 | 0,614 | 0,755 | 0,765 | +0,005 [−0,019; +0,032] |
+| `tf_efficientnetv2_s` | in21k → in1k | 20,2 M | 30 | 0,776 | 0,783 | 0,641 | 0,758 | 0,752 | +0,002 [−0,030; +0,032] |
+| `efficientnet_b0` | in1k | 4,0 M | 17 | 0,778 | 0,781 | 0,625 | 0,762 | 0,746 | +0,000 [−0,027; +0,028] |
+| `resnet50` | in1k | 23,5 M | 24 | 0,745 | 0,706 | 0,589 | 0,663 | 0,674 | −0,075 [−0,109; −0,042] |
+
+Semilla 42; la diferencia es frente a la base con la misma semilla. Con una semilla el intervalo no
+recoge la variación entre semillas (± 0,012 en la base), así que solo Swin-T y ResNet-50 se salen
+claramente.
+
+- **Swin-T** es el único que mejora de forma clara, y no por unos pesos mejores: es el único
+  *transformer* de la criba preentrenado solo en ImageNet-1k. La ganancia viene casi toda de
+  Radboud (0,760 → 0,837), el hospital con los grados altos.
+- **EVA-02-S** iguala a Swin-T en validación (0,826) pero no en test (0,787): el criterio de parada
+  se ajustó a la validación. Lo mismo, en menor medida, en la base (0,814 → 0,781).
+- **Las CNN** no ganan al ViT-S. EfficientNet-B0 iguala a la base con 5 veces menos parámetros y
+  en 17 minutos; ResNet-50 se queda claramente por debajo (con la receta de los ViT; en el TFG se
+  entrenaba sin LLRD).
+
+Los dos mejores, con tres semillas (42, 43 y 44):
+
+| 512 px, tres semillas | QWK test | Exact. | ±1 grado | AUC ISUP ≥ 1 | Karolinska | Radboud | Conjunto de las 3 (QWK) |
+|---|---|---|---|---|---|---|---|
+| Base (ViT-S) | 0,794 ± 0,012 | 0,636 ± 0,025 | 0,884 ± 0,008 | 0,941 ± 0,003 | 0,743 ± 0,005 | 0,783 ± 0,020 | 0,819 |
+| **Swin-T** | **0,821 ± 0,011** | 0,694 ± 0,006 | 0,903 ± 0,004 | 0,958 ± 0,001 | 0,769 ± 0,016 | 0,817 ± 0,018 | 0,829 |
+| ConvNeXt-T | 0,796 ± 0,009 | 0,648 ± 0,017 | 0,881 ± 0,010 | 0,950 ± 0,003 | 0,767 ± 0,007 | 0,773 ± 0,019 | 0,805 |
+
+QWK de test por semilla: Swin-T 0,830, 0,808 y 0,825; ConvNeXt-T 0,798, 0,787 y 0,804.
+
+*Bootstrap* emparejado, Swin-T − base:
+
+- media de las tres semillas: **QWK +0,027 [+0,008; +0,046]**, exactitud +0,058
+  [+0,039; +0,077], ±1 grado +0,019 [+0,007; +0,031] y AUC de ISUP ≥ 1 +0,017 [+0,010; +0,024];
+  todo significativo;
+- conjunto de tres: QWK +0,010 [−0,014; +0,034], no significativo; exactitud +0,031
+  [+0,008; +0,055] y AUC +0,011 [+0,004; +0,018], sí.
+
+ConvNeXt-T − base: QWK +0,002 [−0,017; +0,020] de media y −0,014 [−0,038; +0,010] en conjunto;
+**no mejora** (la semilla 42 tuvo suerte).
+
+**Conclusión:** **Swin-T es la primera mejora significativa del QWK** de PANDA en este proyecto: un
+solo modelo (0,821) rinde como el conjunto de tres ViT-S (0,819), con un 60 % más de tiempo por
+run. La resolución (+0,010 a 1.024 px, no significativo, 4,5 veces más cara) y las etiquetas
+ruidosas (OUSM, limpieza fuera de pliegue) no lo consiguieron. Hipótesis sin comprobar: la
+atención por ventanas locales y la jerarquía de escalas de Swin encajan mejor con un mosaico de
+16 *tiles* de 128 px que la atención global de un ViT con parches de 16 px. Swin-T pasa a ser el
+modelo de referencia a 512 px para las siguientes pruebas. En curso en Kaggle (2 × T4, DDP) los
+modelos que no caben en 8 GB a 512 px: ViT-B, ConvNeXt-S, SwinV2-T, EfficientNet-B3 y MaxViT-T.
+
+Logs: `logs/local/panda/single/<modelo>/train_22112026_*` (Swin-T: `160932`, `182151` y
+`190007`; ConvNeXt-T: `152254`, `193826` y `200621`).
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen
