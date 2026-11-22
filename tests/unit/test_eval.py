@@ -234,3 +234,19 @@ def test_ensemble_mixing_models_fails_unless_all_agree(tmp_path):
     with pytest.raises(SystemExit, match="distintos"):
         eval_script.resolve_model_name(None, CFG, [a, b])
     assert eval_script.resolve_model_name(None, CFG, [a, c]) == "swin_tiny"
+
+
+def test_ensemble_with_an_unnamed_checkpoint_warns(tmp_path, capsys):
+    a, old = tmp_path / "a.pt", tmp_path / "old.pt"
+    _save_named(a, "swin_tiny")
+    _save_named(old, None)
+    assert eval_script.resolve_model_name(None, CFG, [a, old]) == "swin_tiny"
+    assert "[aviso]" in capsys.readouterr().out
+
+
+def test_model_name_of_a_legacy_checkpoint(tmp_path):
+    """Old non-zip format: mmap cannot open it, the plain load still does."""
+    p = tmp_path / "legacy.pt"
+    torch.save({"model_state_dict": {}, "model_name": "swin_tiny"}, p,
+               _use_new_zipfile_serialization=False)
+    assert eval_script.checkpoint_model_name(p) == "swin_tiny"

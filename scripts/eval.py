@@ -260,7 +260,11 @@ def build_eval_model(cfg: dict, model_name: str, spec):
 def checkpoint_model_name(path) -> str | None:
     """Model a checkpoint was trained with (``model_name`` key), or None for old ones.
     Read with mmap so peeking at an ensemble does not load every set of weights."""
-    ckpt = torch.load(resolve_checkpoint(path), map_location="cpu", weights_only=True, mmap=True)
+    path = resolve_checkpoint(path)
+    try:
+        ckpt = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    except RuntimeError:            # legacy (non-zip) format: mmap is not possible
+        ckpt = torch.load(path, map_location="cpu", weights_only=True)
     return ckpt.get("model_name")
 
 
@@ -284,9 +288,16 @@ def resolve_model_name(cli_model: str | None, cfg: dict, paths) -> str:
     distinct = {n for n in names.values() if n is not None}
     if len(distinct) > 1:
         sys.exit("ERROR: los checkpoints son de modelos distintos ("
-                 + ", ".join(f"{p}: {n}" for p, n in names.items())
+                 + ", ".join(f"{p}: {n or 'sin registrar'}" for p, n in names.items())
                  + "); un conjunto necesita el mismo modelo.")
-    return distinct.pop() if distinct else cfg["model"]["name"]
+    if not distinct:
+        return cfg["model"]["name"]
+    name = distinct.pop()
+    unnamed = [str(p) for p, n in names.items() if n is None]
+    if unnamed:
+        print(f"[aviso] {len(unnamed)} checkpoint(s) sin modelo registrado; se supone '{name}', "
+              f"el de los demás: {', '.join(unnamed)}")
+    return name
 
 
 def load_member(path, cfg: dict, model_name: str, spec, device):
