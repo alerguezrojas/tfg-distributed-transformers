@@ -172,6 +172,20 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
     return cmd
 
 
+def build_compare_cmd(a: list[str], b: list[str], *, label_a: str = "A", label_b: str = "B",
+                      group: str | None = None, n_boot: int = 2000, seed: int = 0,
+                      markdown: bool = False) -> list[str]:
+    """Build the compare_predictions.py command (paired comparison of two groups of runs)."""
+    cmd = [sys.executable, "scripts/compare_predictions.py", "--a", *a, "--b", *b,
+           "--label-a", label_a, "--label-b", label_b,
+           "--n-boot", str(n_boot), "--seed", str(seed)]
+    if group:
+        cmd += ["--group", group]
+    if markdown:
+        cmd += ["--markdown"]
+    return cmd
+
+
 # ── Runner ─────────────────────────────────────────────────────────────────────
 
 def _run(cmd: list[str], dry_run: bool) -> None:
@@ -460,6 +474,25 @@ def eval(
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
                          data_root=data_root, save_predictions=save_predictions,
                          save_predictions_auto=save_predictions_auto)
+    _run(cmd, dry_run)
+
+
+@app.command("compare-preds")
+def compare_preds(
+    a: List[str] = typer.Option(..., "--a", help="Predictions .npz of group A. Repeat it per run."),
+    b: List[str] = typer.Option(..., "--b", help="Predictions .npz of group B (reference). Repeat it per run."),
+    label_a: str = typer.Option("A", help="Name of group A in the tables."),
+    label_b: str = typer.Option("B", help="Name of group B in the tables."),
+    group: Optional[str] = typer.Option(None, help="Subgroup variable of the .npz (e.g. data_provider)."),
+    n_boot: int = typer.Option(2000, help="Bootstrap resamples."),
+    seed: int = typer.Option(0, help="Bootstrap seed."),
+    markdown: bool = typer.Option(False, "--markdown", help="Markdown tables (decimal comma) for docs/."),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
+) -> None:
+    """Compare two groups of runs (e.g. 3 seeds of a variant vs 3 of the base) from their saved
+    test predictions: mean ± std, ensemble and paired bootstrap of the difference. No GPU."""
+    cmd = build_compare_cmd(a, b, label_a=label_a, label_b=label_b, group=group,
+                            n_boot=n_boot, seed=seed, markdown=markdown)
     _run(cmd, dry_run)
 
 
