@@ -62,6 +62,7 @@ class Trainer(BaseTrainer):
         precision: str = "fp32",
         task: Task | None = None,
         checkpoint_keep: str = DEFAULT_KEEP,
+        model_name: str | None = None,
     ):
         self.task: Task = task if task is not None else MultiLabelTask()
         self.model = self._place_model(model, device)
@@ -71,6 +72,9 @@ class Trainer(BaseTrainer):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_keep = checkpoint_keep   # 'best_last' | 'all' (checkpoint.keep)
+        # Modelo efectivo del run (puede venir de --model): va en el checkpoint para que
+        # scripts/eval.py construya la arquitectura correcta sin depender de la config.
+        self.model_name = model_name
         # Épocas ya hechas por el run del que se reanuda: el 'epoch' del checkpoint es global
         # (el bucle cuenta desde 1 en cada run) para que reanudaciones sucesivas encadenen.
         self._epoch_offset: int = 0
@@ -272,6 +276,8 @@ class Trainer(BaseTrainer):
             "optimizer_state_dict": self.optimizer.state_dict(),
             "metrics": {k: v for k, v in metrics.items() if not k.startswith("_")},
         }
+        if self.model_name is not None:
+            state["model_name"] = self.model_name
         if self.scheduler is not None:
             state["scheduler_state_dict"] = self.scheduler.state_dict()
         if self._scaler.is_enabled():   # AMP fp16: la escala de pérdida forma parte del estado

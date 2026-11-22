@@ -257,11 +257,55 @@ def build_eval_model(cfg: dict, model_name: str, spec):
     )
 
 
+def checkpoint_model_name(path) -> str | None:
+    """Model a checkpoint was trained with (``model_name`` key), or None for old ones.
+    Read with mmap so peeking at an ensemble does not load every set of weights."""
+    path = resolve_checkpoint(path)
+    try:
+        ckpt = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    except RuntimeError:            # legacy (non-zip) format: mmap is not possible
+        ckpt = torch.load(path, map_location="cpu", weights_only=True)
+    return ckpt.get("model_name")
+
+
+def check_model_matches(path, ckpt_name: str | None, model_name: str) -> None:
+    """Fail clearly if the checkpoint says it holds another model than the one requested."""
+    if ckpt_name is not None and ckpt_name != model_name:
+        sys.exit(f"ERROR: {path} es un checkpoint de '{ckpt_name}', pero se pide '{model_name}' "
+                 f"(--model o la config). Quita --model para usar el del checkpoint.")
+
+
+def resolve_model_name(cli_model: str | None, cfg: dict, paths) -> str:
+    """--model, else the model recorded in the checkpoint(s), else the config's.
+
+    Checkpoints without ``model_name`` (older runs) fall back to the config, as always. An
+    ensemble must not mix models unless --model forces one (a mismatch then fails on load)."""
+    names = {p: checkpoint_model_name(p) for p in paths}
+    if cli_model:
+        for p, n in names.items():
+            check_model_matches(p, n, cli_model)
+        return cli_model
+    distinct = {n for n in names.values() if n is not None}
+    if len(distinct) > 1:
+        sys.exit("ERROR: los checkpoints son de modelos distintos ("
+                 + ", ".join(f"{p}: {n or 'sin registrar'}" for p, n in names.items())
+                 + "); un conjunto necesita el mismo modelo.")
+    if not distinct:
+        return cfg["model"]["name"]
+    name = distinct.pop()
+    unnamed = [str(p) for p, n in names.items() if n is None]
+    if unnamed:
+        print(f"[aviso] {len(unnamed)} checkpoint(s) sin modelo registrado; se supone '{name}', "
+              f"el de los demás: {', '.join(unnamed)}")
+    return name
+
+
 def load_member(path, cfg: dict, model_name: str, spec, device):
     """Model with the checkpoint's weights (DDP / model-parallel prefixes stripped), and the
     checkpoint dict (epoch, metrics)."""
-    model = build_eval_model(cfg, model_name, spec)
     ckpt = torch.load(resolve_checkpoint(path), map_location=device, weights_only=True)
+    check_model_matches(path, ckpt.get("model_name"), model_name)
+    model = build_eval_model(cfg, model_name, spec)
     model.load_state_dict(strip_wrapper_prefix(ckpt["model_state_dict"]))
     return model.to(device), ckpt
 
@@ -314,7 +358,7 @@ def main():
     apply_common_overrides(cfg, args)       # --data-root (eval has no --seed/--epochs)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_name = args.model or cfg["model"]["name"]
+    model_name = resolve_model_name(args.model, cfg, paths)
     batch_size = args.batch_size or cfg["training"].get("batch_size", 32)
     spec = dataset_spec_from_config(cfg)
     task = spec.make_task()
