@@ -35,6 +35,11 @@ def res(size: int, seed: int = 42) -> dict:
     return {"data": {"image_size": size}, "model": {"img_size": size}, "training": {"seed": seed}}
 
 
+def model(name: str, seed: int = 42) -> dict:
+    """Overrides for another timm model at 512 px (the base config's resolution)."""
+    return {"model": {"name": name}, "training": {"seed": seed}}
+
+
 # One batch per kernel run (a session lasts at most 12 h; a 1024-px run takes ~2.9 h on 2x T4).
 # The finished batches stay here as the record of what was run; BATCH picks the next one.
 BATCHES = {
@@ -54,8 +59,20 @@ BATCHES = {
         ("panda_ddp_1024_s43", "configs/train_panda.yaml", res(1024, 43)),
         ("panda_ddp_1024_s44", "configs/train_panda.yaml", res(1024, 44)),
     ],
+    # 22/11/2026: models that do not fit the local 8 GB GPU at 512 px with batch 16 (8 per T4
+    # here), same recipe as the ViT-S base (LLRD normalised to 12 blocks, PR #234). One seed;
+    # the local screening (efficientnet_b0, convnext_tiny, deit3_small, swin_tiny, resnet50,
+    # efficientnetv2_s, eva02_small) runs at the same time on the local GPU.
+    "models_512": [
+        ("panda_ddp_vitb", "configs/train_panda.yaml",
+         model("vit_base_patch16_224.augreg2_in21k_ft_in1k")),
+        ("panda_ddp_convnext_s", "configs/train_panda.yaml", model("convnext_small.fb_in22k")),
+        ("panda_ddp_swinv2_t", "configs/train_panda.yaml", model("swinv2_tiny_window8_256")),
+        ("panda_ddp_effb3", "configs/train_panda.yaml", model("efficientnet_b3")),
+        ("panda_ddp_maxvit_t", "configs/train_panda.yaml", model("maxvit_tiny_tf_512.in1k")),
+    ],
 }
-BATCH = "seeds_1024"
+BATCH = "models_512"
 EXPERIMENTS = BATCHES[BATCH]
 COMMON = {
     "data": {"num_workers": 4},
