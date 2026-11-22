@@ -202,6 +202,32 @@ validación** durante el entrenamiento, que va guardado en el checkpoint. Con ch
 que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce
 el comportamiento anterior (ajustarlo sobre el propio test), que da una cifra optimista.
 
+### `compare-preds` — comparar dos grupos de runs
+
+Con tres semillas por variante, la diferencia entre medias casi siempre cae dentro del ruido. Este
+comando decide con las predicciones guardadas (`eval --save-predictions`): no usa GPU ni torch.
+
+```bash
+uv run paravit.py compare-preds \
+    --a RUN_A_S42/test_preds.npz --a RUN_A_S43/test_preds.npz --a RUN_A_S44/test_preds.npz \
+    --b RUN_B_S42/test_preds.npz --b RUN_B_S43/test_preds.npz --b RUN_B_S44/test_preds.npz \
+    --label-a Variante --label-b Base --group data_provider --markdown
+```
+
+(`scripts/compare_predictions.py --a f1 f2 f3 --b g1 g2 g3` admite también la lista seguida.) Todos
+los ficheros deben ser del mismo test y del mismo orden; si no, falla con un error claro. Hoy solo
+admite tareas multiclase (con QWK y exactitud ±1 si son ordinales). Imprime:
+
+- las métricas de cada run (QWK, exactitud, ±1 grado, AUC de «clase ≥ 1» con la puntuación
+  1 − p(clase 0)) y la métrica principal por subgrupo (`--group`);
+- la media ± desviación (ddof = 1) de cada grupo y su conjunto (media de probabilidades);
+- el *bootstrap* emparejado A − B (`--n-boot`, por defecto 2000; `--seed`, por defecto 0; los
+  mismos índices de remuestreo para todos los runs): media de las semillas, conjunto y, si los
+  grupos tienen el mismo tamaño, cada pareja (la i-ésima de A con la i-ésima de B). IC 95 % por
+  percentiles y P(d ≤ 0).
+
+Con `--markdown` salen tablas con coma decimal, listas para pegar en `docs/datasets/*.md`.
+
 ### `report` — informe de un run
 
 ```bash

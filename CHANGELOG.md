@@ -25,6 +25,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- `paravit compare-preds` (`scripts/compare_predictions.py`, `src/analysis/compare.py`): compara
+  dos grupos de runs (p. ej. tres semillas de una variante frente a tres de la base) desde sus
+  `test_preds.npz`. Métricas por run (QWK, exactitud, ±1 grado, AUC de «clase ≥ 1», métrica por
+  subgrupo), media ± desviación, conjunto y *bootstrap* emparejado (mismos índices para todos los
+  runs) de la media, del conjunto y de cada pareja; con `--markdown`, tablas para `docs/`.
+  Reproduce las cifras de `docs/datasets/panda.md` (limpieza de etiquetas). Solo multiclase.
+
 - Evaluación de un conjunto de checkpoints (*ensemble*): `scripts/eval.py` y `paravit eval` aceptan
   `--checkpoint` repetido y promedian las probabilidades de los modelos (cargados de uno en uno)
   antes de calcular métricas, umbral e informes. Con un solo checkpoint, nada cambia. Con
