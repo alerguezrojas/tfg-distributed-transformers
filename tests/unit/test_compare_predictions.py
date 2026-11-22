@@ -147,6 +147,22 @@ def test_script_text_and_markdown(tmp_path, capsys):
     assert "Par 2" in md
 
 
+def test_run_names_across_groups():
+    """``<run>/test_preds.npz`` on both sides: the folder names the run, not the file."""
+    assert script.run_names(["x/base/test_preds.npz", "x/swin/test_preds.npz"]) == ["base", "swin"]
+    assert script.run_names(["s42.npz", "s43.npz"]) == ["s42", "s43"]
+    assert script.run_names(["a/p.npz", "a/p.npz"]) == ["a #1", "a #2"]
+
+
+def test_script_one_run_per_group_has_no_nan(tmp_path, capsys):
+    y, g = _targets_groups()
+    a, b = _write(tmp_path, "base", 1, y, g), _write(tmp_path, "swin", 2, y, g)
+    script.main(["--a", a, "--b", b, "--n-boot", "20"])
+    text = capsys.readouterr().out
+    assert "nan" not in text
+    assert "A: base" in text and "B: swin" in text and "(base − swin)" in text
+
+
 def test_script_misaligned_files(tmp_path):
     y, g = _targets_groups()
     a = [_write(tmp_path, "a0", 1, y, g)]

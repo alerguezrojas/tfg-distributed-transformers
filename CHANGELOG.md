@@ -4,6 +4,15 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Añadido
+
+- `paravit compare-preds` (`scripts/compare_predictions.py`, `src/analysis/compare.py`): compara
+  dos grupos de runs (p. ej. tres semillas de una variante frente a tres de la base) desde sus
+  `test_preds.npz`. Métricas por run (QWK, exactitud, ±1 grado, AUC de «clase ≥ 1», métrica por
+  subgrupo), media ± desviación, conjunto y *bootstrap* emparejado (mismos índices para todos los
+  runs) de la media, del conjunto y de cada pareja; con `--markdown`, tablas para `docs/`.
+  Reproduce las cifras de `docs/datasets/panda.md` (limpieza de etiquetas). Solo multiclase.
+
 ### Corregido
 
 - LLRD (`training.llrd_decay`) con cualquier modelo de timm: Swin (que figuraba como compatible
@@ -24,13 +33,6 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 ## [1.3.0] - 2026-11-21
 
 ### Añadido
-
-- `paravit compare-preds` (`scripts/compare_predictions.py`, `src/analysis/compare.py`): compara
-  dos grupos de runs (p. ej. tres semillas de una variante frente a tres de la base) desde sus
-  `test_preds.npz`. Métricas por run (QWK, exactitud, ±1 grado, AUC de «clase ≥ 1», métrica por
-  subgrupo), media ± desviación, conjunto y *bootstrap* emparejado (mismos índices para todos los
-  runs) de la media, del conjunto y de cada pareja; con `--markdown`, tablas para `docs/`.
-  Reproduce las cifras de `docs/datasets/panda.md` (limpieza de etiquetas). Solo multiclase.
 
 - Evaluación de un conjunto de checkpoints (*ensemble*): `scripts/eval.py` y `paravit eval` aceptan
   `--checkpoint` repetido y promedian las probabilidades de los modelos (cargados de uno en uno)

@@ -14,6 +14,7 @@ Usage:
 """
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -24,14 +25,14 @@ from src.analysis.compare import (METRICS, check_aligned, compare_groups,  # noq
 from src.analysis.io import load_predictions  # noqa: E402
 
 
-def load_group(paths: list[str]):
-    """Load the files of a group: ``(Predictions list, names)``; names from the file or its folder."""
-    preds = [load_predictions(p) for p in paths]
+def run_names(paths: list[str]) -> list[str]:
+    """One distinct name per file, over both groups: the file name, or its folder when the file
+    names repeat (``<run>/test_preds.npz``), numbered as a last resort."""
     stems = [Path(p).stem for p in paths]
     names = stems if len(set(stems)) == len(stems) else [Path(p).parent.name for p in paths]
     if len(set(names)) != len(names):
         names = [f"{n} #{i + 1}" for i, n in enumerate(names)]
-    return preds, names
+    return names
 
 
 def _fmt(x: float, nd: int = 3, sign: bool = False, comma: bool = False) -> str:
@@ -67,8 +68,9 @@ def render(res: dict, names_a: list[str], names_b: list[str], label_a: str, labe
                  *[_fmt(r["groups"][g], 3, comma=c) for g in groups]]
                 for n, r in zip(names, res["runs"][key])]
 
-    def ms_cell(v):
-        return f"{_fmt(v[0], 3, comma=c)} ± {_fmt(v[1], 3, comma=c)}"
+    def ms_cell(v):                  # one run per group: no spread to show
+        mean = _fmt(v[0], 3, comma=c)
+        return mean if math.isnan(v[1]) else f"{mean} ± {_fmt(v[1], 3, comma=c)}"
 
     out = [f"Comparación de {label_a} (n = {len(names_a)}) con {label_b} (n = {len(names_b)}); "
            f"{res['n']} muestras de test, métrica principal: {lab[prim]}.", "",
@@ -120,8 +122,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> None:
     args = build_parser().parse_args(argv)
-    pa, na = load_group(args.a)
-    pb, nb = load_group(args.b)
+    pa = [load_predictions(f) for f in args.a]
+    pb = [load_predictions(f) for f in args.b]
+    names = run_names(args.a + args.b)
+    na, nb = names[:len(pa)], names[len(pa):]
     allp = pa + pb
     for q in allp:
         if q.task != "multiclass":
