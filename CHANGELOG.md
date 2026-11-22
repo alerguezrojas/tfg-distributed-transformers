@@ -4,6 +4,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Corregido
+
+- LLRD (`training.llrd_decay`) con cualquier modelo de timm: Swin (que figuraba como compatible
+  pero no tiene `.blocks` y fallaba), ConvNeXt, EfficientNet, ResNet, DeiT-III, EVA… Los modelos
+  que no son ViT se reparten en bloques con su propio `group_matcher()` (el mismo reparto que
+  `--layer-decay` en timm); antes, las CNN se entrenaban sin LLRD aunque la config lo pidiera.
+  El camino de los ViT no cambia (test *golden* intacto).
+
 ## [1.3.0] - 2026-11-21
 
 ### Añadido

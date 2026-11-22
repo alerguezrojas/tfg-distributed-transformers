@@ -111,6 +111,18 @@ class TimmClassifier(nn.Module):
         return self
 
     @property
+    def supports_llrd(self) -> bool:
+        """True when ``build_llrd_optimizer`` can split the backbone into layers: a
+        registered/``hf:`` encoder with ``llrd_layout()``, a timm ViT (``blocks`` +
+        ``patch_embed``) or any timm model with ``group_matcher()`` (Swin, ConvNeXt,
+        EfficientNet, ResNet, EVA…)."""
+        if self.backbone_spec is not None:
+            return self.backbone_spec.llrd
+        b = self.backbone
+        return (hasattr(b, "llrd_layout") or (hasattr(b, "blocks") and hasattr(b, "patch_embed"))
+                or hasattr(b, "group_matcher"))
+
+    @property
     def is_vit(self) -> bool:
         """True for backbones LLRD can walk: timm ViT/DeiT/Swin, or a registered/``hf:``
         encoder that exposes ``llrd_layout()``."""
@@ -176,10 +188,31 @@ def _llrd_layout(backbone: nn.Module):
     """``(embedding, [block…], other)`` parameter lists as ``(name, param)`` pairs."""
     if hasattr(backbone, "llrd_layout"):      # non-timm encoders (src.models.backbones)
         return backbone.llrd_layout()
-    top = [(n, p) for n, p in backbone.named_parameters()
-           if "blocks" not in n and "patch_embed" not in n]
-    return (list(backbone.patch_embed.named_parameters()),
-            [list(b.named_parameters()) for b in backbone.blocks], top)
+    if hasattr(backbone, "blocks") and hasattr(backbone, "patch_embed"):     # timm ViT/DeiT
+        top = [(n, p) for n, p in backbone.named_parameters()
+               if "blocks" not in n and "patch_embed" not in n]
+        return (list(backbone.patch_embed.named_parameters()),
+                [list(b.named_parameters()) for b in backbone.blocks], top)
+    return _group_matcher_layout(backbone)
+
+
+def _group_matcher_layout(backbone: nn.Module):
+    """The same ``(embedding, [block…], other)`` split for any timm model, from its own
+    fine-grained ``group_matcher()`` (the grouping timm uses for layer decay): the first
+    group is the stem / patch embedding and every later group is one block, in
+    input-to-output order. timm already folds the final norm into the last block and puts
+    any unmatched parameter in a last group of its own, so "other" is empty."""
+    from timm.models import group_parameters
+    if not hasattr(backbone, "group_matcher"):
+        raise ValueError(f"LLRD needs a backbone with blocks or group_matcher(), "
+                         f"got {type(backbone).__name__}: set training.llrd_decay: 0.0")
+    named = dict(backbone.named_parameters())
+    layers = group_parameters(backbone, backbone.group_matcher(coarse=False))
+    groups = [[(n, named[n]) for n in layers[k]] for k in sorted(layers)]
+    if len(groups) < 2:
+        raise ValueError(f"{type(backbone).__name__}.group_matcher() gives a single group; "
+                         "LLRD needs a stem and blocks: set training.llrd_decay: 0.0")
+    return groups[0], groups[1:], []
 
 
 def build_llrd_optimizer(
@@ -193,8 +226,9 @@ def build_llrd_optimizer(
     LR decays geometrically from head (lr_base) toward patch_embed
     (lr_base * llrd_decay^(num_blocks+2)). Bias and norm params skip weight decay.
 
-    Only valid for ViT/DeiT/Swin backbones (model.is_vit == True).
-    For CNN models, use standard AdamW instead.
+    Valid for any backbone with ``model.supports_llrd``: timm ViT/DeiT use their
+    ``blocks``; other timm models (Swin, ConvNeXt, EfficientNet, ResNet…) are split by
+    their ``group_matcher()``, so "block" there is a timm block (a stage's block).
 
     Decay schedule (ViT-B/16, 12 blocks):
       head            → lr_base
@@ -204,10 +238,10 @@ def build_llrd_optimizer(
       blocks[0]       → lr_base * decay^13
       patch_embed     → lr_base * decay^14
     """
-    if not model.is_vit:
+    if not model.supports_llrd:
         raise ValueError(
-            f"LLRD requires a ViT/DeiT/Swin backbone, got '{model.model_name}'. "
-            "Use standard AdamW for CNN models."
+            f"LLRD cannot split the backbone of '{model.model_name}' into layers: "
+            "set training.llrd_decay: 0.0 (plain AdamW)."
         )
 
     no_decay = {"bias", "norm"}

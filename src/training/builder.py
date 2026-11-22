@@ -231,11 +231,11 @@ class TrainingSessionBuilder:
                 [p for p in model.parameters() if p.requires_grad],
                 lr=lr_base, weight_decay=weight_decay
             )
-        elif llrd_decay > 0.0 and opt_model.is_vit:
+        elif llrd_decay > 0.0 and opt_model.supports_llrd:
             optimizer = build_llrd_optimizer(opt_model, lr_base, weight_decay, llrd_decay)
         else:
-            if llrd_decay > 0.0 and not opt_model.is_vit:
-                print(f"  [aviso] LLRD no disponible para '{model_name}' (CNN). Usando AdamW estándar.")
+            if llrd_decay > 0.0 and not opt_model.supports_llrd:
+                print(f"  [aviso] LLRD no disponible para '{model_name}'. Usando AdamW estándar.")
             optimizer = torch.optim.AdamW(
                 model.parameters(), lr=lr_base, weight_decay=weight_decay
             )
