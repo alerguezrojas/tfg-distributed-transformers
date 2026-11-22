@@ -246,7 +246,7 @@ training:
   lr: 0.0001                            # ojo: no escribir 1e-4 (YAML lo lee como texto)
   weight_decay: 0.1
   warmup_epochs: 5
-  llrd_decay: 0.75                      # learning rate por capas (solo ViT/DeiT/Swin)
+  llrd_decay: 0.75                      # learning rate por capas (cualquier modelo de timm)
   grad_clip: 1.0
   early_stopping_patience: 10
   select_by: f1                         # mejor checkpoint: f1 | f1_optimal | auc | qwk
