@@ -167,6 +167,19 @@ en [datasets/panda.md](datasets/panda.md#limpieza-de-etiquetas-fuera-de-pliegue-
 probabilidades de varios modelos (cargados de uno en uno). Con las tres semillas base reproduce el
 QWK de test de 0,819 (0,8193, exactitud 0,674).
 
+**En curso (22/11/2026): criba de modelos en PANDA.** El autor pidió probar otros modelos
+(transformers y CNN) para mejorar el resultado y, con un buen modelo, otras estrategias de
+distribución y otras máquinas gratuitas. Antes se generalizó el LLRD a cualquier modelo de timm
+con el reparto normalizado a 12 bloques (PR #234), para comparar familias con la misma receta.
+Una semilla por modelo, misma receta que la base ViT-S a 512 px:
+- GPU local (`~/experimentos_paravit/cola_modelos.sh`, ~4 h): EfficientNet-B0, ConvNeXt-T
+  (in22k), DeiT-III-S, Swin-T, ResNet-50, EfficientNetV2-S y EVA-02-S. Predicciones de test en
+  `checkpoints/runs/panda_m_<modelo>/`.
+- Kaggle, 2 × T4 (lote `models_512` del kernel, versión 4): ViT-B (in21k), ConvNeXt-S (in22k),
+  SwinV2-T, EfficientNet-B3 y MaxViT-T, que no caben en 8 GB.
+Los que superen claramente a la base (QWK de test 0,781 con la semilla 42; la desviación entre
+semillas es ±0,012) pasan a tres semillas. VERODE no es accesible sin la VPN de la ULL.
+
 **Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
 del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
 normalización de tinción (Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con
