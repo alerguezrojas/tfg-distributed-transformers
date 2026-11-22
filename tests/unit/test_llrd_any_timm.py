@@ -7,6 +7,7 @@ from src.models.vit import (
     _group_matcher_layout,
     _llrd_layout,
     build_llrd_optimizer,
+    warn_if_below_lr_min,
 )
 
 LR, WD, DECAY = 1e-3, 0.05, 0.75
@@ -47,10 +48,13 @@ def test_other_families_get_llrd(name):
     assert all(lr[id(p)] == pytest.approx(LR) for p in m.head.parameters())
     embed, blocks, _ = _group_matcher_layout(m.backbone)
     assert len(blocks) >= 4
-    stem_lr = {lr[id(p)] for _, p in embed}
-    assert stem_lr == {min(lr.values())}
+    stem_lr = [lr[id(p)] for _, p in embed]
+    assert stem_lr == pytest.approx([LR * DECAY ** 14] * len(stem_lr))   # depth-normalised
+    assert set(stem_lr) == {min(lr.values())}
     block_lrs = [lr[id(blocks[i][0][1])] for i in range(len(blocks))]
     assert block_lrs == sorted(block_lrs) and block_lrs[0] < block_lrs[-1]   # deeper = higher
+    assert block_lrs[0] == pytest.approx(LR * DECAY ** 12)
+    assert block_lrs[-1] == pytest.approx(LR * DECAY ** (12 / len(blocks)))
 
 
 def test_swin_no_longer_breaks():
@@ -83,3 +87,27 @@ def test_backbone_without_layers_is_a_clear_error():
     with pytest.raises(ValueError, match="llrd_decay: 0.0"):
         build_llrd_optimizer(m, LR, WD, DECAY)
 
+
+
+@pytest.mark.parametrize("name", ["cait_xxs24_224", "xcit_nano_12_p8_224"])
+def test_vit_layout_keeps_extra_token_blocks(name):
+    """CaiT/XCiT have blocks outside ``.blocks`` (class-attention): they must be optimised."""
+    m = TimmClassifier(name, num_classes=2, pretrained=False)
+    opt = build_llrd_optimizer(m, LR, WD, DECAY)       # raises if a parameter is left out
+    assert sum(len(g["params"]) for g in opt.param_groups) == len(list(m.parameters()))
+
+
+def test_one_dimensional_params_get_no_weight_decay():
+    m = TimmClassifier("resnet18", num_classes=2, pretrained=False)
+    opt = build_llrd_optimizer(m, LR, WD, DECAY)
+    wd = {id(p): g["weight_decay"] for g in opt.param_groups for p in g["params"]}
+    assert all(wd[id(p)] == 0.0 for p in m.parameters() if p.ndim <= 1)
+    assert all(wd[id(p)] == WD for p in m.parameters() if p.ndim > 1)
+
+
+def test_warns_when_groups_start_below_lr_min(capsys):
+    m = TimmClassifier("vit_tiny_patch16_224", num_classes=2, pretrained=False)
+    opt = build_llrd_optimizer(m, 1e-4, WD, 0.5)        # 0.5^14 * 1e-4 << 1e-6
+    assert warn_if_below_lr_min(opt, 1e-6) > 0 and "lr_min" in capsys.readouterr().out
+    opt = build_llrd_optimizer(m, 1e-4, WD, 0.75)       # 0.75^14 * 1e-4 = 1.8e-6
+    assert warn_if_below_lr_min(opt, 1e-6) == 0

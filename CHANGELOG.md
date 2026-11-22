@@ -9,8 +9,16 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - LLRD (`training.llrd_decay`) con cualquier modelo de timm: Swin (que figuraba como compatible
   pero no tiene `.blocks` y fallaba), ConvNeXt, EfficientNet, ResNet, DeiT-III, EVA… Los modelos
   que no son ViT se reparten en bloques con su propio `group_matcher()` (el mismo reparto que
-  `--layer-decay` en timm); antes, las CNN se entrenaban sin LLRD aunque la config lo pidiera.
-  El camino de los ViT no cambia (test *golden* intacto).
+  `--layer-decay` en timm), y su decay se reparte como si tuvieran 12 bloques: de la cabeza a la
+  entrada cae lo mismo que en un ViT-S/B, sea cual sea la profundidad (5 grupos en MaxViT-T, 37
+  en ConvNeXt-S). Antes, las CNN se entrenaban sin LLRD aunque la config lo pidiera: para
+  reproducir los runs de ResNet-50 del TFG hay que poner `llrd_decay: 0.0` (como en
+  `configs/models/resnet50.yaml`). El camino de los ViT no cambia (test *golden* intacto).
+- LLRD: CaiT y XCiT dejaban fuera del optimizador sus bloques de atención de clase (el "resto"
+  se calculaba por nombre); ahora se comprueba que cada parámetro entrenable está en un solo
+  grupo. Los parámetros 1-D (BatchNorm, layer-scale) ya no llevan *weight decay*, como en timm,
+  y hay un aviso si algún grupo empieza por debajo de `lr_min` (el coseno le subiría la tasa).
+- Test de Grad-CAM con backbone congelado: semilla fija (fallaba de vez en cuando).
 
 ## [1.3.0] - 2026-11-21
 

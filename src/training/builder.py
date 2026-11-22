@@ -49,7 +49,7 @@ from src.training.decorators import (
     AccuracyReporter,
     PrecisionRecallReporter,
 )
-from src.models.vit import build_model, build_llrd_optimizer
+from src.models.vit import build_model, build_llrd_optimizer, warn_if_below_lr_min
 from src.data.registry import DEFAULT_DATASET, dataset_spec_from_config
 from src.data.spec import DatasetSpec
 
@@ -233,6 +233,7 @@ class TrainingSessionBuilder:
             )
         elif llrd_decay > 0.0 and opt_model.supports_llrd:
             optimizer = build_llrd_optimizer(opt_model, lr_base, weight_decay, llrd_decay)
+            warn_if_below_lr_min(optimizer, cfg["training"].get("lr_min", 1e-6))
         else:
             if llrd_decay > 0.0 and not opt_model.supports_llrd:
                 print(f"  [aviso] LLRD no disponible para '{model_name}'. Usando AdamW estándar.")
