@@ -15,6 +15,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Corregido
 
+- Con `--model` distinto al de la YAML, el manifiesto del run (`config.model.name`) y los
+  checkpoints ya reflejan el modelo efectivo: los checkpoints guardan `model_name` y
+  `scripts/eval.py` lo usa si no se pasa `--model` (error claro si lo contradice o si un conjunto
+  mezcla modelos; los checkpoints antiguos siguen cargando con la config).
 - LLRD (`training.llrd_decay`) con cualquier modelo de timm: Swin (que figuraba como compatible
   pero no tiene `.blocks` y fallaba), ConvNeXt, EfficientNet, ResNet, DeiT-III, EVA… Los modelos
   que no son ViT se reparten en bloques con su propio `group_matcher()` (el mismo reparto que

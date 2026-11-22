@@ -7,6 +7,7 @@ test-set number that feeds the dashboard stays correct.
 import sys
 from pathlib import Path
 
+import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -184,3 +185,52 @@ def test_stored_threshold_metrics_single_and_ensemble():
     two = one + [{"epoch": 2, "metrics": {"optimal_threshold": 0.5}}]
     assert eval_script.stored_threshold_metrics(two)["optimal_threshold"] == 0.4
     assert eval_script.stored_threshold_metrics(one + [{"epoch": 3, "metrics": {}}]) == {}
+
+
+# ── Modelo efectivo: el checkpoint dice qué modelo contiene ───────────────────
+
+def _save_named(path, name, seed=1):
+    torch.manual_seed(seed)
+    ckpt = {"model_state_dict": _Lin(3).state_dict(), "epoch": 1, "metrics": {}}
+    if name is not None:
+        ckpt["model_name"] = name
+    torch.save(ckpt, path)
+
+
+CFG = {"model": {"name": "from_config"}}
+
+
+def test_eval_infers_the_model_from_the_checkpoint(tmp_path):
+    p = tmp_path / "a.pt"
+    _save_named(p, "swin_tiny")
+    assert eval_script.resolve_model_name(None, CFG, [p]) == "swin_tiny"
+    assert eval_script.resolve_model_name("swin_tiny", CFG, [p]) == "swin_tiny"
+
+
+def test_eval_rejects_a_model_that_contradicts_the_checkpoint(tmp_path):
+    p = tmp_path / "a.pt"
+    _save_named(p, "swin_tiny")
+    with pytest.raises(SystemExit, match="swin_tiny"):
+        eval_script.resolve_model_name("vit_small", CFG, [p])
+    with pytest.raises(SystemExit, match="swin_tiny"):    # también al cargar el miembro
+        eval_script.load_member(p, CFG, "vit_small", None, torch.device("cpu"))
+
+
+def test_old_checkpoint_without_model_name_uses_the_config(tmp_path, monkeypatch):
+    p = tmp_path / "old.pt"
+    _save_named(p, None)
+    assert eval_script.resolve_model_name(None, CFG, [p]) == "from_config"
+    assert eval_script.resolve_model_name("forced", CFG, [p]) == "forced"
+    monkeypatch.setattr(eval_script, "build_eval_model", lambda cfg, name, spec: _Lin(3))
+    _, ckpt = eval_script.load_member(p, CFG, "from_config", None, torch.device("cpu"))
+    assert "model_name" not in ckpt
+
+
+def test_ensemble_mixing_models_fails_unless_all_agree(tmp_path):
+    a, b, c = tmp_path / "a.pt", tmp_path / "b.pt", tmp_path / "c.pt"
+    _save_named(a, "swin_tiny")
+    _save_named(b, "vit_small")
+    _save_named(c, "swin_tiny", seed=2)
+    with pytest.raises(SystemExit, match="distintos"):
+        eval_script.resolve_model_name(None, CFG, [a, b])
+    assert eval_script.resolve_model_name(None, CFG, [a, c]) == "swin_tiny"

@@ -293,6 +293,7 @@ class TrainingSessionBuilder:
                 device=model.output_device,   # logits/labels/loss live on the last stage
                 checkpoint_dir=checkpoint_dir,
                 checkpoint_keep=checkpoint_keep,
+                model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -309,6 +310,7 @@ class TrainingSessionBuilder:
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
                 checkpoint_keep=checkpoint_keep,
+                model_name=model_name,
                 criterion=criterion,      # its pos_weight carries into the summed loss
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -328,6 +330,7 @@ class TrainingSessionBuilder:
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
                 checkpoint_keep=checkpoint_keep,
+                model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -345,6 +348,7 @@ class TrainingSessionBuilder:
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
                 checkpoint_keep=checkpoint_keep,
+                model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
                 label_smoothing=label_smoothing,
@@ -461,7 +465,8 @@ class TrainingSessionBuilder:
                     "mode": mode,
                     "world_size": self._world_size,
                     "select_metric": select_metric,
-                    "config": cfg,
+                    # configuración efectiva: con --model, el de la YAML ya no manda
+                    "config": {**cfg, "model": {**cfg["model"], "name": model_name}},
                     "env": environment_fingerprint(),
                 },
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),

@@ -162,6 +162,11 @@ uv run paravit.py eval --checkpoint checkpoints/verode/single/vit_base_patch16_2
 de un run, que se resuelve a su `best.pt`. `--data-root RUTA` sustituye `data.root` del config (igual
 que en `train`: solo esa clave), útil para evaluar en otra máquina donde el dataset está en otro sitio.
 
+**Modelo.** Los checkpoints nuevos guardan el modelo con el que se entrenaron (`model_name`), así que
+`eval` lo usa sin necesidad de `--model`, aunque el run se lanzase con `--model` distinto al del config.
+Si se pasa `--model` y contradice al checkpoint, o un conjunto mezcla modelos, falla antes de cargar.
+Los checkpoints antiguos (sin esa clave) siguen usando el modelo del config o `--model`.
+
 **Conjunto de checkpoints.** Repetir `--checkpoint` evalúa un *ensemble*: se infiere el mismo split
 con cada modelo (cargados de uno en uno, para no acumular memoria), se **promedian las
 probabilidades** y todo lo demás (métricas, umbral, grupos, cortes clínicos, CSV) se calcula sobre
