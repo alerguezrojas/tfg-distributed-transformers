@@ -56,6 +56,12 @@ def fake_root(tmp_path_factory):
                " | dataset=medmnist_chest | seed=42")
     _write_run(root / "logs/local/medmnist_chest/single/vit_tiny_patch16_224", _MED2_TS, True,
                " | dataset=medmnist_chest | seed=43", auc=(0.73, 0.82, 0.80))
+    for folder, ts, agg in (("logs/local/single/vit_tiny_patch16_224", _BEN_TS, "f1_t05=0.31"),
+                            ("logs/local/medmnist_chest/single/vit_tiny_patch16_224", _MED_TS,
+                             "f1_t05=0.2,auc=0.91")):
+        (root / folder / f"test_{ts}.csv").write_text(
+            "class_idx,class_name,f1,precision,recall\n0,a,0.5,0.5,0.5\n\n"
+            f"# aggregate,loss=0.2,{agg}\n", encoding="utf-8")
     old = helpers.ROOT
     helpers.ROOT = root          # _get_runs / _get_benchmark_csvs read it at call time
     st.cache_data.clear()
@@ -133,16 +139,64 @@ def test_overview_scopes_kpis_and_panels_to_the_dataset(labels):
     assert "11.8 s" in kpi_ben and "0.0 min" not in kpi_ben
 
 
+def _picker(at: AppTest):
+    """Options of the sidebar's run selector."""
+    return at.selectbox(key="run_picker").options
+
+
 def test_dataset_filter_narrows_run_list(labels):
     at = _run_app("overview", labels["bigearthnet"])
     ds = at.selectbox(key="run_dataset_filter")
     assert ds.options == ["All", "bigearthnet", "medmnist_chest"]
+    assert len(_picker(at)) == 3
     ds.set_value("medmnist_chest").run()
     assert not at.exception
-    picks = {b.label for b in at.button if b.key and b.key.startswith("runpick::")}
-    # The active run stays listed (and selected) even when the filter hides it.
-    assert picks == {labels["medmnist"], labels["medmnist2"], labels["bigearthnet"]}
-    at.button(key=f"runpick::{labels['medmnist']}").click().run()
+    # Only that dataset's runs are listed, plus the active run (filters never unselect it).
+    assert set(_picker(at)) == {labels["medmnist"], labels["medmnist2"], labels["bigearthnet"]}
+    at.selectbox(key="run_picker").set_value(labels["medmnist"]).run()
     assert at.session_state["run_label"] == labels["medmnist"]
-    picks = {b.label for b in at.button if b.key and b.key.startswith("runpick::")}
-    assert picks == {labels["medmnist"], labels["medmnist2"]}
+    assert set(_picker(at)) == {labels["medmnist"], labels["medmnist2"]}
+
+
+def test_search_filters_the_picker(labels):
+    at = _run_app("overview", labels["medmnist"])
+    at.text_input(key="run_search").set_value("seed 43").run()
+    assert not at.exception
+    assert set(_picker(at)) == {labels["medmnist2"], labels["medmnist"]}   # + active run
+    at.text_input(key="run_search").set_value("no-such-run").run()
+    assert _picker(at) == [labels["medmnist"]]
+
+
+def test_title_is_the_project_name(labels):
+    at = _run_app("overview", labels["bigearthnet"])
+    assert any(m.value == "### ParaViT-Lab" for m in at.sidebar.markdown)
+
+
+def test_direct_link_opens_run_and_tab(labels):
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["run"] = _MED2_TS
+    at.query_params["tab"] = "compare"
+    at.run()
+    assert not at.exception
+    assert at.session_state["run_label"] == labels["medmnist2"]
+    assert any(md.value == PAGE_TITLES["compare"] for md in at.markdown)
+    # The URL keeps pointing at what is on screen.
+    assert at.query_params["run"] == _MED2_TS and at.query_params["tab"] == "compare"
+
+
+def test_stale_link_falls_back_to_defaults(labels):
+    at = AppTest.from_file(APP, default_timeout=60)
+    at.query_params["run"] = "00000000_000000"
+    at.query_params["tab"] = "nonsense"
+    at.run()
+    assert not at.exception
+    assert any(md.value == PAGE_TITLES["overview"] for md in at.markdown)
+
+
+def test_overview_lists_test_results_by_dataset(labels):
+    at = _run_app("overview", labels["bigearthnet"])
+    assert not at.exception
+    table = next(d.value for d in at.dataframe if "Evaluated" in d.value.columns)
+    by_ds = {row["Dataset"]: row for _, row in table.iterrows()}
+    assert by_ds["bigearthnet"]["Metric"] == "F1" and by_ds["bigearthnet"]["Test"] == 0.31
+    assert by_ds["medmnist_chest"]["Metric"] == "AUC" and by_ds["medmnist_chest"]["Test"] == 0.91
