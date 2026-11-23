@@ -8,15 +8,23 @@ import streamlit as st
 from src.web.confusion_matrix_parser import (get_matrix_for_epoch,
                                              parse_confusion_matrix_csv, top_confusions,
                                              top_confusions_by_lift)
-from src.web.dataset_stats import CLASS_NAMES
+from src.web.run_select import order_classes, run_classes
 from src.web.ui import theme
 from src.web.ui.charts import (COLORS, _CLASS_GROUPS, _base_layout, _dl_csv, _show)
 from src.web.ui.context import DashboardContext
 
 
+class _Ben:
+    """Stand-in run: BigEarthNet's class list, which the ecosystem groups index into."""
+    dataset, meta = "bigearthnet", None
+
+
+_BEN_CLASSES = run_classes(_Ben())
+
+
 def _group_of_name(class_name: str):
-    """Ecosystem group of a class name (via its index in CLASS_NAMES), or None."""
-    idx = CLASS_NAMES.index(class_name) if class_name in CLASS_NAMES else -1
+    """Ecosystem group of a BigEarthNet class name (via its index in its class list), or None."""
+    idx = _BEN_CLASSES.index(class_name) if class_name in _BEN_CLASSES else -1
     for gname, (idxs, _color) in _CLASS_GROUPS.items():
         if idx in idxs:
             return gname
@@ -87,10 +95,12 @@ def _confusions_view(run) -> None:
         st.info("No strong off-diagonal confusions at this epoch.")
     else:
         same_col, cross_col = COLORS[0], theme.WARN
-        # Colour each pair by whether the two classes share an ecosystem: same group
-        # = expected co-occurrence; different group = more likely a real confusion.
-        bar_colors = [same_col if _same_ecosystem(r.true_class, r.pred_class) else cross_col
-                      for r in top.itertuples()]
+        # BigEarthNet only (the groups are its CORINE ecosystems): colour each pair by whether
+        # the two classes share one: same group = expected co-occurrence; different group =
+        # more likely a real confusion.
+        grouped = run.dataset == "bigearthnet"
+        bar_colors = [same_col if not grouped or _same_ecosystem(r.true_class, r.pred_class)
+                      else cross_col for r in top.itertuples()]
         pair_labels = [f"{r.true_class}  →  {r.pred_class}" for r in top.itertuples()]
         if use_lift:
             xvals, texts = list(top["lift"]), [f"{v:.1f}×" for v in top["lift"]]
@@ -119,12 +129,13 @@ def _confusions_view(run) -> None:
                                  title="P(also predicts right label | left is present)")
         fig_top.update_yaxes(automargin=True, autorange="reversed")
         _show(fig_top, f"top_confusions_ep{ep}")
-        st.markdown(
-            f"<span style='font-size:0.8rem'>"
-            f"<span style='color:{same_col}'>■</span> same ecosystem (expected co-occurrence)"
-            f" &nbsp;·&nbsp; "
-            f"<span style='color:{cross_col}'>■</span> different ecosystem (more likely a real confusion)"
-            f"</span>", unsafe_allow_html=True)
+        if grouped:
+            st.markdown(
+                f"<span style='font-size:0.8rem'>"
+                f"<span style='color:{same_col}'>■</span> same ecosystem (expected co-occurrence)"
+                f" &nbsp;·&nbsp; "
+                f"<span style='color:{cross_col}'>■</span> different ecosystem (more likely a real confusion)"
+                f"</span>", unsafe_allow_html=True)
         _dl_csv(top, f"top_confusions_ep{ep}.csv", "Download confusions table")
 
     # ── Full matrix (advanced) ────────────────────────────────────────────────────
@@ -132,32 +143,20 @@ def _confusions_view(run) -> None:
     with st.expander(f"Full {n_cls}×{n_cls} co-activation matrix (advanced)"):
         st.caption("Cell (row i, column j) = P(model predicts j | class i is truly "
                    "present). The diagonal is recall; bright off-diagonal cells are "
-                   "the confusions above. Coloured borders group classes by ecosystem.")
+                   "the confusions above."
+                   + (" Coloured borders group classes by ecosystem."
+                      if run.dataset == "bigearthnet" else ""))
         pivot = get_matrix_for_epoch(cm_df, ep)
-        # Order the axes by the canonical CLASS_NAMES order (not the pivot's default
-        # alphabetical order): the ecosystem group rectangles index into CLASS_NAMES
-        # and are drawn as contiguous ranges, so the axis must follow that order or the
-        # borders land on the wrong cells. Fall back to the pivot order if the CSV's
-        # class names don't match CLASS_NAMES.
-        canonical = [c for c in CLASS_NAMES if c in pivot.index]
-        class_order = canonical if len(canonical) == len(pivot.index) else list(pivot.index)
+        # Order the axes by the dataset's own class order (not the pivot's default
+        # alphabetical order): for BigEarthNet the ecosystem rectangles are contiguous
+        # ranges, so the axis must follow that order. Falls back to the pivot order if the
+        # CSV's class names don't match the dataset's list.
+        class_order = order_classes(run, list(pivot.index))
         z_norm = pivot.reindex(index=class_order, columns=class_order).values
         n_classes = len(class_order)
         text = [[f"{v:.2f}" if v >= 0.05 else "" for v in row] for row in z_norm]
 
-        shapes = []
-        for _gname, (idxs, color) in _CLASS_GROUPS.items():
-            # Map the group's class NAMES to their positions in the current axis order,
-            # so the border aligns regardless of the axis ordering.
-            group_names = {CLASS_NAMES[i] for i in idxs if i < len(CLASS_NAMES)}
-            positions = [pos for pos, name in enumerate(class_order) if name in group_names]
-            if not positions:
-                continue
-            lo, hi = min(positions), max(positions)
-            shapes.append({
-                "type": "rect", "x0": lo - 0.5, "x1": hi + 0.5, "y0": lo - 0.5, "y1": hi + 0.5,
-                "line": {"color": color, "width": 2.5}, "fillcolor": "rgba(0,0,0,0)", "layer": "above",
-            })
+        shapes = _group_shapes(class_order) if run.dataset == "bigearthnet" else []
 
         fig_cm = go.Figure(go.Heatmap(
             z=z_norm.tolist(), x=class_order, y=class_order,
@@ -175,3 +174,21 @@ def _confusions_view(run) -> None:
             height=660, margin={"l": 180, "r": 20, "t": 50, "b": 180}, shapes=shapes,
         )
         _show(fig_cm, f"confusion_matrix_ep{ep}")
+
+
+def _group_shapes(class_order: list[str]) -> list[dict]:
+    """Coloured borders around each BigEarthNet ecosystem group of the matrix axes."""
+    shapes = []
+    for _gname, (idxs, color) in _CLASS_GROUPS.items():
+        # Map the group's class NAMES to their positions in the current axis order,
+        # so the border aligns regardless of the axis ordering.
+        group_names = {_BEN_CLASSES[i] for i in idxs if i < len(_BEN_CLASSES)}
+        positions = [pos for pos, name in enumerate(class_order) if name in group_names]
+        if not positions:
+            continue
+        lo, hi = min(positions), max(positions)
+        shapes.append({
+            "type": "rect", "x0": lo - 0.5, "x1": hi + 0.5, "y0": lo - 0.5, "y1": hi + 0.5,
+            "line": {"color": color, "width": 2.5}, "fillcolor": "rgba(0,0,0,0)", "layer": "above",
+        })
+    return shapes

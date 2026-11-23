@@ -551,6 +551,24 @@ aceleración frente a una referencia, radar, energía, curvas superpuestas), **E
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
 del conjunto e importación de runs). Interfaz en inglés, con modo claro y oscuro.
 
+**Elegir un run y enlazarlo.** La barra lateral tiene un buscador de texto (cada palabra debe
+aparecer en la etiqueta, el modelo, el dataset, el entorno o la estrategia) y filtros por entorno,
+dataset, modelo y estrategia; los runs que quedan se listan en una tabla con selección de fila, que
+aguanta cientos de runs. La URL refleja siempre lo que se ve: `?run=<sello>&tab=<sección>` (por
+ejemplo `?run=17102026_110000&tab=compare`). Abrir un enlace así lleva directamente a ese run y a
+esa sección (`overview`, `live`, `inspector`, `run`, `compare`, `benchmark`, `data`); un enlace con
+un run o sección que no existen cae en los valores por defecto. En el Overview, la tabla *Test
+results by dataset* da el mejor resultado en test de cada dataset (con `paravit eval`) con la
+métrica principal de ese dataset, sin mezclar datasets. El indicador *GPU time* multiplica el
+tiempo de reloj por las GPU del run (manifiesto o línea `Configuración:`) y avisa de los runs que
+no lo registran, que cuenta con una.
+
+**Rutas de los datos.** La web no lleva rutas fijas: busca BigEarthNet en los perfiles de
+`configs/machines/` (el activo por `PARAVIT_MACHINE` o por el host, y luego los demás). Si no
+encuentra el dataset en esta máquina, lo dice y muestra cifras incluidas en el código. Las clases
+y los nombres de *Run results* salen del manifiesto del run (que los escribe desde su `DatasetSpec`);
+los grupos de ecosistema de las confusiones son solo de BigEarthNet.
+
 **La web conoce el dataset y la métrica de cada run.** Los metadatos salen del manifiesto del run
 (`run_*.json`), de los eventos o de la línea `Configuración:` del log, por ese orden
 ([detalle](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)). Con ellos:
