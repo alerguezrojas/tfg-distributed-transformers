@@ -233,6 +233,42 @@ admite tareas multiclase (con QWK y exactitud ±1 si son ordinales). Imprime:
 
 Con `--markdown` salen tablas con coma decimal, listas para pegar en `docs/datasets/*.md`.
 
+### `select-ensemble` — elegir un conjunto en validación
+
+Para combinar varios runs (arquitecturas y semillas) sin mirar el test al decidir. La elección usa
+**solo validación**; el conjunto elegido se evalúa una única vez en test. Parte de las
+predicciones guardadas de cada run (`eval --split val --save-predictions` y
+`eval --split test --save-predictions`, guardadas como `val_preds.npz` y `test_preds.npz` en la
+carpeta del run). No usa GPU ni torch.
+
+```bash
+uv run paravit.py select-ensemble \
+    --runs RUN_VIT_S42 RUN_VIT_S43 RUN_SWIN_S42 RUN_DEIT_S42 \
+    --group-by grupos.csv --method per-group \
+    --reference RUN_VIT_S42 RUN_VIT_S43 RUN_VIT_S44 --markdown
+```
+
+`grupos.csv` (o YAML `run: grupo`) asigna cada run, por el nombre de su carpeta, a un grupo (por
+ejemplo, su arquitectura); sin él, cada run es su propio grupo. Hay dos métodos:
+
+- `per-group` (por defecto): el mejor run de cada grupo según validación, ordenados de mejor a peor;
+  se evalúa en validación el conjunto de los k primeros (k = 1…) y se elige el k de máxima
+  validación (a igualdad, el menor).
+- `greedy`: selección hacia delante de Caruana et al. (2004). En cada paso se añade el run (con
+  repetición, que equivale a darle más peso) que más sube la métrica del promedio de
+  probabilidades en validación; termina al no mejorar o al llegar a `--max-size` (8).
+
+El conjunto es siempre la media de probabilidades. La salida trae la tabla de candidatos (métrica
+principal en validación y en test), la traza de la selección (solo validación) y la evaluación
+única en test con todas las métricas de `compare-preds`. Con `--reference` (carpetas del conjunto
+de referencia, p. ej. tres semillas de la base) añade la diferencia elegido − referencia con IC 95 %
+por *bootstrap* emparejado (`--n-boot`, `--seed`). Los ficheros deben ser del mismo split y del
+mismo orden en todos los runs (error claro si no), y solo se admiten tareas multiclase.
+
+Aviso: elegir el conjunto mirando el test (por ejemplo, probar combinaciones y quedarse con la
+mejor en test) sesga el resultado al alza: el test deja de ser una estimación honesta. Si se
+repite la elección con otro criterio, hay que documentarlo; la cifra de test se da una sola vez.
+
 ### `report` — informe de un run
 
 ```bash
