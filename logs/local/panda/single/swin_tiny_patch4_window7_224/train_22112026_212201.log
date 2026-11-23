@@ -1,0 +1,264 @@
+2026-11-22 21:22:02 [INFO ] Configuración: modelo=swin_tiny_patch4_window7_224 | batch=16/GPU (global=16) | epochs=25 | lr=0.0001 | precision=amp | loss=ce | train=7433 | val=1593 | dataset=panda | seed=42 | freeze_backbone=false | backbone=timm
+2026-11-22 21:22:02 [INFO ] Iniciando entrenamiento — 25 epochs
+2026-11-22 21:22:05 [INFO ] 
+── Epoch 001/025 ────────────────────────────
+2026-11-22 21:24:32 [INFO ]   loss           train=1.4932  val=1.2788
+2026-11-22 21:24:32 [INFO ]   f1             train=0.3038  val=0.3993
+2026-11-22 21:24:32 [INFO ]   accuracy       train=0.3988  val=0.4896
+2026-11-22 21:24:32 [INFO ]   precision      val=0.4417
+2026-11-22 21:24:32 [INFO ]   recall         val=0.4043
+2026-11-22 21:24:32 [INFO ]   qwk            val=0.5814
+2026-11-22 21:24:32 [INFO ]   auc            val=0.8058
+2026-11-22 21:24:32 [INFO ] [Epoch 001] Checkpoint guardado
+2026-11-22 21:24:32 [INFO ]   ETA: 0h 58m  (136s/epoch, best_qwk=0.5814)
+2026-11-22 21:24:37 [INFO ] 
+── Epoch 002/025 ────────────────────────────
+2026-11-22 21:27:02 [INFO ]   loss           train=1.2082  val=1.0840
+2026-11-22 21:27:02 [INFO ]   f1             train=0.4483  val=0.4922
+2026-11-22 21:27:02 [INFO ]   accuracy       train=0.5208  val=0.5851
+2026-11-22 21:27:02 [INFO ]   precision      val=0.5318
+2026-11-22 21:27:02 [INFO ]   recall         val=0.5053
+2026-11-22 21:27:02 [INFO ]   qwk            val=0.7452
+2026-11-22 21:27:02 [INFO ]   auc            val=0.8634
+2026-11-22 21:27:03 [INFO ] [Epoch 002] Checkpoint guardado
+2026-11-22 21:27:04 [INFO ]   ETA: 0h 55m  (134s/epoch, best_qwk=0.7452)
+2026-11-22 21:27:08 [INFO ] 
+── Epoch 003/025 ────────────────────────────
+2026-11-22 21:29:34 [INFO ]   loss           train=1.0668  val=1.0189
+2026-11-22 21:29:34 [INFO ]   f1             train=0.5157  val=0.5443
+2026-11-22 21:29:34 [INFO ]   accuracy       train=0.5871  val=0.6114
+2026-11-22 21:29:34 [INFO ]   precision      val=0.5565
+2026-11-22 21:29:34 [INFO ]   recall         val=0.5530
+2026-11-22 21:29:34 [INFO ]   qwk            val=0.7877
+2026-11-22 21:29:34 [INFO ]   auc            val=0.8779
+2026-11-22 21:29:34 [INFO ] [Epoch 003] Checkpoint guardado
+2026-11-22 21:29:35 [INFO ]   ETA: 0h 53m  (134s/epoch, best_qwk=0.7877)
+2026-11-22 21:29:39 [INFO ] 
+── Epoch 004/025 ────────────────────────────
+2026-11-22 21:32:04 [INFO ]   loss           train=0.9856  val=1.0488
+2026-11-22 21:32:04 [INFO ]   f1             train=0.5561  val=0.5318
+2026-11-22 21:32:04 [INFO ]   accuracy       train=0.6210  val=0.6058
+2026-11-22 21:32:04 [INFO ]   precision      val=0.5539
+2026-11-22 21:32:04 [INFO ]   recall         val=0.5376
+2026-11-22 21:32:04 [INFO ]   qwk            val=0.7872
+2026-11-22 21:32:04 [INFO ]   auc            val=0.8727
+2026-11-22 21:32:05 [INFO ]   ETA: 0h 50m  (134s/epoch, best_qwk=0.7877)
+2026-11-22 21:32:09 [INFO ] 
+── Epoch 005/025 ────────────────────────────
+2026-11-22 21:34:35 [INFO ]   loss           train=0.9257  val=0.9919
+2026-11-22 21:34:35 [INFO ]   f1             train=0.5901  val=0.5732
+2026-11-22 21:34:35 [INFO ]   accuracy       train=0.6472  val=0.6290
+2026-11-22 21:34:35 [INFO ]   precision      val=0.6004
+2026-11-22 21:34:35 [INFO ]   recall         val=0.5679
+2026-11-22 21:34:35 [INFO ]   qwk            val=0.7818
+2026-11-22 21:34:35 [INFO ]   auc            val=0.8872
+2026-11-22 21:34:36 [INFO ]   ETA: 0h 48m  (134s/epoch, best_qwk=0.7877)
+2026-11-22 21:34:40 [INFO ] 
+── Epoch 006/025 ────────────────────────────
+2026-11-22 21:37:05 [INFO ]   loss           train=0.8695  val=1.0427
+2026-11-22 21:37:05 [INFO ]   f1             train=0.6081  val=0.5444
+2026-11-22 21:37:05 [INFO ]   accuracy       train=0.6669  val=0.6083
+2026-11-22 21:37:05 [INFO ]   precision      val=0.5562
+2026-11-22 21:37:05 [INFO ]   recall         val=0.5579
+2026-11-22 21:37:05 [INFO ]   qwk            val=0.8021
+2026-11-22 21:37:05 [INFO ]   auc            val=0.8831
+2026-11-22 21:37:06 [INFO ] [Epoch 006] Checkpoint guardado
+2026-11-22 21:37:07 [INFO ]   ETA: 0h 46m  (134s/epoch, best_qwk=0.8021)
+2026-11-22 21:37:11 [INFO ] 
+── Epoch 007/025 ────────────────────────────
+2026-11-22 21:39:36 [INFO ]   loss           train=0.8198  val=0.9510
+2026-11-22 21:39:36 [INFO ]   f1             train=0.6350  val=0.5856
+2026-11-22 21:39:36 [INFO ]   accuracy       train=0.6868  val=0.6372
+2026-11-22 21:39:36 [INFO ]   precision      val=0.5882
+2026-11-22 21:39:36 [INFO ]   recall         val=0.5881
+2026-11-22 21:39:36 [INFO ]   qwk            val=0.7992
+2026-11-22 21:39:36 [INFO ]   auc            val=0.8971
+2026-11-22 21:39:37 [INFO ]   ETA: 0h 43m  (134s/epoch, best_qwk=0.8021)
+2026-11-22 21:39:42 [INFO ] 
+── Epoch 008/025 ────────────────────────────
+2026-11-22 21:42:07 [INFO ]   loss           train=0.7567  val=0.9344
+2026-11-22 21:42:07 [INFO ]   f1             train=0.6677  val=0.6117
+2026-11-22 21:42:07 [INFO ]   accuracy       train=0.7134  val=0.6610
+2026-11-22 21:42:07 [INFO ]   precision      val=0.6288
+2026-11-22 21:42:07 [INFO ]   recall         val=0.6045
+2026-11-22 21:42:07 [INFO ]   qwk            val=0.8075
+2026-11-22 21:42:07 [INFO ]   auc            val=0.9043
+2026-11-22 21:42:08 [INFO ] [Epoch 008] Checkpoint guardado
+2026-11-22 21:42:09 [INFO ]   ETA: 0h 41m  (135s/epoch, best_qwk=0.8075)
+2026-11-22 21:42:13 [INFO ] 
+── Epoch 009/025 ────────────────────────────
+2026-11-22 21:44:39 [INFO ]   loss           train=0.6807  val=1.0397
+2026-11-22 21:44:39 [INFO ]   f1             train=0.7054  val=0.5803
+2026-11-22 21:44:39 [INFO ]   accuracy       train=0.7438  val=0.6422
+2026-11-22 21:44:39 [INFO ]   precision      val=0.6177
+2026-11-22 21:44:39 [INFO ]   recall         val=0.5887
+2026-11-22 21:44:39 [INFO ]   qwk            val=0.8166
+2026-11-22 21:44:39 [INFO ]   auc            val=0.8961
+2026-11-22 21:44:40 [INFO ] [Epoch 009] Checkpoint guardado
+2026-11-22 21:44:41 [INFO ]   ETA: 0h 38m  (134s/epoch, best_qwk=0.8166)
+2026-11-22 21:44:45 [INFO ] 
+── Epoch 010/025 ────────────────────────────
+2026-11-22 21:47:11 [INFO ]   loss           train=0.6270  val=0.9744
+2026-11-22 21:47:11 [INFO ]   f1             train=0.7352  val=0.6041
+2026-11-22 21:47:11 [INFO ]   accuracy       train=0.7681  val=0.6566
+2026-11-22 21:47:11 [INFO ]   precision      val=0.6118
+2026-11-22 21:47:11 [INFO ]   recall         val=0.6085
+2026-11-22 21:47:11 [INFO ]   qwk            val=0.8164
+2026-11-22 21:47:11 [INFO ]   auc            val=0.9030
+2026-11-22 21:47:12 [INFO ]   ETA: 0h 36m  (135s/epoch, best_qwk=0.8166)
+2026-11-22 21:47:16 [INFO ] 
+── Epoch 011/025 ────────────────────────────
+2026-11-22 21:49:42 [INFO ]   loss           train=0.5501  val=0.9573
+2026-11-22 21:49:42 [INFO ]   f1             train=0.7717  val=0.6278
+2026-11-22 21:49:42 [INFO ]   accuracy       train=0.7986  val=0.6736
+2026-11-22 21:49:42 [INFO ]   precision      val=0.6358
+2026-11-22 21:49:42 [INFO ]   recall         val=0.6233
+2026-11-22 21:49:42 [INFO ]   qwk            val=0.7999
+2026-11-22 21:49:42 [INFO ]   auc            val=0.9064
+2026-11-22 21:49:42 [INFO ]   ETA: 0h 33m  (135s/epoch, best_qwk=0.8166)
+2026-11-22 21:49:47 [INFO ] 
+── Epoch 012/025 ────────────────────────────
+2026-11-22 21:52:13 [INFO ]   loss           train=0.4857  val=0.9602
+2026-11-22 21:52:13 [INFO ]   f1             train=0.7958  val=0.6357
+2026-11-22 21:52:13 [INFO ]   accuracy       train=0.8199  val=0.6811
+2026-11-22 21:52:13 [INFO ]   precision      val=0.6388
+2026-11-22 21:52:13 [INFO ]   recall         val=0.6365
+2026-11-22 21:52:13 [INFO ]   qwk            val=0.8140
+2026-11-22 21:52:13 [INFO ]   auc            val=0.9095
+2026-11-22 21:52:14 [INFO ]   ETA: 0h 31m  (135s/epoch, best_qwk=0.8166)
+2026-11-22 21:52:18 [INFO ] 
+── Epoch 013/025 ────────────────────────────
+2026-11-22 21:54:44 [INFO ]   loss           train=0.4344  val=1.0686
+2026-11-22 21:54:44 [INFO ]   f1             train=0.8271  val=0.6377
+2026-11-22 21:54:44 [INFO ]   accuracy       train=0.8442  val=0.6830
+2026-11-22 21:54:44 [INFO ]   precision      val=0.6494
+2026-11-22 21:54:44 [INFO ]   recall         val=0.6362
+2026-11-22 21:54:44 [INFO ]   qwk            val=0.8232
+2026-11-22 21:54:44 [INFO ]   auc            val=0.9101
+2026-11-22 21:54:45 [INFO ] [Epoch 013] Checkpoint guardado
+2026-11-22 21:54:46 [INFO ]   ETA: 0h 29m  (135s/epoch, best_qwk=0.8232)
+2026-11-22 21:54:50 [INFO ] 
+── Epoch 014/025 ────────────────────────────
+2026-11-22 21:57:15 [INFO ]   loss           train=0.3788  val=1.0740
+2026-11-22 21:57:15 [INFO ]   f1             train=0.8498  val=0.6559
+2026-11-22 21:57:15 [INFO ]   accuracy       train=0.8641  val=0.6974
+2026-11-22 21:57:15 [INFO ]   precision      val=0.6620
+2026-11-22 21:57:15 [INFO ]   recall         val=0.6532
+2026-11-22 21:57:15 [INFO ]   qwk            val=0.8290
+2026-11-22 21:57:15 [INFO ]   auc            val=0.9131
+2026-11-22 21:57:16 [INFO ] [Epoch 014] Checkpoint guardado
+2026-11-22 21:57:17 [INFO ]   ETA: 0h 26m  (134s/epoch, best_qwk=0.8290)
+2026-11-22 21:57:21 [INFO ] 
+── Epoch 015/025 ────────────────────────────
+2026-11-22 21:59:47 [INFO ]   loss           train=0.3396  val=1.0988
+2026-11-22 21:59:47 [INFO ]   f1             train=0.8677  val=0.6513
+2026-11-22 21:59:47 [INFO ]   accuracy       train=0.8795  val=0.6830
+2026-11-22 21:59:47 [INFO ]   precision      val=0.6553
+2026-11-22 21:59:47 [INFO ]   recall         val=0.6495
+2026-11-22 21:59:47 [INFO ]   qwk            val=0.8197
+2026-11-22 21:59:47 [INFO ]   auc            val=0.9123
+2026-11-22 21:59:47 [INFO ]   ETA: 0h 24m  (135s/epoch, best_qwk=0.8290)
+2026-11-22 21:59:52 [INFO ] 
+── Epoch 016/025 ────────────────────────────
+2026-11-22 22:02:18 [INFO ]   loss           train=0.2914  val=1.1959
+2026-11-22 22:02:18 [INFO ]   f1             train=0.8851  val=0.6439
+2026-11-22 22:02:18 [INFO ]   accuracy       train=0.8963  val=0.6729
+2026-11-22 22:02:18 [INFO ]   precision      val=0.6462
+2026-11-22 22:02:18 [INFO ]   recall         val=0.6447
+2026-11-22 22:02:18 [INFO ]   qwk            val=0.8196
+2026-11-22 22:02:18 [INFO ]   auc            val=0.9099
+2026-11-22 22:02:18 [INFO ]   ETA: 0h 21m  (135s/epoch, best_qwk=0.8290)
+2026-11-22 22:02:23 [INFO ] 
+── Epoch 017/025 ────────────────────────────
+2026-11-22 22:04:48 [INFO ]   loss           train=0.2679  val=1.2632
+2026-11-22 22:04:48 [INFO ]   f1             train=0.8987  val=0.6506
+2026-11-22 22:04:48 [INFO ]   accuracy       train=0.9066  val=0.6943
+2026-11-22 22:04:48 [INFO ]   precision      val=0.6632
+2026-11-22 22:04:48 [INFO ]   recall         val=0.6520
+2026-11-22 22:04:48 [INFO ]   qwk            val=0.8283
+2026-11-22 22:04:48 [INFO ]   auc            val=0.9149
+2026-11-22 22:04:49 [INFO ]   ETA: 0h 19m  (134s/epoch, best_qwk=0.8290)
+2026-11-22 22:04:53 [INFO ] 
+── Epoch 018/025 ────────────────────────────
+2026-11-22 22:07:19 [INFO ]   loss           train=0.2374  val=1.2543
+2026-11-22 22:07:19 [INFO ]   f1             train=0.9102  val=0.6619
+2026-11-22 22:07:19 [INFO ]   accuracy       train=0.9167  val=0.6987
+2026-11-22 22:07:19 [INFO ]   precision      val=0.6727
+2026-11-22 22:07:19 [INFO ]   recall         val=0.6542
+2026-11-22 22:07:19 [INFO ]   qwk            val=0.8316
+2026-11-22 22:07:19 [INFO ]   auc            val=0.9107
+2026-11-22 22:07:20 [INFO ] [Epoch 018] Checkpoint guardado
+2026-11-22 22:07:20 [INFO ]   ETA: 0h 16m  (135s/epoch, best_qwk=0.8316)
+2026-11-22 22:07:25 [INFO ] 
+── Epoch 019/025 ────────────────────────────
+2026-11-22 22:09:50 [INFO ]   loss           train=0.2090  val=1.2803
+2026-11-22 22:09:50 [INFO ]   f1             train=0.9223  val=0.6603
+2026-11-22 22:09:50 [INFO ]   accuracy       train=0.9267  val=0.6962
+2026-11-22 22:09:50 [INFO ]   precision      val=0.6637
+2026-11-22 22:09:50 [INFO ]   recall         val=0.6585
+2026-11-22 22:09:50 [INFO ]   qwk            val=0.8302
+2026-11-22 22:09:50 [INFO ]   auc            val=0.9132
+2026-11-22 22:09:51 [INFO ]   ETA: 0h 14m  (134s/epoch, best_qwk=0.8316)
+2026-11-22 22:09:55 [INFO ] 
+── Epoch 020/025 ────────────────────────────
+2026-11-22 22:12:20 [INFO ]   loss           train=0.1948  val=1.2978
+2026-11-22 22:12:20 [INFO ]   f1             train=0.9257  val=0.6669
+2026-11-22 22:12:20 [INFO ]   accuracy       train=0.9315  val=0.7018
+2026-11-22 22:12:20 [INFO ]   precision      val=0.6702
+2026-11-22 22:12:20 [INFO ]   recall         val=0.6658
+2026-11-22 22:12:20 [INFO ]   qwk            val=0.8410
+2026-11-22 22:12:20 [INFO ]   auc            val=0.9171
+2026-11-22 22:12:21 [INFO ] [Epoch 020] Checkpoint guardado
+2026-11-22 22:12:22 [INFO ]   ETA: 0h 12m  (134s/epoch, best_qwk=0.8410)
+2026-11-22 22:12:26 [INFO ] 
+── Epoch 021/025 ────────────────────────────
+2026-11-22 22:14:52 [INFO ]   loss           train=0.1694  val=1.3238
+2026-11-22 22:14:52 [INFO ]   f1             train=0.9370  val=0.6636
+2026-11-22 22:14:52 [INFO ]   accuracy       train=0.9400  val=0.6918
+2026-11-22 22:14:52 [INFO ]   precision      val=0.6692
+2026-11-22 22:14:52 [INFO ]   recall         val=0.6595
+2026-11-22 22:14:52 [INFO ]   qwk            val=0.8294
+2026-11-22 22:14:52 [INFO ]   auc            val=0.9163
+2026-11-22 22:14:52 [INFO ]   ETA: 0h 09m  (135s/epoch, best_qwk=0.8410)
+2026-11-22 22:14:57 [INFO ] 
+── Epoch 022/025 ────────────────────────────
+2026-11-22 22:17:23 [INFO ]   loss           train=0.1588  val=1.3504
+2026-11-22 22:17:23 [INFO ]   f1             train=0.9436  val=0.6611
+2026-11-22 22:17:23 [INFO ]   accuracy       train=0.9466  val=0.6955
+2026-11-22 22:17:23 [INFO ]   precision      val=0.6675
+2026-11-22 22:17:23 [INFO ]   recall         val=0.6575
+2026-11-22 22:17:23 [INFO ]   qwk            val=0.8308
+2026-11-22 22:17:23 [INFO ]   auc            val=0.9170
+2026-11-22 22:17:23 [INFO ]   ETA: 0h 07m  (135s/epoch, best_qwk=0.8410)
+2026-11-22 22:17:28 [INFO ] 
+── Epoch 023/025 ────────────────────────────
+2026-11-22 22:19:53 [INFO ]   loss           train=0.1591  val=1.3526
+2026-11-22 22:19:53 [INFO ]   f1             train=0.9391  val=0.6763
+2026-11-22 22:19:53 [INFO ]   accuracy       train=0.9428  val=0.7062
+2026-11-22 22:19:53 [INFO ]   precision      val=0.6820
+2026-11-22 22:19:53 [INFO ]   recall         val=0.6722
+2026-11-22 22:19:53 [INFO ]   qwk            val=0.8323
+2026-11-22 22:19:53 [INFO ]   auc            val=0.9180
+2026-11-22 22:19:54 [INFO ]   ETA: 0h 04m  (134s/epoch, best_qwk=0.8410)
+2026-11-22 22:19:58 [INFO ] 
+── Epoch 024/025 ────────────────────────────
+2026-11-22 22:22:24 [INFO ]   loss           train=0.1478  val=1.3751
+2026-11-22 22:22:24 [INFO ]   f1             train=0.9466  val=0.6746
+2026-11-22 22:22:24 [INFO ]   accuracy       train=0.9493  val=0.7068
+2026-11-22 22:22:24 [INFO ]   precision      val=0.6844
+2026-11-22 22:22:24 [INFO ]   recall         val=0.6676
+2026-11-22 22:22:24 [INFO ]   qwk            val=0.8385
+2026-11-22 22:22:24 [INFO ]   auc            val=0.9173
+2026-11-22 22:22:24 [INFO ]   ETA: 0h 02m  (135s/epoch, best_qwk=0.8410)
+2026-11-22 22:22:29 [INFO ] 
+── Epoch 025/025 ────────────────────────────
+2026-11-22 22:24:55 [INFO ]   loss           train=0.1347  val=1.3660
+2026-11-22 22:24:55 [INFO ]   f1             train=0.9512  val=0.6720
+2026-11-22 22:24:55 [INFO ]   accuracy       train=0.9539  val=0.7037
+2026-11-22 22:24:55 [INFO ]   precision      val=0.6775
+2026-11-22 22:24:55 [INFO ]   recall         val=0.6681
+2026-11-22 22:24:55 [INFO ]   qwk            val=0.8383
+2026-11-22 22:24:55 [INFO ]   auc            val=0.9183
+2026-11-22 22:24:55 [INFO ]   ETA: 0h 00m  (135s/epoch, best_qwk=0.8410)
+2026-11-22 22:25:00 [INFO ] [Early stopping] Sin mejora en 5 epochs consecutivos. Parado en epoch 25. Mejor Val QWK: 0.8410
+2026-11-22 22:25:00 [INFO ] Entrenamiento completado — mejor Val QWK: 0.8410
