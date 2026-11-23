@@ -47,7 +47,8 @@ MEM_BW_GBS = {"RTX 3060 Ti": 448.0, "Tesla T4": 320.0, "Tesla V100": 900.0}
 
 
 def load(path: Path) -> dict[str, dict[str, float]]:
-    """``{gpu: {model: train imgs/s}}`` from the tidy CSV."""
+    """``{gpu: {model: train imgs/s}}`` from the tidy CSV (always the versioned one: the
+    study reads no path from the command line)."""
     out: dict[str, dict[str, float]] = {}
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
@@ -82,14 +83,13 @@ def _table(header, rows, md: bool) -> str:
 
 def main(argv=None) -> None:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    p.add_argument("--data", default=str(DATA))
     p.add_argument("--img-size", type=int, default=512)
     p.add_argument("--calibration-gpu", default="RTX 3060 Ti")
     p.add_argument("--markdown", action="store_true")
     args = p.parse_args(argv)
     from src.performance_model import gpu_spec
 
-    data = load(Path(args.data))
+    data = load(DATA)
     cal = data.get(args.calibration_gpu)
     if not cal:
         raise SystemExit(f"no measurements for {args.calibration_gpu!r}: {list(data)}")
