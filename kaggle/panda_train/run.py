@@ -71,8 +71,22 @@ BATCHES = {
         ("panda_ddp_effb3", "configs/train_panda.yaml", model("efficientnet_b3")),
         ("panda_ddp_maxvit_t", "configs/train_panda.yaml", model("maxvit_tiny_tf_512.in1k")),
     ],
+    # Result (23/11/2026), test QWK with seed 42: SwinV2-T 0.835, ViT-B 0.823, ConvNeXt-S 0.811,
+    # MaxViT-T 0.806, EfficientNet-B3 0.775 (base ViT-S 0.781, Swin-T 0.830); ~50 min per model.
+    # 23/11/2026: seeds 43 and 44 of the two best (SwinV2-T, ViT-B), to confirm them and the
+    # mixed-architecture ensemble with runs not used to pick it; and Swin-T with DDP on 2x T4,
+    # the same run as the local single-GPU one (time and accuracy across strategies).
+    "seeds_512": [
+        ("panda_ddp_swinv2_t_s43", "configs/train_panda.yaml", model("swinv2_tiny_window8_256", 43)),
+        ("panda_ddp_vitb_s43", "configs/train_panda.yaml",
+         model("vit_base_patch16_224.augreg2_in21k_ft_in1k", 43)),
+        ("panda_ddp_swinv2_t_s44", "configs/train_panda.yaml", model("swinv2_tiny_window8_256", 44)),
+        ("panda_ddp_vitb_s44", "configs/train_panda.yaml",
+         model("vit_base_patch16_224.augreg2_in21k_ft_in1k", 44)),
+        ("panda_ddp_swin_t", "configs/train_panda.yaml", model("swin_tiny_patch4_window7_224")),
+    ],
 }
-BATCH = "models_512"
+BATCH = "seeds_512"
 EXPERIMENTS = BATCHES[BATCH]
 COMMON = {
     "data": {"num_workers": 4},
