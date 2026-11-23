@@ -6,6 +6,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- `scripts/measure_allreduce.py`: ancho de banda de all-reduce (NCCL) entre las GPU de la máquina,
+  con la convención de nccl-tests (algbw y busbw), para medir la β del predictor. El kernel de
+  Kaggle `panda_train` lo ejecuta antes de entrenar y admite ahora una estrategia por experimento
+  (`ddp` o `single`), para comparar estrategias en el mismo hardware (lote `strategies_512`).
 - `paravit predict` (`scripts/predict.py`): clasifica imágenes sueltas o carpetas con un checkpoint
   o un conjunto (probabilidades promediadas) sin pasar por el bucle de entrenamiento. La ficha del
   dataset aporta el lector de imágenes (`DatasetSpec.image_reader`, nuevo y opcional; PANDA y
