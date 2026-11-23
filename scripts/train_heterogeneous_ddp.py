@@ -34,7 +34,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import yaml
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, DistributedSampler
@@ -44,7 +43,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.data.registry import dataset_spec_from_config
 from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
-from src.training.config_overrides import add_common_overrides, apply_common_overrides
+from src.training.config_overrides import add_common_overrides, prepare_config
 from src.training.heterogeneous_sampler import HeterogeneousDistributedSampler
 from src.training.reproducibility import sampler_seed, set_seed
 
@@ -85,8 +84,7 @@ def parse_args():
 def main():
     args = parse_args()
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    cfg = prepare_config(args)
 
     dist_cfg = cfg.get("distributed", {})
     backend = dist_cfg.get("backend", "gloo")
@@ -109,8 +107,6 @@ def main():
         torch.cuda.set_device(device)
     else:
         device = torch.device("cpu")
-
-    apply_common_overrides(cfg, args)
 
     # Reproducibility: seed each rank with a rank offset (deterministic per-rank).
     seed = cfg["training"].get("seed")

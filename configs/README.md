@@ -6,6 +6,12 @@ Cada `.yaml` describe **un escenario** (modelo, dataset, hardware, estrategia). 
 **Dataset:** `metadata.parquet` = BigEarthNet-S2 **completo** (237 871 train) · `metadata_demo.parquet`
 = **subconjunto** de 5 000/1 500 (estudios rápidos y comparables).
 
+**Rutas y máquina:** las rutas de los YAML son las del autor o las de VERODE. Los perfiles de
+`machines/` (`local`, `verode`, `kaggle` y `example.yaml`, plantilla para equipos nuevos) las
+sustituyen según la máquina: `--machine NOMBRE`, `PARAVIT_MACHINE` o el nombre del host; sin perfil
+las configs se usan tal cual. `--set clave.sub=valor` cambia cualquier clave suelta. Ver la
+[guía de uso](../docs/guia_de_uso.md#perfiles-de-máquina-y---set).
+
 ---
 
 ## ¿Qué config elegir? (guía rápida)

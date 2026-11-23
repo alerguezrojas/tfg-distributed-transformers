@@ -6,6 +6,17 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- Perfiles de máquina (`configs/machines/{local,verode,kaggle,example}.yaml`, `src/machine.py`):
+  rutas de datos por dataset (`data_roots`), `checkpoint_dir`, `output.env` y `num_workers` fuera de
+  las configs de experimento. Se eligen con `--machine`, `PARAVIT_MACHINE` o el nombre del host
+  (`--machine none` los desactiva); sin perfil, las configs se usan tal cual. Aplicados en un solo
+  sitio (`prepare_config`) por los cuatro `train_*.py`, `eval.py`, `predict.py` y `benchmark.py`
+  y por `paravit train/eval/predict/benchmark`.
+- `--set clave.sub=valor` (repetible, valor YAML, `1e-4` se lee como float, también dentro de listas; entre comillas sigue siendo texto) en los mismos puntos
+  de entrada, aplicado después del perfil.
+- `paravit doctor` (`src/doctor.py`): Python, torch y CUDA, GPUs (y si están en la tabla del
+  predictor), AVX2, perfil activo y, con `--config`, rutas y espacio libre para checkpoints; tabla
+  OK / WARN / FAIL y código de salida 1 si hay FAIL. Solo lee el estado de la GPU.
 - `scripts/measure_allreduce.py`: ancho de banda de all-reduce (NCCL) entre las GPU de la máquina,
   con la convención de nccl-tests (algbw y busbw), para medir la β del predictor. El kernel de
   Kaggle `panda_train` lo ejecuta antes de entrenar y admite ahora una estrategia por experimento

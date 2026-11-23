@@ -358,7 +358,7 @@ model:
 training:
   epochs: 30
   batch_size: 64                        # por GPU en DDP
-  lr: 0.0001                            # ojo: no escribir 1e-4 (YAML lo lee como texto)
+  lr: 0.0001                            # ojo: en el YAML no escribir 1e-4 (se lee como texto; con --set sí vale)
   weight_decay: 0.1
   warmup_epochs: 5
   llrd_decay: 0.75                      # learning rate por capas (cualquier modelo de timm)
@@ -386,6 +386,41 @@ ordenadas (`ordinal=True` en su ficha, p. ej. un grado de cáncer).
 
 Las claves de `data:` dependen del dataset elegido con `data.name`. Los datasets disponibles y
 cómo añadir uno nuevo están en [`datasets/README.md`](datasets/README.md).
+
+### Perfiles de máquina y `--set`
+
+Una config describe **qué** entrenar; las rutas y los ajustes que dependen del ordenador viven en
+un **perfil de máquina** (`configs/machines/<nombre>.yaml`): `env`, `data_roots` (la ruta de cada
+dataset según su `data.name`; BigEarthNet también `metadata_dir`), `checkpoint_dir`,
+`num_workers` y, opcionalmente, `hosts` (patrones del nombre del host para reconocer la máquina).
+Con un perfil activo se sobrescriben `data.root` (y las demás rutas del dataset),
+`checkpoint.dir` y `output.env`, y rellena `data.num_workers` si la config no lo trae. Una config
+cuyo `output.env` ya es el del perfil se considera de esa máquina y no cambia nada; sin perfil, la
+config se usa tal cual.
+
+El perfil se elige, por orden de prioridad, con `--machine NOMBRE`, con la variable
+`PARAVIT_MACHINE` o por el nombre del host; `--machine none` lo desactiva. Lo aceptan `train`,
+`eval`, `predict` y `benchmark` (y los scripts que hay debajo). Cada ejecución imprime una línea
+`Machine profile: ...` con lo que cambió. Las opciones explícitas (`--data-root`, `--epochs`,
+`--seed`) ganan al perfil.
+
+`--set clave.sub=valor` (repetible) cambia cualquier clave de la config después del perfil; el
+valor se lee como YAML (números, booleanos, listas) y `1e-4` se convierte a float:
+
+```bash
+uv run paravit.py train --config configs/train_panda.yaml --machine verode \
+    --set training.lr=1e-4 --set data.num_workers=2 --dry-run
+```
+
+### `doctor` — comprobar la máquina
+
+```bash
+uv run paravit.py doctor                                   # Python, torch/CUDA, GPUs, AVX2, perfil
+uv run paravit.py doctor --config configs/train_panda.yaml # además: rutas de la config y disco libre
+```
+
+Tabla con OK / WARN / FAIL y código de salida 1 si hay algún FAIL. Solo lee el estado (la GPU no se
+toca). Una máquina sin GPU da WARN, salvo que la config pida NCCL o se pase `--require-gpu`.
 
 ## 5. Las cuatro estrategias de entrenamiento
 

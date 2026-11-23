@@ -235,3 +235,6 @@ mlartifacts/
 
 # Informes HTML de un run (paravit report): pesan ~5 MB cada uno
 logs/**/report_*.html
+
+# Perfiles de máquina personales (copia de configs/machines/example.yaml)
+configs/machines/*.local.yaml

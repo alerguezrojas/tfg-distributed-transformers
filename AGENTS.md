@@ -81,6 +81,10 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
   mergear.
 - **Commits:** Conventional Commits en español (`feat:`, `fix(web):`, `docs:`, `chore:`…), cortos.
   **Sin** `Co-Authored-By` ni "Generated with…" en commits ni PRs.
+- **Máquina:** las rutas dependientes del equipo van en `configs/machines/<perfil>.yaml`
+  (`--machine`, `PARAVIT_MACHINE` o host; `src/machine.py`), no en las configs de experimento; todo
+  punto de entrada carga la config con `prepare_config` (perfil + `--set`) y `paravit doctor`
+  diagnostica la máquina.
 - **Idioma:** documentación en español (registro canario: "ustedes", no "vosotros"); UI de la web en
   inglés. En el código, seguir el idioma del fichero que se edita.
 - **YAML:** escribir los floats en decimal (`lr: 0.0001`); `1e-4` se parsea como string.

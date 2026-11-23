@@ -267,3 +267,35 @@ def test_benchmark_cmd_passes_split_sizes():
     s = _join(build_benchmark_cmd(None, None, 15, None, train_size=7433, val_size=1593))
     assert "--train-size 7433" in s and "--val-size 1593" in s
     assert "--train-size" not in _join(build_benchmark_cmd(None, None, 15, None))
+
+
+# ── --machine / --set (perfiles de máquina) ─────────────────────────────────────
+
+def test_train_forwards_machine_and_set():
+    cmd = build_train_cmd("single", "c.yaml", machine="verode",
+                          overrides=["training.lr=1e-4", "data.num_workers=2"])
+    assert cmd[cmd.index("--machine") + 1] == "verode"
+    assert [cmd[j + 1] for j, a in enumerate(cmd) if a == "--set"] == [
+        "training.lr=1e-4", "data.num_workers=2"]
+
+
+def test_train_without_machine_adds_nothing():
+    cmd = build_train_cmd("ddp", "c.yaml")
+    assert "--machine" not in cmd and "--set" not in cmd
+
+
+def test_eval_benchmark_predict_forward_machine():
+    from src.cli import build_predict_cmd
+    assert build_eval_cmd("a.pt", "c.yaml", machine="local")[-2:] == ["--machine", "local"]
+    assert build_benchmark_cmd(None, None, 1, None, overrides=["a.b=1"])[-2:] == ["--set", "a.b=1"]
+    cmd = build_predict_cmd("a.pt", "c.yaml", ["img.png"], machine="kaggle", overrides=["x=1"])
+    assert "--machine" in cmd and cmd[-1].endswith("img.png")
+
+
+def test_cli_train_dry_run_shows_machine_and_set():
+    from typer.testing import CliRunner
+    from src.cli import app
+    res = CliRunner().invoke(app, ["train", "--machine", "local", "--set", "training.lr=1e-4",
+                                   "--dry-run"])
+    assert res.exit_code == 0
+    assert "--machine" in res.output and "training.lr=1e-4" in res.output
