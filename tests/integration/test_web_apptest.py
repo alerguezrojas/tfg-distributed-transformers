@@ -158,6 +158,18 @@ def test_dataset_filter_narrows_run_list(labels):
     assert set(_picker(at)) == {labels["medmnist"], labels["medmnist2"]}
 
 
+def test_run_chosen_outside_the_picker_is_not_reverted(labels):
+    # Pick a run in the sidebar, then make another active as an Overview row click does:
+    # the picker's stale value must not switch the active run back.
+    at = _run_app("overview", labels["bigearthnet"])
+    at.selectbox(key="run_picker").set_value(labels["medmnist"]).run()
+    at.session_state["run_label"] = labels["medmnist2"]
+    at.run()
+    assert not at.exception
+    assert at.session_state["run_label"] == labels["medmnist2"]
+    assert at.selectbox(key="run_picker").value == labels["medmnist2"]
+
+
 def test_search_filters_the_picker(labels):
     at = _run_app("overview", labels["medmnist"])
     at.text_input(key="run_search").set_value("seed 43").run()

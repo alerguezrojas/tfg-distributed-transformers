@@ -91,11 +91,25 @@ def test_gpu_count_from_config_line_manifest_and_mode(tmp_path):
                      trace_mode="simple", mode="single")
     assert gpu_count(single) == 1
     unknown = RunInfo(timestamp="c", log_path=_log(tmp_path, "c", "8/GPU"), trace_mode="simple",
-                      mode="heterogeneous")
+                      mode="ddp")
     assert gpu_count(unknown) is None
     man = write_manifest(tmp_path / "run_c.json", build_manifest({"world_size": 4}))
     unknown.manifest_path = man
     assert gpu_count(unknown) == 4
+
+
+def test_gpu_count_heterogeneous_is_one_gpu_whatever_its_world_size(tmp_path):
+    run = RunInfo(timestamp="h", log_path=_log(tmp_path, "h", "8/GPU (global=16, 2 GPUs)"),
+                  trace_mode="simple", mode="heterogeneous")
+    run.manifest_path = write_manifest(tmp_path / "run_h.json", build_manifest({"world_size": 2}))
+    assert gpu_count(run) == 1          # GPU + CPU worker: one GPU draws the time
+
+
+def test_gpu_count_model_parallel_counts_only_cuda_devices(tmp_path):
+    p = tmp_path / "train_e.log"
+    p.write_text("Configuración: modelo=x | devices=cuda:0+cpu | batch=8 (global)\n")
+    run = RunInfo(timestamp="e", log_path=p, trace_mode="simple", mode="model_parallel")
+    assert gpu_count(run) == 1
 
 
 def test_gpu_count_model_parallel_devices(tmp_path):

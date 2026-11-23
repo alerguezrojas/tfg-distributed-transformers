@@ -152,10 +152,16 @@ with st.sidebar:
         if _active not in _labels:
             _labels.insert(0, _active)
         st.caption(f"{len(_shown)} of {len(runs)} runs match")
-        _picked = st.selectbox("Select a run", _labels, index=_labels.index(_active),
-                               key="run_picker")
+        # The active run can also change outside this widget (an Overview row, a direct
+        # link). When it did, sync the widget's state first, or its stale value would
+        # switch the run back; when it did not, leave it (it may hold the user's new pick).
+        if st.session_state.get("_picker_active") != _active:
+            st.session_state["_picker_active"] = _active
+            st.session_state["run_picker"] = _active
+        _picked = st.selectbox("Select a run", _labels, key="run_picker")
         if _picked != _active:
             st.session_state["run_label"] = _picked
+            st.session_state["_picker_active"] = _picked
             st.rerun()
         st.caption("Pick a run here, or click a row in Overview.")
 

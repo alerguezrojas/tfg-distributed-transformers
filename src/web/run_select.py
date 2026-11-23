@@ -134,7 +134,10 @@ def gpu_count(run) -> int | None:
     """GPUs the run used, or ``None`` when its logs do not say.
 
     Order: the manifest's ``world_size``; the ``Configuración:`` line (``N GPUs`` of DDP, the
-    ``devices=a+b`` of model parallel); ``single`` runs use one."""
+    ``devices=a+b`` of model parallel); ``single`` runs use one. A heterogeneous run uses
+    ONE GPU (its other rank is a CPU worker), whatever its ``world_size``."""
+    if run.mode == "heterogeneous":
+        return 1
     manifest = read_manifest(getattr(run, "manifest_path", None)) or {}
     world = manifest.get("world_size")
     if isinstance(world, int) and not isinstance(world, bool) and world > 0:
@@ -144,7 +147,8 @@ def gpu_count(run) -> int | None:
     if m:
         return int(m.group(1))
     if cfg.get("devices"):
-        return len({d for d in cfg["devices"].split("+") if d})
+        gpus = {d for d in cfg["devices"].split("+") if d.startswith("cuda")}
+        return len(gpus) or None
     return 1 if run.mode == "single" else None
 
 
