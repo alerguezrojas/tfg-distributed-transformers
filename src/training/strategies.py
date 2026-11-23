@@ -330,7 +330,7 @@ def _config_tail(ctx: LaunchContext, *, precision: bool = True, loss: str | None
                  ousm: bool = True) -> str:
     """``epochs=… | … | seed=… | backbone…``: the part every strategy shares."""
     from src.models.backbones import backbone_log_fields
-    from src.training.losses import loss_log_label, ousm_log_field
+    from src.training.losses import loss_log_label, memory_log_fields, ousm_log_field
     t = ctx.cfg["training"]
     parts = [f"epochs={t['epochs']}", f"lr={t['lr']}"]
     if precision:
@@ -338,7 +338,7 @@ def _config_tail(ctx: LaunchContext, *, precision: bool = True, loss: str | None
     parts.append(f"loss={loss or loss_log_label(t, ctx.dataset.make_task())}")
     parts += [f"train={ctx.n_train}", f"val={ctx.n_val}", f"dataset={ctx.dataset.name}",
               f"seed={ctx.seed}", backbone_log_fields(ctx.cfg["model"], ctx.model_name)]
-    return " | ".join(parts) + (ousm_log_field(t) if ousm else "")
+    return " | ".join(parts) + (ousm_log_field(t) if ousm else "") + memory_log_fields(t)
 
 
 def _line_single(ctx: LaunchContext) -> str:

@@ -216,3 +216,14 @@ def loss_log_label(train_cfg: dict, task) -> str:
     if train_cfg.get("pos_weight") is not None:
         return "bce+pos_weight"
     return name
+
+
+def memory_log_fields(train_cfg: dict) -> str:
+    """`` | accum=k | ckpt=true`` for the log's ``Configuración:`` line, only for the options
+    that are on (a default run keeps its line unchanged)."""
+    out = ""
+    if (train_cfg.get("grad_accum_steps") or 1) > 1:
+        out += f" | accum={train_cfg['grad_accum_steps']}"
+    if train_cfg.get("grad_checkpointing"):
+        out += " | ckpt=true"
+    return out

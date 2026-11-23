@@ -229,6 +229,35 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
 
 ---
 
+## Acumulación de gradientes y activation checkpointing
+
+Dos opciones de memoria, desactivadas por defecto (`training.grad_accum_steps: k` y
+`training.grad_checkpointing: true`), para entrenar con un lote efectivo o un modelo que no cabe
+en la GPU. Los números medidos están en la [guía de uso](guia_de_uso.md#memoria-acumulación-de-gradientes-y-activation-checkpointing).
+
+- **Acumulación** vive en `Trainer.train_epoch`, no en un decorador: el paso del optimizador
+  (`zero_grad`, `backward`, recorte, `step`) es el propio bucle por lote, y los decoradores solo
+  reciben notificaciones *después* del lote. Tres métodos pequeños lo aíslan: `_accum_group`
+  (tamaño del grupo y si el lote lo cierra), `_no_sync_unless` (en DDP, `model.no_sync()` salvo en
+  el último micro-lote del grupo, de modo que solo ese hace all-reduce) y `_optimizer_step`
+  (`unscale_` + recorte + `step` + `update`, solo al cerrar el grupo). La pérdida de cada
+  micro-lote se divide entre el tamaño real de su grupo (el último grupo de la época puede ser
+  más corto y también da su paso). Con `k = 1` la ruta es idéntica a la anterior
+  (`test_behaviour_golden.py` no cambia).
+- El scheduler sigue avanzando **por época** (como antes), no por paso del optimizador.
+  Los hooks por lote, el monitor y las métricas de época ven cada micro-lote; la norma de
+  gradiente (`grad_norm_total`) se actualiza solo al cerrar el grupo.
+- No soportan la acumulación el DDP heterogéneo (normaliza el gradiente a mano con el lote global
+  de cada paso) ni la inspección `--trace deep` con `batch-table` (su bucle propio); ambos dan un
+  error claro.
+- **Checkpointing**: `TimmClassifier.set_grad_checkpointing()` delega en el backbone (timm lo
+  ofrece en ViT, Swin, ResNet, ConvNeXt…; `HFEncoder` usa `gradient_checkpointing_enable()` de
+  `transformers`). Un backbone sin soporte da un error claro. No se admite con paralelismo de
+  modelo (su `forward` recorre los bloques a mano, así que no aplicaría): lo rechaza el validador.
+- El benchmark (`paravit benchmark --config ... --set training.grad_accum_steps=2`) aplica las
+  mismas dos opciones para medir su efecto.
+- La línea `Configuración:` del log gana `accum=k` y `ckpt=true` solo cuando están activas.
+
 ## Análisis de la inspección (`src/analysis/`)
 
 Paquete **puro** (solo NumPy: sin torch, sin Streamlit, sin GPU) con el que la web analiza en CPU

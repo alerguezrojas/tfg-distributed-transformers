@@ -6,6 +6,18 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- `training.grad_accum_steps: k` (acumulación de gradientes, por defecto 1) y
+  `training.grad_checkpointing: true` (*activation checkpointing* del backbone, por defecto
+  false). La acumulación vive en `Trainer.train_epoch` (paso del optimizador cada `k` lotes,
+  pérdida dividida entre el tamaño real del grupo, `no_sync()` en DDP salvo en el último
+  micro-lote, `unscale_`/recorte/`step`/`update` solo al cerrar el grupo); el último grupo
+  incompleto también da su paso y el scheduler sigue avanzando por época. El heterogéneo y
+  `--trace deep` (batch-table) no la admiten y lo dicen. El checkpointing pasa por
+  `TimmClassifier.set_grad_checkpointing()` (timm y `hf:`), con error claro si el backbone no lo
+  tiene y con paralelismo de modelo. La línea `Configuración:` gana `accum=` y `ckpt=` solo si
+  están activas. `paravit benchmark` aplica ambas opciones de la config. Medido en la 3060 Ti
+  (Swin-T a 512 px, AMP): checkpointing 6,73 → 2,27 GB a −24 % de velocidad (lote 48 cabe, 56 no);
+  acumulación 2×8 frente a 16: 3,71 frente a 6,73 GB a −4 % ([guía](docs/guia_de_uso.md)).
 - Perfiles de máquina (`configs/machines/{local,verode,kaggle,example}.yaml`, `src/machine.py`):
   rutas de datos por dataset (`data_roots`), `checkpoint_dir`, `output.env` y `num_workers` fuera de
   las configs de experimento. Se eligen con `--machine`, `PARAVIT_MACHINE` o el nombre del host

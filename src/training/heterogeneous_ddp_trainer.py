@@ -68,6 +68,10 @@ class HeterogeneousDDPTrainer(DDPTrainer):
     """
 
     def __init__(self, *args, local_batch_size: int, **kwargs):
+        if kwargs.get("grad_accum_steps", 1) > 1:
+            raise NotImplementedError(
+                "heterogeneous DDP normalizes the gradient by hand with the global batch of "
+                "each step; training.grad_accum_steps > 1 is not supported on this strategy")
         super().__init__(*args, **kwargs)
         self.local_batch_size = local_batch_size
         if not self.task.sigmoid_outputs:

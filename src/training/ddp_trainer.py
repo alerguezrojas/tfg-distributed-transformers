@@ -64,11 +64,12 @@ class DDPTrainer(Trainer):
         world_size: int = 1,
         checkpoint_keep: str = DEFAULT_KEEP,
         model_name: str | None = None,
+        grad_accum_steps: int = 1,
     ):
         super().__init__(model, optimizer, scheduler, device, checkpoint_dir,
                          criterion, grad_clip, label_smoothing, mixup_alpha,
                          precision=precision, task=task, checkpoint_keep=checkpoint_keep,
-                         model_name=model_name)
+                         model_name=model_name, grad_accum_steps=grad_accum_steps)
         self.rank = rank
         self.world_size = world_size
         self._epoch = 0
