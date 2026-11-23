@@ -31,6 +31,18 @@ MOSAICS = "mosaics_l1_16x256"
 SPLITS_MD5 = "76dcfaff305092dbe98b8387df19a894"   # splits.csv of the local runs (same partition)
 
 
+COMMON_BATCH_PER_GPU = 8                                               # x 2 GPUs = 16
+
+
+def deep_update(base: dict, extra: dict) -> dict:
+    for key, value in extra.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            deep_update(base[key], value)
+        else:
+            base[key] = value
+    return base
+
+
 def res(size: int, seed: int = 42) -> dict:
     return {"data": {"image_size": size}, "model": {"img_size": size}, "training": {"seed": seed}}
 
@@ -38,6 +50,11 @@ def res(size: int, seed: int = 42) -> dict:
 def model(name: str, seed: int = 42) -> dict:
     """Overrides for another timm model at 512 px (the base config's resolution)."""
     return {"model": {"name": name}, "training": {"seed": seed}}
+
+
+def single(overrides: dict) -> dict:
+    """The same experiment on ONE T4: the whole global batch (16) on that GPU."""
+    return deep_update(overrides, {"training": {"batch_size": 2 * COMMON_BATCH_PER_GPU}})
 
 
 # One batch per kernel run (a session lasts at most 12 h; a 1024-px run takes ~2.9 h on 2x T4).
@@ -85,12 +102,26 @@ BATCHES = {
          model("vit_base_patch16_224.augreg2_in21k_ft_in1k", 44)),
         ("panda_ddp_swin_t", "configs/train_panda.yaml", model("swin_tiny_patch4_window7_224")),
     ],
+    # Result (23/11/2026), test QWK: SwinV2-T 0.824 / 0.802 and ViT-B 0.819 / 0.825 (s43 / s44);
+    # Swin-T with DDP 0.820 (local single GPU: 0.830). ~55-65 min per run.
+    # 23/11/2026: distribution strategies on the SAME hardware (T4), same global batch (16):
+    # one T4 vs DDP on two, for ViT-S (control panda_ddp_512) and Swin-T (panda_ddp_swin_t); and
+    # ViT-S with DDP and 2 data workers instead of 4 (is the 512-px ViT-S CPU-bound on Kaggle?).
+    # Before the trainings the kernel measures the all-reduce bandwidth between the two T4.
+    "strategies_512": [
+        ("panda_single_vits", "configs/train_panda.yaml", single(model("vit_small_patch16_224")),
+         "single"),
+        ("panda_single_swin_t", "configs/train_panda.yaml",
+         single(model("swin_tiny_patch4_window7_224")), "single"),
+        ("panda_ddp_vits_w2", "configs/train_panda.yaml",
+         deep_update(model("vit_small_patch16_224"), {"data": {"num_workers": 2}})),
+    ],
 }
-BATCH = "seeds_512"
+BATCH = "strategies_512"
 EXPERIMENTS = BATCHES[BATCH]
 COMMON = {
     "data": {"num_workers": 4},
-    "training": {"batch_size": 8},                                     # per GPU -> global 16
+    "training": {"batch_size": COMMON_BATCH_PER_GPU},                  # per GPU -> global 16
     "output": {"env": "kaggle"},
 }
 
@@ -112,15 +143,6 @@ def find_mosaics() -> Path:
     raise SystemExit("mosaics not found: attach the paravit-panda-mosaicos kernel output")
 
 
-def deep_update(base: dict, extra: dict) -> dict:
-    for key, value in extra.items():
-        if isinstance(value, dict) and isinstance(base.get(key), dict):
-            deep_update(base[key], value)
-        else:
-            base[key] = value
-    return base
-
-
 def build_config(repo: Path, name: str, base: str, overrides: dict) -> dict:
     """The YAML of one experiment: the repo config + COMMON + its overrides (pure, tested)."""
     import yaml
@@ -137,6 +159,29 @@ def write_config(name: str, base: str, overrides: dict) -> Path:
     path = REPO / "configs" / f"_kaggle_{name}.yaml"
     path.write_text(yaml.safe_dump(build_config(REPO, name, base, overrides), sort_keys=False))
     return path
+
+
+STRATEGIES = ("ddp", "single")
+
+
+def experiment_parts(exp: tuple) -> tuple[str, str, dict, str]:
+    """``(name, base, overrides[, strategy])`` with the strategy defaulting to DDP on 2 GPUs."""
+    name, base, overrides, *rest = exp
+    strategy = rest[0] if rest else "ddp"
+    if strategy not in STRATEGIES:
+        raise ValueError(f"{name}: unknown strategy {strategy!r} (one of {STRATEGIES})")
+    return name, base, overrides, strategy
+
+
+def train_command(cfg: Path, strategy: str) -> tuple[list[str], dict | None]:
+    """The training command and its extra environment (pure, tested): DDP on the 2 T4 with
+    torchrun, or one process on the first T4 only."""
+    common = ["--config", str(cfg), "--precision", "amp", "--monitor"]
+    if strategy == "single":
+        return ([sys.executable, "scripts/train_single_gpu.py", *common],
+                {"CUDA_VISIBLE_DEVICES": "0"})
+    return ([sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2",
+             "scripts/train_ddp.py", *common], None)
 
 
 def best_checkpoint(name: str) -> Path | None:
@@ -170,15 +215,18 @@ def main() -> None:
     os.chdir(REPO)
     start = time.time()               # logs older than this came with the clone: not copied
     timings = []
-    for name, base, overrides in EXPERIMENTS:
+    sh(sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2",
+       "scripts/measure_allreduce.py", log=OUT / "allreduce.log")
+    for exp in EXPERIMENTS:
+        name, base, overrides, strategy = experiment_parts(exp)
         cfg = write_config(name, base, overrides)
         dest = OUT / "results" / name
         dest.mkdir(parents=True, exist_ok=True)
         shutil.copy(cfg, dest / "config.yaml")
         t0 = time.time()
-        rc = sh(sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2",
-                "scripts/train_ddp.py", "--config", str(cfg),
-                "--precision", "amp", "--monitor", log=dest / "train.log")
+        cmd, extra_env = train_command(cfg, strategy)
+        rc = sh(*cmd, log=dest / "train.log",
+                env={**os.environ, **extra_env} if extra_env else None)
         train_s = time.time() - t0
         ckpt = best_checkpoint(name)
         rc_eval = -1
@@ -189,7 +237,7 @@ def main() -> None:
                          "--config", str(cfg), "--split", "test",
                          "--save-predictions", str(dest / "test_preds.npz"),
                          log=dest / "eval.log", env=env)
-        timings.append({"name": name, "train_rc": rc, "eval_rc": rc_eval,
+        timings.append({"name": name, "strategy": strategy, "train_rc": rc, "eval_rc": rc_eval,
                         "train_min": round(train_s / 60, 1), "checkpoint": ckpt.name if ckpt else ""})
         with open(OUT / "timings.csv", "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=list(timings[0]))

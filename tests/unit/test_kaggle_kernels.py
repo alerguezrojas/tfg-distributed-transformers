@@ -20,18 +20,39 @@ def _load(rel: str):
 train = _load("kaggle/panda_train/run.py")
 
 
-@pytest.mark.parametrize("name,base,overrides",
-                         [e for batch in train.BATCHES.values() for e in batch])
-def test_every_experiment_config_is_valid(name, base, overrides):
+@pytest.mark.parametrize("exp", [e for batch in train.BATCHES.values() for e in batch],
+                         ids=lambda e: e[0])
+def test_every_experiment_config_is_valid(exp):
+    name, base, overrides, strategy = train.experiment_parts(exp)
     cfg = train.build_config(REPO, name, base, overrides)
     validate_config(cfg)
     assert cfg["data"]["image_size"] == cfg["model"]["img_size"]
-    assert cfg["training"]["batch_size"] * 2 == 16            # global batch of the local runs
+    gpus = 2 if strategy == "ddp" else 1
+    assert cfg["training"]["batch_size"] * gpus == 16         # global batch of the local runs
     assert cfg["checkpoint"]["dir"].endswith(name)            # one folder per experiment
 
 
+def test_train_command_per_strategy(tmp_path):
+    cfg = tmp_path / "c.yaml"
+    cmd, env = train.train_command(cfg, "ddp")
+    assert "torch.distributed.run" in cmd and "--nproc_per_node=2" in cmd and env is None
+    assert "scripts/train_ddp.py" in cmd and "--precision" in cmd
+    cmd, env = train.train_command(cfg, "single")
+    assert "scripts/train_single_gpu.py" in cmd and "torch.distributed.run" not in cmd
+    assert env == {"CUDA_VISIBLE_DEVICES": "0"}
+    with pytest.raises(ValueError, match="unknown strategy"):
+        train.experiment_parts(("x", "configs/train_panda.yaml", {}, "fsdp"))
+    assert train.experiment_parts(("x", "b", {}))[3] == "ddp"
+
+
+def test_overrides_are_not_shared_between_experiments():
+    """single()/model() build fresh dicts: one experiment's batch must not leak into another."""
+    a, b = train.single(train.model("m")), train.model("m")
+    assert a["training"]["batch_size"] == 16 and "batch_size" not in b["training"]
+
+
 def test_experiment_names_are_unique_across_batches():
-    names = [name for batch in train.BATCHES.values() for name, _, _ in batch]
+    names = [exp[0] for batch in train.BATCHES.values() for exp in batch]
     assert len(names) == len(set(names))                      # results/<name> never overwritten
     assert train.EXPERIMENTS is train.BATCHES[train.BATCH]
 
@@ -63,3 +84,12 @@ def test_benchmark_kernel_parses_the_report():
     assert bench.parse_rows("     16  off                 OOM\n") == [
         {"batch": 16, "train_ips": None, "eval_ips": None, "vram_gb": None}]
     assert len(set(bench.MODELS)) == len(bench.MODELS) == 13
+
+
+def test_allreduce_bus_bandwidth():
+    spec = importlib.util.spec_from_file_location("_allreduce", REPO / "scripts" / "measure_allreduce.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert mod.bus_bandwidth(10.0, 2) == pytest.approx(10.0)       # ring of 2: busbw = algbw
+    assert mod.bus_bandwidth(10.0, 4) == pytest.approx(15.0)
+    assert mod.bus_bandwidth(10.0, 1) == pytest.approx(10.0)
