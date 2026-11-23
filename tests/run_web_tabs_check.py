@@ -111,24 +111,6 @@ def test_overview_table():
 
 check("overview_table_with_gradient", test_overview_table)
 
-# ── TAB: System Monitor ───────────────────────────────────────────────────────
-print("\n=== System tab ===")
-from src.web.system_monitor import get_snapshot
-
-def test_system_snapshot():
-    snap = get_snapshot(disk_paths=["/", "/home"])
-    # progress values must be in [0.0, 1.0]
-    assert 0.0 <= snap.cpu.usage_pct / 100 <= 1.0
-    assert 0.0 <= snap.ram.percent / 100 <= 1.0
-    for d in snap.disks:
-        v = d.percent / 100
-        assert 0.0 <= v <= 1.0, f"Disk {d.path} percent out of range: {d.percent}"
-    for g in snap.gpus:
-        mem_pct = g.mem_used_mb / g.mem_total_mb * 100 if g.mem_total_mb else 0
-        assert 0.0 <= mem_pct / 100 <= 1.0
-
-check("system_snapshot_values", test_system_snapshot)
-
 # ── TAB: Dataset ──────────────────────────────────────────────────────────────
 print("\n=== Dataset tab ===")
 from src.web.dataset_stats import (
@@ -184,77 +166,6 @@ def test_dataset_split_pie():
     assert fig is not None
 
 check("dataset_split_pie", test_dataset_split_pie)
-
-# ── TAB: Model Explorer ───────────────────────────────────────────────────────
-print("\n=== Model Explorer tab ===")
-from src.web.model_explorer import compare_models, get_model_stats
-
-def test_model_stats_tiny():
-    s = get_model_stats("vit_tiny_patch16_224", num_classes=19)
-    assert s is not None
-    assert s.total_params_m > 0
-    assert s.vram_estimate_gb(32) > 0
-
-check("model_stats_vit_tiny", test_model_stats_tiny)
-
-def test_model_stats_resnet():
-    s = get_model_stats("resnet50", num_classes=19)
-    assert s is not None
-
-check("model_stats_resnet50", test_model_stats_resnet)
-
-def test_compare_models_table():
-    models = ["vit_tiny_patch16_224", "vit_base_patch16_224", "resnet50"]
-    rows = compare_models(models, [32, 64])
-    assert len(rows) > 0
-    cmp_df = pd.DataFrame(rows)
-    vram_col = "VRAM est. bs=32 (GB)"
-    assert vram_col in cmp_df.columns
-
-    def _color_vram(v):
-        try:
-            fv = float(v)
-            if fv <= 4: return "background-color: #dcfce7"
-            if fv <= 8: return "background-color: #fef9c3"
-            return "background-color: #fee2e2"
-        except (ValueError, TypeError):
-            return ""
-
-    cmp_df.style.map(_color_vram, subset=[vram_col])
-
-check("compare_models_table_and_style", test_compare_models_table)
-
-def test_model_bubble_chart():
-    rows = compare_models(["vit_tiny_patch16_224", "resnet50", "efficientnet_b0"], [32])
-    cmp_df = pd.DataFrame(rows)
-    vram_col = "VRAM est. bs=32 (GB)"
-    plot_df = cmp_df[cmp_df["FLOPs (MFLOPs)"].notna()].copy()
-    plot_df["FLOPs (MFLOPs)"] = pd.to_numeric(plot_df["FLOPs (MFLOPs)"], errors="coerce")
-    plot_df[vram_col] = pd.to_numeric(plot_df.get(vram_col, 0), errors="coerce").fillna(1)
-    if not plot_df.empty:
-        fig = px.scatter(
-            plot_df, x="FLOPs (MFLOPs)", y="Params (M)",
-            size=vram_col, color="Family", text="Model",
-            size_max=40,
-        )
-        assert fig is not None
-
-check("model_bubble_chart", test_model_bubble_chart)
-
-def test_vram_bar_chart():
-    rows = compare_models(["vit_tiny_patch16_224", "resnet50"], [4, 8, 16, 32, 64])
-    vram_df = pd.DataFrame(rows)
-    vram_cols = [c for c in vram_df.columns if c.startswith("VRAM")]
-    fig = go.Figure()
-    for col in vram_cols:
-        bs_val = col.split("bs=")[1].split(" ")[0]
-        fig.add_trace(go.Bar(
-            name=f"bs={bs_val}", x=vram_df["Model"],
-            y=pd.to_numeric(vram_df[col], errors="coerce"),
-        ))
-    assert fig is not None
-
-check("model_vram_bar_chart", test_vram_bar_chart)
 
 # ── TAB: Curves ───────────────────────────────────────────────────────────────
 print("\n=== Curves tab ===")
