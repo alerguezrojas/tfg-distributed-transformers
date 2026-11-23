@@ -232,6 +232,22 @@ estrategias nuevas (pipeline con micro-lotes, acumulación de gradientes y *acti
 checkpointing*, FSDP2, ZeRO-1), cada una con su término en el predictor y validada en Kaggle.
 Antes de modelarlas hay que medir el ancho de banda real entre las dos T4.
 
+**Avance del plan (23/11/2026):**
+- **Fase 0, hecha** (PRs #250-#252): DDP multinodo con el índice de la GPU local, resultados de test
+  emparejados por sello (con respaldo para carpetas de un solo run), `paravit runs` con la métrica
+  principal, QWK y semilla en los resúmenes, `seed=`/`loss=` en la línea `Configuración:` de todas
+  las estrategias, búsqueda exacta de GPU, documentación al día, `.gitignore` de eventos.
+- **Fase 1, en parte** (PR #254): `paravit doctor`, perfiles de máquina (`configs/machines/`,
+  `--machine`, `PARAVIT_MACHINE` o el nombre del host; una config de la propia máquina no cambia) y
+  `--set clave=valor`. Pendiente: torch por variante de CUDA (A2; cuidado: el `uv` local reescribe
+  el lock) y el paquete instalable (A8).
+- **Fase 2, hecha** (PR #257): lanzador único (`src/training/launch.py`) con registro de estrategias
+  (`src/training/strategies.py`); los cuatro `scripts/train_*.py` son envoltorios; todas las
+  estrategias aceptan las opciones comunes (`--resume`, `--inspect`, `--batch-size`…). Comprobado
+  en GPU: mismos logs y métricas que antes con las cuatro estrategias.
+- **En curso:** lote `strategies_512` en Kaggle (una T4 frente a dos, ancho de banda de all-reduce,
+  control de CPU con 2 *workers*). Siguiente: fase 5 (estrategias nuevas) o fase 3 (web).
+
 **Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
 del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
 normalización de tinción (Macenko). (2) Con Swin-T como referencia: ver si los modelos grandes de
