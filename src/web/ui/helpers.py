@@ -15,7 +15,9 @@ from src.web.dataset_stats import (
 from src.web.benchmark_parser import parse_benchmark_csv
 from src.web.log_parser import parse_log
 from src.web.perclass_parser import parse_perclass_csv
+from src.web.data_paths import BigEarthNetPaths, bigearthnet_paths
 from src.web.dataset_view import inspect_dir_of
+from src.web.eval_parser import parse_eval_csv
 from src.web.run_meta import MetricInfo, resolve_metric
 from src.web.run_registry import RunInfo, discover_benchmark_csvs, discover_runs
 
@@ -122,16 +124,20 @@ def _load_val_support(parquet_str: str) -> dict | None:
     return val_support_from_parquet(Path(parquet_str))
 
 
-# Where the BigEarthNet metadata lives (local SSD or Verode NFS).
-_META_CANDIDATES = [
-    "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet",
-    "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet",
-]
+def _bigearthnet_paths() -> BigEarthNetPaths:
+    """Where this machine keeps BigEarthNet (from the machine profiles, not constants)."""
+    return bigearthnet_paths()
 
 
 def _dataset_meta_path() -> str | None:
-    """First mounted metadata.parquet, or None if the dataset isn't available."""
-    return next((p for p in _META_CANDIDATES if Path(p).exists()), None)
+    """metadata.parquet of this machine, or None if the dataset isn't available."""
+    return _bigearthnet_paths().metadata
+
+
+@st.cache_data(ttl=30)
+def _load_test_aggregate(path_str: str) -> tuple:
+    """Cached ``parse_eval_csv`` of a held-out test CSV."""
+    return parse_eval_csv(path_str)
 
 
 @st.cache_data(ttl=600)

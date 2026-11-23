@@ -1,4 +1,4 @@
-"""Streamlit web dashboard — Training Dashboard (English).
+"""Streamlit web dashboard — ParaViT-Lab (English).
 
 Thin orchestrator: sets the page config, builds the sidebar, assembles the
 shared context, and dispatches to the per-tab render modules under
@@ -18,7 +18,7 @@ from streamlit_option_menu import option_menu
 
 from src.web.ui import theme
 from src.web.ui.context import DashboardContext
-from src.web.run_registry import filter_runs
+from src.web import run_select
 from src.web.ui.helpers import _get_runs
 from src.web.tabs import (
     home,
@@ -33,7 +33,7 @@ from src.web.tabs import (
 # ── Page configuration ──────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Training Dashboard",
+    page_title="ParaViT-Lab",
     page_icon=None,
     layout="wide",
     initial_sidebar_state="expanded",
@@ -71,8 +71,18 @@ _PAGES = {
     "data": dataset.render,
 }
 
+# Direct links: ?run=<id>&tab=<page> opens that run and page. Read once per session (the
+# URL is rewritten below as the user navigates, so later reruns must not re-apply it).
+if not st.session_state.get("_deeplink_done"):
+    st.session_state["_deeplink_done"] = True
+    _lk_label, _lk_tab = run_select.query_target(st.query_params, runs, _NAV_KEYS)
+    if _lk_label:
+        st.session_state["run_label"] = _lk_label
+    if _lk_tab:
+        st.session_state["nav"] = _lk_tab
+
 with st.sidebar:
-    st.markdown("### Training Dashboard")
+    st.markdown("### ParaViT-Lab")
 
     # ── Navigation (icon menu, single level) ──────────────────────────────────
     if "nav" not in st.session_state:
@@ -121,36 +131,39 @@ with st.sidebar:
         st.caption("**Active run**")
         st.markdown(f"<div class='active-run'>{_active}</div>", unsafe_allow_html=True)
 
-        # Environment (and dataset, when there is more than one) filters to
-        # narrow the list below. They only filter the list: the active run stays.
-        _envs = ["all environments"] + sorted({r.env for r in runs})
-        _datasets = sorted({r.dataset for r in runs})
-        _env = st.selectbox("Filter by environment", _envs, index=0, key="run_env_filter")
-        _ds = "All"
-        if len(_datasets) > 1:
-            _ds = st.selectbox("Filter by dataset", ["All"] + _datasets, index=0,
-                               key="run_dataset_filter")
-        _opts = [r.label for r in filter_runs(
-            runs,
-            env=None if _env == "all environments" else _env,
-            dataset=None if _ds == "All" else _ds,
-        )]
-        if _active not in _opts:
-            _opts = [_active] + _opts
+        # Search + filters narrow the picker below (hundreds of runs). They only filter
+        # the list: the active run stays. The dataset filter also scopes the Overview.
+        _q = st.text_input("Search runs", key="run_search", placeholder="model, env, date…")
+        _env = st.selectbox("Environment", run_select.filter_options(runs, "env"),
+                            key="run_env_filter")
+        _ds = st.selectbox("Dataset", run_select.filter_options(runs, "dataset"),
+                           key="run_dataset_filter")
+        _model = st.selectbox("Model", run_select.filter_options(runs, "model"),
+                              key="run_model_filter")
+        _strategy = st.selectbox("Strategy", run_select.filter_options(runs, "mode"),
+                             key="run_mode_filter")
+        _shown = run_select.filter_runs_by(runs, _q, dataset=_ds, model=_model,
+                                           mode=_strategy, env=_env)
 
-        # A scrollable vertical list (not a dropdown): one row per run, click to
-        # select it directly. Rows use the SAME label as the Overview "All runs"
-        # table (RunInfo.label: date [env] model [mode] [precision]) — one naming
-        # convention across the dashboard. The active run is the highlighted row.
-        st.caption("Select a run")
-        with st.container(height=300, border=True):
-            for _lbl in _opts:
-                if st.button(_lbl, key=f"runpick::{_lbl}",
-                             width="stretch",   # full row width (Streamlit ≥1.57)
-                             type="primary" if _lbl == _active else "secondary"):
-                    st.session_state["run_label"] = _lbl
-                    st.rerun()
-        st.caption("Click a run, or a row in Overview.")
+        # A searchable dropdown over the filtered runs (type to narrow it further): it
+        # scales to hundreds of runs. Labels are the SAME as the Overview "All runs" table
+        # (RunInfo.label). The active run is always an option, so filters never unselect it.
+        _labels = [r.label for r in _shown]
+        if _active not in _labels:
+            _labels.insert(0, _active)
+        st.caption(f"{len(_shown)} of {len(runs)} runs match")
+        # The active run can also change outside this widget (an Overview row, a direct
+        # link). When it did, sync the widget's state first, or its stale value would
+        # switch the run back; when it did not, leave it (it may hold the user's new pick).
+        if st.session_state.get("_picker_active") != _active:
+            st.session_state["_picker_active"] = _active
+            st.session_state["run_picker"] = _active
+        _picked = st.selectbox("Select a run", _labels, key="run_picker")
+        if _picked != _active:
+            st.session_state["run_label"] = _picked
+            st.session_state["_picker_active"] = _picked
+            st.rerun()
+        st.caption("Pick a run here, or click a row in Overview.")
 
     # ── Appearance (least-used control — keep it at the bottom) ───────────────
     st.markdown("---")
@@ -161,6 +174,12 @@ with st.sidebar:
         st.rerun()
 
 # ── Build shared context and render the selected page ───────────────────────────
+# Keep the URL pointing at what is on screen, so it can be copied as a direct link.
+_wanted = run_select.query_params_for(run, _page)
+if st.session_state.get("_qp_written") != _wanted:
+    st.session_state["_qp_written"] = _wanted
+    st.query_params.from_dict(_wanted)
+
 ctx = DashboardContext(
     runs=runs,
     selected_run=selected_run,

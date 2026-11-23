@@ -662,7 +662,6 @@ src/web/
   perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
   benchmark_parser.py     # lee benchmark_*.csv → (metadata dict, benchmark DataFrame); bloque #gpu
   confusion_matrix_parser.py # lee confusion_matrix_*.csv → matriz numpy por epoch
-  system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo con specs de GPU (usado por el predictor)
 ```
 
 **Pestaña Live.** Sigue un run en curso a partir de su flujo de eventos (`events_*.jsonl`, esquema

@@ -15,6 +15,15 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   `cluster/slurm/{single,ddp_multinode}.sbatch` (válidas también con `srun` mientras `sbatch` falle
   en VERODE), definición Apptainer con PyTorch cu118 (`cluster/apptainer/paravit.def`, sin
   construir aún) y guía [`cluster/README.md`](cluster/README.md).
+
+- Web (fase 3): selector de runs con búsqueda y filtros (entorno, dataset, modelo, estrategia) en
+  una tabla con selección en lugar de un botón por run; enlaces directos `?run=<sello>&tab=<sección>`
+  (la URL se actualiza al navegar); tabla *Test results by dataset* en el Overview (mejor test por
+  dataset con su métrica principal); lógica pura en `src/web/run_select.py` y rutas de datos desde
+  los perfiles de máquina en `src/web/data_paths.py`. El título pasa a ser «ParaViT-Lab», el
+  indicador *GPU time* multiplica por las GPU del run (y avisa si no se conocen) y la comparación
+  estimación-benchmark-real usa colores seguros para daltonismo (`theme.CB_*`).
+
 - `training.grad_accum_steps: k` (acumulación de gradientes, por defecto 1) y
   `training.grad_checkpointing: true` (*activation checkpointing* del backbone, por defecto
   false). La acumulación vive en `Trainer.train_epoch` (paso del optimizador cada `k` lotes,
@@ -73,6 +82,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   Reproduce las cifras de `docs/datasets/panda.md` (limpieza de etiquetas). Solo multiclase.
 
 ### Cambiado
+
+- Web: sin rutas del autor en `home.py`, `dataset.py` ni `helpers.py` (perfiles de máquina y mensaje
+  claro si no hay dataset local); las confusiones y la matriz de *Run results* toman las clases del
+  manifiesto del run y solo agrupan por ecosistema en BigEarthNet. Eliminados `model_explorer.py`
+  (importaba torch y timm) y `system_monitor.py`, que no usaba la web.
 
 - **Un solo lanzador para las cuatro estrategias** (fase 2 de la auditoría, A6 y A7). El flujo de
   `scripts/train_single_gpu.py`, `train_ddp.py`, `train_heterogeneous_ddp.py` y
