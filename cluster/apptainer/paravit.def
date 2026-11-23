@@ -1,0 +1,59 @@
+Bootstrap: docker
+From: pytorch/pytorch:2.4.1-cuda11.8-cudnn9-runtime
+
+# Imagen de ParaViT-Lab para clústeres con driver NVIDIA antiguo (VERODE: driver 525, CUDA 11.8).
+# Base: PyTorch con cu118 (imagen oficial de Docker Hub). Build y uso: cluster/README.md.
+#
+#   apptainer build paravit.sif cluster/apptainer/paravit.def     # desde la raíz del repositorio
+#   apptainer run --nv --bind /ruta/datos:/datos paravit.sif train --strategy single --dry-run
+
+%files
+    pyproject.toml /opt/paravit/pyproject.toml
+    paravit.py /opt/paravit/paravit.py
+    tfg.py /opt/paravit/tfg.py
+    src /opt/paravit/src
+    scripts /opt/paravit/scripts
+    configs /opt/paravit/configs
+
+%post
+    set -eu
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
+        && rm -rf /var/lib/apt/lists/*
+
+    # El proyecto pide Python >= 3.12 y la imagen trae 3.11: se cambia el intérprete del entorno base.
+    conda install -y -c conda-forge python=3.12
+    # torch y torchvision cu118 (la última versión que publica PyTorch para cu118; la imagen
+    # base solo aporta CUDA/cuDNN y el entorno conda).
+    pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
+    # Resto de dependencias del proyecto (las de pyproject.toml menos torch/torchvision, ya puestos)
+    python - <<'PY' > /tmp/requirements.txt
+import tomllib
+deps = tomllib.load(open("/opt/paravit/pyproject.toml", "rb"))["project"]["dependencies"]
+print("\n".join(d for d in deps if not d.startswith(("torch>", "torchvision>"))))
+PY
+    pip install --no-cache-dir -r /tmp/requirements.txt
+    rm /tmp/requirements.txt
+
+%environment
+    export PYTHONPATH=/opt/paravit
+    export PYTHONUNBUFFERED=1
+
+%runscript
+    # `apptainer run paravit.sif train ...` == `paravit train ...`
+    cd /opt/paravit
+    exec python paravit.py "$@"
+
+%test
+    cd /opt/paravit
+    python paravit.py --help > /dev/null
+    python -c "import torch, timm; print('torch', torch.__version__, 'cuda', torch.version.cuda)"
+
+%labels
+    Project ParaViT-Lab
+    Base pytorch/pytorch:2.4.1-cuda11.8-cudnn9-runtime
+
+%help
+    ParaViT-Lab con PyTorch cu118. Use --nv para la GPU y --bind para el dataset y los logs.
+    Detalle: cluster/README.md

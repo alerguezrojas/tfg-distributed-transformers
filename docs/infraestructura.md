@@ -108,6 +108,9 @@ torchrun --nproc_per_node=1 scripts/train_ddp.py \
 
 **En Verode — GPU real (NCCL, cuando haya 2 nodos operativos):**
 Usar el sistema de colas (Slurm) como recomienda el cotutor. Sin `--gres` si la especificación gres falla.
+`--launcher slurm` calcula el rendezvous `c10d` (primer nodo de `SLURM_JOB_NODELIST`) y deja el
+mismo comando en todos los nodos, sin `--node_rank` ni `--master_addr` a mano
+([`cluster/README.md`](../cluster/README.md)):
 ```bash
 # Desde login node en tmux:
 /opt/soft/slurm/20.11.04/bin/srun --partition=batch \
@@ -115,13 +118,15 @@ Usar el sistema de colas (Slurm) como recomienda el cotutor. Sin `--gres` si la 
   --ntasks-per-node=1 --cpus-per-task=8 --time=72:00:00 \
   bash -c '
     cd ~/tfg-distributed-transformers
-    .venv/bin/torchrun --nnodes=2 --nproc_per_node=1 \
-      --node_rank=$SLURM_NODEID \
-      --master_addr=verode16 --master_port=29500 \
-      scripts/train_ddp.py \
+    .venv/bin/python paravit.py train --strategy ddp --launcher slurm --n-gpus 1 \
       --config configs/train_ddp_verode.yaml --trace simple
   '
+# Equivalente con la plantilla: srun ... env NO_SRUN=1 bash cluster/slurm/ddp_multinode.sbatch
 ```
+Antes de `--launcher slurm` se lanzaba a mano `torchrun --nnodes=2 --node_rank=$SLURM_NODEID
+--master_addr=verode16 ...` en cada nodo; sigue valiendo (`--launcher local`, por defecto) para los
+nodos accesibles solo por SSH como en los tests CPU de abajo. La imagen Apptainer con torch cu118
+(`cluster/apptainer/paravit.def`) evita reinstalar cu118 sobre el `.venv`.
 
 **En Verode — test funcional CPU (gloo, nodos down en Slurm):**
 verode16 y verode18 aparecen como `down*` en Slurm y no son asignables por el sistema de colas,

@@ -6,6 +6,16 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- Ejecución en clúster (fase 4): `paravit train --launcher slurm` construye, dentro de un trabajo
+  de Slurm, un `torchrun` con rendezvous `c10d` en el primer nodo de `SLURM_JOB_NODELIST` (el
+  mismo comando en todos los nodos, sin `--node_rank` ni `--master_addr`); `src/slurm.py` (puro,
+  recibe el entorno como dict) trae el intérprete de listas compactas (`verode[16,21]`,
+  `n[01-03],m5`) y usa `scontrol show hostnames` si existe. Error claro fuera de Slurm o con
+  estrategias que no son torchrun; sin `--launcher` el comando no cambia. Plantillas
+  `cluster/slurm/{single,ddp_multinode}.sbatch` (válidas también con `srun` mientras `sbatch` falle
+  en VERODE), definición Apptainer con PyTorch cu118 (`cluster/apptainer/paravit.def`, sin
+  construir aún) y guía [`cluster/README.md`](cluster/README.md).
+
 - Web (fase 3): selector de runs con búsqueda y filtros (entorno, dataset, modelo, estrategia) en
   una tabla con selección en lugar de un botón por run; enlaces directos `?run=<sello>&tab=<sección>`
   (la URL se actualiza al navegar); tabla *Test results by dataset* en el Overview (mejor test por
