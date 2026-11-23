@@ -347,6 +347,10 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     if ms is None:
         console.print(f"[red]Unknown model '{model}': not in the table and timm cannot build it.[/]")
         return
+    if gs is None:
+        console.print(f"[red]Unknown GPU '{gpu}': not in the table (see GPU_TABLE in "
+                      "src/performance_model.py); a similar card is never assumed.[/]")
+        return
     p = _predict(strat, model, gpu, n_gpus=n_gpus, dataset_size=dataset_size,
                  batch=batch, precision=precision, epochs=epochs, disk_type=disk, nfs=nfs,
                  model=ms)
