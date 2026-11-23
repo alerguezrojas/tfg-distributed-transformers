@@ -40,8 +40,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   ConvNeXt-S 0,811, MaxViT-T 0,806 y EfficientNet-B3 0,775 de QWK de test; ninguno supera a Swin-T
   de forma significativa, ni las variantes de Swin-T con pesos in22k o 25 épocas.
 - PANDA, conjuntos de arquitecturas distintas elegidos solo en validación (predicciones de
-  validación de los 21 runs): el mejor run de cada arquitectura, los 5 primeros, da **QWK de test
-  0,851**, +0,022 [+0,004; +0,041] sobre el conjunto de tres semillas de Swin-T. Es el mejor
+  validación de los 21 runs): el mejor run de cada arquitectura, los 8 primeros, da **QWK de test
+  0,858**, +0,029 [+0,013; +0,047] sobre el conjunto de tres semillas de Swin-T. Es el mejor
   resultado de PANDA en el proyecto.
 - PANDA, criba de modelos a 512 px con la receta de la base (una semilla; los dos mejores, con
   tres): **Swin-T mejora el QWK de test de forma significativa**, 0,821 ± 0,011 frente a

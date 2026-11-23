@@ -508,30 +508,37 @@ miembros mirando el test, se guardaron las predicciones de **validación** de lo
 mira una vez, al final.
 
 Regla simple: el mejor run de cada arquitectura según la validación, y los *k* mejores; *k* se
-elige también en validación (el máximo está en *k* = 5). *Bootstrap* emparejado frente al
-conjunto de las tres semillas de Swin-T (QWK de test 0,829):
+elige también en validación, sobre las 13 arquitecturas (el máximo está en *k* = 8). *Bootstrap*
+emparejado frente al conjunto de las tres semillas de Swin-T (QWK de test 0,829):
 
-| *k* | Arquitecturas | QWK val | QWK test | − Swin-T × 3 [IC 95 %] |
+| *k* | Arquitectura que se añade | QWK val | QWK test | − Swin-T × 3 [IC 95 %] |
 |---|---|---|---|---|
-| 1 | Swin-T | 0,841 | 0,829 | +0,000 [−0,018; +0,019] |
-| 2 | + SwinV2-T | 0,845 | 0,852 | +0,023 [+0,007; +0,039] |
-| 3 | + EVA-02-S | 0,853 | 0,845 | +0,016 [−0,003; +0,034] |
-| 4 | + ConvNeXt-S | 0,857 | 0,856 | +0,027 [+0,009; +0,046] |
-| **5** | **+ ViT-S** | **0,858** | **0,851** | **+0,022 [+0,004; +0,041]** |
-| 6 | + ViT-B | 0,857 | 0,852 | +0,023 [+0,004; +0,042] |
+| 1 | Swin-T (25 épocas) | 0,841 | 0,829 | +0,000 [−0,018; +0,019] |
+| 2 | SwinV2-T | 0,845 | 0,852 | +0,023 [+0,007; +0,039] |
+| 3 | EVA-02-S | 0,853 | 0,845 | +0,016 [−0,003; +0,034] |
+| 4 | ConvNeXt-S | 0,857 | 0,856 | +0,027 [+0,009; +0,046] |
+| 5 | ViT-S | 0,858 | 0,851 | +0,022 [+0,004; +0,041] |
+| 6 | ViT-B | 0,857 | 0,852 | +0,023 [+0,004; +0,042] |
+| 7 | ConvNeXt-T | 0,859 | 0,856 | +0,027 [+0,010; +0,046] |
+| **8** | **MaxViT-T** | **0,859** | **0,858** | **+0,029 [+0,013; +0,047]** |
+| 9 | DeiT-III-S | 0,855 | 0,857 | +0,028 [+0,011; +0,046] |
+| 10-13 | EfficientNet-B0, V2-S, B3, ResNet-50 | 0,850-0,854 | 0,847-0,852 | +0,018 a +0,023 |
 
-- **El conjunto elegido en validación (*k* = 5) da 0,851 en test**, frente a 0,829 del conjunto
-  de tres Swin-T y 0,819 del de tres ViT-S: es el mejor resultado de PANDA en el proyecto.
+- **El conjunto elegido en validación (*k* = 8) da 0,858 en test**, frente a 0,829 del conjunto
+  de tres Swin-T y 0,819 del de tres ViT-S: es el mejor resultado de PANDA en el proyecto. La
+  validación es casi plana entre *k* = 4 y 8 (0,857-0,859), y en ese tramo el test da
+  0,851-0,858: la conclusión no depende de afinar *k*.
 - **La ganancia viene de la diversidad, no del número de miembros:** dos arquitecturas (Swin-T y
-  SwinV2-T) ya dan 0,852, más que tres semillas de Swin-T.
+  SwinV2-T) ya dan 0,852, más que tres semillas de Swin-T. Añadir los modelos flojos (las
+  EfficientNet y ResNet-50) baja tanto la validación como el test.
 - La selección voraz de Caruana et al. (2004) sobre la validación (añadir en cada paso el run que
   más sube el QWK de validación del conjunto) elige Swin-T de 25 épocas, ViT-S, Swin-T in22k y
   EVA-02-S: 0,844 en test (+0,015 [−0,003; +0,033] frente a Swin-T × 3). Ajusta más a la
   validación (0,866) y generaliza algo peor que la regla simple.
 - Un conjunto elegido mirando el test (Swin-T, SwinV2-T y ViT-B, los tres mejores de test con la
-  semilla 42) daba 0,851; con la elección en validación se evita ese sesgo, y la cifra se mantiene.
-- Coste: el conjunto de *k* = 5 son unas 3,5 horas de entrenamiento (en local o en Kaggle) y cinco
-  pasadas en inferencia.
+  semilla 42) daba 0,851; con la elección en validación se evita ese sesgo, y la cifra no baja.
+- Coste: el conjunto de *k* = 8 son unas 6 horas de entrenamiento (en local o en Kaggle) y ocho
+  pasadas en inferencia; el de *k* = 2 (0,852), algo más de 1,5 horas.
 
 Pendiente (en curso en Kaggle, lote `seeds_512`): semillas 43 y 44 de SwinV2-T y ViT-B, para
 confirmarlos y repetir el conjunto con runs que no intervinieron en la elección, y Swin-T con DDP

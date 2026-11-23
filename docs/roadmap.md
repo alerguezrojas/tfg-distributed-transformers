@@ -20,11 +20,11 @@ de tiempo por run (38 min). ConvNeXt-T, que parecía mejorar con la semilla 42, 
 queda por debajo (−0,075). Swin-T pasa a ser el modelo de referencia. Tablas en
 [datasets/panda.md](datasets/panda.md#criba-de-modelos-22112026).
 
-**Modelos grandes y conjuntos de arquitecturas (23/11/2026): QWK de test 0,851.** En Kaggle
+**Modelos grandes y conjuntos de arquitecturas (23/11/2026): QWK de test 0,858.** En Kaggle
 (2 × T4), SwinV2-T (0,835), ViT-B (0,823) y ConvNeXt-S (0,811) superan a la base con la semilla 42,
 pero ninguno a Swin-T; tampoco las variantes de Swin-T (pesos in22k, 25 épocas). Lo que sí sube es
 **mezclar arquitecturas**: con los miembros elegidos solo en validación (el mejor run de cada
-arquitectura, los 5 primeros), el conjunto da **0,851 en test**, +0,022 [+0,004; +0,041] sobre el
+arquitectura, los 8 primeros), el conjunto da **0,858 en test**, +0,029 [+0,013; +0,047] sobre el
 conjunto de tres semillas de Swin-T (0,829), y dos arquitecturas (Swin-T + SwinV2-T) ya dan 0,852.
 Para elegir sin mirar el test se guardaron las predicciones de validación de los 21 runs.
 
@@ -345,7 +345,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
     (0,821 ± 0,011, tres semillas); ConvNeXt-T, DeiT-III, EVA-02 y EfficientNet empatan.
   - [x] Modelos grandes en Kaggle (ViT-B, ConvNeXt-S, SwinV2-T, EfficientNet-B3, MaxViT-T):
     ninguno supera a Swin-T (23/11/2026).
-  - [x] Conjunto de arquitecturas elegido en validación: QWK de test 0,851 (23/11/2026).
+  - [x] Conjunto de arquitecturas elegido en validación: QWK de test 0,858 (23/11/2026).
   - [ ] Semillas 43 y 44 de SwinV2-T y ViT-B; conjunto repetido con ellas.
   - [ ] Adaptación a otro hospital y normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
