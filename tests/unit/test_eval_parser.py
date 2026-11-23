@@ -72,3 +72,14 @@ def test_discover_no_test_csv_is_empty_list(tmp_path):
     (d / "train_01062026_120000.log").write_text("x\n")
     runs = discover_runs(tmp_path)
     assert runs[0].test_csv_paths == []
+
+
+def test_unstamped_test_csv_goes_to_the_folders_only_run(tmp_path):
+    # e.g. the TFG's BigEarthNet run: one log, test_best_epoch007.csv
+    d = tmp_path / "logs" / "verode" / "single" / "vit_base_patch16_224"
+    d.mkdir(parents=True)
+    (d / "train_27052026_210223.log").write_text("Configuración: modelo\n")
+    (d / "test_best_epoch007.csv").write_text(_EVAL_CSV)
+    r = discover_runs(tmp_path)[0]
+    assert [p.name for p in r.test_csv_paths] == ["test_best_epoch007.csv"]
+    assert r.unassigned_test_csv_paths == []

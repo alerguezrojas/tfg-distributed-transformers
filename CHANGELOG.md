@@ -46,6 +46,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   a cada run (cuatro runs de `medmnist_breast` mostraban el mismo F1 de test). Ahora cada run recibe
   solo su `test_<sello>.csv` (o `eval_<sello>.csv`); los demás quedan «sin asignar»
   (`RunInfo.unassigned_test_csv_paths`) y no se atribuyen a ningún run.
+  Si la carpeta tiene un solo run, los CSV sin sello (p. ej. `test_best_epoch007.csv` del run de
+  BigEarthNet del TFG) se le asignan. `scripts/eval.py --output` sin ruta escribe
+  `<split>_<sello>.csv` en la carpeta de logs del run (como `--save-predictions` sin ruta); el
+  runbook de VERODE lo usa.
+- El entrenamiento heterogéneo elige la GPU con `local_rank % device_count`, como DDP, y su línea
+  `Configuración:` dice la pérdida que entrena de verdad (`bce` o `bce+pos_weight`).
 - `paravit runs` mostraba «Best Val F1» también en PANDA: ahora usa la métrica principal del run
   (QWK en PANDA, AUC en MedMNIST, F1 en el resto), con su nombre en una columna, y el valor de
   test de esa métrica.

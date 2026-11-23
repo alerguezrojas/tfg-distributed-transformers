@@ -191,3 +191,13 @@ def test_threshold_note_names_the_source(tmp_path):
         path = _save(tmp_path / "logs" / f"{src}.npz", threshold_source=src)
         c = InspectorCtx.from_test(d.load_test_predictions(path, tmp_path), path)
         assert word in threshold_note(c, 0.4)
+
+
+def test_default_path_for_the_results_csv_has_the_runs_stamp(tmp_path):
+    # `eval --output` without a path: test_<ts>.csv, the name the web pairs with the run
+    ckpt = tmp_path / "checkpoints" / "local" / "single" / "vit" / "20112026_101500" / "best.pt"
+    ckpt.parent.mkdir(parents=True)
+    ckpt.write_bytes(b"")
+    base = tmp_path / "logs" / "local" / "single" / "vit"
+    assert default_predictions_path(ckpt, prefix="test", suffix=".csv") == base / "test_20112026_101500.csv"
+    assert default_predictions_path(ckpt, prefix="val", suffix=".csv") == base / "val_20112026_101500.csv"

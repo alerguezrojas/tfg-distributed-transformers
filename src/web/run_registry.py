@@ -228,7 +228,8 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
 
     # Held-out test CSVs: test_<ts>.csv / eval_<ts>.csv belong to the run with that stamp.
     # Any other test_*/eval_*.csv (no stamp, or one of no run) is NOT attributed: the folder's
-    # runs only list it in unassigned_test_csv_paths.
+    # runs only list it in unassigned_test_csv_paths. Exception: a folder with a single run
+    # gives its loose CSVs to that run.
     _unassigned_by_dir: dict[Path, list[Path]] = {}
     for pat in ("test_*.csv", "eval_*.csv"):
         for csv_path in logs_root.rglob(pat):
@@ -237,9 +238,17 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
                 runs[m.group(1)].test_csv_paths.append(csv_path)
             else:
                 _unassigned_by_dir.setdefault(csv_path.parent, []).append(csv_path)
+    runs_per_dir: dict[Path, int] = {}
     for r in runs.values():
+        runs_per_dir[r.log_path.parent] = runs_per_dir.get(r.log_path.parent, 0) + 1
+    for r in runs.values():
+        loose = sorted(_unassigned_by_dir.get(r.log_path.parent, []))
+        if runs_per_dir[r.log_path.parent] == 1:
+            # the folder's only run: no ambiguity, an unstamped CSV (test_best_epoch007.csv) is its
+            r.test_csv_paths.extend(loose)
+            loose = []
         r.test_csv_paths.sort()
-        r.unassigned_test_csv_paths = sorted(_unassigned_by_dir.get(r.log_path.parent, []))
+        r.unassigned_test_csv_paths = loose
 
     for r in runs.values():
         r.meta = load_run_meta(r)

@@ -191,7 +191,8 @@ el umbral es la media de los guardados en los miembros (si falta alguno, se ajus
 `--save-predictions` **exige ruta explícita** con un conjunto (no hay un único run del que deducir el
 sello); con un solo checkpoint no cambia nada.
 
-Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
+Evalúa una única vez sobre el split de test y con `--output` (sin ruta: `test_<sello>.csv` en la carpeta de logs del run, el nombre que
+empareja la web) escribe un CSV (métricas por clase + fila
 agregada, con el AUC macro y, en tareas ordinales, el QWK) que el panel web muestra en la tarjeta «Held-out test set» del run.
 
 Tras las métricas agregadas y por clase, `eval` añade (solo si procede):
