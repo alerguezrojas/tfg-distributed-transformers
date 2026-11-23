@@ -131,6 +131,22 @@ def test_cli_forwards_the_new_options_after_the_old_ones():
                         "--inspect", "anomalies"]
 
 
+def test_cli_rejects_a_trace_mode_the_strategy_lacks():
+    with pytest.raises(ValueError, match="--trace deep"):
+        build_train_cmd("model-parallel", "c.yaml", trace="deep")
+    from typer.testing import CliRunner
+    from src.cli import app
+    out = CliRunner().invoke(app, ["train", "--strategy", "mp", "--trace", "deep", "--dry-run"])
+    assert out.exit_code == 2 and "Traceback" not in out.output
+
+
+def test_estimate_with_an_unknown_strategy_is_a_usage_error_not_a_traceback():
+    from typer.testing import CliRunner
+    from src.cli import app
+    out = CliRunner().invoke(app, ["estimate", "--strategy", "foo"])
+    assert out.exit_code == 2 and "unknown strategy" in out.output
+
+
 def test_cli_rejects_what_the_strategy_cannot_do():
     with pytest.raises(ValueError, match="--batch-size"):
         build_train_cmd("heterogeneous", "c.yaml", batch_size=8)

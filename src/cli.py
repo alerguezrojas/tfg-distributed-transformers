@@ -104,6 +104,9 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
     raise ``ValueError``.
     """
     spec = get_strategy(strategy)            # ValueError (with the available ones) if unknown
+    if trace not in spec.trace_choices:
+        raise ValueError(f"--trace {trace} is not available in strategy '{spec.name}' "
+                         f"(one of {', '.join(spec.trace_choices)})")
 
     common = []
     if model:
@@ -385,7 +388,10 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
         estimate_rc, estimate_rio, precision_factor,
         BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, EVAL_POWER_FRACTION)
     nfs = disk == "nfs"
-    strat = get_strategy(strategy).name
+    try:
+        strat = get_strategy(strategy).name
+    except ValueError as err:
+        raise typer.BadParameter(str(err)) from None
     ms, gs = resolve_model_spec(model, in_chans, num_classes, img_size), gpu_spec(gpu)
     if ms is None:
         console.print(f"[red]Unknown model '{model}': not in the table and timm cannot build it.[/]")

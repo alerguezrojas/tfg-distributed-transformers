@@ -150,6 +150,12 @@ def _resume(ctx: LaunchContext, trainer, checkpoint: str) -> None:
     ctx.cfg["training"]["epochs"] = remaining
 
 
+def _inspect_label(inspect, trace: str):
+    if inspect is not None:
+        return sorted(inspect)
+    return "todas" if trace == "deep" else "ninguna"
+
+
 def _print_summary(ctx: LaunchContext, trace, layers, metrics, inspect) -> None:
     """Console summary (rank 0): what was built. None of these lines is parsed by the web."""
     use_deep = trace == "deep" or inspect is not None
@@ -160,9 +166,7 @@ def _print_summary(ctx: LaunchContext, trace, layers, metrics, inspect) -> None:
     print(f"Modelo      : {ctx.model_name}")
     print(f"Traza       : {trace}" + (" [DeepTracingDecorator]" if use_deep else ""))
     if "inspect" not in ctx.strategy.unsupported:
-        shown = (sorted(inspect) if inspect is not None
-                 else ("todas" if trace == "deep" else "ninguna"))
-        print(f"Inspect     : {shown}")
+        print(f"Inspect     : {_inspect_label(inspect, trace)}")
     print(f"Capas       : {layers or 'ninguna'}")
     print(f"Decoradores@: {ctx.args.fn or 'ninguno'}")
     print(f"Métricas    : {metrics or 'ninguna (DeepTracingDecorator las gestiona)'}")

@@ -21,6 +21,7 @@ from typing import Any, Callable, Mapping
 
 _CUDA_0 = "cuda:0"
 _CPU = "cpu"
+_TORCHRUN = "torchrun"
 _ALL_TRACES = ("off", "simple", "deep")
 
 
@@ -69,7 +70,7 @@ class StrategySpec:
     make_builder: Callable[[LaunchContext], Any]    # TrainingSessionBuilder with its own with_*
     config_line: Callable[[LaunchContext], str]     # text after "Configuración:" (web contract)
     aliases: tuple[str, ...] = ()
-    launcher: str = "python"           # "python" (plain process) | "torchrun"
+    launcher: str = "python"           # "python" (plain process) | _TORCHRUN
     nproc: int | None = None           # torchrun processes per node; None = one per GPU (--n-gpus)
     distributed: bool = False          # process group: rank offset in the seed, shared timestamp…
     loader_rng: bool = True            # seeded DataLoader generator + worker_init_fn
@@ -83,14 +84,14 @@ class StrategySpec:
     def __post_init__(self):
         if not self.name or self.name != _normalise(self.name):
             raise ValueError(f"strategy name {self.name!r} must be lowercase with underscores")
-        if self.launcher not in ("python", "torchrun"):
-            raise ValueError(f"{self.name}: launcher must be 'python' or 'torchrun'")
-        if self.launcher == "torchrun" and not self.distributed:
-            raise ValueError(f"{self.name}: a torchrun strategy is distributed")
+        if self.launcher not in ("python", _TORCHRUN):
+            raise ValueError(f"{self.name}: launcher must be 'python' or '{_TORCHRUN}'")
+        if self.launcher == _TORCHRUN and not self.distributed:
+            raise ValueError(f"{self.name}: a {_TORCHRUN} strategy is distributed")
 
     @property
     def torchrun(self) -> bool:
-        return self.launcher == "torchrun"
+        return self.launcher == _TORCHRUN
 
 
 # ── Registry ──────────────────────────────────────────────────────────────────
@@ -418,7 +419,7 @@ register_strategy(StrategySpec(
 register_strategy(StrategySpec(
     name="ddp", description="Distributed training (multi-GPU, multi-node DDP)",
     script="scripts/train_ddp.py", default_config="configs/train_cluster.yaml",
-    launcher="torchrun", distributed=True,
+    launcher=_TORCHRUN, distributed=True,
     init_env=_init_ddp, make_loaders=_make_ddp_loaders, make_builder=_build_ddp,
     config_line=_line_ddp, describe=_describe_ddp))
 
@@ -427,7 +428,7 @@ register_strategy(StrategySpec(
     script="scripts/train_heterogeneous_ddp.py",
     default_config="configs/train_heterogeneous_ddp.yaml",
     aliases=("heterogeneous_ddp", "hetero"),
-    launcher="torchrun", nproc=1, distributed=True, loader_rng=False,
+    launcher=_TORCHRUN, nproc=1, distributed=True, loader_rng=False,
     init_env=_init_heterogeneous, make_loaders=_make_heterogeneous_loaders,
     make_builder=_build_heterogeneous, config_line=_line_heterogeneous,
     describe=_describe_heterogeneous,

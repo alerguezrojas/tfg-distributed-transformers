@@ -70,15 +70,16 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   `single_gpu` son alias (`get_strategy`). `paravit train --strategy` acepta ambos y la CLI y el
   menú leen la lista del registro (`STRATEGIES`, que ahora contiene `model_parallel`).
 - Las cuatro estrategias aceptan ya las mismas opciones: `--batch-size`, `--resume` e `--inspect`
-  llegan a las que no las tenían (`--resume` a DDP y heterogéneo: cada rank carga el mismo
-  `last.pt`; `--inspect` a DDP y heterogéneo, solo en el rank 0). Lo que una estrategia no puede
+  llegan a las que no las tenían (`--resume` a DDP, heterogéneo y model-parallel: cada rank
+  carga el mismo `last.pt`; `--inspect` a DDP y heterogéneo, solo en el rank 0). Lo que una estrategia no puede
   cumplir da un error claro en vez de ignorarse: `--precision` y `--batch-size` en heterogéneo (su
   bucle es fp32 y el lote va por rank en `distributed.ranks`) e `--inspect` en model-parallel.
   `paravit train` gana `--batch-size`, `--resume` e `--inspect`, avisa si descarta `--precision` en
   heterogeneous y el menú ofrece la precisión también en ddp y model-parallel.
 - Un lanzador distribuido sin `torchrun` (sin `RANK`/`WORLD_SIZE`) da un mensaje que lo explica en
   vez de un `KeyError`. `--model` actualiza también `model.name` de la config antes de validarla en
-  todas las estrategias (antes solo en model-parallel), y en heterogéneo los reporteros de métricas
+  todas las estrategias (antes solo en model-parallel): un YAML con `hf:...` y `pooling: cls`
+  lanzado con `--model <timm>` ahora falla con un error claro en vez de ignorar el pooling, y en heterogéneo los reporteros de métricas
   quedan en el rank 0, como en DDP.
 
 ### Corregido

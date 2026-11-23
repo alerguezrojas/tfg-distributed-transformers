@@ -79,6 +79,13 @@ class DDPTrainer(Trainer):
 
     # ── Overrides ────────────────────────────────────────────────────────────
 
+    def load_checkpoint(self, path) -> dict:
+        # After --resume the sampler must continue with the next epoch's shuffle, not repeat
+        # epoch 1's (Trainer.load_checkpoint only sets _current_epoch / _epoch_offset).
+        ckpt = super().load_checkpoint(path)
+        self._epoch = ckpt.get("epoch", 0)
+        return ckpt
+
     def train_epoch(self, loader: DataLoader) -> dict:
         self._epoch += 1
         # DistributedSampler must know the epoch to produce different shuffles
