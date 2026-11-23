@@ -223,3 +223,21 @@ def test_cli_estimate_any_timm_model():
     res = CliRunner().invoke(app, ["estimate", "--model", "definitely_not_a_timm_model"],
                              env={"COLUMNS": "240"})
     assert "Unknown model" in res.output
+
+
+def test_saved_activation_gb_grows_with_resolution_and_matches_vit_scale():
+    """Autograd's saved bytes: ~4× from 112 to 224 px for a conv net; a tiny ViT at 224
+    saves tens of MB per image, not GBs."""
+    from src.model_profile import saved_activation_gb
+    small = saved_activation_gb("resnet18", 3, 10, 112)
+    big = saved_activation_gb("resnet18", 3, 10, 224)
+    assert 3.0 < big / small < 5.0
+    vit = saved_activation_gb("vit_tiny_patch16_224", 3, 10, 224)
+    assert 0.01 < vit < 0.2
+
+
+def test_saved_activation_gb_unknown_model():
+    import pytest
+    from src.model_profile import saved_activation_gb
+    with pytest.raises(ValueError):
+        saved_activation_gb("no_such_model_xyz")

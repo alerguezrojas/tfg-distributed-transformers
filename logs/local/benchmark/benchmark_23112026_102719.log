@@ -1,0 +1,50 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  23/11/2026 10:27:24
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               maxvit_tiny_tf_512.in1k
+  Parámetros totales:   30,539,662 (30.5M)
+  FLOPs/imagen:         10369.5 MFLOPs
+  Memoria estática:     0.48 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: amp (Tensor cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 3725 MHz
+  RAM: 16.7 GB total / 9.9 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch         VRAM     Fuente      Estado
+     16      22.88 GB   estimado         OOM
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     16  off                 OOM
+     16  simple              OOM
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  15 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     16  off       OOM
+     16  simple    OOM
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: maxvit_tiny_tf_512.in1k
+  Val F1 esperado:    ~0.590  (epoch ≈ 8)
+  Early stop aprox.:  epoch ≈ 15  (patience=10)
+  Confianza:          medium
+  Nota: Empirical prior anchored to documented vit_tiny runs on BigEarthNet-S2; confidence medium. | Dataset
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  Ningún batch size viable
