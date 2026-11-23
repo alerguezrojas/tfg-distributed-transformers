@@ -54,7 +54,7 @@ def validate_config(cfg: dict, model_parallel: bool = False) -> None:
 
     spec = _check_data(cfg, errors)
     _check_model(cfg["model"], spec, errors, model_parallel)
-    _check_training(cfg["training"], spec, errors)
+    _check_training(cfg["training"], spec, errors, model_parallel)
     _check_distributed(cfg.get("distributed", {}), errors)
     _check_monitor(cfg.get("monitor") or {}, errors)
     _check_checkpoint(cfg.get("checkpoint") or {}, errors)
@@ -137,7 +137,8 @@ def _check_backbone(model: dict, spec: DatasetSpec | None, errors: list,
                       f"has {spec.in_channels}")
 
 
-def _check_training(train: dict, spec: DatasetSpec | None, errors: list) -> None:
+def _check_training(train: dict, spec: DatasetSpec | None, errors: list,
+                    model_parallel: bool = False) -> None:
     for key in _TRAIN_REQUIRED:
         if key not in train:
             errors.append(f"training.{key} is required")
@@ -145,6 +146,7 @@ def _check_training(train: dict, spec: DatasetSpec | None, errors: list) -> None
     _check_ranges(train, errors)
     _check_model_selection(train, spec, errors)
     _check_loss(train, spec, errors)
+    _check_memory_options(train, errors, model_parallel)
 
 
 def _check_numeric_fields(train: dict, errors: list) -> None:
@@ -217,6 +219,22 @@ def _check_model_selection(train: dict, spec: DatasetSpec | None, errors: list) 
     elif sb == "f1_optimal" and spec is not None and not spec.make_task().searches_threshold:
         errors.append(f"training.select_by: f1_optimal needs a tunable threshold, which "
                       f"the {spec.task} task of {spec.name!r} does not have; use 'f1'")
+
+
+def _check_memory_options(train: dict, errors: list, model_parallel: bool) -> None:
+    """``grad_accum_steps`` (entero >= 1) y ``grad_checkpointing`` (booleano)."""
+    if "grad_accum_steps" in train:
+        k = train["grad_accum_steps"]
+        if isinstance(k, bool) or not isinstance(k, int) or k < 1:
+            errors.append(f"training.grad_accum_steps must be an integer >= 1, got {k!r}")
+    if "grad_checkpointing" in train:
+        c = train["grad_checkpointing"]
+        if not isinstance(c, bool):
+            errors.append(f"training.grad_checkpointing must be true or false, got {c!r}")
+        elif c and model_parallel:
+            errors.append("training.grad_checkpointing is not supported with model parallelism "
+                          "(its forward walks the blocks by hand, so timm's checkpointing "
+                          "would not apply)")
 
 
 def _check_loss(train: dict, spec: DatasetSpec | None, errors: list) -> None:

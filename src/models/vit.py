@@ -111,6 +111,16 @@ class TimmClassifier(nn.Module):
             self.backbone.eval()
         return self
 
+    def set_grad_checkpointing(self, enable: bool = True) -> None:
+        """Activation checkpointing del backbone: recalcula las activaciones de cada bloque
+        en el backward en vez de guardarlas (menos memoria, ~30 % más de cómputo). Lo ofrecen
+        los modelos de timm y los backbones registrados que lo declaren; si no, error claro."""
+        fn = getattr(self.backbone, "set_grad_checkpointing", None)
+        if fn is None:
+            raise ValueError(f"el backbone de '{self.model_name}' no admite activation "
+                             "checkpointing: quiten training.grad_checkpointing")
+        fn(enable)
+
     @property
     def supports_llrd(self) -> bool:
         """True when ``build_llrd_optimizer`` can split the backbone into layers: a

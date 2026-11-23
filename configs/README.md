@@ -63,6 +63,12 @@ las configs se usan tal cual. `--set clave.sub=valor` cambia cualquier clave sue
 | `train_demo_ddp.yaml` | 2 GPU (NCCL) | Paralelismo de **datos** — speedup positivo real (Kaggle 2×T4). |
 | `train_model_parallel_kaggle.yaml` | 2 GPU | Paralelismo de **modelo** — no acelera, pero permite modelos que no caben en 1 GPU (Kaggle 2×T4). |
 
+## Opciones de memoria (cualquier config)
+
+`training.grad_accum_steps: k` (paso del optimizador cada `k` lotes) y `training.grad_checkpointing: true`
+(*activation checkpointing*) están desactivadas por defecto; se activan con `--set` y no tienen
+config propia. Cuándo usarlas y cuánto cuestan: [guía de uso](../docs/guia_de_uso.md).
+
 ## Otros datasets (`data.name`)
 
 | Config | Dataset | Para qué |

@@ -146,6 +146,15 @@ class HFEncoder(nn.Module):
             prefix = max(0, tokens.shape[1] - (x.shape[-2] // self._patch) * (x.shape[-1] // self._patch))
         return tokens[:, prefix:].mean(dim=1)
 
+    def set_grad_checkpointing(self, enable: bool = True) -> None:
+        """Activation checkpointing con la API de ``transformers`` (misma firma que timm)."""
+        if not enable:
+            return
+        if not getattr(self.model, "supports_gradient_checkpointing", False):
+            raise ValueError(f"{type(self.model).__name__} no admite activation checkpointing: "
+                             "quiten training.grad_checkpointing para este backbone")
+        self.model.gradient_checkpointing_enable()
+
     def llrd_layout(self):
         """``(embedding params, [block params…], other params)`` as ``(name, param)`` lists."""
         embed = getattr(self.model, "embeddings", None)

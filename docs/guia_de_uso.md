@@ -371,6 +371,8 @@ training:
   select_by: f1                         # mejor checkpoint: f1 | f1_optimal | auc | qwk
   label_smoothing: 0.1                  # regularización opcional
   mixup_alpha: 0.2
+  grad_accum_steps: 1                   # opcional: paso del optimizador cada k lotes (ver «Memoria»)
+  grad_checkpointing: false             # opcional: activation checkpointing del backbone
 checkpoint:
   dir: "checkpoints/local"
   keep: best_last                       # best_last (defecto: best.pt + last.pt) | all (uno por época mejorada)
@@ -390,6 +392,55 @@ ordenadas (`ordinal=True` en su ficha, p. ej. un grado de cáncer).
 
 Las claves de `data:` dependen del dataset elegido con `data.name`. Los datasets disponibles y
 cómo añadir uno nuevo están en [`datasets/README.md`](datasets/README.md).
+
+### Memoria: acumulación de gradientes y activation checkpointing
+
+Dos opciones, desactivadas por defecto, para cuando el lote o el modelo no caben en la GPU. Se
+activan en el YAML o con `--set`:
+
+```bash
+uv run paravit.py train --config configs/train_panda.yaml \
+  --set training.batch_size=8 --set training.grad_accum_steps=2      # lote efectivo 16
+uv run paravit.py train --config configs/train_panda.yaml --set training.grad_checkpointing=true
+```
+
+- `training.grad_accum_steps: k` (entero ≥ 1): el optimizador da un paso cada `k` lotes y la
+  pérdida de cada uno se divide entre `k`, así que el gradiente es el del lote efectivo
+  `k × batch_size`. Con AMP, `grad_clip` y LLRD funciona igual (el recorte se hace sobre el
+  gradiente ya acumulado, justo antes del paso); en DDP solo el último lote de cada grupo hace
+  all-reduce. El último grupo incompleto de la época también da su paso. El *scheduler* sigue
+  avanzando por época. Ojo con BatchNorm: cada micro-lote normaliza con sus propias estadísticas,
+  así que en una CNN con BatchNorm `k × b` no equivale a un lote de `k·b` (los ViT, que usan
+  LayerNorm, sí). No se admite en el DDP heterogéneo ni con `--trace deep` (batch-table).
+- `training.grad_checkpointing: true`: *activation checkpointing* del backbone. No guarda las
+  activaciones de cada bloque, las recalcula en el *backward*: menos memoria a cambio de ~25 %
+  menos velocidad. Vale para cualquier modelo de timm que lo ofrezca (ViT, Swin, ResNet,
+  ConvNeXt…) y para los backbones de `transformers`; si no, da un error claro. No se admite con
+  paralelismo de modelo.
+
+Medido en la RTX 3060 Ti (8 GB), PANDA a 512 px, AMP, lote sintético y `paravit benchmark`
+aplicando las mismas opciones (pico de memoria de PyTorch, img/s de entrenamiento):
+
+| Modelo | Lote | Acumulación | Checkpointing | Pico (GB) | img/s |
+|---|---|---|---|---|---|
+| Swin-T | 16 | 1 | no | 6,73 | 56,9 |
+| Swin-T | 16 | 1 | sí | 2,27 | 43,1 |
+| Swin-T | 8 | 2 (efectivo 16) | no | 3,71 | 54,5 |
+| Swin-T | 8 | 2 (efectivo 16) | sí | 1,37 | 39,6 |
+| Swin-T | 32 | 1 | sí | 4,08 | 44,4 |
+| Swin-T | 48 | 1 | sí | 5,90 | 45,0 |
+| Swin-T | 56 | 1 | sí | OOM | — |
+| ViT-S/16 | 16 | 1 | no | 3,25 | 92,4 |
+| ViT-S/16 | 16 | 1 | sí | 0,95 | 72,9 |
+| ViT-S/16 | 8 | 2 (efectivo 16) | no | 1,89 | 84,3 |
+
+Cuándo usar cada una: la **acumulación** es casi gratis en velocidad (−4 % en Swin-T, −9 % en
+ViT-S, por el paso extra y el menor tamaño de cada lote) y reparte la memoria en `k`: úsenla para
+mantener el lote efectivo de una receta con menos memoria. El **checkpointing** recorta la
+memoria ~3× (6,73 → 2,27 GB) pero cuesta ~25 % de velocidad; con él cabe un lote de 48 (3× el de
+16) y el rendimiento sube de 43 a 45 img/s, por lo que solo compensa si el modelo o la resolución
+no caben de otra manera. Pueden combinarse. Medidas de un solo run por configuración: sirven de
+orden de magnitud, no de intervalo.
 
 ### Perfiles de máquina y `--set`
 

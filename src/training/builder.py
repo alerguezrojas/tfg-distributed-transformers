@@ -214,6 +214,9 @@ class TrainingSessionBuilder:
                 pooling=cfg["model"].get("pooling"),
                 freeze_backbone=freeze_backbone,
             )
+            if cfg["training"].get("grad_checkpointing", False):
+                # Activation checkpointing (el validador lo rechaza con paralelismo de modelo)
+                model.set_grad_checkpointing(True)
 
         # ── Optimizer ────────────────────────────────────────────────────────
         # For model parallelism the LLRD layer structure lives on the wrapped
@@ -272,6 +275,7 @@ class TrainingSessionBuilder:
 
         # ── Base Trainer ──────────────────────────────────────────────────────
         grad_clip = cfg["training"].get("grad_clip", None)
+        grad_accum_steps = cfg["training"].get("grad_accum_steps", 1)
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         precision = cfg["training"].get("precision", "fp32")
@@ -296,6 +300,7 @@ class TrainingSessionBuilder:
                 model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
+                grad_accum_steps=grad_accum_steps,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
@@ -313,6 +318,7 @@ class TrainingSessionBuilder:
                 model_name=model_name,
                 criterion=criterion,      # its pos_weight carries into the summed loss
                 grad_clip=grad_clip,
+                grad_accum_steps=grad_accum_steps,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
@@ -333,6 +339,7 @@ class TrainingSessionBuilder:
                 model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
+                grad_accum_steps=grad_accum_steps,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
@@ -351,6 +358,7 @@ class TrainingSessionBuilder:
                 model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
+                grad_accum_steps=grad_accum_steps,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
