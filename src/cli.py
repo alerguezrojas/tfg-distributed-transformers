@@ -178,6 +178,12 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
     return cmd
 
 
+def _abspath(path: str) -> str:
+    """Paths given by the user are relative to WHERE they ran paravit, not to the repo root
+    the scripts run from (``_run`` uses ``cwd=ROOT``)."""
+    return str(Path(path).expanduser().resolve())
+
+
 def build_predict_cmd(checkpoint: str | list[str], config: str, inputs: list[str], *,
                       model: str | None = None, out: str | None = None,
                       batch_size: int | None = None, device: str | None = None) -> list[str]:
@@ -186,17 +192,17 @@ def build_predict_cmd(checkpoint: str | list[str], config: str, inputs: list[str
     checkpoints = [checkpoint] if isinstance(checkpoint, str) else list(checkpoint)
     cmd = [sys.executable, "scripts/predict.py"]
     for ckpt in checkpoints:
-        cmd += ["--checkpoint", ckpt]
-    cmd += ["--config", config]
+        cmd += ["--checkpoint", _abspath(ckpt)]
+    cmd += ["--config", _abspath(config)]
     if model:
         cmd += ["--model", model]
     if out:
-        cmd += ["--out", out]
+        cmd += ["--out", _abspath(out)]
     if batch_size:
         cmd += ["--batch-size", str(batch_size)]
     if device:
         cmd += ["--device", device]
-    return cmd + list(inputs)
+    return cmd + [_abspath(i) for i in inputs]
 
 
 def build_compare_cmd(a: list[str], b: list[str], *, label_a: str = "A", label_b: str = "B",

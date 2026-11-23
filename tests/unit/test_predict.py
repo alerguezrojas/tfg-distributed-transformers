@@ -53,12 +53,6 @@ def _images(folder, n=3, size=40):
     return paths
 
 
-@pytest.fixture(autouse=True)
-def configs_in_tmp(tmp_path, monkeypatch):
-    """predict only reads configs of the repo's configs/: point that folder at tmp_path."""
-    monkeypatch.setattr(predict, "CONFIGS", tmp_path)
-
-
 @pytest.fixture
 def setup(tmp_path):
     cfg = _cfg()
@@ -231,25 +225,71 @@ def test_cli_predict_dry_run_builds_the_command():
     assert "not executed" in r.output
     cmd = build_predict_cmd(["x.pt", "y.pt"], "c.yaml", ["a.png", "dir/"], out="p.csv",
                             batch_size=4, device="cpu")
-    assert cmd[1] == "scripts/predict.py" and cmd[-2:] == ["a.png", "dir/"]
-    assert cmd[2:6] == ["--checkpoint", "x.pt", "--checkpoint", "y.pt"]
-    assert "--out p.csv --batch-size 4 --device cpu" in " ".join(cmd)
-    assert build_predict_cmd("x.pt", "c.yaml", ["a.png"])[-1] == "a.png"
+    here = Path.cwd()                  # user paths are made absolute (scripts run from the repo)
+    assert cmd[1] == "scripts/predict.py"
+    assert cmd[-2:] == [str(here / "a.png"), str(here / "dir")]
+    assert cmd[2:6] == ["--checkpoint", str(here / "x.pt"), "--checkpoint", str(here / "y.pt")]
+    assert f"--out {here / 'p.csv'} --batch-size 4 --device cpu" in " ".join(cmd)
+    assert build_predict_cmd("x.pt", "c.yaml", ["a.png"])[-1] == str(here / "a.png")
 
 
-def test_find_config_only_reads_the_configs_folder(tmp_path):
-    (tmp_path / "models").mkdir()
-    (tmp_path / "train_x.yaml").write_text("a: 1\n")
-    (tmp_path / "models" / "m.yaml").write_text("b: 2\n")
-    assert predict.find_config("configs/train_x.yaml") == tmp_path / "train_x.yaml"
-    assert predict.find_config("/anywhere/else/m.yaml") == tmp_path / "models" / "m.yaml"
-    with pytest.raises(SystemExit, match="no hay ninguna"):
-        predict.find_config("../../etc/passwd")
-    (tmp_path / "models" / "train_x.yaml").write_text("c: 3\n")
-    with pytest.raises(SystemExit, match="varias"):
-        predict.find_config("train_x.yaml")
+
+def test_config_is_read_as_given_never_substituted(tmp_path):
+    """The config is the user's file, wherever it is (a Kaggle results/<run>/config.yaml)."""
+    from src.config_io import load_config
+    far = tmp_path / "kaggle" / "results" / "run"
+    far.mkdir(parents=True)
+    (far / "config.yaml").write_text(yaml.safe_dump({"data": {"image_size": 1024}}))
+    assert load_config(far / "config.yaml")["data"]["image_size"] == 1024
+    with pytest.raises(SystemExit, match="no existe"):
+        load_config(tmp_path / "missing.yaml")
+    with pytest.raises(SystemExit, match=".yaml"):
+        load_config(tmp_path / "notes.txt")
+    (tmp_path / "list.yaml").write_text("- a\n- b\n")
+    with pytest.raises(SystemExit, match="diccionario"):
+        load_config(tmp_path / "list.yaml")
 
 
-def test_find_config_real_repo_configs(monkeypatch):
-    monkeypatch.setattr(predict, "CONFIGS", Path(predict.__file__).resolve().parent.parent / "configs")
-    assert predict.find_config("configs/train_panda.yaml").name == "train_panda.yaml"
+def test_checkpoint_that_does_not_fit_is_a_clear_error(setup, tmp_path):
+    cfg, cfg_path, ck1, _, imgs = setup
+    torch.save({"epoch": 1, "model_state_dict": {"bogus.weight": torch.zeros(1)}, "metrics": {},
+                "model_name": "resnet18"}, tmp_path / "bad.pt")
+    with pytest.raises(SystemExit, match="no encaja"):
+        _run(cfg_path, [tmp_path / "bad.pt"], imgs)
+
+
+def test_sixteen_bit_images_are_rescaled_not_clipped(tmp_path):
+    from src.data.image_io import open_image
+    arr = (np.linspace(0, 4000, 64 * 64).reshape(64, 64)).astype(np.uint16)
+    Image.fromarray(arr).save(tmp_path / "xray.png")
+    out = open_image(tmp_path / "xray.png", "L")
+    assert out.dtype == np.uint8 and out.min() == 0 and out.max() == 255
+    assert (out == 255).mean() < 0.01            # convert("L") alone would clip ~all to 255
+
+
+def test_medmnist_reader_uses_the_training_size(tmp_path):
+    from src.data.registry import get_dataset_spec
+    Image.fromarray(np.zeros((512, 512, 3), np.uint8)).save(tmp_path / "derm.png")
+    spec = get_dataset_spec("medmnist_derma")
+    arr = spec.image_reader({"root": "x", "size": 28})(tmp_path / "derm.png")
+    assert arr.shape == (28, 28, 3) and arr.dtype == np.uint8
+
+
+def test_panda_dataset_and_reader_give_the_same_pixels(tmp_path):
+    """PandaDataset.__getitem__ (no transform) and read_mosaic see identical arrays."""
+    import pandas as pd
+    from src.data.panda import PandaDataset, read_mosaic
+    rng = np.random.default_rng(0)
+    root = tmp_path / "panda"
+    mosaics = root / "mosaics"
+    mosaics.mkdir(parents=True)
+    ids = ["a1", "b2"]
+    for i in ids:
+        Image.fromarray(rng.integers(0, 255, (100, 100, 3), dtype=np.uint8)).save(mosaics / f"{i}.jpg")
+    pd.DataFrame({"image_id": ids, "data_provider": ["radboud", "karolinska"],
+                  "isup_grade": [1, 3], "gleason_score": ["3+3", "4+3"]}).to_csv(root / "train.csv", index=False)
+    pd.DataFrame({"image_id": ids, "split": ["test", "test"]}).to_csv(root / "splits.csv", index=False)
+    ds = PandaDataset(root, "test", transform=None, image_size=64, mosaics=mosaics)
+    for k, i in enumerate(sorted(ids)):
+        x, _ = ds[k]
+        assert np.array_equal(x.permute(1, 2, 0).numpy(), read_mosaic(mosaics / f"{i}.jpg", 64))

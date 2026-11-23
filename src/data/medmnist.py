@@ -32,8 +32,9 @@ from pathlib import Path
 
 import numpy as np
 import torch
-from PIL import Image
 from torch.utils.data import Dataset
+
+from src.data.image_io import open_image
 from torchvision import transforms
 
 from src.data.registry import register_dataset
@@ -199,10 +200,11 @@ def make_transforms(channels: int, image_size: int = 224):
     return lambda split: tfm
 
 
-def read_image(path: str | Path, channels: int) -> np.ndarray:
-    """An image file as the array a MedMNIST sample has: (H, W) grayscale or (H, W, 3) RGB, uint8."""
-    with Image.open(path) as im:
-        return np.array(im.convert("L" if channels == 1 else "RGB"))
+def read_image(path: str | Path, channels: int, size: int | None = None) -> np.ndarray:
+    """An image file as the array a MedMNIST sample has: (H, W) grayscale or (H, W, 3) RGB,
+    uint8, at the ``size`` the model was trained on (``data.size``: 28 px images are not the
+    same input as a 512 px photo upscaled by the transform)."""
+    return open_image(path, "L" if channels == 1 else "RGB", size)
 
 
 def _npz_path(subset: Subset, data_cfg: dict) -> Path:
@@ -229,7 +231,8 @@ def _spec(name: str, subset: Subset) -> DatasetSpec:
         build=build,
         transforms=make_transforms(subset.channels),
         class_counts=class_counts,
-        image_reader=lambda data_cfg: (lambda path: read_image(path, subset.channels)),
+        image_reader=lambda data_cfg: (lambda path: read_image(
+            path, subset.channels, int(data_cfg.get("size", DEFAULT_SIZE)))),
     )
 
 

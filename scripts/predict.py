@@ -33,12 +33,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-import yaml
 from torch.utils.data import DataLoader, Dataset
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
+from src.config_io import load_config  # noqa: E402
 from src.data.registry import dataset_spec_from_config  # noqa: E402
 from src.training.checkpoints import resolve_checkpoint  # noqa: E402
 from eval import (load_member, resolve_model_name,  # noqa: E402
@@ -185,23 +185,6 @@ def print_table(table: pd.DataFrame) -> None:
     print(table[cols].to_string(index=False))
 
 
-CONFIGS = Path(__file__).resolve().parent.parent / "configs"
-
-
-def find_config(name: str) -> Path:
-    """The YAML of the repo's ``configs/`` whose file name is that of ``name``
-    (``configs/train_panda.yaml`` or just ``train_panda.yaml``). Only the repo's configs are
-    read: the path opened comes from listing that folder, never from the argument."""
-    wanted = Path(name).name
-    matches = sorted(p for p in CONFIGS.rglob("*.y*ml") if p.name == wanted)
-    if not matches:
-        sys.exit(f"ERROR: no hay ninguna config '{wanted}' en {CONFIGS}")
-    if len(matches) > 1:
-        sys.exit(f"ERROR: hay varias configs '{wanted}' en {CONFIGS}: "
-                 + ", ".join(str(m.relative_to(CONFIGS)) for m in matches))
-    return matches[0]
-
-
 def main(argv=None):
     args = parse_args(argv)
     out = Path(args.out) if args.out else None
@@ -212,7 +195,7 @@ def main(argv=None):
     except ValueError as err:
         sys.exit(f"ERROR: {err}")
 
-    cfg = yaml.safe_load(find_config(args.config).read_text(encoding="utf-8"))
+    cfg = load_config(args.config)
     spec = dataset_spec_from_config(cfg)
     if spec.image_reader is None:
         sys.exit(f"ERROR: el dataset '{spec.name}' no se puede leer desde imágenes sueltas "
@@ -237,6 +220,9 @@ def main(argv=None):
         probs, infos = predict_members(paths, cfg, model_name, spec, loader, device, task)
     except ValueError as err:                       # unreadable image
         sys.exit(f"ERROR: {err}")
+    except RuntimeError as err:                     # weights that do not fit the model/config
+        sys.exit(f"ERROR: el checkpoint no encaja con el modelo '{model_name}' y la config "
+                 f"(¿otra resolución o pooling?): {str(err).splitlines()[0]}")
 
     threshold, found = decision_threshold(task, infos)
     if not found:

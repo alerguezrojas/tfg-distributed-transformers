@@ -224,16 +224,19 @@ Clasifica ficheros de imagen (PNG, JPEG, TIFF, BMP) o carpetas (recorrido recurs
 alfabético) con un checkpoint, fuera del bucle de entrenamiento y sin tocar el dataset. Repetir
 `--checkpoint` forma un conjunto (se promedian las probabilidades, igual que en `eval`); sin
 `--model` se usa el modelo guardado en el checkpoint. `--batch-size` (16 por defecto) y
-`--device cpu|cuda` (por defecto, CUDA si hay). La config tiene que ser una de la carpeta `configs/`
-del repositorio (se busca por nombre: `configs/train_panda.yaml` o `train_panda.yaml`); por
-seguridad, `predict` no abre una ruta de config arbitraria.
+`--device cpu|cuda` (por defecto, CUDA si hay). La config es la del entrenamiento del checkpoint
+(p. ej. `results/<run>/config.yaml` de Kaggle): la resolución y el *pooling* tienen que coincidir,
+y si no encajan con los pesos `predict` lo dice. Las rutas relativas se toman desde donde se
+ejecuta `paravit`.
 
 **Qué hace la ficha del dataset.** La config (`data.name`) decide cómo se lee el fichero
 (`DatasetSpec.image_reader`) y se le aplica **la misma transformación de evaluación** que en test
 (`spec.transforms("test")`), así que el modelo ve los mismos píxeles que en `eval`. En PANDA la
 entrada es el mosaico preparado (`prepare_panda.py`), redimensionado a `data.image_size`; en MedMNIST,
-una imagen en gris o RGB según el subconjunto. BigEarthNet (multibanda) no tiene lector de imagen
-suelta y `predict` falla con un error claro.
+una imagen en gris o RGB según el subconjunto, llevada al tamaño de entrenamiento (`data.size`, p. ej.
+28 px) como las del dataset. Las imágenes de 16 bits o de coma flotante (radiografías) se
+reescalan a 0-255 con su propio rango en lugar de saturarse (`src/data/image_io.py`).
+BigEarthNet (multibanda) no tiene lector de imagen suelta y `predict` falla con un error claro.
 
 **Salida.** Una tabla por pantalla con `file`, `predicted`, `prob` (la mayor probabilidad) y, en
 tareas ordinales como PANDA, `expected_grade` (el grado esperado, Σ k·p_k). Con `--out` (un `.csv`)

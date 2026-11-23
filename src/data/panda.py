@@ -30,10 +30,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
+from src.data.image_io import open_image
 from src.data.registry import register_dataset
 from src.data.spec import DatasetSpec
 
@@ -137,11 +137,7 @@ class PandaDataset(Dataset):
 def read_mosaic(path: str | Path, image_size: int) -> np.ndarray:
     """A mosaic as the (H, W, 3) uint8 array the transform expects, resized to ``image_size``.
     Shared by the Dataset and by ``paravit predict`` so both see the same pixels."""
-    with Image.open(path) as im:
-        im = im.convert("RGB")
-        if im.size != (image_size, image_size):
-            im = im.resize((image_size, image_size), Image.Resampling.BILINEAR)
-        return np.array(im)                         # copia: asarray da solo lectura
+    return open_image(path, "RGB", image_size)
 
 
 def _image_reader(data_cfg: dict):
