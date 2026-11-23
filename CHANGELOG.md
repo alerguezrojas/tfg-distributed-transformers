@@ -6,6 +6,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- Kernel de Kaggle `benchmark_t4`: `paravit benchmark` con lotes sintéticos de las 13 arquitecturas
+  de la criba de PANDA (512 px, AMP) en una T4, para validar el predictor fuera de muestra en una
+  GPU distinta de la de calibración, sin que la carga de datos de Kaggle (4 CPU) interfiera.
 - `paravit select-ensemble` (`scripts/select_ensemble.py`, `src/analysis/ensemble.py`): elige un
   conjunto de runs **solo con validación** (`val_preds.npz`) y lo evalúa una vez en test
   (`test_preds.npz`). Métodos `per-group` (mejor run de cada grupo y k de máxima validación) y
