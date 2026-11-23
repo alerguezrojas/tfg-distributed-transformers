@@ -328,6 +328,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] Aumentos de color y entrenamiento por hospital (generalización entre centros).
   - [x] Tres semillas de base y ordinal; ordinal y color entrenando en un solo hospital.
   - [x] Herramienta de comparación estadística de grupos de runs (`paravit compare-preds`, `docs/guia_de_uso.md`): media ± std, conjunto y *bootstrap* emparejado desde `test_preds.npz`.
+  - [x] Selección de conjuntos en validación (`paravit select-ensemble`, `docs/guia_de_uso.md`): `per-group` y `greedy`, una sola evaluación en test.
   - [x] Más resolución: 1.024 px en Kaggle con tres semillas (21/11/2026). No mejora el QWK de
     forma significativa.
   - [x] Etiquetas ruidosas con OUSM (21/11/2026): no mejora el QWK.
