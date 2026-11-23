@@ -130,7 +130,8 @@ def runs(tmp_path):
                                         ("junk", 0.2)], start=1)}, (yv, yt)
 
 
-def test_script_text_and_markdown(runs, tmp_path, capsys):
+def test_script_text_and_markdown(runs, tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     r, _ = runs
     groups = tmp_path / "groups.csv"
     groups.write_text("run,group\nvit_s42,vit\nvit_s43,vit\nswin_s42,swin\njunk,junk\n")
@@ -167,7 +168,8 @@ def test_script_misaligned_test(runs, tmp_path):
         script.main(["--runs", *r.values(), bad])
 
 
-def test_script_unknown_group_name(runs, tmp_path):
+def test_script_unknown_group_name(runs, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     r, _ = runs
     g = tmp_path / "g.yaml"
     g.write_text("nope: x\n")
@@ -175,7 +177,8 @@ def test_script_unknown_group_name(runs, tmp_path):
         script.main(["--runs", *r.values(), "--group-by", str(g)])
 
 
-def test_read_group_map_yaml_and_csv(tmp_path):
+def test_read_group_map_yaml_and_csv(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     y = tmp_path / "g.yaml"
     y.write_text("a: vit\nb: swin\n")
     assert script.read_group_map(str(y)) == {"a": "vit", "b": "swin"}
@@ -200,3 +203,25 @@ def test_build_select_ensemble_cmd_and_cli_dry_run():
     assert "select_ensemble.py" in r.output.replace("\n", "")
     r = CliRunner().invoke(app, ["select-ensemble", "--runs", "x", "--method", "nope", "--dry-run"])
     assert r.exit_code != 0
+
+
+def test_group_map_must_be_inside_the_working_directory(tmp_path, monkeypatch):
+    work, outside = tmp_path / "work", tmp_path / "outside"
+    work.mkdir()
+    outside.mkdir()
+    (outside / "g.csv").write_text("a,vit\n")
+    monkeypatch.chdir(work)
+    with pytest.raises(SystemExit, match="working directory"):
+        script.read_group_map(str(outside / "g.csv"))
+    with pytest.raises(SystemExit, match="working directory"):
+        script.read_group_map("../outside/g.csv")
+
+
+def test_group_map_symlink_cannot_escape(tmp_path, monkeypatch):
+    work = tmp_path / "work"
+    work.mkdir()
+    (tmp_path / "g.csv").write_text("a,vit\n")
+    (work / "link.csv").symlink_to(tmp_path / "g.csv")
+    monkeypatch.chdir(work)
+    with pytest.raises(SystemExit, match="working directory"):
+        script.read_group_map("link.csv")

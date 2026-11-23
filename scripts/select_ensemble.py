@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import csv
+import os
 import sys
 from pathlib import Path
 
@@ -40,8 +41,15 @@ def run_names(dirs: list[str]) -> list[str]:
 
 
 def read_group_map(path: str) -> dict[str, str]:
-    """``run name -> group`` from a CSV (``run,group`` per line, optional header) or YAML mapping."""
-    p = Path(path)
+    """``run name -> group`` from a CSV (``run,group`` per line, optional header) or YAML mapping.
+
+    The file must live under the working directory (real path, so ``..`` or a symlink cannot
+    point elsewhere): it is a small table that goes with the experiment, not an arbitrary path."""
+    base = os.path.realpath(os.getcwd())
+    target = os.path.realpath(path)
+    if os.path.commonpath([base, target]) != base:
+        raise SystemExit(f"--group-by: {path} must be inside the working directory ({base})")
+    p = Path(target)
     if not p.is_file():
         raise SystemExit(f"--group-by: file not found: {path}")
     if p.suffix.lower() in (".yaml", ".yml"):

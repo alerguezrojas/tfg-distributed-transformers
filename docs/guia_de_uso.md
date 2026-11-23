@@ -249,7 +249,8 @@ uv run paravit.py select-ensemble \
 ```
 
 `grupos.csv` (o YAML `run: grupo`) asigna cada run, por el nombre de su carpeta, a un grupo (por
-ejemplo, su arquitectura); sin él, cada run es su propio grupo. Hay dos métodos:
+ejemplo, su arquitectura); sin él, cada run es su propio grupo. El fichero tiene que estar dentro
+del directorio de trabajo (por seguridad, no se leen rutas de fuera). Hay dos métodos:
 
 - `per-group` (por defecto): el mejor run de cada grupo según validación, ordenados de mejor a peor;
   se evalúa en validación el conjunto de los k primeros (k = 1…) y se elige el k de máxima

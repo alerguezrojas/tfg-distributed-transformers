@@ -11,7 +11,7 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   (`test_preds.npz`). Métodos `per-group` (mejor run de cada grupo y k de máxima validación) y
   `greedy` (Caruana et al. 2004, con repetición); tabla de candidatos, traza de la selección,
   métricas del conjunto y, con `--reference`, diferencia con IC 95 % por *bootstrap* emparejado.
-  Solo multiclase.
+  Solo multiclase; el fichero de `--group-by` tiene que estar dentro del directorio de trabajo.
 - `paravit compare-preds` (`scripts/compare_predictions.py`, `src/analysis/compare.py`): compara
   dos grupos de runs (p. ej. tres semillas de una variante frente a tres de la base) desde sus
   `test_preds.npz`. Métricas por run (QWK, exactitud, ±1 grado, AUC de «clase ≥ 1», métrica por
