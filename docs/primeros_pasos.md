@@ -48,7 +48,7 @@ Trampas conocidas:
 ```bash
 uv run pytest -q                      # solo CPU, sin datos; algo más de un minuto (más de 1.200 tests)
 uv run ruff check src scripts tests   # lo mismo que pasa la CI
-uv run paravit.py --help              # train | estimate | benchmark | eval | runs | dashboard | report | menu
+uv run paravit.py --help              # train | estimate | benchmark | eval | predict | compare-preds | select-ensemble | runs | dashboard | report | menu
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
 ```
 
@@ -97,6 +97,7 @@ Los artefactos quedan en dos sitios: `logs/local/medmnist_breast/single/vit_tiny
 
 ```bash
 uv run paravit.py eval --config configs/medmnist_breast_local.yaml \
+    --data-root ~/datasets/medmnist \
     --checkpoint checkpoints/local/medmnist_breast/single/vit_tiny_patch16_224/<sello> \
     --split test --save-predictions-auto
 ```
