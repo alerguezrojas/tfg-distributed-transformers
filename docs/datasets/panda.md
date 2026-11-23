@@ -547,6 +547,57 @@ en 2 × T4 para comparar estrategias con el mismo modelo.
 Logs: `logs/kaggle/panda/ddp/<modelo>/train_22112026_*` y, de las variantes de Swin-T,
 `logs/local/panda/single/swin_tiny_patch4_window7_224{,.ms_in22k_ft_in1k}/train_22112026_{212201,204325}`.
 
+### Confirmación con más semillas (23/11/2026)
+
+Semillas 43 y 44 de los modelos que entran en el conjunto, para confirmarlos y para repetir el
+conjunto de arquitecturas con runs que **no** intervinieron en su elección. SwinV2-T y ViT-B en
+Kaggle (2 × T4, DDP), EVA-02-S y Swin-T con pérdida ordinal en local; las predicciones de
+validación de los runs de Kaggle se calcularon en local con `paravit eval --split val` (el
+checkpoint ya guarda el modelo, PR #240).
+
+| Modelo (QWK de test) | Semilla 42 | Semilla 43 | Semilla 44 | Media ± desv. | Conjunto de las 3 |
+|---|---|---|---|---|---|
+| ViT-S/16 (base) | 0,781 | 0,804 | 0,797 | 0,794 ± 0,012 | 0,819 |
+| ViT-B/16 | 0,823 | 0,819 | 0,825 | 0,822 ± 0,003 | **0,835** |
+| Swin-T | 0,830 | 0,808 | 0,825 | 0,821 ± 0,011 | 0,829 |
+| Swin-T, pérdida ordinal (`ce_emd`) | 0,839 | 0,812 | 0,830 | **0,827 ± 0,014** | 0,834 |
+| SwinV2-T | 0,835 | 0,824 | 0,802 | 0,820 ± 0,017 | 0,828 |
+| ConvNeXt-T | 0,798 | 0,787 | 0,804 | 0,796 ± 0,009 | 0,805 |
+| EVA-02-S | 0,787 | 0,779 | 0,805 | 0,790 ± 0,013 | 0,818 |
+
+- **ViT-B, Swin-T y SwinV2-T** quedan igual de bien (0,820-0,822 de media) y por encima de la base
+  (+0,026-0,028). ViT-B es el más estable entre semillas (± 0,003) y su conjunto de tres es el mejor
+  de una sola arquitectura (0,835).
+- **La pérdida ordinal con Swin-T**: +0,006 [−0,003; +0,014] frente a la entropía cruzada (media de
+  las tres semillas), no significativo; el 0,839 de la semilla 42 fue en parte suerte. Es la misma
+  señal pequeña que con ViT-S (+0,008, sección de mejoras): coherente, pero no demostrada.
+- **EVA-02-S** es el que más se ajusta a la validación: 0,826-0,827 en validación frente a
+  0,779-0,805 en test en las tres semillas.
+
+**El conjunto de arquitecturas, repetido con runs independientes.** Los miembros se fijan antes
+(las arquitecturas que eligió la validación con la semilla 42 y que tienen más semillas: Swin-T,
+SwinV2-T, EVA-02-S, ViT-S, ViT-B y ConvNeXt-T) y se toma **un run de otra semilla de cada uno**,
+que no intervino en la elección:
+
+| Conjunto de 6 arquitecturas | QWK test | − Swin-T × 3 (0,829) [IC 95 %] |
+|---|---|---|
+| Runs de la semilla 43 | 0,852 | +0,023 [+0,005; +0,040] |
+| Runs de la semilla 44 | 0,846 | +0,017 [−0,001; +0,035] |
+
+El 0,858 del conjunto elegido con la semilla 42 era algo optimista, pero **la ganancia de mezclar
+arquitecturas se mantiene con runs independientes: +0,017 a +0,023 sobre el mejor conjunto de una
+sola arquitectura de las mismas características** (y +0,027-0,033 sobre el de la base). Es la mejora
+más sólida del proyecto en PANDA.
+
+**Swin-T con DDP en Kaggle** (2 × T4, 8 imágenes por GPU, semilla 42): QWK de test 0,820 en 47 min,
+frente a 0,830 en 38 min en una RTX 3060 Ti. La diferencia de QWK está dentro de lo que varían las
+semillas; la de tiempo mezcla dos GPU distintas, así que la comparación de estrategias se hace en el
+mismo hardware (lote `strategies_512` del kernel: una T4 frente a dos).
+
+Logs: `logs/kaggle/panda/ddp/{vit_base_patch16_224.augreg2_in21k_ft_in1k,swinv2_tiny_window8_256,swin_tiny_patch4_window7_224}/train_23112026_*`
+y `logs/local/panda/single/{eva02_small_patch14_224.mim_in22k,swin_tiny_patch4_window7_224}/train_23112026_*`
+(Swin-T ordinal: `121320`, `145713` y `153627`).
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen

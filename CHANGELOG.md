@@ -119,6 +119,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Experimentos
 
+- PANDA, más semillas (23/11/2026): ViT-B 0,822 ± 0,003, Swin-T 0,821 ± 0,011, SwinV2-T
+  0,820 ± 0,017, Swin-T con pérdida ordinal 0,827 ± 0,014 (+0,006, no significativo); el
+  conjunto de 6 arquitecturas repetido con runs independientes da 0,852 y 0,846 de QWK de test
+  (+0,017-0,023 sobre el mejor conjunto de una sola arquitectura).
 - Predictor: con 13 arquitecturas medidas a 512 px (RTX 3060 Ti y T4), el tiempo no sigue a los
   FLOPs (error medio en validación cruzada 193 %); con un segundo término de memoria de
   activaciones baja al 10 %, y el coste relativo de las arquitecturas se transfiere a la T4
