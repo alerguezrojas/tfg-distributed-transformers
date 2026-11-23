@@ -29,7 +29,7 @@ from torch.utils.data import DataLoader
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.data.registry import dataset_spec_from_config
-from src.training.losses import configured_loss_name, ousm_log_field
+from src.training.losses import loss_log_label, ousm_log_field
 from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.config_overrides import add_common_overrides, apply_common_overrides
@@ -147,14 +147,14 @@ def main():
 
     # Config line for the dashboard's Run -> Info panel.
     _prec = cfg["training"].get("precision", "fp32")
-    _loss = configured_loss_name(cfg["training"], spec.make_task())
+    _loss = loss_log_label(cfg["training"], spec.make_task())
     logging.getLogger("trainer").info(
         f"Configuración: modelo={model_name} | paralelismo=modelo(pipeline) | "
         f"devices={'+'.join(devices)} | split_block={args.split_block or 'auto'} | "
         f"batch={bs} (global) | epochs={cfg['training']['epochs']} | "
         f"lr={cfg['training']['lr']} | precision={_prec} | loss={_loss} | "
         f"train={len(train_ds)} | val={len(val_ds)} | dataset={spec.name} | "
-        f"{backbone_log_fields(cfg['model'], model_name)}"
+        f"seed={seed} | {backbone_log_fields(cfg['model'], model_name)}"
         f"{ousm_log_field(cfg['training'])}"
     )
 

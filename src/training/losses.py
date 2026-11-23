@@ -203,3 +203,16 @@ def configured_loss_name(train_cfg: dict, task) -> str:
     what :func:`build_criterion` really builds ('ce' for multiclass, 'bce' otherwise).
     """
     return str(train_cfg.get("loss") or task.default_loss).lower()
+
+
+def loss_log_label(train_cfg: dict, task) -> str:
+    """``loss=`` value of the ``Configuración:`` line, with the parameters that define it
+    (``focal(g=2.0)``, ``ce_emd(w=1.0)``, ``bce+pos_weight``). Same for every strategy."""
+    name = configured_loss_name(train_cfg, task)
+    if name == "focal":
+        return f"focal(g={train_cfg.get('focal_gamma', 2.0)})"
+    if name == "ce_emd":
+        return f"ce_emd(w={train_cfg.get('emd_weight', 1.0)})"
+    if train_cfg.get("pos_weight") is not None:
+        return "bce+pos_weight"
+    return name

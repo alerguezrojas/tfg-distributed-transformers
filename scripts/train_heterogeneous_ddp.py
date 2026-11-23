@@ -46,6 +46,7 @@ from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.config_overrides import add_common_overrides, apply_common_overrides
 from src.training.heterogeneous_sampler import HeterogeneousDistributedSampler
+from src.training.losses import loss_log_label
 from src.training.reproducibility import sampler_seed, set_seed
 
 
@@ -222,7 +223,8 @@ def main():
             f"reparto=GPU {_n_gpu/_n_tot*100:.0f}% (~{_n_gpu} img) / "
             f"CPU {_n_cpu/_n_tot*100:.0f}% (~{_n_cpu} img) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-            f"train={_n_tot} | val={len(val_ds)} | dataset={spec.name} | "
+            f"loss={loss_log_label(cfg['training'], spec.make_task())} | "
+            f"train={_n_tot} | val={len(val_ds)} | dataset={spec.name} | seed={seed} | "
             f"{backbone_log_fields(cfg['model'], model_name)}"
         )
 

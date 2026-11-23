@@ -479,9 +479,10 @@ def main():
         with open(out_path, "a") as f:
             thresh = (f"f1_opt={best_f1:.4f},threshold={best_t:.2f},threshold_source={source},"
                       if task.searches_threshold else "")
+            qwk_col = f",qwk={agg['qwk']:.4f}" if "qwk" in agg else ""   # ordinal: new column
             f.write(f"\n# aggregate,loss={avg_loss:.6f},f1_t05={f1_05:.4f},{thresh}"
                     f"accuracy={acc_05:.4f},precision={prec_05:.4f},recall={rec_05:.4f},"
-                    f"auc={auc:.4f}\n")
+                    f"auc={auc:.4f}{qwk_col}\n")
         print(f"\nResultados guardados en: {out_path}")
 
 
