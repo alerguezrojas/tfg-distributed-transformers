@@ -10,7 +10,7 @@ same separation used by Weights & Biases / MLflow / TensorBoard.
     uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
     uv run paravit.py train   --strategy single --config configs/train.yaml
     uv run paravit.py train   --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.yaml
-    uv run paravit.py eval    --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
+    uv run paravit.py eval    --checkpoint checkpoints/local/single/vit_base_patch16_224/<sello>/best.pt --split test
     uv run paravit.py dashboard
 
 (``uv run tfg.py`` keeps working as a backward-compatible alias.)
@@ -283,7 +283,7 @@ def train(
     seed: Optional[int] = typer.Option(None, help="Override training.seed (repetitions)."),
     data_root: Optional[str] = typer.Option(None, help="Override data.root (dataset location)."),
     trace: str = typer.Option("simple", help="off | simple | deep."),
-    precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (single-GPU)."),
+    precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (single, ddp and model-parallel)."),
     layers: Optional[str] = typer.Option(None, help="Comma-separated: plot,confusion,batch-monitor,hooks."),
     fn: Optional[str] = typer.Option(None, help="Comma-separated: timing,energy."),
     n_gpus: int = typer.Option(2, help="GPUs per node (ddp)."),
@@ -601,8 +601,8 @@ def dashboard(
     port: int = typer.Option(8501, help="Port for the Streamlit server."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
-    """Open the read-only web dashboard (Overview · Run results · Compare ·
-    Performance · Dataset). Plan a config without running with `paravit estimate`."""
+    """Open the read-only web dashboard (Overview · Live · Inspector · Run results ·
+    Compare · Estimate/Benchmark · Dataset). Plan a config without running with `paravit estimate`."""
     cmd = [sys.executable, "-m", "streamlit", "run", "src/web/app.py", "--server.port", str(port)]
     _run(cmd, dry_run)
 

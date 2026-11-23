@@ -110,7 +110,7 @@ pero sí son accesibles via SSH directo. Para el test CPU se usa SSH en dos term
 ```bash
 # Terminal 1 — SSH a verode16 (nodo 0, master):
 ssh verode16
-cd ~/tfg-distributed-transformers && git pull origin main
+cd ~/tfg-distributed-transformers && git pull origin develop   # o la rama que se esté probando
 .venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=0 \
   --master_addr=verode16 --master_port=29500 \
   scripts/train_ddp.py --config configs/train_ddp_cpu_test.yaml --trace simple
@@ -128,9 +128,9 @@ multi-nodo y la sincronización de gradientes funcionan antes de tener hardware 
 ### DDP heterogéneo — verode21 (GPU) + verode16 (CPU)
 
 ```bash
-# Primero hacer git pull en ambos nodos:
-# ssh verode21 && cd ~/tfg-distributed-transformers && git pull origin main
-# ssh verode16 && cd ~/tfg-distributed-transformers && git pull origin main
+# Primero hacer git pull en ambos nodos (rama develop o la que se esté probando):
+# ssh verode21 && cd ~/tfg-distributed-transformers && git pull origin develop
+# ssh verode16 && cd ~/tfg-distributed-transformers && git pull origin develop
 
 # Terminal 1 — verode21 (V100, rank 0):
 ssh verode21
@@ -204,11 +204,11 @@ uv run python scripts/train_single_gpu.py --config configs/train_v3.yaml --trace
 torchrun --nproc_per_node=1 scripts/train_ddp.py \
   --model vit_tiny_patch16_224 --epochs 1 --config configs/train.yaml --trace simple
 
-# Dashboard web (5 secciones)
+# Dashboard web (7 secciones)
 uv run streamlit run src/web/app.py
 
 # Ver log en tiempo real (ajusta la ruta al modelo concreto)
-tail -f logs/local/single/vit_base_patch16_224/train_*.log
+tail -f logs/local/single/vit_base_patch16_224/train_*.log   # logs/{env}/[{dataset}/]{mode}/{modelo}/
 ```
 
 ### Clúster VERODE
@@ -249,10 +249,11 @@ cd ~/tfg-distributed-transformers
   --fn energy
 
 # Ver log en tiempo real
-tail -f logs/verode/train_*.log
+tail -f logs/verode/single/vit_base_patch16_224/train_*.log
 
-# Al terminar: subir resultados (gitignore ya configurado, no necesita -f)
+# Al terminar: subir resultados desde una rama que salga de develop (nunca directo a main)
+git switch -c chore/runs-verode
 git add logs/verode/
-git commit -m "feat: add Verode training results"
-git push origin main
+git commit -m "chore: resultados de entrenamiento en Verode"
+git push -u origin chore/runs-verode   # y PR a develop
 ```

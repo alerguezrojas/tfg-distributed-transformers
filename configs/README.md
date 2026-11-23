@@ -1,19 +1,19 @@
 # Configuraciones de entrenamiento
 
 Cada `.yaml` describe **un escenario** (modelo, dataset, hardware, estrategia). Se pasan con
-`--config`, p. ej. `uv run tfg.py train --strategy single --config configs/train_v3.yaml`.
+`--config`, p. ej. `uv run paravit.py train --strategy single --config configs/train_v3.yaml`.
 
 **Dataset:** `metadata.parquet` = BigEarthNet-S2 **completo** (237 871 train) · `metadata_demo.parquet`
 = **subconjunto** de 5 000/1 500 (estudios rápidos y comparables).
 
 ---
 
-## ¿Cuál uso? (guía rápida)
+## ¿Qué config elegir? (guía rápida)
 
-| Quiero… | Config |
+| Si se quiere… | Config |
 |---|---|
-| Entrenar en **mi máquina** (RTX 3060 Ti), baseline | `train.yaml` |
-| Entrenar en **mi máquina** con la regularización buena (v3) | `train_v3.yaml` |
+| Entrenar en **la máquina local** (RTX 3060 Ti), baseline | `train.yaml` |
+| Entrenar en **la máquina local** con la regularización buena (v3) | `train_v3.yaml` |
 | El **mejor resultado** en Verode (V100, dataset completo) | `train_cluster_v3.yaml` |
 | Probar **focal vs BCE** rápido en local | `train_local_demo_focal.yaml` / `train_local_demo_bce.yaml` |
 | Probar **focal vs BCE** a escala en Verode | `train_cluster_focal.yaml` / `train_cluster_bce.yaml` |
@@ -72,4 +72,4 @@ Cada `.yaml` describe **un escenario** (modelo, dataset, hardware, estrategia). 
 
 ---
 
-> Sugerencia: usa `uv run tfg.py menu` → el menú lista estos configs para elegir sin recordar nombres.
+> Sugerencia: con `uv run paravit.py menu` el menú lista estos configs para elegir sin recordar nombres.
