@@ -173,8 +173,33 @@ def _fuzzy(table: dict, name: str | None):
     return None
 
 
+def _gpu_key(name: str) -> str:
+    """Comparison key of a GPU name: no vendor words, case, spaces or punctuation."""
+    n = name.lower().replace("nvidia", "").replace("geforce", "")
+    return "".join(c for c in n if c.isalnum())
+
+
+# Names the driver reports (torch.cuda.get_device_name) that are NOT the table key: one
+# explicit entry per real variant. Anything not listed or equal to a key is unknown, so
+# 'RTX 3060' (12 GB) is never taken for 'RTX 3060 Ti' (8 GB) nor 'A100' for a given A100.
+_GPU_ALIASES: dict[str, str] = {
+    "Tesla V100-PCIE-16GB": "Tesla V100", "Tesla V100-PCIE-32GB": "Tesla V100",
+    "Tesla V100-SXM2-16GB": "Tesla V100", "Tesla V100-SXM2-32GB": "Tesla V100",
+    "Tesla P100": "P100", "Tesla P100-PCIE-16GB": "P100",
+    "A100-SXM4-40GB": _A100_40GB, "A100-PCIE-40GB": _A100_40GB,
+    "A100-SXM4-80GB": _A100_80GB, "A100-PCIE-80GB": _A100_80GB, "A100 80GB PCIe": _A100_80GB,
+    "H100 PCIe": "H100", "H100 80GB HBM3": "H100", "H100 SXM5 80GB": "H100",
+}
+_GPU_INDEX: dict[str, GpuSpec] = {
+    **{_gpu_key(k): v for k, v in GPU_TABLE.items()},
+    **{_gpu_key(a): GPU_TABLE[k] for a, k in _GPU_ALIASES.items()},
+}
+
+
 def gpu_spec(name: str | None) -> GpuSpec | None:
-    return _fuzzy(GPU_TABLE, name)
+    """Spec of a GPU by its name (exact after normalizing, or an explicit alias); ``None`` if
+    it is not in the table — the caller must say so instead of guessing a similar card."""
+    return _GPU_INDEX.get(_gpu_key(name)) if name else None
 
 
 def model_spec(name: str | None) -> ModelSpec | None:

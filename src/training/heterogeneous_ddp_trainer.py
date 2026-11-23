@@ -78,6 +78,11 @@ class HeterogeneousDDPTrainer(DDPTrainer):
         # Hereda el pos_weight del criterion configurado (self.criterion) para que la
         # pérdida de entrenamiento use los mismos pesos de clase que la de validación
         # (antes se forzaba BCE sin pesos, descartando silenciosamente pos_weight).
+        # Solo BCE: con otra pérdida configurada (focal…) se entrenaría con BCE sin avisar.
+        if not isinstance(self.criterion, nn.BCEWithLogitsLoss):
+            raise NotImplementedError(
+                f"heterogeneous DDP trains with BCE (+pos_weight) only; the configured loss "
+                f"{type(self.criterion).__name__} is not supported on this strategy")
         pos_weight = getattr(self.criterion, "pos_weight", None)
         self._criterion_sum = nn.BCEWithLogitsLoss(reduction="sum", pos_weight=pos_weight)
 

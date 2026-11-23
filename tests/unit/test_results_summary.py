@@ -31,3 +31,32 @@ def test_seeded_runs_are_aggregated(tmp_path):
 def test_single_run_has_zero_std(tmp_path):
     _run(tmp_path, "17102026_100000", 42, 0.9, 0.8)
     assert summarize(collect(tmp_path))["accuracy"] == (pytest.approx(0.8), 0.0, 1)
+
+
+def test_qwk_is_aggregated_for_ordinal_runs(tmp_path):
+    for ts, seed, qwk in (("20112026_100000", 42, 0.70), ("20112026_110000", 43, 0.80)):
+        (tmp_path / f"train_{ts}.log").write_text(f"Configuración: modelo=vit | seed={seed}\n")
+        (tmp_path / f"test_{ts}.csv").write_text(
+            "class_idx,class_name,f1,precision,recall\n0,a,0.5,0.5,0.5\n\n"
+            f"# aggregate,loss=0.3,f1_t05=0.5,accuracy=0.8,auc=0.9,qwk={qwk}\n")
+    mean, _, n = summarize(collect(tmp_path))["qwk"]
+    assert mean == pytest.approx(0.75) and n == 2
+
+
+def test_seed_falls_back_to_the_manifest(tmp_path):
+    # DDP logs written before the seed joined the Configuración: line: the seed is in run_<ts>.json
+    ts = "20112026_163243"
+    (tmp_path / f"train_{ts}.log").write_text("Configuración: modelo=vit | dataset=panda\n")
+    (tmp_path / f"run_{ts}.json").write_text('{"config": {"training": {"seed": 42}}}')
+    (tmp_path / f"test_{ts}.csv").write_text(
+        "class_idx,class_name,f1,precision,recall\n0,a,0.5,0.5,0.5\n\n# aggregate,auc=0.9\n")
+    assert [r.seed for r in collect(tmp_path)] == [42]
+
+
+def test_no_seed_in_log_nor_manifest_is_ignored(tmp_path):
+    ts = "20112026_163243"
+    (tmp_path / f"train_{ts}.log").write_text("Configuración: modelo=vit | seed=None\n")
+    (tmp_path / f"run_{ts}.json").write_text('{"config": {"training": {"seed": null}}}')
+    (tmp_path / f"test_{ts}.csv").write_text(
+        "class_idx,class_name,f1,precision,recall\n0,a,0.5,0.5,0.5\n\n# aggregate,auc=0.9\n")
+    assert collect(tmp_path) == []

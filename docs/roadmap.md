@@ -9,6 +9,13 @@
 > Actualizado el 23/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
+**Fase 0 de la auditoría (23/11/2026): errores corregidos** (PR a `develop`). DDP con el índice del
+dispositivo y no con el rank global (multinodo), `test_<sello>.csv` atribuido a su run y no a toda
+la carpeta, `paravit runs` con la métrica principal del run, QWK y semilla en los resúmenes de
+semillas (la línea `Configuración:` de DDP lleva ya `seed=` y `loss=`), `gpu_spec()` sin coincidencia
+por subcadena, test del muestreador independiente de `CUDA_VISIBLE_DEVICES` y reglas de `.gitignore`
+para `events_*.jsonl` y `test_preds_*.npz`. Siguiente: fase 1 (entorno y perfiles de máquina).
+
 **Criba de modelos en PANDA (22/11/2026): Swin-T mejora a la base.** Con la misma receta que el
 ViT-S a 512 px (el LLRD ya funciona con cualquier modelo de timm, PR #234) se probaron siete
 modelos con una semilla en la GPU local. Solo Swin-T (`swin_tiny_patch4_window7_224`) se sale:

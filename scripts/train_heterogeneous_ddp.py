@@ -105,7 +105,7 @@ def main():
         rank_device_str = "cuda" if torch.cuda.is_available() else "cpu"
 
     if rank_device_str == "cuda" and torch.cuda.is_available():
-        device = torch.device(f"cuda:{local_rank}")
+        device = torch.device(f"cuda:{local_rank % torch.cuda.device_count()}")   # como train_ddp.py
         torch.cuda.set_device(device)
     else:
         device = torch.device("cpu")
@@ -216,13 +216,16 @@ def main():
         _n_tot = len(train_ds)
         _n_gpu = len(train_sampler)          # muestras del rank 0 (GPU)
         _n_cpu = _n_tot - _n_gpu
+        # El trainer entrena siempre con BCE (suma), con pos_weight si la config lo trae
+        _loss = "bce+pos_weight" if cfg["training"].get("pos_weight") is not None else "bce"
         logging.getLogger("trainer").info(
             f"Configuración: modelo={model_name} | "
             f"batch=GPU {_bs_gpu} / CPU {_bs_cpu if _bs_cpu is not None else '—'} (global={_glob}) | "
             f"reparto=GPU {_n_gpu/_n_tot*100:.0f}% (~{_n_gpu} img) / "
             f"CPU {_n_cpu/_n_tot*100:.0f}% (~{_n_cpu} img) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-            f"train={_n_tot} | val={len(val_ds)} | dataset={spec.name} | "
+            f"loss={_loss} | "
+            f"train={_n_tot} | val={len(val_ds)} | dataset={spec.name} | seed={seed} | "
             f"{backbone_log_fields(cfg['model'], model_name)}"
         )
 

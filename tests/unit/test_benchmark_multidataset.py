@@ -12,6 +12,13 @@ from src.benchmark.dataset_sizes import (BIGEARTHNET_TRAIN, BIGEARTHNET_VAL,
                                          resolve_split_sizes)
 
 
+@pytest.fixture(autouse=True)
+def cpu_only(monkeypatch):
+    """Tests run on CPU (AGENTS.md): even if a GPU is there (and busy training), do not use it."""
+    import torch
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+
+
 def _panda_root(tmp_path, n_train=7, n_val=3):
     n = n_train + n_val
     ids = [f"img{i}" for i in range(n)]

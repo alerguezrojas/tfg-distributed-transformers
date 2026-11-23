@@ -347,6 +347,10 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     if ms is None:
         console.print(f"[red]Unknown model '{model}': not in the table and timm cannot build it.[/]")
         return
+    if gs is None:
+        console.print(f"[red]Unknown GPU '{gpu}': not in the table (see GPU_TABLE in "
+                      "src/performance_model.py); a similar card is never assumed.[/]")
+        return
     p = _predict(strat, model, gpu, n_gpus=n_gpus, dataset_size=dataset_size,
                  batch=batch, precision=precision, epochs=epochs, disk_type=disk, nfs=nfs,
                  model=ms)
@@ -608,30 +612,36 @@ def dashboard(
 
 
 def _run_row(r) -> dict:
-    """Summarise a RunInfo for the `runs` table: best Val F1 (from the epoch CSV)
-    and the held-out Test F1 (from a test_*.csv, if present)."""
-    best_val_f1 = None
+    """Summarise a RunInfo for the `runs` table: the best validation value of the run's main
+    metric (QWK for PANDA, AUC for MedMNIST, F1 otherwise; from the epoch CSV) and the
+    held-out test value of that metric (from the run's own test_<ts>.csv, if present)."""
+    from src.web.run_meta import resolve_metric
+    metric = r.main_metric
+    best_val = None
     epochs = None
     if r.epoch_csv_path and Path(r.epoch_csv_path).exists():
         try:
             import pandas as pd
             df = pd.read_csv(r.epoch_csv_path)
             epochs = len(df)
-            if "val_f1" in df.columns and df["val_f1"].notna().any():
-                best_val_f1 = float(df["val_f1"].max())
+            metric = resolve_metric(metric, df)
+            if metric.column in df.columns and df[metric.column].notna().any():
+                best_val = float(df[metric.column].max())
         except Exception:
             pass
-    test_f1 = None
+    test_val = None
     if getattr(r, "test_csv_paths", None):
         try:
             from src.web.eval_parser import parse_eval_csv
             _, agg = parse_eval_csv(r.test_csv_paths[0])
-            test_f1 = agg.get("f1_opt", agg.get("f1_t05"))
+            # the eval CSV carries f1_* for every dataset, auc always, qwk for ordinal ones
+            keys = {"qwk": ("qwk",), "auc": ("auc",)}.get(metric.key, ("f1_opt", "f1_t05"))
+            test_val = next((agg[k] for k in keys if k in agg), None)
         except Exception:
             pass
     return {"label": r.label, "env": r.env, "mode": r.mode,
             "precision": r.precision or "fp32", "epochs": epochs,
-            "best_val_f1": best_val_f1, "test_f1": test_f1}
+            "metric": metric.name, "best_val": best_val, "test": test_val}
 
 
 @app.command()
@@ -639,7 +649,8 @@ def runs(
     env: Optional[str] = typer.Option(None, help="Filter by environment (local/verode/kaggle)."),
     limit: int = typer.Option(20, help="Maximum number of rows."),
 ) -> None:
-    """List the training runs in logs/ (best Val F1, and held-out Test F1 if available)."""
+    """List the training runs in logs/ (best validation and held-out test value of each run's
+    main metric: QWK for PANDA, AUC for MedMNIST, F1 otherwise)."""
     from src.web.run_registry import discover_runs
     found = discover_runs(ROOT)
     if env:
@@ -649,14 +660,14 @@ def runs(
         console.print("[yellow]No runs found in logs/.[/]")
         return
     t = Table(title=f"Runs ({len(found)})", border_style="cyan")
-    for col in ("Run", "Env", "Mode", "Prec", "Epochs", "Best Val F1", "Test F1"):
+    for col in ("Run", "Env", "Mode", "Prec", "Epochs", "Metric", "Best Val", "Test"):
         t.add_column(col)
     for r in found:
         d = _run_row(r)
         t.add_row(d["label"], d["env"], d["mode"], d["precision"],
-                  str(d["epochs"] or "—"),
-                  f"{d['best_val_f1']:.4f}" if d["best_val_f1"] is not None else "—",
-                  f"[bold green]{d['test_f1']:.4f}[/]" if d["test_f1"] is not None else "—")
+                  str(d["epochs"] or "—"), d["metric"],
+                  f"{d['best_val']:.4f}" if d["best_val"] is not None else "—",
+                  f"[bold green]{d['test']:.4f}[/]" if d["test"] is not None else "—")
     console.print(t)
 
 @app.command()

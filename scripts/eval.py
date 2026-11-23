@@ -67,8 +67,11 @@ def parse_args():
     add_data_root_override(parser)
     parser.add_argument("--batch-size", type=int, default=None,
                         help="Override batch size (default: from config)")
-    parser.add_argument("--output", type=str, default=None,
-                        help="CSV path to save per-class results")
+    parser.add_argument("--output", type=str, nargs="?", const=AUTO_PATH, default=None,
+                        metavar="PATH",
+                        help="CSV to save per-class results. Without a path it goes to the "
+                             "run's log folder as <split>_<ts>.csv (test_<ts>.csv is what the "
+                             "web shows in that run)")
     parser.add_argument("--split", choices=["test", "val"], default="test",
                         help="Dataset split to evaluate on (default: test)")
     parser.add_argument("--metadata", type=str, default=None,
@@ -349,6 +352,8 @@ def main():
     args = parse_args()
     paths = [resolve_checkpoint(c) for c in args.checkpoint]
     is_ensemble = len(paths) > 1
+    if is_ensemble and args.output == AUTO_PATH:
+        sys.exit("ERROR: con varios checkpoints (conjunto), --output necesita una ruta explícita.")
     if is_ensemble and args.save_predictions == AUTO_PATH:
         sys.exit("ERROR: con varios checkpoints (conjunto), --save-predictions necesita una "
                  "ruta explícita: no hay un único run del que deducir el sello.")
@@ -469,7 +474,13 @@ def main():
 
     # ── Save CSV ──────────────────────────────────────────────────────────────
     if args.output:
-        out_path = Path(args.output)
+        if args.output == AUTO_PATH:
+            out_path = default_predictions_path(
+                paths[0], checkpoint_dir=cfg.get("checkpoint", {}).get("dir"),
+                env=cfg.get("output", {}).get("env", "local"),
+                warn=lambda msg: print(f"  aviso: {msg}"), prefix=args.split, suffix=".csv")
+        else:
+            out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=["class_idx", "class_name", "f1", "precision", "recall"])
@@ -479,9 +490,10 @@ def main():
         with open(out_path, "a") as f:
             thresh = (f"f1_opt={best_f1:.4f},threshold={best_t:.2f},threshold_source={source},"
                       if task.searches_threshold else "")
+            qwk_col = f",qwk={agg['qwk']:.4f}" if "qwk" in agg else ""   # ordinal: new column
             f.write(f"\n# aggregate,loss={avg_loss:.6f},f1_t05={f1_05:.4f},{thresh}"
                     f"accuracy={acc_05:.4f},precision={prec_05:.4f},recall={rec_05:.4f},"
-                    f"auc={auc:.4f}\n")
+                    f"auc={auc:.4f}{qwk_col}\n")
         print(f"\nResultados guardados en: {out_path}")
 
 

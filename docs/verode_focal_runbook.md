@@ -96,12 +96,12 @@ entrenamiento). `eval.py` busca el umbral óptimo y saca F1 por clase:
 .venv/bin/python scripts/eval.py \
   --config configs/train_cluster_bce.yaml \
   --checkpoint checkpoints/verode/single/vit_base_patch16_224/checkpoint_epoch_0XX.pt \
-  --split test --output logs/verode/single/vit_base_patch16_224/test_bce.csv
+  --split test --output
 
 .venv/bin/python scripts/eval.py \
   --config configs/train_cluster_focal.yaml \
   --checkpoint checkpoints/verode/single/vit_base_patch16_224/checkpoint_epoch_0YY.pt \
-  --split test --output logs/verode/single/vit_base_patch16_224/test_focal.csv
+  --split test --output
 ```
 
 Compara las dos tablas por clase: **la pregunta clave es si focal sube la F1 de

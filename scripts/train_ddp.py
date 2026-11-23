@@ -42,7 +42,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src.data.registry import dataset_spec_from_config
 from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
-from src.training.losses import ousm_log_field
+from src.training.losses import loss_log_label, ousm_log_field
 from src.training.config_overrides import add_common_overrides, apply_common_overrides
 from src.training.reproducibility import set_seed, make_generator, sampler_seed, seed_worker
 
@@ -97,9 +97,8 @@ def main():
 
     local_rank = int(os.environ["LOCAL_RANK"])
     if use_cuda:
-        # Si hay menos GPUs que procesos (p.ej. 2 procesos en 1 V100 para medir
-        # overhead de DDP sin hardware extra), varios ranks comparten la misma
-        # GPU vía módulo. Con N GPUs ≥ N procesos, mapea 1:1 como siempre.
+        # Un proceso por GPU: NCCL no admite dos ranks en la misma GPU. El índice es el local
+        # del nodo (en multinodo con 1 GPU por nodo, todos los ranks usan cuda:0).
         gpu_id = local_rank % torch.cuda.device_count()
         device = torch.device(f"cuda:{gpu_id}")
         torch.cuda.set_device(device)
@@ -210,8 +209,9 @@ def main():
             f"Configuración: modelo={model_name} | batch={_bs}/GPU "
             f"(global={_bs * world_size}, {world_size} GPUs) | "
             f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-            f"precision={_prec} | train={len(train_ds)} | val={len(val_ds)} | "
-            f"dataset={spec.name} | {backbone_log_fields(cfg['model'], model_name)}"
+            f"precision={_prec} | loss={loss_log_label(cfg['training'], spec.make_task())} | "
+            f"train={len(train_ds)} | val={len(val_ds)} | "
+            f"dataset={spec.name} | seed={seed} | {backbone_log_fields(cfg['model'], model_name)}"
             f"{ousm_log_field(cfg['training'])}"
         )
 

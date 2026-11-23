@@ -202,3 +202,14 @@ def test_fmt_span_switches_from_seconds_to_minutes():
     from src.web.ui.helpers import _fmt_span
     assert _fmt_span(1.4) == "1.4 s" and _fmt_span(59.9) == "59.9 s"
     assert _fmt_span(90) == "1.5 min"
+
+
+def test_ddp_style_config_line_is_parsed(tmp_path):
+    # DDP / heterogeneous / model-parallel write the same loss= and seed= keys as single
+    line = ("2026-11-20 16:32:43 [INFO ] Configuración: modelo=vit_small_patch16_224 | "
+            "batch=16/GPU (global=32, 2 GPUs) | epochs=15 | lr=0.0001 | precision=amp | "
+            "loss=ce_emd(w=1.0) | train=3821 | val=819 | dataset=panda | seed=42 | "
+            "backbone=timm\n")
+    meta = resolve_meta(manifest=None, run_start=None, log_path=_log(tmp_path, line),
+                        dataset="panda")
+    assert meta.seed == 42 and meta.loss == "ce_emd" and meta.epochs == 15

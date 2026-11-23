@@ -179,15 +179,44 @@ def test_run_row_reads_best_val_and_test_f1(tmp_path):
     (d / "train_01062026_120000.log").write_text("x\n")
     (d / "epoch_metrics_01062026_120000.csv").write_text(
         "epoch,val_f1\n1,0.40\n2,0.55\n3,0.50\n")
-    (d / "test_demo.csv").write_text(
+    (d / "test_01062026_120000.csv").write_text(
         "class_idx,class_name,f1,precision,recall\n0,A,0.6,0.6,0.6\n\n"
         "# aggregate,loss=0.1,f1_t05=0.50,f1_opt=0.58,threshold=0.35,"
         "accuracy=0.9,precision=0.6,recall=0.6\n")
     found = discover_runs(tmp_path)
     row = _run_row(found[0])
-    assert row["best_val_f1"] == 0.55      # max over epochs
-    assert row["test_f1"] == 0.58          # optimal-threshold F1 from the aggregate line
+    assert row["metric"] == "F1"
+    assert row["best_val"] == 0.55         # max over epochs
+    assert row["test"] == 0.58             # optimal-threshold F1 from the aggregate line
     assert row["epochs"] == 3
+
+
+def test_run_row_panda_uses_qwk(tmp_path):
+    # A PANDA run is judged by QWK: neither "Best Val F1" nor the F1 of the test CSV.
+    d = tmp_path / "logs" / "kaggle" / "panda" / "ddp" / "vit_small_patch16_224"
+    d.mkdir(parents=True)
+    (d / "train_20112026_163243.log").write_text("x\n")
+    (d / "epoch_metrics_20112026_163243.csv").write_text(
+        "epoch,val_f1,val_qwk\n1,0.30,0.50\n2,0.35,0.71\n3,0.33,0.69\n")
+    (d / "test_20112026_163243.csv").write_text(
+        "class_idx,class_name,f1,precision,recall\n0,A,0.6,0.6,0.6\n\n"
+        "# aggregate,loss=0.1,f1_t05=0.30,accuracy=0.5,precision=0.6,recall=0.6,auc=0.8,qwk=0.66\n")
+    row = _run_row(discover_runs(tmp_path)[0])
+    assert row["metric"] == "QWK"
+    assert row["best_val"] == 0.71 and row["test"] == 0.66
+
+
+def test_run_row_ignores_test_csv_of_another_run(tmp_path):
+    d = tmp_path / "logs" / "local" / "single" / "vit_tiny_patch16_224"
+    d.mkdir(parents=True)
+    (d / "train_01062026_120000.log").write_text("x\n")
+    (d / "train_01062026_130000.log").write_text("x\n")
+    (d / "test_01062026_130000.csv").write_text(
+        "class_idx,class_name,f1,precision,recall\n0,A,0.6,0.6,0.6\n\n"
+        "# aggregate,loss=0.1,f1_t05=0.50,f1_opt=0.58\n")
+    rows = {r.timestamp: _run_row(r) for r in discover_runs(tmp_path)}
+    assert rows["01062026_120000"]["test"] is None
+    assert rows["01062026_130000"]["test"] == 0.58
 
 
 def test_resolve_dataset_n_full_subset_custom():
@@ -202,7 +231,7 @@ def test_run_row_no_csv_is_dashes(tmp_path):
     d.mkdir(parents=True)
     (d / "train_02062026_120000.log").write_text("x\n")
     row = _run_row(discover_runs(tmp_path)[0])
-    assert row["best_val_f1"] is None and row["test_f1"] is None
+    assert row["best_val"] is None and row["test"] is None
 
 
 def test_eval_save_predictions_auto_has_no_path():
