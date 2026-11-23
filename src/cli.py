@@ -406,7 +406,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     from src.model_profile import resolve_model_spec
     from src.performance_model import (
         predict as _predict, predict_quality, gpu_spec,
-        estimate_rc, estimate_rio, precision_factor,
+        estimate_rio,
         BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, EVAL_POWER_FRACTION)
     nfs = disk == "nfs"
     try:
@@ -447,7 +447,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     tt = Table(title="Time / epoch = max(compute, I/O) + sync", border_style="cyan")
     tt.add_column("Term", style="bold"); tt.add_column("Value", justify="right")
     tt.add_column("Formula", style="dim")
-    tt.add_row("Compute", f"{p.t_compute_s:.0f} s", "N / (π · r_c · n_gpus)")
+    tt.add_row("Compute", f"{p.t_compute_s:.0f} s", "N / (r_c(precision) · n_gpus)")
     tt.add_row("Data I/O", f"{p.t_io_s:.0f} s", "N / r_io  (fixed, shared disk)")
     tt.add_row("Grad sync", f"{p.t_sync_s:.1f} s", "(8·P / β) · n_batches")
     tt.add_row("Time/epoch", _fmt_secs(p.time_per_epoch_train_s),
@@ -534,17 +534,27 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
 
     # ── Assumptions behind the formulas ──────────────────────────────────────────
     if ms and gs:
-        rc = estimate_rc(ms, gs, precision)
         rio = estimate_rio(disk, nfs)
         console.print(
-            f"[dim]Assumptions: r_c ≈ {rc:.0f} img/s/GPU (incl. precision ×"
-            f"{precision_factor(gs, precision):.2f}) · r_io ≈ {rio:.0f} img/s "
-            f"({disk}{'+NFS' if nfs else ''}) · {ms.params_m:.0f}M params · MFU 0.17. "
+            f"[dim]Assumptions: r_c ≈ {p.train_ips_per_gpu:.0f} img/s/GPU at {precision} "
+            f"({_throughput_source(p.throughput_model, gs, precision)}) · r_io ≈ {rio:.0f} img/s "
+            f"({disk}{'+NFS' if nfs else ''}) · {ms.params_m:.0f}M params. "
             f"Calibrate with a measured throughput in the Benchmark CLI.[/]")
     if p.calibrated:
         console.print("[green]Calibrated with a measured throughput.[/]")
     for note in p.notes:
         console.print(f"[yellow]•[/] {note}")
+
+
+def _throughput_source(model: str, gpu, precision: str) -> str:
+    """One line on where the predicted throughput comes from (see performance_model)."""
+    from src.performance_model import (MFU, THROUGHPUT_MEASURED, THROUGHPUT_THREE_TERM,
+                                       precision_factor)
+    if model == THROUGHPUT_THREE_TERM:
+        return "compute + memory traffic + fixed cost per step"
+    if model == THROUGHPUT_MEASURED:
+        return "measured"
+    return f"FLOPs only, MFU {MFU} × precision {precision_factor(gpu, precision):.2f}"
 
 
 @app.command(name="benchmark")

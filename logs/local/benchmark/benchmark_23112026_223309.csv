@@ -1,0 +1,26 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,efficientnet_b0,4.02,384.6,NVIDIA GeForce RTX 3060 Ti,8.2,4.56
+#gpu,compute_capability,architecture,sm_count,cuda_cores,tensor_cores
+#gpu,8.6,Ampere,38,4864,152
+#precision,mode
+#precision,amp
+#sizes,n_train,n_val,nfs_factor
+#sizes,7433,1593,1.0
+#model_mem,weight_mb,gradient_mb,optimizer_mb,activation_mb_per_image,total_static_mb
+#model_mem,16.1,16.1,32.1,54.0,64.2
+#cpu,logical_cores,physical_cores,freq_mhz,ram_total_gb,ram_free_gb
+#cpu,16,8,3725.0,16.7,10.0
+#disk,type,is_nfs,read_mb_per_s,files_per_second
+#disk,SSD,no,0.0,0.0
+#ddp,n_gpus,batch_per_gpu,global_batch,workers_per_gpu,speedup,efficiency_pct,sync_overhead_pct,bottleneck,time_train_epoch_min,time_total_h
+#ddp,1,64,64,8,1.0,100.0,0.0,compute,0.2,0.09
+#ddp,2,64,128,8,1.96,97.8,2.2,compute,0.1,0.05
+#ddp,4,64,256,4,3.91,97.7,2.3,compute,0.0,0.03
+#ddp,8,64,512,2,7.82,97.7,2.3,compute,0.0,0.02
+batch_size,trace_mode,s_per_batch_train,imgs_per_s_train,s_per_batch_eval,imgs_per_s_eval,peak_vram_gb,avg_power_w,oom,est_train_min_per_epoch,est_eval_min_per_epoch,est_total_min_per_epoch,est_total_h_30ep,est_energy_train_wh_per_epoch,est_energy_eval_wh_per_epoch,est_energy_total_wh,flops_train_gflops_per_epoch,flops_eval_gflops_per_epoch,optimizer_steps_per_epoch
+8,off,0.0279,286.6,0.0088,906.3,0.43,41.2,no,0.4,0.0,0.5,0.23,0.3,0.02,9.4,8575.1,612.6,930
+8,simple,0.0279,287.1,0.0087,920.5,0.43,53.0,no,0.4,0.0,0.5,0.23,0.38,0.02,12.1,8575.1,612.6,930
+32,off,0.0487,657.4,0.0143,2237.7,1.52,49.5,no,0.2,0.0,0.2,0.1,0.16,0.01,4.9,8575.1,612.6,233
+32,simple,0.0484,661.8,0.0142,2247.4,1.52,96.8,no,0.2,0.0,0.2,0.1,0.3,0.02,9.6,8575.1,612.6,233
+64,off,0.0891,718.0,0.0263,2431.3,2.97,78.6,no,0.2,0.0,0.2,0.09,0.23,0.01,7.2,8575.1,612.6,117
+64,simple,0.089,718.8,0.0261,2448.3,2.97,100.5,no,0.2,0.0,0.2,0.09,0.29,0.02,9.2,8575.1,612.6,117
