@@ -32,6 +32,7 @@ sys.path.insert(0, str(ROOT))
 from src.analysis.throughput_model import (  # noqa: E402
     common_factor,
     fit_flops_only,
+    fit_with_overhead,
     fit_two_term,
     leave_one_out,
     predict_ips,
@@ -40,19 +41,19 @@ from src.analysis.throughput_model import (  # noqa: E402
     transfer,
 )
 
-DATA = ROOT / "docs" / "research" / "datos" / "throughput_arquitecturas_512_amp.csv"
+DATA = ROOT / "docs" / "research" / "datos" / "throughput_arquitecturas_amp.csv"
 # Memory bandwidth (GB/s) from the NVIDIA spec sheets; the predictor's GPU_TABLE has no
 # bandwidth yet. TFLOPS and the Tensor-core factor π come from GPU_TABLE.
 MEM_BW_GBS = {"RTX 3060 Ti": 448.0, "Tesla T4": 320.0, "Tesla V100": 900.0}
 
 
-def load(path: Path) -> dict[str, dict[str, float]]:
-    """``{gpu: {model: train imgs/s}}`` from the tidy CSV (always the versioned one: the
-    study reads no path from the command line)."""
-    out: dict[str, dict[str, float]] = {}
+def load(path: Path) -> dict[tuple[str, int], dict[str, float]]:
+    """``{(gpu, img_size): {model: train imgs/s}}`` from the tidy CSV (always the versioned
+    one: the study reads no path from the command line). All rows use batch 16."""
+    out: dict[tuple[str, int], dict[str, float]] = {}
     with open(path, newline="") as f:
         for row in csv.DictReader(f):
-            out.setdefault(row["gpu"], {})[row["model"]] = float(row["train_ips"])
+            out.setdefault((row["gpu"], int(row["img_size"])), {})[row["model"]] = float(row["train_ips"])
     return out
 
 
@@ -66,6 +67,40 @@ def features(models, img_size: int, num_classes: int = 6) -> dict[str, tuple[flo
             raise SystemExit(f"cannot profile {m}")
         feats[m] = (spec.gflops_fwd, saved_activation_gb(m, 3, num_classes, img_size))
     return feats
+
+
+BATCH = 16      # every measurement of the CSV uses batch 16
+
+
+def resolution_section(data, feats_at, cal_gpu: str, cal_size: int, md: bool) -> None:
+    """Same GPU, other resolutions: the fits of ``cal_size`` predict the rest, without
+    refitting, with two terms and with the fixed cost per step (``d/B``)."""
+    cal = data[(cal_gpu, cal_size)]
+    names = list(cal)
+    F = np.array([feats_at(cal_size)[m][0] for m in names])
+    A = np.array([feats_at(cal_size)[m][1] for m in names])
+    R = np.array([cal[m] for m in names])
+    a1 = fit_flops_only(F, R)
+    a2, b2 = fit_two_term(F, A, R)
+    a3, b3, d3 = fit_with_overhead(F, A, R, np.full(len(R), BATCH))
+    print(f"Otras resoluciones en {cal_gpu}, sin reajustar (calibrado solo a {cal_size} px; "
+          f"coste fijo por paso d = {d3 * 1e3:.1f} ms):\n")
+    mean = lambda e: f"{100 * np.mean(np.abs(e)):.0f} %"
+    for (gpu, size), meas in sorted(data.items()):
+        if gpu != cal_gpu or size == cal_size:
+            continue
+        ms = list(meas)
+        Ft = np.array([feats_at(size)[m][0] for m in ms])
+        At = np.array([feats_at(size)[m][1] for m in ms])
+        Rt = np.array([meas[m] for m in ms])
+        e1 = relative_errors(predict_ips(a1, 0, Ft, At), Rt)
+        e2 = relative_errors(predict_ips(a2, b2, Ft, At), Rt)
+        e3 = relative_errors(predict_ips(a3, b3, Ft, At, d3, BATCH), Rt)
+        rows = [[m, f"{Rt[i]:.1f}", _pct(e1[i]), _pct(e2[i]), _pct(e3[i])] for i, m in enumerate(ms)]
+        print(f"{size} px:\n")
+        print(_table(["Modelo", "img/s", "Solo FLOPs", "2 términos", "2 términos + d/B"], rows, md))
+        print(f"\n|error| medio: solo FLOPs {mean(e1)}, 2 términos {mean(e2)}, con coste fijo "
+              f"{mean(e3)} (máx {100 * np.max(np.abs(e3)):.0f} %)\n")
 
 
 def _pct(x: float) -> str:
@@ -90,10 +125,18 @@ def main(argv=None) -> None:
     from src.performance_model import gpu_spec
 
     data = load(DATA)
-    cal = data.get(args.calibration_gpu)
+    cal = data.get((args.calibration_gpu, args.img_size))
     if not cal:
-        raise SystemExit(f"no measurements for {args.calibration_gpu!r}: {list(data)}")
-    feats = features(sorted({m for d in data.values() for m in d}), args.img_size)
+        raise SystemExit(f"no measurements for {args.calibration_gpu!r} at {args.img_size} px: "
+                         f"{sorted(data)}")
+    cache: dict[int, dict[str, tuple[float, float]]] = {}
+
+    def feats_at(size: int) -> dict[str, tuple[float, float]]:
+        if size not in cache:
+            cache[size] = features(sorted({m for (g, s), d in data.items() if s == size for m in d}), size)
+        return cache[size]
+
+    feats = feats_at(args.img_size)
     names = list(cal)
     F = np.array([feats[m][0] for m in names])
     A = np.array([feats[m][1] for m in names])
@@ -113,8 +156,8 @@ def main(argv=None) -> None:
     print(f"\n|error| medio: solo FLOPs {mean(e1)} (LOO {mean(l1)}); "
           f"2 términos {mean(e2)} (LOO {mean(l2)}, máx {100 * np.max(np.abs(l2)):.0f} %)\n")
     g_cal = gpu_spec(args.calibration_gpu)
-    for gpu, meas in data.items():
-        if gpu == args.calibration_gpu:
+    for (gpu, size), meas in data.items():
+        if gpu == args.calibration_gpu or size != args.img_size:
             continue
         g = gpu_spec(gpu)
         if g is None or gpu not in MEM_BW_GBS or args.calibration_gpu not in MEM_BW_GBS:
@@ -144,6 +187,7 @@ def main(argv=None) -> None:
               f"(2 términos) {common_factor(t2):.2f}; |error| de forma: solo FLOPs {mean(s1)}, "
               f"2 términos {mean(s2)} (calibrados {mean(s2[~new])}, no calibrados "
               f"{mean(s2[new]) if new.any() else '—'})\n")
+    resolution_section(data, feats_at, args.calibration_gpu, args.img_size, md)
 
 
 if __name__ == "__main__":

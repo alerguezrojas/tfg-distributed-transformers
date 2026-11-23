@@ -4,6 +4,7 @@ import pytest
 
 from src.analysis.throughput_model import (
     common_factor,
+    fit_with_overhead,
     fit_flops_only,
     fit_two_term,
     leave_one_out,
@@ -54,3 +55,13 @@ def test_common_factor_and_shape():
     e2 = np.array([1.0, 0.0])                       # 2× and 1×: geometric mean √2
     assert common_factor(e2) == pytest.approx(np.sqrt(2))
     assert shape_errors(e2) == pytest.approx([np.sqrt(2) - 1, 1 / np.sqrt(2) - 1])
+
+
+def test_fit_with_overhead_recovers_a_fixed_cost_per_step():
+    d_true, batch = 0.024, np.array([16, 16, 16, 8, 8, 32])
+    ips = 1.0 / (A_TRUE * F + B_TRUE * S + d_true / batch)
+    a, b, d = fit_with_overhead(F, S, ips, batch)
+    assert (a, b, d) == pytest.approx((A_TRUE, B_TRUE, d_true))
+    assert predict_ips(a, b, F, S, d, batch) == pytest.approx(ips)
+    with pytest.raises(ValueError):
+        fit_with_overhead(F[:2], S[:2], ips[:2], batch[:2])
