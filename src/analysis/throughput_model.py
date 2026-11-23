@@ -74,8 +74,10 @@ def transfer(a: float, b: float, compute_ratio: float, bandwidth_ratio: float) -
 
 
 def common_factor(rel_err) -> float:
-    """Geometric-mean factor shared by all errors (a GPU running below its nominal clock
-    shows up as one factor for every model): ``exp(mean(log(1 + e)))``."""
+    """Geometric-mean factor shared by all errors, ``exp(mean(log(1 + e)))``: what the
+    spec-sheet transfer misses for every model alike on that GPU. It is NOT necessarily a
+    clock: the SM clock only scales the compute term, and the residual can sit in the
+    memory term too (effective bandwidth under a power cap…)."""
     return float(np.exp(np.mean(np.log1p(np.asarray(rel_err, float)))))
 
 

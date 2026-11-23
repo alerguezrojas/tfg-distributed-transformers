@@ -59,8 +59,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - Predictor: con 13 arquitecturas medidas a 512 px (RTX 3060 Ti y T4), el tiempo no sigue a los
   FLOPs (error medio en validación cruzada 193 %); con un segundo término de memoria de
   activaciones baja al 10 %, y el coste relativo de las arquitecturas se transfiere a la T4
-  desde las hojas técnicas con un 11 % de error (82 % con solo FLOPs). El −40 % de ViT-S a
-  512 px en Kaggle era sobre todo CPU (al 100 %), no el reloj de la T4.
+  desde las hojas técnicas con un 11 % de error (82 % con solo FLOPs), más un factor común de 1,49
+  de causa sin identificar. El −40 % de ViT-S a 512 px en Kaggle no es la GPU (la T4 lo haría en
+  ~77 s); la hipótesis es contención de CPU, pendiente de un experimento de control.
 - PANDA, modelos grandes en Kaggle (2 × T4, semilla 42): SwinV2-T 0,835, ViT-B 0,823,
   ConvNeXt-S 0,811, MaxViT-T 0,806 y EfficientNet-B3 0,775 de QWK de test; ninguno supera a Swin-T
   de forma significativa, ni las variantes de Swin-T con pesos in22k o 25 épocas.

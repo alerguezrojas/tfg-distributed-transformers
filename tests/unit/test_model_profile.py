@@ -241,3 +241,23 @@ def test_saved_activation_gb_unknown_model():
     from src.model_profile import saved_activation_gb
     with pytest.raises(ValueError):
         saved_activation_gb("no_such_model_xyz")
+
+
+def test_count_saved_bytes_excludes_parameters_and_dedups_views():
+    """A hand-made net: Linear saves its input (not its weight); ReLU saves its output;
+    a view of an already-saved tensor is not counted twice."""
+    import torch
+    from src.model_profile import _count_saved_bytes
+
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = torch.nn.Linear(3 * 4 * 4, 8, bias=False)     # weight: 384 floats
+
+        def forward(self, x):
+            h = x.flatten(1)                    # view of the input
+            y = torch.relu(self.fc(h))          # saves h (view of x) and relu's output
+            return y * y.view(1, 8)             # mul saves y twice (same storage)
+
+    total = _count_saved_bytes(Net(), in_chans=3, img_size=4)
+    assert total == (48 + 8) * 4                # input (48 floats) + relu output (8), fp32

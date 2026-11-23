@@ -171,10 +171,14 @@ por GPU apenas cuesta un 5 %, así que no explica el −40 %. Las muestras del s
 por potencia). Las 4 vCPU de Kaggle no dan abasto entre la decodificación de los mosaicos JPEG de
 512 px y los dos procesos de entrenamiento; la contención de CPU frena el paso aunque el bucle
 apenas espere al *loader* (1,9 %). Con 2 × 48 img/s la GPU haría la época en ~77 s (el predictor
-dice 73); los 122 s medidos son CPU. Lo mismo le pasa a EfficientNet-B3 (GPU al 76 %, CPU al
-100 %). En cambio, los modelos pesados (ViT-B, ConvNeXt-S, SwinV2-T, MaxViT-T) trabajan con la GPU
-al 94-100 % y el reloj a 825-960 MHz: ahí sí manda el límite de potencia. Falta, por tanto, un
-término de CPU (decodificación por *worker*) además del reloj sostenido.
+dice 73), así que los 122 s medidos no son la GPU. La hipótesis más probable es la **contención
+de CPU**, pero no está probada: EfficientNet-B3 se comporta igual (GPU al 76 %), y en cambio
+ConvNeXt-S y SwinV2-T tienen la CPU casi igual de saturada (97 %) con la GPU al 95-97 %, de modo
+que "CPU al 100 %" no basta para distinguir unos runs de otros (los procesos esperan activamente a
+la GPU). Lo que sí la apoya es que el proceso de entrenamiento de ViT-S usa el 44 % de un núcleo,
+frente a ~100 % en los modelos pesados. El experimento que la cierra: el mismo run en Kaggle con
+`num_workers=2`, o con los mosaicos ya decodificados. En los modelos pesados (ViT-B, ConvNeXt-S,
+SwinV2-T, MaxViT-T: GPU al 94-100 %, reloj a 817-967 MHz) sí manda la GPU.
 
 ---
 
@@ -349,7 +353,10 @@ de modelos fuera de la tabla para validarse (fase 4 del roadmap).
 a los FLOPs. En la criba de modelos de PANDA (512 px, AMP, lote 16, RTX 3060 Ti) eso falla fuera
 de los ViT: el tiempo por época predicho se queda corto un 44 % en Swin-T, un 30 % en ConvNeXt-T,
 un 26 % en ResNet-50 y un 50 % en EfficientNetV2-S, mientras que en ViT-S, DeiT-III y EVA-02 el
-error está entre −8 % y +12 %.
+error está entre −8 % y +12 %. (Predicho: `paravit estimate --model M --gpu "RTX 3060 Ti" --batch 16
+--precision amp --img-size 512 --dataset-size 7433`; medido: mediana de `epoch_time_s`, sin la
+primera época, de `logs/local/panda/single/<modelo>/epoch_metrics_22112026_*.csv`, que incluye
+también la validación.)
 
 **Medidas.** Throughput de entrenamiento con lotes sintéticos (`paravit benchmark`, sin I/O) de
 13 arquitecturas a 512 px con AMP: 10 en la RTX 3060 Ti local (las otras tres no caben en 8 GB) y
@@ -366,8 +373,9 @@ t = a · F + b · A
 
 `F` son los GFLOPs del *forward* por imagen (la unidad de `MODEL_TABLE`) y `A` los GB que autograd
 guarda para el *backward* de una imagen, sin contar los parámetros
-(`src/model_profile.py: saved_activation_gb`, medido en CPU en menos de un segundo por modelo; en
-AMP se guarda aproximadamente la mitad). `a` es la inversa de un ritmo de cómputo efectivo y `b`
+(`src/model_profile.py: saved_activation_gb`, medido en CPU en menos de un segundo por modelo, con
+el núcleo de atención *flash*, que como los de la GPU no guarda la matriz N×N; que en AMP se guarde
+más o menos la mitad es un **supuesto**: LayerNorm y softmax siguen en fp32). `a` es la inversa de un ritmo de cómputo efectivo y `b`
 la de un ritmo de memoria efectivo. La forma actual del predictor es `t = a · F`. Ajuste y
 validación en `src/analysis/throughput_model.py` (puro, con tests) y el estudio completo, en un
 comando:
@@ -417,12 +425,16 @@ modelos, es decir, el coste **relativo** de las arquitecturas:
 | EfficientNetV2-S | 35,7 | +312 % | +37 % | +41 % | −6 % | sí |
 
 - **Forma:** con dos términos el coste relativo de las arquitecturas se predice con un **11 %** de
-  error medio en una GPU que no se usó para ajustar (frente a 82 % con solo FLOPs), incluidos
-  ConvNeXt-S (−3 %) y MaxViT-T (+3 %), que no estaban en la calibración.
-- **Absoluto:** casi todo el error es **un factor común de 1,49**: la T4 trabaja limitada a 70 W
-  y por debajo de su reloj nominal (825-960 MHz medidos en los entrenamientos de Kaggle, frente a
-  1.590 de *boost*). Es una propiedad de la GPU, no de la arquitectura: un reloj sostenido por GPU
-  lo recogería.
+  error medio en una GPU que no se usó para ajustar (frente a 82 % con solo FLOPs): 9 % en los
+  diez modelos de la calibración y 16 % en los tres que no estaban (ConvNeXt-S −3 %, MaxViT-T
+  +3 %, SwinV2-T +42 %).
+- **Absoluto:** casi todo el error es **un factor común de 1,49** que la transferencia por hoja
+  técnica no recoge. Su causa **no está identificada**: la T4 trabaja limitada a 70 W y con el reloj
+  por debajo del nominal (817-967 MHz en los entrenamientos de Kaggle, frente a 1.590 de *boost*),
+  pero el reloj solo escala el término de cómputo, y ese término es un 6-7 % del tiempo de las
+  EfficientNet en la T4. Un ajuste directo en la T4 (solo como diagnóstico; lo imprime el script)
+  da `b` 1,65 veces mayor que el transferido y `a` solo 1,24 veces: la mayor parte del factor está
+  en el término de memoria (ancho de banda efectivo de la GDDR6 a 70 W, u otra causa).
 - **Lo que no recoge:** la familia Swin (+24 % Swin-T, +42 % SwinV2-T, no calibrado). La atención
   por ventanas (particiones, desplazamientos, la MLP de sesgos de SwinV2) lanza muchas operaciones
   pequeñas que no son ni FLOPs ni bytes guardados. EVA-02 (+7 %) va en la misma dirección, más
@@ -432,6 +444,7 @@ modelos, es decir, el coste **relativo** de las arquitecturas:
 falta un segundo término de tráfico de memoria, medible en CPU sin GPU, y con él el coste relativo
 se transfiere entre GPUs a partir de las hojas técnicas. Esto es **estudio, no predictor**: el
 predictor (`src/performance_model.py`) no cambia todavía. Para integrarlo hacen falta el ancho de
-banda en `GPU_TABLE`, un reloj sostenido por GPU, recalibrar la MFU con el término de memoria
+banda en `GPU_TABLE`, entender el factor común por GPU (que afecta sobre todo al término de
+memoria) o calibrarlo con una medida por GPU, recalibrar la MFU con el término de memoria
 (separando de nuevo calibración y validación, y revisando las filas de la sección 4, que son todas
 ViT) y medidas en una tercera GPU.

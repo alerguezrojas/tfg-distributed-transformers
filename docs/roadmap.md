@@ -191,8 +191,9 @@ son ViT no sigue a los FLOPs: con 13 arquitecturas medidas con lotes sintéticos
 Ti y una T4 de Kaggle), un modelo de dos términos (FLOPs + GB de activaciones que guarda autograd,
 medidos en CPU) baja el error en validación cruzada de 193 % a 10 % y predice el coste relativo de
 las arquitecturas en la T4, sin reajustar, con un 11 % (82 % con solo FLOPs). En la T4 queda un
-factor común de 1,49 (reloj por debajo del nominal) y la familia Swin se escapa (+24-42 %). Además,
-el −40 % de ViT-S a 512 px en Kaggle era CPU al 100 %, no el reloj. Es estudio, no predictor todavía:
+factor común de 1,49 de causa sin identificar (sobre todo en el término de memoria) y la familia
+Swin se escapa (+24-42 %). El −40 % de ViT-S a 512 px en Kaggle no es la GPU; la hipótesis es
+contención de CPU, pendiente de un control con `num_workers=2`. Es estudio, no predictor todavía:
 [performance_model.md, sección 8](performance_model.md#8-arquitecturas-distintas-de-vit-flops-frente-a-flops--memoria-23112026).
 El benchmark ya usa los tamaños de partición del dataset de la config (PR #246).
 
@@ -430,7 +431,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
     GPU (T4) y con modelos fuera de la calibración (23/11/2026; `performance_model.md`, sección 8).
   - [ ] Integrar el término de memoria en `performance_model.py`: ancho de banda en `GPU_TABLE`,
     reloj sostenido por GPU, MFU recalibrada y una tercera GPU para validar.
-  - [ ] Término de CPU (decodificación por *worker*): en Kaggle, ViT-S a 512 px está limitado por la CPU.
+  - [ ] ¿Contención de CPU en Kaggle? ViT-S a 512 px va a 122 s/época donde la GPU haría ~77 s:
+    control con `num_workers=2` o mosaicos ya decodificados; si se confirma, término de CPU.
 
 ### Fase 6 — Campaña en máquinas nuevas y publicación
 - [ ] Barridos con ≥3 repeticiones por configuración.

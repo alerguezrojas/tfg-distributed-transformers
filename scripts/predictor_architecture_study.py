@@ -117,6 +117,9 @@ def main(argv=None) -> None:
         if gpu == args.calibration_gpu:
             continue
         g = gpu_spec(gpu)
+        if g is None or gpu not in MEM_BW_GBS or args.calibration_gpu not in MEM_BW_GBS:
+            raise SystemExit(f"no TFLOPS/π (GPU_TABLE) or bandwidth (MEM_BW_GBS) for {gpu!r} "
+                             f"or {args.calibration_gpu!r}; add them to compare")
         k_c = (g_cal.fp32_tflops * g_cal.tensor_speedup) / (g.fp32_tflops * g.tensor_speedup)
         k_m = MEM_BW_GBS[args.calibration_gpu] / MEM_BW_GBS[gpu]
         at, bt = transfer(a, b, k_c, k_m)
@@ -133,9 +136,14 @@ def main(argv=None) -> None:
                  "sí" if m in cal else "no"] for i, m in enumerate(ms)]
         print(_table(["Modelo", "img/s", "Solo FLOPs", "Solo FLOPs, forma", "2 términos",
                       "2 términos, forma", "En la calibración"], rows, md))
+        ad, bd = fit_two_term(Ft, At, Rt)        # direct fit on this GPU, for diagnosis only
+        print(f"\nAjuste directo en {gpu} (solo diagnóstico): a ×{ad / at:.2f} y b ×{bd / bt:.2f} "
+              f"respecto a lo transferido por hoja técnica.")
+        new = np.array([m not in cal for m in ms])
         print(f"\n|error| medio absoluto: solo FLOPs {mean(t1)}, 2 términos {mean(t2)}; factor común "
               f"(2 términos) {common_factor(t2):.2f}; |error| de forma: solo FLOPs {mean(s1)}, "
-              f"2 términos {mean(s2)}\n")
+              f"2 términos {mean(s2)} (calibrados {mean(s2[~new])}, no calibrados "
+              f"{mean(s2[new]) if new.any() else '—'})\n")
 
 
 if __name__ == "__main__":
