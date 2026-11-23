@@ -193,6 +193,13 @@ en [datasets/panda.md](datasets/panda.md#limpieza-de-etiquetas-fuera-de-pliegue-
 probabilidades de varios modelos (cargados de uno en uno). Con las tres semillas base reproduce el
 QWK de test de 0,819 (0,8193, exactitud 0,674).
 
+**Confirmación con semillas (23/11/2026).** Con tres semillas, ViT-B (0,822 ± 0,003), Swin-T
+(0,821) y SwinV2-T (0,820) superan a la base (0,794) por igual; la pérdida ordinal con Swin-T da
+0,827 ± 0,014 (+0,006, no significativo, igual que con ViT-S). El conjunto de 6 arquitecturas
+repetido con runs de semillas que no intervinieron en su elección da 0,852 y 0,846 (+0,017-0,023
+sobre el mejor conjunto de una arquitectura): la ganancia de mezclar arquitecturas se confirma.
+Detalle en [datasets/panda.md](datasets/panda.md#confirmación-con-más-semillas-23112026).
+
 **Predictor y arquitecturas (23/11/2026).** El tiempo de entrenamiento de arquitecturas que no
 son ViT no sigue a los FLOPs: con 13 arquitecturas medidas con lotes sintéticos a 512 px (RTX 3060
 Ti y una T4 de Kaggle), un modelo de dos términos (FLOPs + GB de activaciones que guarda autograd,
@@ -381,7 +388,7 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] Modelos grandes en Kaggle (ViT-B, ConvNeXt-S, SwinV2-T, EfficientNet-B3, MaxViT-T):
     ninguno supera a Swin-T (23/11/2026).
   - [x] Conjunto de arquitecturas elegido en validación: QWK de test 0,858 (23/11/2026).
-  - [ ] Semillas 43 y 44 de SwinV2-T y ViT-B; conjunto repetido con ellas.
+  - [x] Semillas 43 y 44 de SwinV2-T, ViT-B, EVA-02-S y Swin-T ordinal; conjunto repetido con ellas (23/11/2026).
   - [ ] Adaptación a otro hospital y normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
