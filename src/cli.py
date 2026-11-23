@@ -113,7 +113,9 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
                           config: str | None = None, dataset_path: str | None = None,
                           precision: str = "fp32", compare_precision: bool = False,
                           convergence_study: bool = False, study_steps: int = 60,
-                          nfs_factor: float = 1.0, device: int = 0) -> list[str]:
+                          nfs_factor: float = 1.0, device: int = 0,
+                          train_size: int | None = None,
+                          val_size: int | None = None) -> list[str]:
     """Build the benchmark.py command (the GPU benchmark / measurement)."""
     cmd = [sys.executable, "scripts/benchmark.py", "--epochs", str(epochs)]
     if config:
@@ -126,6 +128,10 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
         cmd += ["--trace-modes", *trace_modes]
     if dataset_path:
         cmd += ["--dataset-path", dataset_path]
+    if train_size is not None:
+        cmd += ["--train-size", str(train_size)]
+    if val_size is not None:
+        cmd += ["--val-size", str(val_size)]
     if precision and precision != "fp32":
         cmd += ["--precision", precision]
     if compare_precision:
@@ -454,6 +460,8 @@ def benchmark(
     study_steps: int = typer.Option(60, help="Mini-training steps."),
     nfs_factor: float = typer.Option(1.0, help="NFS latency factor (Verode ≈ 1.3)."),
     device: int = typer.Option(0, help="CUDA device index."),
+    train_size: Optional[int] = typer.Option(None, help="Train images (default: the config's dataset)."),
+    val_size: Optional[int] = typer.Option(None, help="Val images (default: the config's dataset)."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Empirical benchmark on this machine — measures real throughput, memory and scaling."""
@@ -462,7 +470,8 @@ def benchmark(
                                 dataset_path=dataset_path, precision=precision,
                                 compare_precision=compare_precision,
                                 convergence_study=convergence_study, study_steps=study_steps,
-                                nfs_factor=nfs_factor, device=device)
+                                nfs_factor=nfs_factor, device=device,
+                                train_size=train_size, val_size=val_size)
     _run(cmd, dry_run)
 
 

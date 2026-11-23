@@ -21,11 +21,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.benchmark import BenchmarkChecker, ReportFormatter
+from src.benchmark.dataset_sizes import resolve_split_sizes
 
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Analizador de viabilidad pre-entrenamiento — BigEarthNet ViT v3"
+        description="Analizador de viabilidad pre-entrenamiento — ParaViT-Lab"
     )
     parser.add_argument("--config", default="configs/train.yaml")
     parser.add_argument("--model", type=str, nargs="+", default=None,
@@ -37,7 +38,12 @@ def parse_args():
     parser.add_argument("--nfs-factor", type=float, default=1.0, metavar="FACTOR",
                         help="Multiplicador de overhead para almacenamiento NFS (p.ej. 1.3 para Verode)")
     parser.add_argument("--dataset-path", type=str, default=None,
-                        help="Ruta al dataset BigEarthNet-S2 para medir I/O real")
+                        help="Ruta al dataset para medir I/O (el perfil de patches *.tif "
+                             "solo se hace con BigEarthNet-S2)")
+    parser.add_argument("--train-size", type=int, default=None,
+                        help="Imágenes del split de train (por defecto, las del dataset de la config)")
+    parser.add_argument("--val-size", type=int, default=None,
+                        help="Imágenes del split de validación (por defecto, las del dataset de la config)")
     parser.add_argument("--no-disk-profile", action="store_true",
                         help="Omitir medición de I/O del disco (más rápido)")
     parser.add_argument("--no-ddp-analysis", action="store_true",
@@ -82,22 +88,12 @@ def main():
     # Auto-detect dataset path from config if not provided
     dataset_path = args.dataset_path or cfg.get("data", {}).get("root")
 
-    # Tamaño REAL del dataset según el metadata del config — NO asumir el full
-    # set. Si el config apunta a un subset (p.ej. metadata_demo.parquet con 5000
-    # imágenes), las estimaciones deben usar ese tamaño para que sean comparables
-    # con el run real. Fallback al full BigEarthNet si no se puede leer.
-    n_train, n_val = 237871, 122342
-    meta_path = cfg.get("data", {}).get("metadata")
-    if meta_path and Path(meta_path).exists():
-        try:
-            import pandas as pd
-            counts = pd.read_parquet(meta_path, columns=["split"])["split"].value_counts()
-            n_train = int(counts.get("train", n_train))
-            n_val = int(counts.get("validation", n_val))
-            print(f"Dataset (metadata): train={n_train:,}  val={n_val:,}")
-        except Exception as exc:
-            print(f"[aviso] no se pudo leer el tamaño del metadata ({exc}); "
-                  f"usando full set {n_train:,}/{n_val:,}")
+    # Tamaño REAL de los splits del dataset de la config (data.name), no el de
+    # BigEarthNet: --train-size/--val-size mandan; si no, se lee de la partición.
+    try:
+        n_train, n_val = resolve_split_sizes(cfg, args.train_size, args.val_size)
+    except ValueError as exc:
+        sys.exit(f"[error] {exc}")
 
     for model_name in model_names:
         output_path = args.output

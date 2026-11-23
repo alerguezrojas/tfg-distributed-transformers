@@ -21,6 +21,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Corregido
 
+- `paravit benchmark` ya no supone BigEarthNet con otros datasets: los tamaños de split salen del
+  dataset de la config (`data.name`; PANDA lee `splits.csv`, MedMNIST el `.npz`) o de
+  `--train-size`/`--val-size`, y si no se pueden leer falla con un mensaje en vez de usar los de
+  BigEarthNet; el perfil de I/O (`*.tif`, «Patches encontrados») y el prior empírico de F1 solo
+  se muestran con BigEarthNet (con otro dataset, una línea «Sin prior calibrado»); la cabecera
+  nombra el dataset. Se comprueba además que el benchmark usa `model.img_size`.
 - Con `--model` distinto al de la YAML, el manifiesto del run (`config.model.name`) y los
   checkpoints ya reflejan el modelo efectivo: los checkpoints guardan `model_name` y
   `scripts/eval.py` lo usa si no se pasa `--model` (error claro si lo contradice o si un conjunto

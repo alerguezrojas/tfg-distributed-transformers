@@ -232,3 +232,9 @@ def test_train_dry_run_passes_seed_and_data_root():
     assert r.exit_code == 0
     out = r.output.replace("\n", " ")
     assert "--seed 42" in out and "--data-root /d" in out
+
+
+def test_benchmark_cmd_passes_split_sizes():
+    s = _join(build_benchmark_cmd(None, None, 15, None, train_size=7433, val_size=1593))
+    assert "--train-size 7433" in s and "--val-size 1593" in s
+    assert "--train-size" not in _join(build_benchmark_cmd(None, None, 15, None))

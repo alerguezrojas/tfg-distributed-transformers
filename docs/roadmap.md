@@ -313,8 +313,10 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Corregido: `model.dropout` del YAML no se aplicaba (la cabeza usaba siempre 0.1).
 - [x] Corregido: el builder no pasaba la pérdida configurada al trainer heterogéneo (`pos_weight` se perdía).
 - [ ] La web (galería y estadísticas del dataset) sigue siendo específica de BigEarthNet.
-- [ ] El benchmark aún toma de BigEarthNet los tamaños de split por defecto y el perfil de I/O
-      (ficheros `*.tif`); se generaliza junto con el modelo de I/O en la fase 5.
+- [x] El benchmark ya no toma de BigEarthNet los tamaños de split (salen del dataset de la config
+      o de `--train-size/--val-size`), ni el perfil de I/O `*.tif` ni el prior de F1 (solo con
+      BigEarthNet). Pendiente: un perfil de I/O propio de cada dataset, junto con el modelo de
+      I/O de la fase 5.
 
 ### Fase 3 — Nuevos datasets (en curso)
 - [x] MedMNIST: BreastMNIST (binaria, cáncer de mama), DermaMNIST (multiclase, melanoma),
