@@ -38,6 +38,32 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Corregido
 
+- DDP en varios nodos: `DDPTrainer` envolvía el modelo con `device_ids=[rank]` (el rank global), de
+  modo que con una GPU por nodo (VERODE) el rank 1 pedía `cuda:1`. Ahora usa el índice del
+  dispositivo del modelo (`ddp_device_ids`), también en el entrenador heterogéneo. Se quita el
+  comentario de `scripts/train_ddp.py` que sugería compartir GPU entre ranks (NCCL no lo admite).
+- Resultados de test por run: la web y `paravit runs` asociaban todos los `test_*.csv` de la carpeta
+  a cada run (cuatro runs de `medmnist_breast` mostraban el mismo F1 de test). Ahora cada run recibe
+  solo su `test_<sello>.csv` (o `eval_<sello>.csv`); los demás quedan «sin asignar»
+  (`RunInfo.unassigned_test_csv_paths`) y no se atribuyen a ningún run.
+- `paravit runs` mostraba «Best Val F1» también en PANDA: ahora usa la métrica principal del run
+  (QWK en PANDA, AUC en MedMNIST, F1 en el resto), con su nombre en una columna, y el valor de
+  test de esa métrica.
+- `scripts/eval.py` guarda el QWK en el CSV de test (clave nueva `qwk=` en la fila `# aggregate`,
+  solo en tareas ordinales) y `src/results_summary.py` lo agrega; además lee la semilla del
+  manifiesto `run_<sello>.json` cuando el log no la trae.
+- La línea `Configuración:` de DDP, heterogéneo y paralelismo de modelo escribe ahora `seed=` y
+  `loss=` con el mismo formato que la de `single` (claves nuevas; los parsers de la web no cambian).
+  La etiqueta de la pérdida sale de `loss_log_label` (`src/training/losses.py`).
+- `gpu_spec()` ya no casa por subcadena: «NVIDIA GeForce RTX 3060» (12 GB) devolvía la RTX 3060 Ti
+  (8 GB). Ahora exige coincidencia exacta tras normalizar o un alias explícito (`_GPU_ALIASES`:
+  variantes `Tesla V100-PCIE-32GB`, `A100-SXM4-40GB`…); una GPU que no está en la tabla da `None` y
+  `paravit estimate` lo dice. Los nombres reales de T4, V100, 3060 Ti, 3090, 4090, A100, P100 y H100
+  resuelven igual que antes; `RTX 3060`, `RTX 3090 Ti` o `A100` a secas dejan de resolver.
+- `tests/unit/test_system_sampler.py` ya no falla si `CUDA_VISIBLE_DEVICES` está definida (Slurm,
+  Kaggle).
+- `.gitignore`: `logs/**/events_*.jsonl` y `logs/**/test_preds_*.npz` se ignoran de forma explícita
+  (no se versionaban ni estaban ignorados); el manifiesto `run_<sello>.json` sigue versionándose.
 - `paravit benchmark` ya no supone BigEarthNet con otros datasets: los tamaños de split salen del
   dataset de la config (`data.name`; PANDA lee `splits.csv`, MedMNIST el `.npz`) o de
   `--train-size`/`--val-size`, y si no se pueden leer falla con un mensaje en vez de usar los de

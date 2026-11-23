@@ -192,7 +192,7 @@ el umbral es la media de los guardados en los miembros (si falta alguno, se ajus
 sello); con un solo checkpoint no cambia nada.
 
 Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
-agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
+agregada, con el AUC macro y, en tareas ordinales, el QWK) que el panel web muestra en la tarjeta «Held-out test set» del run.
 
 Tras las métricas agregadas y por clase, `eval` añade (solo si procede):
 
@@ -422,7 +422,7 @@ Cada run escribe, bajo `logs/<entorno>/<estrategia>/<modelo>/`:
 | `run_<fecha>.json` | Manifiesto del run (dataset, tarea, métrica principal, config completa y comando; unos KB, se versiona): lo que lee la web para saber de qué va el run ([esquema](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)) |
 | `events_*.jsonl` | Flujo de eventos del run ([esquema](eventos.md)): lo que lee la pestaña *Live* |
 | `inspect_<fecha>/` | Con `--monitor`: predicciones por imagen, *embeddings* y Grad-CAM por época ([formato](inspeccion.md)); no se versiona |
-| `test_*.csv` | Resultado de la evaluación en test (si se ejecutó `eval`) |
+| `test_<fecha>.csv` | Resultado de la evaluación en test (si se ejecutó `eval`); el sello es el del run, y la web solo lo muestra en ese run (los `test_*.csv` sin el sello de ningún run quedan sin asignar) |
 | `test_preds_<fecha>.npz` | Predicciones por muestra en test (`eval --save-predictions`); el Inspector las lee |
 
 Los pesos van a `checkpoints/<env>/[<dataset>/]<modo>/<modelo>/<DDMMYYYY_HHMMSS>/` (fuera de git): una
