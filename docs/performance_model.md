@@ -498,7 +498,7 @@ medido y sigue con la MFU × π):
 - **El coste fijo por paso (d/B) está medido.** Sin variar el lote, d no se puede separar de los
   términos por imagen: el primer ajuste, solo a 512 px y lote 16, daba 30 ms y con lote 8 se
   quedaba un 30 % corto. El barrido de lotes de la 3060 Ti (`logs/local/benchmark/
-  benchmark_23112026_2232*`) da, para cada modelo, un tiempo por paso que crece en línea recta
+  benchmark_23112026_223*`) da, para cada modelo, un tiempo por paso que crece en línea recta
   con el lote. La ordenada en el origen es de 13-19 ms según el modelo, y el ajuste conjunto
   da 18 ms. Error por lote: 13 % (8), 8 % (16), 9 % (32) y 8 % (64). Dejando fuera cada modelo
   entero, el error es del 11 %. En la T4 no se ha variado el lote: su d (24 ms) es un supuesto.

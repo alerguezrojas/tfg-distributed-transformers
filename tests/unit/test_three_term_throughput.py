@@ -148,7 +148,7 @@ def test_vit_base_amp_on_t4_matches_the_measured_speedup():
 
 def test_fixed_cost_per_step_matches_the_batch_sweep():
     """Calibration (in-sample) of d: RTX 3060 Ti, 224 px, AMP, batch 8/32/64 (logs/local/benchmark/
-    benchmark_23112026_2232*). The table models predict those throughputs within ~9 %, and the
+    benchmark_23112026_223*). The table models predict those throughputs within ~9 %, and the
     fitted d agrees with the per-step intercepts measured per model (13-19 ms)."""
     measured = {"vit_small_patch16_224": {8: 318.5, 32: 507.8, 64: 573.5},
                 "resnet50": {8: 282.6, 32: 409.1, 64: 446.7},

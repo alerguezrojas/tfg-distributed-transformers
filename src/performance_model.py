@@ -302,7 +302,7 @@ def precision_factor(gpu: GpuSpec, precision: str) -> float:
 # Fitted with src/analysis/throughput_model.fit_with_overhead on synthetic batches
 # (`paravit benchmark`, no I/O), AMP, data in docs/research/datos/throughput_arquitecturas_amp.csv:
 #   * RTX 3060 Ti — 10 architectures at 224/384/512 px with batch 16 plus 5 of them at 224 px with
-#     batch 8/32/64 (45 points; logs/local/benchmark/benchmark_23112026_{10,16,2232}*). The batch
+#     batch 8/32/64 (45 points; logs/local/benchmark/benchmark_23112026_{10,16,223}*). The batch
 #     sweep pins d: the per-step intercepts measured per model are 13-19 ms, the fit gives 18 ms;
 #   * Tesla T4    — 13 architectures at 512 px, batch 16 only (logs/kaggle/benchmark/
 #     throughput_t4_23112026.csv), so its d is not separated from the per-image terms.
