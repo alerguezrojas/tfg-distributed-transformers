@@ -8,9 +8,11 @@ from pathlib import Path
 import pytest
 
 from src.training.config_overrides import add_common_overrides, apply_common_overrides
+from src.training.launch import build_parser
+from src.training.strategies import get_strategy
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPTS = ["train_single_gpu", "train_ddp", "train_heterogeneous_ddp", "train_model_parallel"]
+STRATEGIES = ["single", "ddp", "heterogeneous", "model_parallel"]
 
 
 def _cfg(**train):
@@ -30,22 +32,19 @@ def _load_script(name):
     return mod
 
 
-@pytest.mark.parametrize("name", SCRIPTS)
-def test_script_parses_seed_and_data_root(name, monkeypatch):
-    mod = _load_script(name)
-    monkeypatch.setattr(sys, "argv", [name, "--seed", "7", "--data-root", "/d", "--epochs", "1"])
-    args = mod.parse_args()
+@pytest.mark.parametrize("name", STRATEGIES)
+def test_script_parses_seed_and_data_root(name):
+    args = build_parser(get_strategy(name)).parse_args(
+        ["--seed", "7", "--data-root", "/d", "--epochs", "1"])
     assert (args.seed, args.data_root, args.epochs) == (7, "/d", 1)
     cfg = _cfg()
     apply_common_overrides(cfg, args)
     assert cfg["training"]["seed"] == 7 and cfg["data"]["root"] == "/d"
 
 
-@pytest.mark.parametrize("name", SCRIPTS)
-def test_script_defaults_do_not_override(name, monkeypatch):
-    mod = _load_script(name)
-    monkeypatch.setattr(sys, "argv", [name])
-    args = mod.parse_args()
+@pytest.mark.parametrize("name", STRATEGIES)
+def test_script_defaults_do_not_override(name):
+    args = build_parser(get_strategy(name)).parse_args([])
     assert args.seed is None and args.data_root is None
     cfg = _cfg(seed=3)
     apply_common_overrides(cfg, args)

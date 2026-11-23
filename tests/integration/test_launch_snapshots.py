@@ -119,3 +119,58 @@ def test_heterogeneous_config_line(tmp_path, monkeypatch, toy_dataset, rank0_env
         "modelo=vit_tiny_patch16_224 | batch=GPU 8 / CPU — (global=8) | "
         "reparto=GPU 100% (~24 img) / CPU 0% (~0 img) | epochs=1 | lr=0.001 | loss=bce | "
         "train=24 | val=24 | dataset=toy_launch | seed=3 | ")
+
+
+# ── Flujo común del lanzador ───────────────────────────────────────────────────
+
+def _run_main(strategy: str, argv: list[str]) -> None:
+    from src.training.launch import main
+    main(strategy, argv)
+
+
+def test_resume_trains_only_the_remaining_epochs(tmp_path, monkeypatch, toy_dataset, capsys):
+    monkeypatch.chdir(tmp_path)
+    cfg = _write_config(tmp_path)
+    _run_main("single", ["--config", str(cfg), "--epochs", "1"])
+    last = next((tmp_path / "ckpt").rglob("last.pt"))
+    capsys.readouterr()
+    _run_main("single", ["--config", str(cfg), "--epochs", "2", "--resume", str(last)])
+    assert "Resumiendo desde epoch 1 — quedan 1 epochs" in capsys.readouterr().out
+
+
+def test_resume_works_in_ddp(tmp_path, monkeypatch, toy_dataset, rank0_env, capsys):
+    monkeypatch.chdir(tmp_path)
+    cfg = _write_config(tmp_path, distributed={"backend": "gloo"})
+    _run_main("ddp", ["--config", str(cfg), "--epochs", "1"])
+    last = next((tmp_path / "ckpt").rglob("last.pt"))
+    capsys.readouterr()
+    _run_main("ddp", ["--config", str(cfg), "--epochs", "2", "--resume", str(last)])
+    assert "Resumiendo desde epoch 1 — quedan 1 epochs" in capsys.readouterr().out
+
+
+def test_distributed_strategy_without_torchrun_says_so(tmp_path, monkeypatch, toy_dataset):
+    for key in ("RANK", "LOCAL_RANK", "WORLD_SIZE"):
+        monkeypatch.delenv(key, raising=False)
+    cfg = _write_config(tmp_path, distributed={"backend": "gloo"})
+    for strategy in ("ddp", "heterogeneous"):
+        with pytest.raises(SystemExit, match="torchrun"):
+            _run_main(strategy, ["--config", str(cfg)])
+
+
+def test_batch_size_and_precision_overrides_reach_the_config_line(tmp_path, monkeypatch,
+                                                                  toy_dataset):
+    monkeypatch.chdir(tmp_path)
+    cfg = _write_config(tmp_path)
+    _run_main("single", ["--config", str(cfg), "--batch-size", "4", "--precision", "bf16"])
+    assert "batch=4/GPU (global=4) | epochs=1 | lr=0.001 | precision=bf16" in _config_line(tmp_path)
+
+
+def test_unsupported_option_stops_before_building_anything(tmp_path, monkeypatch, toy_dataset,
+                                                           capsys):
+    monkeypatch.chdir(tmp_path)
+    cfg = _write_config(tmp_path, distributed={"backend": "gloo"})
+    with pytest.raises(SystemExit) as exc:
+        _run_main("heterogeneous", ["--config", str(cfg), "--precision", "amp"])
+    assert exc.value.code == 2
+    assert "--precision" in capsys.readouterr().err
+    assert not (tmp_path / "logs").exists()

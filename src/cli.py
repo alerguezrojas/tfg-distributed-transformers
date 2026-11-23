@@ -31,6 +31,8 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from src.training.strategies import available_strategies, get_strategy
+
 ROOT = Path(__file__).resolve().parents[1]
 _DRY_RUN_HELP = "Print the command without running it."
 _MACHINE_HELP = ("Machine profile (configs/machines/<name>.yaml; 'none' = no profile). Default: "
@@ -43,7 +45,9 @@ app = typer.Typer(
     help="ParaViT-Lab — distributed Vision Transformers. Train, estimate, benchmark, evaluate and visualise.",
 )
 
-STRATEGIES = ("single", "ddp", "model-parallel", "heterogeneous")
+# Canonical names of the strategy registry (src/training/strategies.py); aliases such as
+# "model-parallel" are also accepted wherever a strategy is given.
+STRATEGIES = tuple(available_strategies())
 
 
 # ── Pure command builders (unit-tested) ───────────────────────────────────────
@@ -66,6 +70,21 @@ def _torchrun(nproc: int, nnodes: int, node_rank: int,
     return base
 
 
+def _strategy_flags(spec, **options) -> list[str]:
+    """``--batch-size`` / ``--resume`` / ``--inspect``: forwarded when given, and an error if the
+    strategy cannot honour them (the launcher would reject them anyway)."""
+    flags = []
+    for dest, value in options.items():
+        if value is None:
+            continue
+        flag = "--" + dest.replace("_", "-")
+        if dest in spec.unsupported:
+            raise ValueError(f"{flag} is not available in strategy '{spec.name}': "
+                             f"{spec.unsupported[dest]}")
+        flags += [flag, *(value if isinstance(value, list) else [str(value)])]
+    return flags
+
+
 def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     epochs: int | None = None, trace: str = "simple",
                     precision: str | None = None, layers: list[str] | None = None,
@@ -74,14 +93,17 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     master_port: int = 29500, monitor: bool = False,
                     seed: int | None = None, data_root: str | None = None,
                     machine: str | None = None,
-                    overrides: list[str] | None = None) -> list[str]:
+                    overrides: list[str] | None = None, batch_size: int | None = None,
+                    resume: str | None = None, inspect: list[str] | None = None) -> list[str]:
     """Build the exact command for a training strategy.
 
-    single / model-parallel run a plain script; ddp / heterogeneous run under
-    torchrun. Flags are only added where the target script accepts them.
+    ``strategy`` is a canonical name or an alias of the strategy registry. Plain-process
+    strategies run their script directly; the distributed ones run under torchrun. A flag the
+    strategy cannot honour (``StrategySpec.unsupported``) is not forwarded, except
+    ``batch_size`` / ``inspect``, whose absence would change what the user asked for: those
+    raise ``ValueError``.
     """
-    if strategy not in STRATEGIES:
-        raise ValueError(f"unknown strategy: {strategy}")
+    spec = get_strategy(strategy)            # ValueError (with the available ones) if unknown
 
     common = []
     if model:
@@ -96,31 +118,18 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
     common += ["--trace", trace]                      # every script accepts --trace
     if monitor:
         common += ["--monitor"]                       # every script accepts --monitor
-    layers_fn = []
+    if precision and precision != "fp32" and "precision" not in spec.unsupported:
+        common += ["--precision", precision]          # fp32 is the implicit default
     if layers:
-        layers_fn += ["--layers", *layers]
+        common += ["--layers", *layers]
     if fn:
-        layers_fn += ["--fn", *fn]
-    # Tensor-core precision for the strategies whose loop honours it (single, ddp and
-    # model-parallel all go through Trainer.train_epoch). Heterogeneous runs on gloo/CPU
-    # with a hand-written fp32 loop, so it does not expose --precision.
-    precision_arg = (["--precision", precision]
-                     if precision and precision != "fp32" else [])
+        common += ["--fn", *fn]
+    common += _strategy_flags(spec, batch_size=batch_size, resume=resume, inspect=inspect)
 
-    if strategy == "single":
-        return ([sys.executable, "scripts/train_single_gpu.py", "--config", config]
-                + common + precision_arg + layers_fn)
-    if strategy == "model-parallel":
-        # model_parallel runs through the builder, so it honours --layers/--fn/--precision.
-        return ([sys.executable, "scripts/train_model_parallel.py", "--config", config]
-                + common + precision_arg + layers_fn)
-    if strategy == "ddp":
-        return (_torchrun(n_gpus, nnodes, node_rank, master_addr, master_port)
-                + ["scripts/train_ddp.py", "--config", config]
-                + common + precision_arg + layers_fn)
-    # heterogeneous: one process per node, multi-node by definition
-    return (_torchrun(1, nnodes, node_rank, master_addr, master_port)
-            + ["scripts/train_heterogeneous_ddp.py", "--config", config] + common + layers_fn)
+    # Plain process, or torchrun: one process per GPU (ddp) / one per node (heterogeneous).
+    prefix = (_torchrun(spec.nproc or n_gpus, nnodes, node_rank, master_addr, master_port)
+              if spec.torchrun else [sys.executable])
+    return prefix + [spec.script, "--config", config] + common
 
 
 def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
@@ -295,14 +304,14 @@ def _fmt_secs(s: float) -> str:
 
 @app.command()
 def train(
-    strategy: str = typer.Option("single", help=f"One of {', '.join(STRATEGIES)}."),
+    strategy: str = typer.Option("single", help=f"One of {', '.join(STRATEGIES)} (aliases such as model-parallel also work)."),
     config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model, batch…)."),
     model: Optional[str] = typer.Option(None, help="Override the model (any timm ID)."),
     epochs: Optional[int] = typer.Option(None, help="Override the number of epochs."),
     seed: Optional[int] = typer.Option(None, help="Override training.seed (repetitions)."),
     data_root: Optional[str] = typer.Option(None, help="Override data.root (dataset location)."),
     trace: str = typer.Option("simple", help="off | simple | deep."),
-    precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (single, ddp and model-parallel)."),
+    precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (not heterogeneous: its loop is fp32)."),
     layers: Optional[str] = typer.Option(None, help="Comma-separated: plot,confusion,batch-monitor,hooks."),
     fn: Optional[str] = typer.Option(None, help="Comma-separated: timing,energy."),
     n_gpus: int = typer.Option(2, help="GPUs per node (ddp)."),
@@ -313,16 +322,29 @@ def train(
     monitor: bool = typer.Option(False, "--monitor",
                                  help="Per-sample predictions, embeddings, Grad-CAM and "
                                       "layer stats every epoch (see the web Inspector)."),
+    batch_size: Optional[int] = typer.Option(None, help="Override training.batch_size (per GPU in ddp)."),
+    resume: Optional[str] = typer.Option(None, help="Checkpoint (.pt or run folder) to resume from."),
+    inspect: Optional[str] = typer.Option(None, help="Comma-separated: model-summary,grad-monitor,"
+                                                     "batch-table,anomalies (not model-parallel)."),
     machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
     set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Launch a training run with the chosen distribution strategy."""
-    cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
-                          precision=precision, layers=_csv(layers), fn=_csv(fn), n_gpus=n_gpus,
-                          nnodes=nnodes, node_rank=node_rank, master_addr=master_addr,
-                          master_port=master_port, monitor=monitor, seed=seed,
-                          data_root=data_root, machine=machine, overrides=set_)
+    try:
+        spec = get_strategy(strategy)
+        if precision and precision != "fp32" and "precision" in spec.unsupported:
+            console.print(f"[yellow]--precision {precision} ignored in '{spec.name}': "
+                          f"{spec.unsupported['precision']}.[/]")
+        cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
+                              precision=precision, layers=_csv(layers), fn=_csv(fn),
+                              n_gpus=n_gpus, nnodes=nnodes, node_rank=node_rank,
+                              master_addr=master_addr, master_port=master_port,
+                              monitor=monitor, seed=seed, data_root=data_root, machine=machine,
+                              overrides=set_, batch_size=batch_size, resume=resume,
+                              inspect=_csv(inspect))
+    except ValueError as err:
+        raise typer.BadParameter(str(err)) from None
     _run(cmd, dry_run)
 
 
@@ -330,7 +352,7 @@ def train(
 def predict(
     model: str = typer.Option("vit_base_patch16_224", help="Model (timm ID)."),
     gpu: str = typer.Option("Tesla T4", help="GPU name, e.g. 'Tesla V100', 'RTX 3060 Ti'."),
-    strategy: str = typer.Option("single", help="single | ddp | model_parallel | heterogeneous."),
+    strategy: str = typer.Option("single", help=" | ".join(STRATEGIES) + "."),
     n_gpus: int = typer.Option(1, help="Number of GPUs."),
     batch: int = typer.Option(96, help="Global batch size."),
     precision: str = typer.Option("fp32", help="fp32 | amp | tf32 | bf16."),
@@ -363,7 +385,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
         estimate_rc, estimate_rio, precision_factor,
         BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, EVAL_POWER_FRACTION)
     nfs = disk == "nfs"
-    strat = strategy.replace("-", "_")
+    strat = get_strategy(strategy).name
     ms, gs = resolve_model_spec(model, in_chans, num_classes, img_size), gpu_spec(gpu)
     if ms is None:
         console.print(f"[red]Unknown model '{model}': not in the table and timm cannot build it.[/]")

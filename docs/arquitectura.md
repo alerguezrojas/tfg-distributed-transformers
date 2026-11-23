@@ -286,7 +286,7 @@ helpers de imagen de `src/web/`. Tests: `tests/unit/test_reporting.py`.
 ```bash
 uv run paravit.py --help
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2 --precision amp
-uv run paravit.py train --strategy {single|ddp|model-parallel|heterogeneous} --config ... [--dry-run]
+uv run paravit.py train --strategy {single|ddp|heterogeneous|model_parallel} --config ... [--dry-run]
 uv run paravit.py benchmark --model vit_base_patch16_224 --batch-sizes 32,64 --epochs 30
 uv run paravit.py eval --checkpoint checkpoints/local/single/vit_base_patch16_224/19112026_101500/best.pt --split test
 uv run paravit.py dashboard
@@ -296,7 +296,44 @@ uv run paravit.py dashboard
 - Builders puros `build_train_cmd` / `build_benchmark_cmd` / `build_eval_cmd` + helper `_run_row` (testeados: `tests/unit/test_cli.py`). `paravit train --strategy model-parallel` también reenvía `--layers/--fn` (arreglado 25/06). `--dry-run` imprime el comando sin ejecutarlo (para copiarlo en Verode/Kaggle). Opciones de lista por coma (`--batch-sizes 32,64`, `--layers plot,confusion`).
 - Los scripts de `scripts/` siguen funcionando por separado; `paravit` solo los unifica. Dependencia nueva: `typer`. Rama: `feature/unified-cli`.
 
-## Script de entrenamiento
+## Lanzador de entrenamiento y registro de estrategias
+
+Los cuatro `scripts/train_*.py` son envoltorios de 5 líneas (`from src.training.launch import
+main; main("ddp")`) con su docstring de uso: el flujo común está en `src/training/launch.py` y lo
+propio de cada estrategia en un `StrategySpec` de `src/training/strategies.py`, registrado como se
+registra un `DatasetSpec` (`register_strategy`, `get_strategy`, `available_strategies`).
+
+| Lo que declara el `StrategySpec` | Ejemplo |
+|---|---|
+| `name`, `aliases` | `model_parallel` (carpeta de logs y de `estimate`); alias `model-parallel`, `mp` |
+| `script`, `launcher`, `nproc` | `scripts/train_ddp.py`, `torchrun`, un proceso por GPU (`None`) o por nodo (`1`) |
+| `init_env` | grupo de procesos, `rank`/`world_size` y dispositivo (heterogéneo: `distributed.ranks`; model-parallel: `--devices`) |
+| `make_loaders` | `DataLoader` y muestreadores (DDP: `DistributedSampler`; heterogéneo: reparto por `compute_weight` y lote por rank) |
+| `make_builder` | el `TrainingSessionBuilder` con su `with_*` (`with_heterogeneous_ddp`, `with_model_parallel`…) |
+| `config_line` | texto de `Configuración:` (contrato con la web: no se cambia sin tocar los parsers) |
+| `add_arguments`, `unsupported`, `trace_choices` | opciones propias (`--split-block`, `--devices`), opciones que no puede cumplir (error, no se ignoran) y modos de `--trace` |
+
+Flujo de `main(strategy_name, argv=None)`: `prepare_config` (perfil de máquina, `--set`, `--seed`,
+`--epochs`…) → `init_env` → semillas (distribuidas: `seed + rank`) → marca de tiempo compartida →
+datasets y `make_loaders` → builder (decoradores, trazas y reporteros solo en el rank 0) →
+`--resume` → resumen por consola y línea `Configuración:` (rank 0) → `fit` → cierre del grupo de
+procesos. Todas las estrategias aceptan las mismas opciones comunes (`--config`, `--epochs`,
+`--model`, `--precision`, `--batch-size`, `--monitor`, `--trace`, `--inspect`, `--layers`, `--fn`,
+`--metrics`, `--batch-log-every`, `--resume`, `--data-root`, `--seed`, `--machine`, `--set`) más las
+de su spec; las que una estrategia no puede cumplir fallan con un error que dice por qué.
+
+**Añadir una estrategia** (p. ej. pipeline, FSDP o ZeRO), tocando solo:
+
+1. `src/training/<nombre>_trainer.py`: la subclase de `Trainer`.
+2. `src/training/builder.py`: un `with_<nombre>()` y la rama que crea ese trainer.
+3. `src/training/strategies.py`: sus hooks y un `register_strategy(StrategySpec(...))`.
+4. `scripts/train_<nombre>.py`: el envoltorio de 5 líneas, si se va a lanzar por ruta (la CLI y el
+   menú ya la leen del registro).
+
+El predictor (`performance_model.py`) y la web siguen necesitando su propio soporte, porque
+exigen medidas reales que lo validen.
+
+### Script de entrenamiento (single GPU)
 
 `scripts/train_single_gpu.py`
 

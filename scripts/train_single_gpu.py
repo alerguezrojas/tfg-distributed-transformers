@@ -1,5 +1,7 @@
 """Single-GPU training script; the dataset comes from the config (data.name).
 
+A wrapper of the common launcher (src/training/launch.py): the four strategies share these options.
+
 Flags
 -----
 --trace off|simple|deep
@@ -47,193 +49,17 @@ Flags
       efficientnet_b0         — ~5.3M params, CNN
 """
 
-import argparse
-import logging
 import sys
-from datetime import datetime
 from pathlib import Path
-
-import torch
-from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.registry import dataset_spec_from_config
-from src.training.losses import loss_log_label, ousm_log_field
-from src.models.backbones import backbone_log_fields
-from src.training.builder import TrainingSessionBuilder
-from src.training.config_overrides import add_common_overrides, prepare_config
-from src.training.reproducibility import set_seed, make_generator, seed_worker
-
-
-def parse_args():
-    parser = argparse.ArgumentParser(description="Single-GPU training")
-    parser.add_argument("--monitor", action="store_true",
-                        help="Prediction/layer monitor: per-sample predictions, embeddings, "
-                             "Grad-CAM and layer stats every epoch (docs/inspeccion.md)")
-    parser.add_argument("--config", type=str, default="configs/train.yaml")
-    parser.add_argument("--epochs", type=int, help="Override training.epochs")
-    add_common_overrides(parser)
-    parser.add_argument("--batch-size", type=int, help="Override training.batch_size")
-    parser.add_argument(
-        "--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
-        help=(
-            "Numeric precision = the practical Tensor-core switch. "
-            "fp32 (CUDA cores) | tf32/amp/bf16 (Tensor cores). "
-            "amp=FP16 mixed precision (Volta+), tf32/bf16 (Ampere+)."
-        ),
-    )
-    parser.add_argument("--model", type=str, help="Override model name (any timm ID)")
-    parser.add_argument("--resume", type=str, default=None, metavar="CHECKPOINT",
-                        help="Path to checkpoint .pt file to resume training from")
-    parser.add_argument(
-        "--trace", choices=["off", "simple", "deep"], default="simple",
-        help="Logging controller mode",
-    )
-    parser.add_argument(
-        "--inspect", nargs="*",
-        choices=["model-summary", "grad-monitor", "batch-table", "anomalies"],
-        default=None,
-        help="Modular inspection features (activates DeepTracingDecorator)",
-    )
-    parser.add_argument(
-        "--layers", nargs="*",
-        choices=["plot", "hooks", "confusion", "batch-monitor"],
-        default=[],
-        help="Stackable aspect decorators",
-    )
-    parser.add_argument(
-        "--fn", nargs="*", choices=["timing", "energy"], default=[],
-        help="Python @ decorators to apply to train_epoch / eval_epoch",
-    )
-    parser.add_argument(
-        "--batch-log-every", type=int, default=None, metavar="N",
-        help=(
-            "Log batch metrics every N batches when --layers batch-monitor is active. "
-            "Default 1 (every batch). Use larger values (50, 100) to reduce CSV size."
-        ),
-    )
-    parser.add_argument(
-        "--metrics", nargs="*",
-        choices=["loss", "f1", "accuracy", "precision_recall"],
-        default=["loss", "f1", "accuracy", "precision_recall"],
-        help=(
-            "Metric reporters (only active without --inspect). "
-            "Pass --metrics with no args to disable all."
-        ),
-    )
-    return parser.parse_args()
+from src.training.launch import main as launch  # noqa: E402
 
 
 def main():
-    args = parse_args()
-
-    cfg = prepare_config(args)
-    if args.batch_size:
-        cfg["training"]["batch_size"] = args.batch_size
-    if args.precision:
-        cfg["training"]["precision"] = args.precision
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
-
-    # ── Reproducibilidad ───────────────────────────────────────────────────────
-    # Si training.seed está definido, fija todas las RNG ANTES de crear datos y
-    # modelo → init de la cabeza, barajado, augmentations y mixup deterministas.
-    # Imprescindible para que focal-vs-BCE difiera solo en la pérdida.
-    seed = cfg["training"].get("seed")
-    loader_generator = None
-    worker_init = None
-    if seed is not None:
-        set_seed(int(seed))
-        loader_generator = make_generator(int(seed))
-        worker_init = seed_worker
-        print(f"Semilla     : {seed} (run determinista)")
-
-    metrics = args.metrics if args.metrics is not None else []
-    layers = args.layers or []
-    fn = args.fn or []
-
-    # ── Datos ────────────────────────────────────────────────────────────────
-
-    spec = dataset_spec_from_config(cfg)
-    train_ds = spec.dataset(cfg["data"], "train")
-    val_ds = spec.dataset(cfg["data"], "val")
-    print(f"Train: {len(train_ds)} patches | Val: {len(val_ds)} patches")
-
-    train_loader = DataLoader(
-        train_ds, batch_size=cfg["training"]["batch_size"],
-        shuffle=True, num_workers=cfg["data"]["num_workers"], pin_memory=True,
-        generator=loader_generator, worker_init_fn=worker_init,
-    )
-    val_loader = DataLoader(
-        val_ds, batch_size=cfg["training"]["batch_size"],
-        shuffle=False, num_workers=cfg["data"]["num_workers"], pin_memory=True,
-        worker_init_fn=worker_init,
-    )
-
-    # ── Construcción del stack via Builder ───────────────────────────────────
-
-    builder = (
-        TrainingSessionBuilder(cfg, device, timestamp)
-        .with_trace(args.trace)
-        .with_layers(*layers)
-        .with_fn(*fn)
-        .with_metrics(*metrics)
-    )
-    if args.model:
-        builder = builder.with_model(args.model)
-    if args.inspect is not None:
-        builder = builder.with_inspect(*args.inspect)
-    if args.batch_log_every is not None:
-        builder = builder.with_batch_log_every(args.batch_log_every)
-
-    if args.monitor:
-        builder = builder.with_monitor()
-    trainer = builder.build()
-
-    # Checkpoint resume
-    if args.resume:
-        # Walk the decorator stack to the core Trainer
-        inner = trainer
-        while hasattr(inner, "_trainer"):
-            inner = inner._trainer
-        if hasattr(inner, "load_checkpoint"):
-            ckpt = inner.load_checkpoint(args.resume)
-            resumed_epoch = ckpt.get("epoch", 0)
-            remaining = cfg["training"]["epochs"] - resumed_epoch
-            print(f"Resumiendo desde epoch {resumed_epoch} — quedan {remaining} epochs")
-            cfg["training"]["epochs"] = remaining
-        else:
-            print("WARN: trainer no soporta load_checkpoint, ignorando --resume")
-
-    # Print summary after build (model already instantiated inside builder)
-    model_name = args.model or cfg["model"]["name"]
-    use_deep = args.trace == "deep" or args.inspect is not None
-    print(f"Dispositivo : {device}")
-    print(f"Modelo      : {model_name}")
-    print(f"Traza       : {args.trace}" + (" [DeepTracingDecorator]" if use_deep else ""))
-    print(f"Inspect     : {sorted(args.inspect) if args.inspect is not None else ('todas' if args.trace == 'deep' else 'ninguna')}")
-    print(f"Capas       : {layers or 'ninguna'}")
-    print(f"Decoradores@: {fn or 'ninguno'}")
-    print(f"Métricas    : {metrics or 'ninguna (DeepTracingDecorator las gestiona)'}")
-
-    # Registrar la configuración en el log (visible en la web → Información)
-    _bs = cfg["training"]["batch_size"]
-    _prec = cfg["training"].get("precision", "fp32")
-    _loss = loss_log_label(cfg["training"], spec.make_task())
-    logging.getLogger("trainer").info(
-        f"Configuración: modelo={model_name} | batch={_bs}/GPU (global={_bs}) | "
-        f"epochs={cfg['training']['epochs']} | lr={cfg['training']['lr']} | "
-        f"precision={_prec} | loss={_loss} | train={len(train_ds)} | val={len(val_ds)} | "
-        f"dataset={spec.name} | seed={seed} | {backbone_log_fields(cfg['model'], model_name)}"
-        f"{ousm_log_field(cfg['training'])}"
-    )
-
-    # ── Entrenamiento ────────────────────────────────────────────────────────
-
-    epochs = cfg["training"]["epochs"]
-    trainer.fit(train_loader, val_loader, epochs=epochs)
+    """The flow lives in src/training/launch.py; this strategy is registered in strategies.py."""
+    launch("single")
 
 
 if __name__ == "__main__":
