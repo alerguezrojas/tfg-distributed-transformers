@@ -6,6 +6,15 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- `paravit predict` (`scripts/predict.py`): clasifica imágenes sueltas o carpetas con un checkpoint
+  o un conjunto (probabilidades promediadas) sin pasar por el bucle de entrenamiento. La ficha del
+  dataset aporta el lector de imágenes (`DatasetSpec.image_reader`, nuevo y opcional; PANDA y
+  MedMNIST lo tienen, BigEarthNet no y falla con un error claro) y se aplica la misma
+  transformación de evaluación que en test. Salida: tabla con clase, probabilidad máxima y, en
+  tareas ordinales, grado esperado; `--out` guarda un CSV con todas las probabilidades; en
+  multietiqueta, las clases por encima del umbral del checkpoint. Las imágenes de 16 bits se
+  reescalan a 0-255 en lugar de saturarse (`src/data/image_io.py`) y la config se lee tal cual
+  (`src/config_io.py`).
 - Estudio del predictor con arquitecturas distintas de ViT: `saved_activation_gb` en
   `src/model_profile.py` (GB que autograd guarda por imagen, medidos en CPU),
   `src/analysis/throughput_model.py` (modelo de dos términos FLOPs + memoria, validación cruzada

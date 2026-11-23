@@ -213,6 +213,42 @@ validación** durante el entrenamiento, que va guardado en el checkpoint. Con ch
 que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce
 el comportamiento anterior (ajustarlo sobre el propio test), que da una cifra optimista.
 
+### `predict` — clasificar imágenes sueltas
+
+```bash
+uv run paravit.py predict --config configs/train_panda.yaml \
+    --checkpoint checkpoints/local/single/swin_t/RUN mosaico.jpg carpeta/ --out preds.csv
+```
+
+Clasifica ficheros de imagen (PNG, JPEG, TIFF, BMP) o carpetas (recorrido recursivo, orden
+alfabético) con un checkpoint, fuera del bucle de entrenamiento y sin tocar el dataset. Repetir
+`--checkpoint` forma un conjunto (se promedian las probabilidades, igual que en `eval`); sin
+`--model` se usa el modelo guardado en el checkpoint. `--batch-size` (16 por defecto) y
+`--device cpu|cuda` (por defecto, CUDA si hay). La config es la del entrenamiento del checkpoint
+(p. ej. `results/<run>/config.yaml` de Kaggle): la resolución y el *pooling* tienen que coincidir,
+y si no encajan con los pesos `predict` lo dice. Las rutas relativas se toman desde donde se
+ejecuta `paravit`.
+
+**Qué hace la ficha del dataset.** La config (`data.name`) decide cómo se lee el fichero
+(`DatasetSpec.image_reader`) y se le aplica **la misma transformación de evaluación** que en test
+(`spec.transforms("test")`), así que el modelo ve los mismos píxeles que en `eval`. En PANDA la
+entrada es el mosaico preparado (`prepare_panda.py`), redimensionado a `data.image_size`; en MedMNIST,
+una imagen en gris o RGB según el subconjunto, llevada al tamaño de entrenamiento (`data.size`, p. ej.
+28 px) como las del dataset. Las imágenes de 16 bits o de coma flotante (radiografías) se
+reescalan a 0-255 con su propio rango en lugar de saturarse (`src/data/image_io.py`).
+BigEarthNet (multibanda) no tiene lector de imagen suelta y `predict` falla con un error claro.
+
+**Salida.** Una tabla por pantalla con `file`, `predicted`, `prob` (la mayor probabilidad) y, en
+tareas ordinales como PANDA, `expected_grade` (el grado esperado, Σ k·p_k). Con `--out` (un `.csv`)
+se guardan además las probabilidades de todas las clases (`p_<clase>`). En multietiqueta,
+`predicted` lista las clases por encima del umbral guardado en el checkpoint (la media de los de un
+conjunto; `-` si no hay ninguna; sin umbral guardado, 0,5 con un aviso).
+
+**Seguridad.** Los checkpoints se cargan con `weights_only=True`. Las rutas de entrada son locales
+y se leen tal cual, pero deben ser ficheros regulares con extensión de imagen; al recorrer una
+carpeta no se siguen enlaces a directorios y se saltan los enlaces a ficheros que apuntan fuera de
+ella.
+
 ### `compare-preds` — comparar dos grupos de runs
 
 Con tres semillas por variante, la diferencia entre medias casi siempre cae dentro del ruido. Este

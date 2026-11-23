@@ -178,6 +178,33 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
     return cmd
 
 
+def _abspath(path: str) -> str:
+    """Paths given by the user are relative to WHERE they ran paravit, not to the repo root
+    the scripts run from (``_run`` uses ``cwd=ROOT``)."""
+    return str(Path(path).expanduser().resolve())
+
+
+def build_predict_cmd(checkpoint: str | list[str], config: str, inputs: list[str], *,
+                      model: str | None = None, out: str | None = None,
+                      batch_size: int | None = None, device: str | None = None) -> list[str]:
+    """Build the predict.py command (classify loose images or folders). Several checkpoints =
+    an ensemble (predict.py averages their probabilities)."""
+    checkpoints = [checkpoint] if isinstance(checkpoint, str) else list(checkpoint)
+    cmd = [sys.executable, "scripts/predict.py"]
+    for ckpt in checkpoints:
+        cmd += ["--checkpoint", _abspath(ckpt)]
+    cmd += ["--config", _abspath(config)]
+    if model:
+        cmd += ["--model", model]
+    if out:
+        cmd += ["--out", _abspath(out)]
+    if batch_size:
+        cmd += ["--batch-size", str(batch_size)]
+    if device:
+        cmd += ["--device", device]
+    return cmd + [_abspath(i) for i in inputs]
+
+
 def build_compare_cmd(a: list[str], b: list[str], *, label_a: str = "A", label_b: str = "B",
                       group: str | None = None, n_boot: int = 2000, seed: int = 0,
                       markdown: bool = False) -> list[str]:
@@ -501,6 +528,28 @@ def eval(
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
                          data_root=data_root, save_predictions=save_predictions,
                          save_predictions_auto=save_predictions_auto)
+    _run(cmd, dry_run)
+
+
+@app.command("predict")
+def predict_images(
+    inputs: List[str] = typer.Argument(..., help="Image files or folders (recursive)."),
+    checkpoint: List[str] = typer.Option(
+        ..., help="Path to the .pt checkpoint or run folder. Repeat it for an ensemble "
+                  "(the probabilities of the checkpoints are averaged)."),
+    config: str = typer.Option("configs/train.yaml", help="YAML config (dataset, model)."),
+    model: Optional[str] = typer.Option(None, help="Override the model (default: the checkpoint's)."),
+    out: Optional[str] = typer.Option(None, help="CSV path with the probability of every class."),
+    batch_size: Optional[int] = typer.Option(None, help="Images per batch."),
+    device: Optional[str] = typer.Option(None, help="cpu | cuda (default: cuda if available)."),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
+) -> None:
+    """Classify loose images (or folders of them) with a trained checkpoint, outside training.
+    Uses the dataset's own evaluation transform; several checkpoints form an ensemble."""
+    if device is not None and device not in ("cpu", "cuda"):
+        raise typer.BadParameter("must be cpu or cuda", param_hint="--device")
+    cmd = build_predict_cmd(checkpoint, config, inputs, model=model, out=out,
+                            batch_size=batch_size, device=device)
     _run(cmd, dry_run)
 
 

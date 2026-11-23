@@ -22,6 +22,9 @@ DatasetFactory = Callable[[dict, str, Callable | None], Dataset]
 TransformFactory = Callable[[str], Callable]
 #: (data_cfg, split) → (positives per class (C,), number of samples).
 ClassCounter = Callable[[dict, str], "tuple[torch.Tensor, int]"]
+#: data_cfg → function that reads one image file as the array the dataset hands to its
+#: transform (uint8 HWC/HW). Enables ``paravit predict``; None = single files make no sense.
+ImageReaderFactory = Callable[[dict], Callable]
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,7 @@ class DatasetSpec:
     transforms: TransformFactory
     class_counts: ClassCounter | None = None   # enables training.pos_weight: auto
     ordinal: bool = False   # ordered classes (a grade): adds the QWK metric (multiclass)
+    image_reader: ImageReaderFactory | None = None   # enables `paravit predict` on loose files
 
     def __post_init__(self):
         if not self.name or self.name != self.name.lower():
