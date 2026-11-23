@@ -1,8 +1,6 @@
 """Tab render module — see src/web/app.py for the orchestrator."""
 from __future__ import annotations
 
-from pathlib import Path
-
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -17,27 +15,17 @@ _CURVE = "Val curve"
 from src.web.ui.charts import (
     COLORS, _show, _dl_csv, _base_layout, _CLASS_GROUPS,
 )
+from src.web.data_paths import NOT_AVAILABLE
 from src.web.run_registry import _DEFAULT_DATASET
+from src.web.run_select import gpu_count, best_test_by_dataset
 from src.web.ui import dataset_panels
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import (
-    _load_df, _get_benchmark_csvs,
+    _bigearthnet_paths, _load_df, _load_test_aggregate, _get_benchmark_csvs,
     _load_class_distribution, _class_gallery,
     _safe_max, _safe_val_at_best, _dur_str,
     _run_metric, _scope_dataset, _scope_run, _loss_label, _fmt_span,
 )
-
-# Where the BigEarthNet-S2 metadata / patches live (local SSD or Verode NFS). If
-# neither is mounted, the charts fall back to an approximate class distribution
-# and the photo strip is skipped.
-_META_CANDIDATES = [
-    "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet",
-    "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet",
-]
-_ROOT_CANDIDATES = [
-    "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2",
-    "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2",
-]
 
 
 def render(ctx: DashboardContext) -> None:
@@ -60,6 +48,7 @@ def render(ctx: DashboardContext) -> None:
     curve_by_label: dict[str, list[float]] = {}
     gpu_secs_by_env: dict[str, float] = {}     # total GPU seconds per environment
 
+    gpus_unknown = 0                      # runs whose log does not say how many GPUs they used
     for r in runs:
         try:
             df_r = _load_df(str(r.log_path),
@@ -72,7 +61,10 @@ def render(ctx: DashboardContext) -> None:
                         r.dataset not in best_by_ds or run_best > best_by_ds[r.dataset][1]):
                     best_by_ds[r.dataset] = (metric, run_best, r.label)
             if not df_r.empty and "epoch_time" in df_r.columns and df_r["epoch_time"].notna().any():
-                secs = float(df_r["epoch_time"].dropna().sum())
+                n_gpus = gpu_count(r)
+                gpus_unknown += n_gpus is None
+                # GPU time = wall time x GPUs; a run with an unknown count is counted once.
+                secs = float(df_r["epoch_time"].dropna().sum()) * (n_gpus or 1)
                 total_gpu_h += secs / 3600
                 gpu_secs_by_env[r.env] = gpu_secs_by_env.get(r.env, 0.0) + secs
                 if r.dataset == scope:
@@ -101,6 +93,9 @@ def render(ctx: DashboardContext) -> None:
         ("Environments", str(n_envs)),
         ("Benchmark", str(len(benchmark_csvs_home))),
     ])
+    if gpus_unknown:
+        st.caption(f"GPU time = wall time x number of GPUs; {gpus_unknown} run(s) do not record "
+                   "their GPU count and are counted with one.")
     if scope:
         st.caption(f"Runs, best result and fastest epoch refer to **{scope}** (the sidebar's "
                    "dataset filter, else the active run's dataset); the rest to all runs.")
@@ -109,8 +104,8 @@ def render(ctx: DashboardContext) -> None:
     #          its own (split pie, class-imbalance treemap); any other dataset gets the
     #          generic ones built from the run's logs ──────────────────────────────
     is_ben = scope == _DEFAULT_DATASET
-    meta = next((p for p in _META_CANDIDATES if Path(p).exists()), None)
-    root = next((p for p in _ROOT_CANDIDATES if Path(p).exists()), None)
+    paths = _bigearthnet_paths()
+    meta, root = paths.metadata, paths.root
 
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -161,11 +156,30 @@ def render(ctx: DashboardContext) -> None:
                 st.caption(f"Examples — {scope}, from the monitor's fixed panel")
                 dataset_panels.example_strip(scope_run)
 
+    # ── Held-out test results, one row per dataset ──────────────────────────────
+    st.markdown("#### Test results by dataset")
+    _test_by_dataset(runs)
+
     # ── All runs — selectable table (click a row → active run) ──────────────────
     st.markdown("#### All runs")
     st.caption("Click a row to make that run active. Each run is scored with its own main "
                "metric (column *Metric*). Dataset & import: **Dataset** section.")
     _all_runs_table(runs, curve_by_label)
+
+
+def _test_by_dataset(runs) -> None:
+    """Best held-out test result of each dataset (from `scripts/eval.py`), with the main
+    metric of that dataset: datasets are never ranked against each other."""
+    rows = best_test_by_dataset(
+        runs, parse=lambda p: _load_test_aggregate(str(p)))
+    if not rows:
+        st.caption("No held-out test results yet: evaluate a run with `paravit eval` and its "
+                   "test CSV shows up here. Every other figure is validation.")
+        return
+    st.caption("Best run of each dataset on its test split (never seen in training), scored "
+               "with the dataset's own main metric.")
+    st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch",
+                 height=min(38 + 35 * len(rows), 220))
 
 
 def _best_by_dataset(best_by_ds: dict, runs) -> None:
@@ -265,8 +279,7 @@ def _photo_strip(meta, root) -> None:
     """Real Sentinel-2 patches (RGB proxy), one per class — a small carousel paged
     5 at a time with ◀/▶ arrows (5·5·5·4 = all 19). Skipped when not mounted."""
     if not (meta and root):
-        st.info("Dataset not mounted here — sample patches show on a machine with "
-                "BigEarthNet-S2 available.")
+        st.info(f"{NOT_AVAILABLE} Sample patches need it.")
         return
     try:
         _avg, gallery = _class_gallery(str(meta), str(root))
