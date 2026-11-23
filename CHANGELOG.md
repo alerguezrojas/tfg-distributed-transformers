@@ -119,6 +119,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Experimentos
 
+- Predictor, otras resoluciones (23/11/2026): el modelo de dos términos calibrado a 512 px predice
+  384 px con un 10 % de error; a 224 px hace falta un coste fijo por paso (d ≈ 20-30 ms), con el
+  que el error baja del 43 % al 15 % (`fit_with_overhead`; `performance_model.md`, sección 8).
 - PANDA, más semillas (23/11/2026): ViT-B 0,822 ± 0,003, Swin-T 0,821 ± 0,011, SwinV2-T
   0,820 ± 0,017, Swin-T con pérdida ordinal 0,827 ± 0,014 (+0,006, no significativo); el
   conjunto de 6 arquitecturas repetido con runs independientes da 0,852 y 0,846 de QWK de test

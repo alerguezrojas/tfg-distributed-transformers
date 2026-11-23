@@ -1,0 +1,60 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — panda (vit_small_patch16_224)
+  23/11/2026 16:18:18
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               vit_small_patch16_224
+  Parámetros totales:   21,667,974 (21.7M)
+  FLOPs/imagen:         79.2 MFLOPs
+  Memoria estática:     0.34 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: amp (Tensor cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 3538 MHz
+  RAM: 16.7 GB total / 12.7 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch         VRAM     Fuente      Estado
+     16       0.89 GB     medido          OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     16  off             404.2      1533.0   0.89 GB
+     16  simple          413.4      1588.8   0.89 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  15 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     16  off         0h 00m   0h 00m    0h 00m    0h 04m
+     16  simple      0h 00m   0h 00m    0h 00m    0h 04m
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         16            16        8    1.00×  100.0%   compute
+     2         16            32        8    1.57×   78.5%   compute
+     4         16            64        4    3.14×   78.4%   compute
+     8         16           128        2    6.26×   78.2%   compute
+
+  Configuración recomendada: 8 GPU(s) con batch=16/GPU
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Sin prior calibrado para el dataset 'panda' (otra métrica que el F1 de BigEarthNet); la predicción empírica de calidad solo existe para BigEarthNet.
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  Batch size óptimo: 16 (404.2 imgs/s)
+  → --trace off      15 epochs: ~0h 04m
+  → --trace simple   15 epochs: ~0h 04m
+
+  Nota: En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+

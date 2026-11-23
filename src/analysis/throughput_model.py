@@ -2,7 +2,7 @@
 
 Seconds per training image on one GPU::
 
-    t = a · F + b · A
+    t = a · F + b · A          (+ d / B, a fixed cost per step of B images)
 
 with ``F`` the forward GFLOPs per image (multiply-add = 1, the unit of the predictor's
 MODEL_TABLE) and ``A`` the GB that autograd saves for the backward pass of one image
@@ -38,9 +38,22 @@ def fit_flops_only(flops, ips) -> float:
     return float(f @ y / (f @ f))
 
 
-def predict_ips(a: float, b: float, flops, saved_gb) -> np.ndarray:
-    """Images per second predicted by ``t = a·F + b·A``."""
-    return 1.0 / (a * np.asarray(flops, float) + b * np.asarray(saved_gb, float))
+def fit_with_overhead(flops, saved_gb, ips, batch) -> tuple[float, float, float]:
+    """Least-squares ``(a, b, d)`` of ``1/ips = a·F + b·A + d/B``: the two terms plus a fixed
+    cost ``d`` (seconds) per optimisation step of ``B`` images (kernel launches, optimizer,
+    Python), which only weighs when the images are small."""
+    f, s, b = (np.asarray(v, float) for v in (flops, saved_gb, batch))
+    y = 1.0 / np.asarray(ips, float)
+    if len(y) < 3:
+        raise ValueError("need at least three measurements to fit three terms")
+    (a, bb, d), *_ = np.linalg.lstsq(np.c_[f, s, 1.0 / b], y, rcond=None)
+    return float(a), float(bb), float(d)
+
+
+def predict_ips(a: float, b: float, flops, saved_gb, d: float = 0.0, batch=1) -> np.ndarray:
+    """Images per second predicted by ``t = a·F + b·A + d/B`` (``d = 0``: the two terms)."""
+    t = a * np.asarray(flops, float) + b * np.asarray(saved_gb, float)
+    return 1.0 / (t + d / np.asarray(batch, float))
 
 
 def relative_errors(pred, meas) -> np.ndarray:

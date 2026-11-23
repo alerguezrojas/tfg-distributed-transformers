@@ -361,7 +361,7 @@ también la validación.)
 **Medidas.** Throughput de entrenamiento con lotes sintéticos (`paravit benchmark`, sin I/O) de
 13 arquitecturas a 512 px con AMP: 10 en la RTX 3060 Ti local (las otras tres no caben en 8 GB) y
 las 13 en una T4 de Kaggle (`kaggle/benchmark_t4`). Datos en
-[`research/datos/throughput_arquitecturas_512_amp.csv`](research/datos/throughput_arquitecturas_512_amp.csv)
+[`research/datos/throughput_arquitecturas_amp.csv`](research/datos/throughput_arquitecturas_amp.csv)
 (logs originales en `logs/local/benchmark/benchmark_23112026_10*` y
 `logs/kaggle/benchmark/throughput_t4_23112026.csv`).
 
@@ -439,6 +439,24 @@ modelos, es decir, el coste **relativo** de las arquitecturas:
   por ventanas (particiones, desplazamientos, la MLP de sesgos de SwinV2) lanza muchas operaciones
   pequeñas que no son ni FLOPs ni bytes guardados. EVA-02 (+7 %) va en la misma dirección, más
   suave.
+
+**Otras resoluciones (misma GPU, 23/11/2026).** Las mismas 10 arquitecturas a 224 y 384 px en la
+RTX 3060 Ti (`logs/local/benchmark/benchmark_23112026_16*`), predichas con el ajuste de 512 px sin
+reajustar. A 384 px los dos términos bastan (10 % de error medio, frente a 218 % con solo FLOPs). A
+224 px los dos términos creen todos los modelos un ~40 % más rápidos de lo que son: con imágenes
+pequeñas pesa un **coste fijo por paso** que no depende de la imagen (lanzamiento de *kernels*,
+paso del optimizador, Python). Con un tercer término, `t = a·F + b·A + d/B` (`fit_with_overhead`;
+`B` = 16 imágenes por paso), ajustado también solo a 512 px (d ≈ 30 ms por paso):
+
+| Resolución | Solo FLOPs | 2 términos | 2 términos + d/B |
+|---|---|---|---|
+| 384 px | 218 % | 10 % | 10 % (máx. 22 %) |
+| 224 px | 324 % | 43 % | **15 %** (máx. 31 %) |
+
+Calibrando con dos resoluciones y prediciendo la tercera, el error medio queda en 8-11 % y `d` en
+19-24 ms por paso. Un término proporcional a los parámetros (el paso del optimizador) no se
+sostiene: su coeficiente cambia de signo según la calibración. El coste fijo es otro candidato para
+integrar en el predictor, que hoy no tiene ningún término por paso.
 
 **Conclusión.** El tiempo de entrenamiento de arquitecturas distintas no sigue a los FLOPs: hace
 falta un segundo término de tráfico de memoria, medible en CPU sin GPU, y con él el coste relativo
