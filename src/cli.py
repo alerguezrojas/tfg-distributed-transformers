@@ -21,16 +21,18 @@ just assemble them and run them (or print them with ``--dry-run``).
 from __future__ import annotations
 
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from src.slurm import LAUNCHERS, slurm_torchrun
 from src.training.strategies import available_strategies, get_strategy
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -94,7 +96,8 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     seed: int | None = None, data_root: str | None = None,
                     machine: str | None = None,
                     overrides: list[str] | None = None, batch_size: int | None = None,
-                    resume: str | None = None, inspect: list[str] | None = None) -> list[str]:
+                    resume: str | None = None, inspect: list[str] | None = None,
+                    launcher: str = "local", env: Mapping[str, str] | None = None) -> list[str]:
     """Build the exact command for a training strategy.
 
     ``strategy`` is a canonical name or an alias of the strategy registry. Plain-process
@@ -102,8 +105,17 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
     strategy cannot honour (``StrategySpec.unsupported``) is not forwarded, except
     ``batch_size`` / ``inspect``, whose absence would change what the user asked for: those
     raise ``ValueError``.
+
+    ``launcher="slurm"`` (torchrun strategies, inside a Slurm job) replaces the manual
+    ``--nnodes/--node_rank/--master_*`` by the ``c10d`` rendezvous of :mod:`src.slurm`: the same
+    command on every node. ``env`` is the environment it reads (default ``os.environ``).
     """
     spec = get_strategy(strategy)            # ValueError (with the available ones) if unknown
+    if launcher not in LAUNCHERS:
+        raise ValueError(f"--launcher {launcher} is not valid (one of {', '.join(LAUNCHERS)})")
+    if launcher == "slurm" and not spec.torchrun:
+        raise ValueError(f"--launcher slurm needs a torchrun strategy; '{spec.name}' runs as a "
+                         "plain process (use --launcher local)")
     if trace not in spec.trace_choices:
         raise ValueError(f"--trace {trace} is not available in strategy '{spec.name}' "
                          f"(one of {', '.join(spec.trace_choices)})")
@@ -130,8 +142,13 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
     common += _strategy_flags(spec, batch_size=batch_size, resume=resume, inspect=inspect)
 
     # Plain process, or torchrun: one process per GPU (ddp) / one per node (heterogeneous).
-    prefix = (_torchrun(spec.nproc or n_gpus, nnodes, node_rank, master_addr, master_port)
-              if spec.torchrun else [sys.executable])
+    if launcher == "slurm":
+        prefix = slurm_torchrun(spec.nproc or n_gpus, os.environ if env is None else env,
+                                master_port)
+    elif spec.torchrun:
+        prefix = _torchrun(spec.nproc or n_gpus, nnodes, node_rank, master_addr, master_port)
+    else:
+        prefix = [sys.executable]
     return prefix + [spec.script, "--config", config] + common
 
 
@@ -329,6 +346,10 @@ def train(
     resume: Optional[str] = typer.Option(None, help="Checkpoint (.pt or run folder) to resume from."),
     inspect: Optional[str] = typer.Option(None, help="Comma-separated: model-summary,grad-monitor,"
                                                      "batch-table,anomalies (not model-parallel)."),
+    launcher: str = typer.Option("local", help="local | slurm. slurm (inside a Slurm job, torchrun "
+                                 "strategies): c10d rendezvous at the first node, the same "
+                                 "command on every node; --nnodes/--node-rank/--master-addr "
+                                 "are then ignored (--master-port is the rendezvous port)."),
     machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
     set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
@@ -345,7 +366,7 @@ def train(
                               master_addr=master_addr, master_port=master_port,
                               monitor=monitor, seed=seed, data_root=data_root, machine=machine,
                               overrides=set_, batch_size=batch_size, resume=resume,
-                              inspect=_csv(inspect))
+                              inspect=_csv(inspect), launcher=launcher)
     except ValueError as err:
         raise typer.BadParameter(str(err)) from None
     _run(cmd, dry_run)
@@ -669,7 +690,6 @@ def doctor(
     """Check that this machine is ready: Python, torch/CUDA, GPUs, AVX2, profile, paths, disk.
     Only reads the state (the GPU is not touched). Exit code 1 if any check FAILs."""
     import argparse
-    import os
 
     from src import doctor as dr
     from src.machine import select_machine
