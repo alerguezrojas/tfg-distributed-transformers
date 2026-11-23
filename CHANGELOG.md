@@ -6,8 +6,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
-- Web (fase 3): selector de runs con búsqueda y filtros (entorno, dataset, modelo, estrategia) en
-  una tabla con selección en lugar de un botón por run; enlaces directos `?run=<sello>&tab=<sección>`
+- Web (fase 3): selector de runs con búsqueda y filtros (entorno, dataset, modelo, estrategia) y
+  un desplegable con búsqueda en lugar de un botón por run; enlaces directos `?run=<sello>&tab=<sección>`
   (la URL se actualiza al navegar); tabla *Test results by dataset* en el Overview (mejor test por
   dataset con su métrica principal); lógica pura en `src/web/run_select.py` y rutas de datos desde
   los perfiles de máquina en `src/web/data_paths.py`. El título pasa a ser «ParaViT-Lab», el
@@ -108,6 +108,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   quedan en el rank 0, como en DDP.
 
 ### Corregido
+
+- Fuga de memoria al medir las activaciones de un modelo (`model_profile.saved_activation_gb`):
+  el gancho de autograd devolvía el propio tensor, lo que crea un ciclo tensor ↔ `grad_fn` que
+  nunca se libera, y cada modelo perfilado dejaba en memoria todas sus activaciones (0,5-1 GB a
+  512 px). El estudio de arquitecturas del predictor llegaba a 9,7 GB y contribuyó a que
+  `systemd-oomd` cerrara la sesión de escritorio; ahora no pasa de 2,9 GB, con los mismos valores.
 
 - DDP en varios nodos: `DDPTrainer` envolvía el modelo con `device_ids=[rank]` (el rank global), de
   modo que con una GPU por nodo (VERODE) el rank 1 pedía `cuda:1`. Ahora usa el índice del
