@@ -40,12 +40,13 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | `src/training/events.py` | Observadores del bucle (`TrainingListener`) y flujo de eventos `events_*.jsonl` ([esquema](docs/eventos.md)) |
 | `src/training/checkpoints.py` | Política de checkpoints: carpeta por run, `best.pt`/`last.pt` (`checkpoint.keep`), escritura atómica y `resolve_checkpoint` |
 | `src/training/fn_decorators.py` | Decoradores `@` de Python: `timed`, `measure_energy`, `retry_on_cuda_oom` |
-| `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md) |
+| `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md); con AMP, throughput de tres términos (cómputo + tráfico de memoria + coste por paso, `THROUGHPUT_FITS`, §8) |
 | `src/analysis/` | Análisis puro (NumPy) de los datos de inspección: curvas, calibración, umbrales, confusión, dinámica, proyección, `compare.py`/`ensemble.py` (comparar y elegir conjuntos de runs), `throughput_model.py`; lo usa la web |
 | `src/benchmark/` | Benchmark empírico en la máquina real (Facade `BenchmarkChecker`) |
 | `src/cli.py`, `src/cli_menu.py`, `src/config_io.py` | CLI Typer, menú interactivo y carga de YAML; lanzadores `paravit.py` / `tfg.py` (alias) |
-| `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV |
+| `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV; lógica pura del selector y los enlaces en `run_select.py`, rutas de datos desde los perfiles en `data_paths.py` |
 | `scripts/` | Puntos de entrada por estrategia (`train_single_gpu.py`, `train_ddp.py`, …) + `benchmark.py`, `eval.py`, `predict.py`, `select_ensemble.py`, `compare_predictions.py`, `predictor_architecture_study.py` |
+| `src/slurm.py`, `cluster/` | `paravit train --launcher slurm` (rendezvous `c10d`, mismo comando en todos los nodos), plantillas `cluster/slurm/*.sbatch` y receta Apptainer; [guía](cluster/README.md) |
 | `kaggle/` | Kernels de Kaggle (2 × T4): mosaicos y entrenamientos de PANDA con DDP, y `benchmark_t4/`; [guía](kaggle/README.md) |
 | `configs/` | YAML de entrenamiento (índice en `configs/README.md`) |
 | `logs/{env}/[{dataset}/]{mode}/{model}/` | Artefactos de cada run (se commitean); `checkpoints/<env>/.../<sello>/{best,last}.pt` no |
@@ -102,6 +103,8 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
   incompatible con el driver → reinstalar cu118. Detalle en [`docs/infraestructura.md`](docs/infraestructura.md).
 - NCCL no admite dos ranks en la misma GPU; gloo no admite `ReduceOp.AVG`.
 - Los tests y la CI usan torch CPU; no asumir CUDA en tests.
+- PC del autor con 15 GB de RAM: la batería de tests llega a ~4,5 GB; nunca dos a la vez y, en
+  local, con `systemd-run --user --scope -p MemoryMax=5G` (el 23/11 `systemd-oomd` cerró la sesión).
 
 ## Continuidad
 
