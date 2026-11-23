@@ -394,7 +394,9 @@ un **perfil de máquina** (`configs/machines/<nombre>.yaml`): `env`, `data_roots
 dataset según su `data.name`; BigEarthNet también `metadata_dir`), `checkpoint_dir`,
 `num_workers` y, opcionalmente, `hosts` (patrones del nombre del host para reconocer la máquina).
 Con un perfil activo se sobrescriben `data.root` (y las demás rutas del dataset),
-`data.num_workers`, `checkpoint.dir` y `output.env`; sin perfil, la config se usa tal cual.
+`checkpoint.dir` y `output.env`, y rellena `data.num_workers` si la config no lo trae. Una config
+cuyo `output.env` ya es el del perfil se considera de esa máquina y no cambia nada; sin perfil, la
+config se usa tal cual.
 
 El perfil se elige, por orden de prioridad, con `--machine NOMBRE`, con la variable
 `PARAVIT_MACHINE` o por el nombre del host; `--machine none` lo desactiva. Lo aceptan `train`,

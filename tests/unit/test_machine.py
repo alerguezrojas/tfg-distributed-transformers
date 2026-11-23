@@ -101,7 +101,7 @@ def test_apply_bigearthnet_keeps_metadata_file_name(machines):
     changes = apply_profile(cfg, load_profile("alpha", machines))
     assert cfg["data"]["root"] == "/a/ben"
     assert cfg["data"]["metadata"] == "/a/meta/metadata_demo.parquet"   # demo stays demo
-    assert cfg["data"]["num_workers"] == 3
+    assert cfg["data"]["num_workers"] == 8   # the experiment value stays
     assert cfg["checkpoint"] == {"dir": "/ck/alpha", "keep": "best"}
     assert cfg["output"]["env"] == "alpha"
     assert any(c.startswith("data.root:") for c in changes)
@@ -155,6 +155,47 @@ def test_describe():
     assert "local (--machine)" in describe(sel, ["data.root: 'a' -> 'b'"])
 
 
+def test_broken_profile_does_not_break_host_search(machines, capsys):
+    (machines / "aaa_roto.yaml").write_text("checkpoint_dirr: x\nhosts: ['zzz*']\n")
+    assert select_machine(None, {}, "alpha-1", machines).profile.name == "alpha"
+    assert "aaa_roto" in capsys.readouterr().err
+    with pytest.raises(SystemExit, match="desconocidas"):      # explicit request: full error
+        select_machine("aaa_roto", {}, "x", machines)
+
+
+def test_config_of_this_machine_is_untouched(machines):
+    cfg = _ben_cfg()
+    cfg["output"]["env"] = "alpha"
+    before = copy.deepcopy(cfg)
+    assert apply_profile(cfg, load_profile("alpha", machines)) == []
+    assert cfg == before
+
+
+def test_num_workers_only_fills_a_gap(machines):
+    cfg = {"data": {"name": "panda", "root": "/o", "num_workers": 8}, "output": {"env": "x"}}
+    apply_profile(cfg, load_profile("alpha", machines))
+    assert cfg["data"]["num_workers"] == 8
+    cfg = {"data": {"name": "panda", "root": "/o"}, "output": {"env": "x"}}
+    apply_profile(cfg, load_profile("alpha", machines))
+    assert cfg["data"]["num_workers"] == 3
+
+
+ALL_CONFIGS = sorted((ROOT / "configs").glob("*.yaml"))
+
+
+@pytest.mark.parametrize("path", ALL_CONFIGS, ids=lambda p: p.name)
+def test_every_config_is_stable_under_its_own_machine_and_keeps_workers(path):
+    cfg = yaml.safe_load(path.read_text())
+    for name in available_profiles():
+        prof = load_profile(name)
+        trial = copy.deepcopy(cfg)
+        changes = apply_profile(trial, prof)
+        if (cfg.get("output") or {}).get("env") == prof.env:
+            assert changes == [] and trial == cfg, (path.name, name)
+        if "num_workers" in cfg.get("data", {}):
+            assert trial["data"]["num_workers"] == cfg["data"]["num_workers"], (path.name, name)
+
+
 def test_bundled_local_matches_the_paths_in_existing_configs():
     """El perfil local reproduce las rutas que ya traen las configs del autor."""
     prof = load_profile("local")
@@ -183,10 +224,14 @@ def test_bundled_verode_matches_the_cluster_configs():
     ("1e-4", 1e-4), ("1E-4", 1e-4), ("5e3", 5000.0), ("0.0001", 0.0001), ("1.0e-4", 1e-4),
     ("32", 32), ("true", True), ("false", False), ("null", None), ("[1, 2]", [1, 2]),
     ("cuda:0", "cuda:0"), ("abc", "abc"), ("1e", "1e"),
+    ("[1e-4, 2]", [1e-4, 2]), ("{lr: 1e-3, n: 3}", {"lr": 1e-3, "n": 3}),
+    ('"1e-4"', "1e-4"), ("'1e-4'", "1e-4"), ('["1e-4", 1e-4]', ["1e-4", 1e-4]),
 ])
 def test_parse_set_value(text, expected):
     got = parse_set_value(text)
     assert got == expected and type(got) is type(expected)
+    if isinstance(expected, list):
+        assert [type(x) for x in got] == [type(x) for x in expected]
 
 
 def test_set_overrides_nested_and_creates_sections():
@@ -245,7 +290,7 @@ def test_profile_then_explicit_option_then_set(cfg_file, monkeypatch, capsys):
            checkpoint_dir="/ck")
     monkeypatch.setenv("PARAVIT_MACHINE", "p")
     cfg = prepare_config(_args(cfg_file))
-    assert (cfg["data"]["root"], cfg["data"]["num_workers"], cfg["output"]["env"]) == ("/prof", 2, "p")
+    assert (cfg["data"]["root"], cfg["data"]["num_workers"], cfg["output"]["env"]) == ("/prof", 8, "p")
     assert "Machine profile: p (PARAVIT_MACHINE)" in capsys.readouterr().out
     # the explicit option beats the profile; --set goes last
     cfg = prepare_config(_args(cfg_file, data_root="/cli", set_=["data.num_workers=6"]))

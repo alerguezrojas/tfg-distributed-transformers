@@ -13,6 +13,7 @@ from __future__ import annotations
 import fnmatch
 import re
 import socket
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
@@ -100,7 +101,12 @@ def select_machine(name: str | None = None, environ: Mapping | None = None,
     if not host:
         return None
     for profile_name in available_profiles(machines_dir):
-        profile = load_profile(profile_name, machines_dir)
+        try:
+            profile = load_profile(profile_name, machines_dir)
+        except SystemExit as err:          # a broken profile must not break every command
+            print(f"WARNING: perfil '{profile_name}' ignorado en la búsqueda por host: {err}",
+                  file=sys.stderr)
+            continue
         for pattern in profile.hosts:
             if fnmatch.fnmatch(host.lower(), pattern.lower()):
                 return Selection(profile, f"host '{host}' ~ '{pattern}'")
@@ -118,11 +124,17 @@ def _dataset_entry(profile: MachineProfile, dataset: str):
 def apply_profile(cfg: dict, profile: MachineProfile) -> list[str]:
     """Rewrite in place the machine-dependent keys of ``cfg``; return a line per change.
 
+    A config whose ``output.env`` already is the profile's ``env`` belongs to this machine and
+    is left untouched. Otherwise the profile translates what is machine-specific (data paths,
+    ``checkpoint.dir``, ``env``) and only FILLS ``data.num_workers`` when the config has none.
+
     ``data_roots`` entry: a string sets ``data.root``; a mapping sets each ``data.<key>``
     verbatim, except ``<key>_dir``, which moves ``data.<key>`` to that folder keeping its file
     name (so ``metadata_dir`` serves both ``metadata.parquet`` and ``metadata_demo.parquet``).
     """
     changes: list[str] = []
+    if profile.env and (cfg.get("output") or {}).get("env") == profile.env:
+        return changes          # already this machine's config: nothing to translate or change
 
     def put(section: str, key: str, value) -> None:
         sec = cfg.setdefault(section, {})
@@ -142,8 +154,8 @@ def apply_profile(cfg: dict, profile: MachineProfile) -> list[str]:
                 put("data", key[:-4], str(Path(str(value)) / Path(str(current)).name))
         else:
             put("data", key, value)
-    if profile.num_workers is not None:
-        put("data", "num_workers", profile.num_workers)
+    if profile.num_workers is not None and "num_workers" not in (cfg.get("data") or {}):
+        put("data", "num_workers", profile.num_workers)    # fills a gap, never overrides
     if profile.checkpoint_dir:
         put("checkpoint", "dir", profile.checkpoint_dir)
     if profile.env:

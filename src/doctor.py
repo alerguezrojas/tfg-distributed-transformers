@@ -41,6 +41,8 @@ class Environment:
     driver: str | None = None
     gpus: list[GpuInfo] = field(default_factory=list)
     avx2: bool | None = None
+    torch_error: str | None = None               # import failed with something other than ImportError
+    cuda_hidden: str | None = None               # CUDA_VISIBLE_DEVICES value when it hides the GPUs
     machine: str | None = None                   # active profile and why ("local (host ...)")
     # Only with --config:
     config: str | None = None
@@ -78,7 +80,8 @@ def evaluate(env: Environment, *, require_gpu: bool = False) -> list[Check]:
 
     if env.torch_version is None:
         add("torch", FAIL if env.avx2 is not False else WARN,
-            "not importable" if env.avx2 is not False else "not tried (no AVX2)")
+            (f"import failed: {env.torch_error}" if env.torch_error else "not importable")
+            if env.avx2 is not False else "not tried (no AVX2)")
     else:
         add("torch", OK, f"{env.torch_version} (CUDA build: {env.torch_cuda or 'none, CPU only'})")
 
@@ -90,6 +93,9 @@ def evaluate(env: Environment, *, require_gpu: bool = False) -> list[Check]:
         add("CUDA", FAIL if wants_gpu else WARN,
             "GPU present but this torch is a CPU build: training would run on CPU silently "
             "(reinstall torch with CUDA)")
+    elif smi_gpus and env.cuda_hidden is not None:
+        add("CUDA", FAIL if wants_gpu else WARN,
+            f"GPU present but CUDA_VISIBLE_DEVICES={env.cuda_hidden!r} hides it from torch")
     elif smi_gpus:
         add("CUDA", FAIL if wants_gpu else WARN,
             f"GPU present (driver {env.driver or '?'}) but torch.cuda is unavailable "
@@ -177,6 +183,9 @@ def collect(cfg: dict | None = None, config_path: str | None = None,
     env = Environment(python=tuple(sys.version_info[:3]), platform=platform.platform(),
                       avx2=_has_avx2(), machine=machine)
     env.gpus, env.driver = _nvidia_smi()
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible is not None and visible.strip() in ("", "-1", "NoDevFiles"):
+        env.cuda_hidden = visible
     if env.avx2 is not False:                    # without AVX2 importing torch would crash
         try:
             import torch
@@ -188,6 +197,8 @@ def collect(cfg: dict | None = None, config_path: str | None = None,
                             for i in range(torch.cuda.device_count())]
         except ImportError:
             pass
+        except OSError as err:                   # broken CUDA libraries abort the import
+            env.torch_error = str(err)
     if cfg is not None:
         env.config = config_path or "config"
         env.wants_gpu = config_wants_gpu(cfg)

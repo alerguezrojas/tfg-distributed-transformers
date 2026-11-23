@@ -12,7 +12,7 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   (`--machine none` los desactiva); sin perfil, las configs se usan tal cual. Aplicados en un solo
   sitio (`prepare_config`) por los cuatro `train_*.py`, `eval.py`, `predict.py` y `benchmark.py`
   y por `paravit train/eval/predict/benchmark`.
-- `--set clave.sub=valor` (repetible, valor YAML, `1e-4` se lee como float) en los mismos puntos
+- `--set clave.sub=valor` (repetible, valor YAML, `1e-4` se lee como float, también dentro de listas; entre comillas sigue siendo texto) en los mismos puntos
   de entrada, aplicado después del perfil.
 - `paravit doctor` (`src/doctor.py`): Python, torch y CUDA, GPUs (y si están en la tabla del
   predictor), AVX2, perfil activo y, con `--config`, rutas y espacio libre para checkpoints; tabla

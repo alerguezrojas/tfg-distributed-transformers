@@ -58,17 +58,21 @@ def apply_common_overrides(cfg: dict, args) -> None:
                 args.epochs, warmup, train["warmup_epochs"])
 
 
-# YAML 1.1 (PyYAML) reads "1e-4" as a string: a float needs a dot and a signed exponent.
-_SCI_FLOAT = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)[eE][+-]?\d+$")
+# YAML 1.1 (PyYAML) reads "1e-4" as a string: a float needs a dot and a signed exponent. This
+# loader also resolves it (unquoted, at any depth: lists, dicts) as a float; quoted stays a string.
+class _SetLoader(yaml.SafeLoader):
+    pass
+
+
+_SetLoader.add_implicit_resolver(
+    "tag:yaml.org,2002:float", re.compile(r"^[+-]?(?:\d+\.?\d*|\.\d+)[eE][+-]?\d+$"),
+    list("-+0123456789."))
 
 
 def parse_set_value(text: str):
     """The value of a ``--set`` as YAML would read it (numbers, booleans, lists, null…), except
     that scientific notation without a dot (``1e-4``) is a float, not a string."""
-    value = yaml.safe_load(text)
-    if isinstance(value, str) and _SCI_FLOAT.match(value.strip()):
-        return float(value)
-    return value
+    return yaml.load(text, Loader=_SetLoader)  # noqa: S506 - SafeLoader subclass
 
 
 def apply_set_overrides(cfg: dict, items: list[str] | None) -> list[str]:

@@ -60,6 +60,18 @@ def test_gpu_present_but_unusable_by_torch():
     assert cuda.status == dr.WARN and "mismatch" in cuda.detail
 
 
+def test_hidden_gpu_names_the_variable():
+    env = _env(cuda_available=False, cuda_hidden="")
+    cuda = _by_name(dr.evaluate(env))["CUDA"]
+    assert "CUDA_VISIBLE_DEVICES" in cuda.detail and "mismatch" not in cuda.detail
+
+
+def test_torch_import_oserror_is_a_fail():
+    env = _env(torch_version=None, torch_error="libcudnn.so: cannot open")
+    torch = _by_name(dr.evaluate(env))["torch"]
+    assert torch.status == dr.FAIL and "libcudnn" in torch.detail
+
+
 def test_unknown_gpu_warns():
     env = _env(gpus=[dr.GpuInfo("NVIDIA Imaginary 9000", 24.0)])
     assert _by_name(dr.evaluate(env))["GPU 0"].status == dr.WARN

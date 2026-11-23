@@ -28,5 +28,6 @@ data_roots:
 # Carpeta de checkpoints (el entrenamiento añade <modo>/<modelo>/<sello> debajo).
 checkpoint_dir: checkpoints/mi_equipo
 
-# Procesos de carga de datos por proceso de entrenamiento (suele ser <= núcleos de la CPU).
+# Procesos de carga de datos: solo RELLENA las configs que no fijan data.num_workers (nunca pisa
+# el valor de un experimento). Suele ser <= núcleos de la CPU.
 num_workers: 4

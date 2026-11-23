@@ -58,14 +58,14 @@ module add slurm/client/20.11.04   # o añadir al ~/.bashrc
 
 El proyecto se usa en cuatro sitios: el PC del autor (RTX 3060 Ti), Kaggle (2 × T4), VERODE (V100,
 Slurm) y el equipo de quien se incorpora. Lo que cambia entre ellos (rutas de los datasets, carpeta
-de checkpoints, `output.env`, `num_workers`) está en `configs/machines/<nombre>.yaml`, no en cada
+de checkpoints, `output.env`; `num_workers` solo si falta en la config) está en `configs/machines/<nombre>.yaml`, no en cada
 config de experimento.
 
 | Máquina | Perfil | Cómo se activa |
 |---|---|---|
 | PC del autor | `local.yaml` | automático por el host (`pc-ubuntu`) |
 | VERODE | `verode.yaml` | automático por el host (`verode*`); si no, `export PARAVIT_MACHINE=verode` |
-| Kaggle | `kaggle.yaml` | `--machine kaggle` o `PARAVIT_MACHINE=kaggle` (el host no es estable); las rutas de los datos dependen de los datasets adjuntos y se pasan con `--data-root` |
+| Kaggle | `kaggle.yaml` | `--machine kaggle` o `PARAVIT_MACHINE=kaggle` (el host no es estable); solo fija `env`: el kernel de entrenamiento construye su propia config y no usa perfil |
 | Equipo nuevo | copia de `example.yaml` | `PARAVIT_MACHINE=<nombre>` (los `*.local.yaml` no se commitean) |
 
 Orden de selección: `--machine` > `PARAVIT_MACHINE` > `hosts` > ninguno (la config tal cual). El
