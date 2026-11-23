@@ -104,6 +104,12 @@ def _probe(nvml=None, visible=None):
 
 # ── SystemProbe ───────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _no_cuda_visible_devices(monkeypatch):
+    """Slurm and Kaggle export CUDA_VISIBLE_DEVICES; these tests must not depend on it."""
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+
+
 def test_sample_has_exactly_the_contract_fields():
     s = _probe().sample()
     assert set(s) == EVENT_FIELDS
