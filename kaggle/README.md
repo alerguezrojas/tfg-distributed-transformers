@@ -8,6 +8,7 @@ imágenes. Cada carpeta de aquí es un *kernel* (script) de Kaggle:
 |---|---|---|---|
 | `panda_mosaicos/` | CPU | Mosaicos de las 10.616 biopsias (nivel 1, 16 trozos de 256 px) y `splits.csv`, con la misma receta que `scripts/prepare_panda.py` en local | `mosaics_l1_16x256/`, `splits.csv`, `train.csv` |
 | `panda_train/` | 2 × T4 | Entrena con DDP el lote `BATCH` de `BATCHES` en `run.py` y evalúa cada uno en test con `--save-predictions` | `results/<nombre>/`, `logs/kaggle/` (solo lo que escribe el kernel), `timings.csv` |
+| `benchmark_t4/` | 1 × T4 | `paravit benchmark` (lotes sintéticos, sin datos ni I/O) de las 13 arquitecturas de la criba de PANDA a 512 px con AMP: datos fuera de muestra para el predictor en una GPU distinta de la local | `throughput.csv`, `bench/<modelo>.log`, `gpu.txt` |
 
 `panda_train` usa como entrada la salida de `panda_mosaicos`, que solo hay que ejecutar una vez.
 El `md5` de `splits.csv` sale en el log y debe coincidir con el local
@@ -21,6 +22,7 @@ reglas de la competición PANDA en la web de Kaggle.
 ```bash
 scripts/kaggle_push.sh kaggle/panda_mosaicos     # una vez
 scripts/kaggle_push.sh kaggle/panda_train        # cada tanda de experimentos
+scripts/kaggle_push.sh kaggle/benchmark_t4       # throughput en T4 (~20 min, sin datos)
 uvx --with six kaggle kernels status <usuario>/paravit-panda-train
 uvx --with six kaggle kernels output <usuario>/paravit-panda-train -p <carpeta>
 ```

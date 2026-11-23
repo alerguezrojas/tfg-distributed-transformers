@@ -45,3 +45,21 @@ def test_metadata_does_not_commit_the_username():
     for meta in REPO.glob("kaggle/*/kernel-metadata.json"):
         text = meta.read_text()
         assert '"{user}/' in text and "alu0" not in text
+
+
+bench = _load("kaggle/benchmark_t4/run.py")
+
+
+def test_benchmark_kernel_parses_the_report():
+    report = """  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+      8  off             138.6       471.7   1.96 GB
+     16  off             153.6       531.7   3.86 GB
+     16  simple          150.0       500.0   3.90 GB
+     16  off                 OOM
+"""
+    rows = bench.parse_rows(report)
+    assert rows == [{"batch": 8, "train_ips": 138.6, "eval_ips": 471.7, "vram_gb": 1.96},
+                    {"batch": 16, "train_ips": 153.6, "eval_ips": 531.7, "vram_gb": 3.86}]
+    assert bench.parse_rows("     16  off                 OOM\n") == [
+        {"batch": 16, "train_ips": None, "eval_ips": None, "vram_gb": None}]
+    assert len(set(bench.MODELS)) == len(bench.MODELS) == 13
