@@ -42,6 +42,16 @@ TFLOPS that pins **MFU ≈ 0.17**.
 `π` is the *measured* Tensor-core speedup per GPU (T4 = 3.8, RTX 3060 Ti = 2.54),
 not the raw fp16/fp32 TFLOPS ratio (which is ~8× and never reached in practice).
 
+**Mixed precision (since 23/11/2026).** In `amp`/`bf16`, `r_c` comes from the three-term model of
+section 8 instead, when the model has a saved-activation figure:
+
+```
+1 / r_c(amp) = a·F + b·A + d/B      (F: GFLOPs fwd, A: GB saved by autograd, B: images per step)
+```
+
+That adds the memory traffic the FLOPs-only form misses (Swin, CNNs, EfficientNet). fp32 keeps the
+MFU form above, and a measured `r_c` always wins.
+
 ---
 
 ## 2. Master formula — DDP train epoch
@@ -123,16 +133,21 @@ test the model.
 | Single fp32, train/epoch | 192 s | 194 s | +1% | calibration (in-sample) |
 | vit_large @ batch 32, T4 | 13.8 GB, fits | 13.78 GB, fits | <1% | calibration (in-sample) |
 | **DDP 2×T4 speedup** | **1.95×** | **1.96×** | **<1%** | **validation (out-of-sample)** |
-| **FP32 → AMP speedup** | **3.80×** | **3.80×** | **~0%** | **validation (out-of-sample)** |
+| **FP32 → AMP speedup** | **3.91×** | **3.80×** | **+3%** | **validation (out-of-sample)** ¹ |
 | **Model-parallel speedup** | **1.00×** | **1.02×** | **−2%** | **validation (out-of-sample)** |
 | **vit_tiny DDP regime** | I/O-bound, <1.4× | 1.27× | ✓ | **validation (out-of-sample)** |
 | **vit_large @ batch 48, T4** | OOM | OOM | ✓ | **validation (out-of-sample)** |
 | **Heterogeneous V100+CPU** | < 1× | 0.12× | ✓ (penalizes) | **validation (out-of-sample)** |
 | Energy single fp32, train/epoch | 3.4 Wh | 3.2 Wh | +6% | calibration (power in-sample) |
-| **Energy single AMP, train/epoch** | **0.90 Wh** | **0.84 Wh** | **+7%** | **validation (time-driven)** |
+| **Energy single AMP, train/epoch** | **0.87 Wh** | **0.84 Wh** | **+4%** | **validation (time-driven)** ¹ |
 | **Energy model-parallel/epoch** | **5.7 Wh** | **5.4 Wh** | **+5%** | validation (MP factor in-sample) |
 
 All rows are reproduced by the unit tests in `tests/unit/test_performance_model.py`.
+
+¹ Since 23/11/2026 mixed precision uses the three-term throughput model of section 8 (T4 fit on
+synthetic 512 px batches of 13 architectures, none of them this BigEarthNet run at 224 px).
+Before, AMP was the fp32 MFU estimate × π, and π for the T4 (3.8) had been measured from this
+very ratio, so the old 3.80× row was not a real test; the energy row moved from 0.90 to 0.87 Wh.
 
 ### Out-of-sample check: PANDA on 2×T4 (Kaggle, 20/11/2026)
 
@@ -458,11 +473,45 @@ Calibrando con dos resoluciones y prediciendo la tercera, el error medio queda e
 sostiene: su coeficiente cambia de signo según la calibración. El coste fijo es otro candidato para
 integrar en el predictor, que hoy no tiene ningún término por paso.
 
-**Conclusión.** El tiempo de entrenamiento de arquitecturas distintas no sigue a los FLOPs: hace
-falta un segundo término de tráfico de memoria, medible en CPU sin GPU, y con él el coste relativo
-se transfiere entre GPUs a partir de las hojas técnicas. Esto es **estudio, no predictor**: el
-predictor (`src/performance_model.py`) no cambia todavía. Para integrarlo hacen falta el ancho de
-banda en `GPU_TABLE`, entender el factor común por GPU (que afecta sobre todo al término de
-memoria) o calibrarlo con una medida por GPU, recalibrar la MFU con el término de memoria
-(separando de nuevo calibración y validación, y revisando las filas de la sección 4, que son todas
-ViT) y medidas en una tercera GPU.
+**Conclusión del estudio.** El tiempo de entrenamiento de arquitecturas distintas no sigue a
+los FLOPs: hace falta un segundo término de tráfico de memoria, medible en CPU sin GPU, y con él
+el coste relativo se transfiere entre GPUs a partir de las hojas técnicas.
+
+### Integración en el predictor (23/11/2026)
+
+`src/performance_model.py` usa desde el 23/11/2026 el modelo de tres términos para el throughput
+de entrenamiento **en precisión mixta** (`amp`/`bf16`), que es donde está medido:
+
+- **Coeficientes por GPU** (`THROUGHPUT_FITS`, ajuste con `fit_with_overhead` a 512 px, lote 16):
+  RTX 3060 Ti, con 10 arquitecturas (a = 2,02·10⁻⁴ s/GFLOP, b = 1,12·10⁻² s/GB y d = 30 ms por
+  paso), y T4, con 13 arquitecturas (3,35·10⁻⁴, 3,10·10⁻² y 24 ms). Son calibración: cada GPU
+  reproduce sus propias medidas con un 7-8 % de error medio.
+- **GPU sin medidas** (V100, A100…): los coeficientes de la 3060 Ti se escalan por TFLOPS·π y
+  por el ancho de banda (`GpuSpec.mem_bw_gbs`, de las hojas de NVIDIA). La predicción lleva una
+  nota: el coste relativo entre arquitecturas se sostiene (11 % en la T4), pero el absoluto puede
+  ser optimista (×1,49 en la T4).
+- **Rasgos del modelo**: `ModelSpec.saved_gb_per_img`, medido con `saved_activation_gb` (en
+  `MODEL_TABLE`, a 224 px; para los modelos perfilados, a la resolución pedida). Sin ese dato, o
+  en fp32, el predictor sigue con la MFU, igual que antes.
+- `Prediction` informa de `train_ips_per_gpu` y del origen del throughput (`throughput_model`:
+  `three-term`, `mfu` o `measured`); la CLI y la web lo muestran en la línea de supuestos.
+
+**Validación con entrenamientos reales.** Es el tiempo por época (con la validación) de
+entrenamientos de PANDA que no intervinieron en ningún ajuste: el ajuste se hizo con lotes
+sintéticos sin I/O. Los modelos y las GPU son los mismos que en la calibración, pero la magnitud
+es otra: entrenamiento real con lectura de datos, validación, DDP y, en Kaggle, 8 imágenes por
+GPU. Se compara con la forma anterior del predictor (la misma ficha sin el dato de activaciones).
+La última sección de `scripts/predictor_architecture_study.py` lo reproduce:
+
+| Entrenamientos | Modelos | Solo FLOPs | 3 términos | Peor caso (3 términos) |
+|---|---|---|---|---|
+| 1 × RTX 3060 Ti, lote 16 | 8 | 20 % | **8 %** | Swin-T −22 % |
+| 2 × T4 (Kaggle, DDP), 8 por GPU | 7 | 47 % | **17 %** | SwinV2-T −31 % |
+
+Con 2 × T4, MaxViT-T pasa de −69 % a +1 % y ConvNeXt-S de −42 % a −6 %. Siguen quedándose cortos
+la familia Swin, por el mismo motivo que en el estudio (operaciones pequeñas que no son ni FLOPs
+ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−28 % y −20 %): son los dos runs en los que se
+sospecha que manda la CPU de Kaggle (sección 4, "Revisión"), algo que el predictor no modela.
+
+**Pendiente.** Validar en una tercera GPU con medidas propias (V100 de VERODE), sin ajustarla, y
+entender el factor común de la T4 para no depender de una medida por GPU.

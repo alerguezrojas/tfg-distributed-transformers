@@ -12,7 +12,9 @@ On the calibration GPU it reports the in-sample fit and the leave-one-out error.
 other GPU it predicts WITHOUT refitting, scaling ``a`` with (TFLOPS·π) and ``b`` with the
 memory bandwidth of the spec sheets, and reports the absolute error, the common factor
 (a GPU below its nominal clock) and the error once that factor is removed (the relative
-cost of the architectures). Results in docs/performance_model.md.
+cost of the architectures). The last section checks the integrated predictor
+(``src/performance_model.predict``, three terms in mixed precision) against the epoch time of
+real PANDA trainings, against its former FLOPs-only form. Results in docs/performance_model.md.
 
     uv run python scripts/predictor_architecture_study.py            # data of 23/11/2026
     uv run python scripts/predictor_architecture_study.py --markdown
@@ -42,9 +44,40 @@ from src.analysis.throughput_model import (  # noqa: E402
 )
 
 DATA = ROOT / "docs" / "research" / "datos" / "throughput_arquitecturas_amp.csv"
-# Memory bandwidth (GB/s) from the NVIDIA spec sheets; the predictor's GPU_TABLE has no
-# bandwidth yet. TFLOPS and the Tensor-core factor π come from GPU_TABLE.
-MEM_BW_GBS = {"RTX 3060 Ti": 448.0, "Tesla T4": 320.0, "Tesla V100": 900.0}
+
+
+def _mem_bw() -> dict[str, float]:
+    """Datasheet memory bandwidth (GB/s) of every GPU in the predictor's GPU_TABLE."""
+    from src.performance_model import GPU_TABLE
+    return {name: g.mem_bw_gbs for name, g in GPU_TABLE.items() if g.mem_bw_gbs > 0}
+
+
+# Real PANDA trainings (512 px, AMP, 7,433 train / 1,593 val images) whose epoch time checks
+# the integrated predictor: (strategy, GPU, n GPUs, global batch, logs folder, models→runs).
+# Real = mean over the runs of the median epoch_time_s without the first epoch (train + val).
+TRAININGS = (
+    ("single", "RTX 3060 Ti", 1, 16, "logs/local/panda/single", {
+        "vit_small_patch16_224": ("21112026_061527", "21112026_064000", "21112026_070409"),
+        "deit3_small_patch16_224.fb_in22k_ft_in1k": ("22112026_154858",),
+        "eva02_small_patch14_224.mim_in22k": ("22112026_174205",),
+        "swin_tiny_patch4_window7_224": ("22112026_160932", "22112026_182151", "22112026_190007"),
+        "convnext_tiny.fb_in22k": ("22112026_152254",),
+        "resnet50": ("22112026_164749",),
+        "efficientnet_b0": ("22112026_150517",),
+        "tf_efficientnetv2_s": ("22112026_171208",),
+    }),
+    ("ddp", "Tesla T4", 2, 16, "logs/kaggle/panda/ddp", {
+        "vit_small_patch16_224": ("20112026_163243",),
+        "vit_base_patch16_224.augreg2_in21k_ft_in1k": ("22112026_201056", "23112026_104927",
+                                                       "23112026_125243"),
+        "swin_tiny_patch4_window7_224": ("23112026_135517",),
+        "swinv2_tiny_window8_256": ("22112026_220303", "23112026_095246", "23112026_115634"),
+        "convnext_small.fb_in22k": ("22112026_210603",),
+        "maxvit_tiny_tf_512.in1k": ("22112026_234538",),
+        "efficientnet_b3": ("22112026_225945",),
+    }),
+)
+PANDA_TRAIN, PANDA_VAL = 7433, 1593
 
 
 def load(path: Path) -> dict[tuple[str, int], dict[str, float]]:
@@ -160,11 +193,12 @@ def main(argv=None) -> None:
         if gpu == args.calibration_gpu or size != args.img_size:
             continue
         g = gpu_spec(gpu)
-        if g is None or gpu not in MEM_BW_GBS or args.calibration_gpu not in MEM_BW_GBS:
-            raise SystemExit(f"no TFLOPS/π (GPU_TABLE) or bandwidth (MEM_BW_GBS) for {gpu!r} "
+        bw = _mem_bw()
+        if g is None or gpu not in bw or args.calibration_gpu not in bw:
+            raise SystemExit(f"no TFLOPS/π or bandwidth (GPU_TABLE) for {gpu!r} "
                              f"or {args.calibration_gpu!r}; add them to compare")
         k_c = (g_cal.fp32_tflops * g_cal.tensor_speedup) / (g.fp32_tflops * g.tensor_speedup)
-        k_m = MEM_BW_GBS[args.calibration_gpu] / MEM_BW_GBS[gpu]
+        k_m = bw[args.calibration_gpu] / bw[gpu]
         at, bt = transfer(a, b, k_c, k_m)
         ms = list(meas)
         Ft = np.array([feats[m][0] for m in ms])
@@ -188,6 +222,48 @@ def main(argv=None) -> None:
               f"2 términos {mean(s2)} (calibrados {mean(s2[~new])}, no calibrados "
               f"{mean(s2[new]) if new.any() else '—'})\n")
     resolution_section(data, feats_at, args.calibration_gpu, args.img_size, md)
+    trainings_section(md)
+
+
+def _median_epoch_s(folder: str, model: str, ts: str) -> float:
+    """Median epoch_time_s of a run, without the first epoch (warm-up, cudnn autotune)."""
+    with open(ROOT / folder / model / f"epoch_metrics_{ts}.csv", newline="") as f:
+        rows = list(csv.DictReader(f))[1:]
+    return float(np.median([float(r["epoch_time_s"]) for r in rows]))
+
+
+def trainings_section(md: bool) -> None:
+    """The integrated predictor against the epoch time of real PANDA trainings: three terms
+    (what ``predict`` does in mixed precision) and the former FLOPs-only form (the same spec
+    without its saved-activation figure)."""
+    import dataclasses
+
+    from src.model_profile import resolve_model_spec
+    from src.performance_model import predict
+
+    for strategy, gpu, n_gpus, batch, folder, runs in TRAININGS:
+        rows, e_old, e_new = [], [], []
+        for model, stamps in runs.items():
+            real = float(np.mean([_median_epoch_s(folder, model, ts) for ts in stamps]))
+            spec = resolve_model_spec(model, 3, 6, 512)
+            kw = dict(n_gpus=n_gpus, dataset_size=PANDA_TRAIN, val_size=PANDA_VAL, batch=batch,
+                      precision="amp", epochs=1, disk_type="ssd")
+            new = predict(strategy, model, gpu, model=spec, **kw)
+            old = predict(strategy, model, gpu,
+                          model=dataclasses.replace(spec, saved_gb_per_img=None), **kw)
+            eo = old.time_per_epoch_total_s / real - 1
+            en = new.time_per_epoch_total_s / real - 1
+            e_old.append(eo)
+            e_new.append(en)
+            rows.append([model, str(len(stamps)), f"{real:.0f} s",
+                         f"{old.time_per_epoch_total_s:.0f} s", _pct(eo),
+                         f"{new.time_per_epoch_total_s:.0f} s", _pct(en)])
+        print(f"Entrenamientos reales de PANDA: {strategy} en {n_gpus} × {gpu}, lote global "
+              f"{batch}, AMP, 512 px (tiempo por época con validación):\n")
+        print(_table(["Modelo", "Runs", "Real", "Solo FLOPs", "Error", "3 términos", "Error"],
+                     rows, md))
+        print(f"\n|error| medio: solo FLOPs {100 * np.mean(np.abs(e_old)):.0f} %, 3 términos "
+              f"{100 * np.mean(np.abs(e_new)):.0f} % (máx. {100 * np.max(np.abs(e_new)):.0f} %)\n")
 
 
 if __name__ == "__main__":

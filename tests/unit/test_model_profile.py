@@ -151,7 +151,7 @@ def test_num_classes_alone_keeps_the_table_entry():
 
 def test_uncalibrated_note_mentions_mfu():
     p = predict("single", _UNKNOWN_MODEL, "Tesla T4", model=resolve_model_spec(_UNKNOWN_MODEL))
-    assert any("MFU" in n and "not on this architecture" in n for n in p.notes)
+    assert any("MFU" in n and "calibrated on vit_base" in n for n in p.notes)
 
 
 def test_quality_confidence_forced_low_for_uncalibrated():

@@ -300,7 +300,9 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 ### Limitaciones del predictor (`src/performance_model.py`)
 
 1. **Una sola MFU (0,17)**, calibrada con vit_base en T4 y aplicada a toda GPU y modelo (de ahí el
-   −24 % en ResNet50 y el +18 % en vit_large).
+   −24 % en ResNet50 y el +18 % en vit_large). *(Resuelto en precisión mixta el 23/11/2026: modelo de tres
+   términos, cómputo + tráfico de memoria + coste fijo por paso, con coeficientes medidos en la
+   3060 Ti y la T4 y transferidos por hoja técnica al resto; fp32 sigue con la MFU.)*
 2. **Tabla cerrada de 6 modelos:** con cualquier otro, `predict()` devuelve `None`. *(Resuelto en la
    fase 5: perfilado automático; las activaciones siguen sin calibrar fuera de la tabla.)*
 3. **`r_io` en img/s de BigEarthNet:** mezcla disco, decodificación y transforms, y no modela

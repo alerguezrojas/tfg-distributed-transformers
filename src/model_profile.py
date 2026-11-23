@@ -151,8 +151,12 @@ def resolve_model_spec(name: str, in_chans: int = 3, num_classes: int = 19,
                              img_size=img_size)
     except (ValueError, ImportError):
         return None
+    try:        # feature of the three-term throughput model; optional (falls back to MFU)
+        saved = round(saved_activation_gb(_base_name(name), in_chans, num_classes, img_size), 4)
+    except (ValueError, ImportError):
+        saved = None
     return spec_from_profile(prof.name, round(prof.params_m, 2), round(prof.gflops_fwd, 3),
-                             convolutional=prof.convolutional)
+                             convolutional=prof.convolutional, saved_gb_per_img=saved)
 
 
 # ── Activation memory saved for the backward pass ────────────────────────────────

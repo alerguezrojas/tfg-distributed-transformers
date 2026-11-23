@@ -11,7 +11,7 @@ import streamlit as st
 
 from src.performance_model import (
     GPU_TABLE, MODEL_TABLE, ModelSpec, predict, predict_quality, gpu_spec,
-    estimate_rc, estimate_rio, precision_factor,
+    MFU, THROUGHPUT_MEASURED, THROUGHPUT_THREE_TERM, estimate_rio, precision_factor,
     BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, N_FULL_TRAIN, N_SUBSET_TRAIN,
     EVAL_POWER_FRACTION,
 )
@@ -266,10 +266,13 @@ def _analytic_predictor() -> None:
 
     # ── Assumptions ──────────────────────────────────────────────────────────────
     if ms and gs:
-        rc = estimate_rc(ms, gs, precision)
         rio = estimate_rio(disk_type, nfs)
-        st.caption(f"Assumptions: r_c ≈ {rc:.0f} img/s/GPU (incl. precision ×"
-                   f"{precision_factor(gs, precision):.2f}) · r_io ≈ {rio:.0f} img/s "
-                   f"({disk_type}{'+NFS' if nfs else ''}) · {ms.params_m:.0f}M params · MFU 0.17.")
+        source = {THROUGHPUT_THREE_TERM: "compute + memory traffic + fixed cost per step",
+                  THROUGHPUT_MEASURED: "measured"}.get(
+            p.throughput_model,
+            f"FLOPs only, MFU {MFU} × precision {precision_factor(gs, precision):.2f}")
+        st.caption(f"Assumptions: r_c ≈ {p.train_ips_per_gpu:.0f} img/s/GPU at {precision} "
+                   f"({source}) · r_io ≈ {rio:.0f} img/s "
+                   f"({disk_type}{'+NFS' if nfs else ''}) · {ms.params_m:.0f}M params.")
     for note in p.notes:
         st.info(note)

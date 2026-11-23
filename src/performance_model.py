@@ -97,23 +97,26 @@ class GpuSpec:
     interconnect: str        # "nvlink" | "pcie" (datacenter GPUs prefer NVLink)
     train_power_w: float = 0.0     # effective avg power per GPU during train (W)
     power_calibrated: bool = False  # True = measured here; False = TDP fallback
+    mem_bw_gbs: float = 0.0        # DRAM bandwidth from the datasheet (GB/s); 0 = unknown
 
 
 # fp32 TFLOPS, the measured/typical Tensor-core speedup π, and the effective average
 # training power per GPU (W). The power of T4 / V100 / RTX 3060 Ti is CALIBRATED from
 # the project's own `--fn energy` logs (potencia media); the rest are TDP-fallback
 # estimates (≈0.65 × nameplate TDP) and flagged power_calibrated=False.
+# mem_bw_gbs: DRAM bandwidth of the NVIDIA datasheets (GB/s); the SXM figure where the key
+# covers both forms (A100 80GB, H100), consistent with the fp32_tflops of the same row.
 GPU_TABLE: dict[str, GpuSpec] = {
-    "Tesla T4":      GpuSpec("Tesla T4", 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True),    # Kaggle: 64 W fp32 ≈ 63 W amp
-    "Tesla V100":    GpuSpec("Tesla V100", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
-    "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True),
-    "RTX 3060 Ti":   GpuSpec("RTX 3060 Ti", 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True),   # local: ~180 W (SSD, compute-bound)
-    _RTX_3090:      GpuSpec(_RTX_3090, 35.6, 3.5, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_3090)),
-    _RTX_4090:      GpuSpec(_RTX_4090, 82.6, 4.0, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_4090)),
-    _A100_40GB:     GpuSpec(_A100_40GB, 19.5, 4.0, 40.0, "nvlink", train_power_w=_tdp_fallback_power(_A100_40GB)),
-    _A100_80GB:     GpuSpec(_A100_80GB, 19.5, 4.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power(_A100_80GB)),
-    "P100":          GpuSpec("P100", 9.3, 1.0, 16.0, "pcie", train_power_w=_tdp_fallback_power("P100")),  # no usable Tensor cores
-    "H100":          GpuSpec("H100", 67.0, 5.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power("H100")),
+    "Tesla T4":      GpuSpec("Tesla T4", 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True, mem_bw_gbs=320.0),    # Kaggle: 64 W fp32 ≈ 63 W amp
+    "Tesla V100":    GpuSpec("Tesla V100", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
+    "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),
+    "RTX 3060 Ti":   GpuSpec("RTX 3060 Ti", 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True, mem_bw_gbs=448.0),   # local: ~180 W (SSD, compute-bound)
+    _RTX_3090:      GpuSpec(_RTX_3090, 35.6, 3.5, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_3090), mem_bw_gbs=936.0),
+    _RTX_4090:      GpuSpec(_RTX_4090, 82.6, 4.0, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_4090), mem_bw_gbs=1008.0),
+    _A100_40GB:     GpuSpec(_A100_40GB, 19.5, 4.0, 40.0, "nvlink", train_power_w=_tdp_fallback_power(_A100_40GB), mem_bw_gbs=1555.0),
+    _A100_80GB:     GpuSpec(_A100_80GB, 19.5, 4.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power(_A100_80GB), mem_bw_gbs=2039.0),
+    "P100":          GpuSpec("P100", 9.3, 1.0, 16.0, "pcie", train_power_w=_tdp_fallback_power("P100"), mem_bw_gbs=732.0),  # no usable Tensor cores
+    "H100":          GpuSpec("H100", 67.0, 5.0, 80.0, "nvlink", train_power_w=_tdp_fallback_power("H100"), mem_bw_gbs=3350.0),
 }
 
 # Disk throughput in IMAGES/second (includes TIFF decode + transform), calibrated
@@ -135,6 +138,11 @@ class ModelSpec:
     gflops_fwd: float        # forward GFLOPs per 224×224 image (multiply-add = 1, see below)
     act_gb_per_img: float    # training activation memory (GB) per image
     calibrated: bool = True  # False = profiled automatically, activations by rule
+    # GB that autograd saves for the backward pass of one image (fp32, parameters excluded;
+    # src/model_profile.saved_activation_gb). It is the memory-TRAFFIC feature of the
+    # three-term throughput model, not a VRAM figure (that is act_gb_per_img). None = not
+    # measured: the throughput falls back to the FLOPs-only MFU estimate.
+    saved_gb_per_img: float | None = None
 
 
 # Curated from timm / the literature (forward GFLOPs at 224²).
@@ -145,13 +153,15 @@ class ModelSpec:
 # act_gb_per_img: ViT family calibrated/scaled from the two measured points
 # (base 0.093 from 4.95 GB @ b32 on 3060 Ti; large 0.260 from 13.78 GB @ b32 on
 # T4), the others scaled by hidden_dim×layers; resnet/effnet are estimates.
+# saved_gb_per_img: measured with src/model_profile.saved_activation_gb(name, 3, 19, 224)
+# on 23/11/2026 (CPU, flash attention, parameters excluded).
 MODEL_TABLE: dict[str, ModelSpec] = {
-    "vit_tiny_patch16_224":  ModelSpec("vit_tiny_patch16_224", 5.7, 1.3, 0.024),
-    "vit_small_patch16_224": ModelSpec("vit_small_patch16_224", 22.0, 4.6, 0.047),
-    "vit_base_patch16_224":  ModelSpec("vit_base_patch16_224", 85.8, 17.6, 0.093),
-    "vit_large_patch16_224": ModelSpec("vit_large_patch16_224", 303.0, 61.6, 0.260),
-    "resnet50":              ModelSpec("resnet50", 25.6, 4.1, 0.100),
-    "efficientnet_b0":       ModelSpec("efficientnet_b0", 5.3, 0.4, 0.060),
+    "vit_tiny_patch16_224":  ModelSpec("vit_tiny_patch16_224", 5.7, 1.3, 0.024, saved_gb_per_img=0.0300),
+    "vit_small_patch16_224": ModelSpec("vit_small_patch16_224", 22.0, 4.6, 0.047, saved_gb_per_img=0.0594),
+    "vit_base_patch16_224":  ModelSpec("vit_base_patch16_224", 85.8, 17.6, 0.093, saved_gb_per_img=0.1182),
+    "vit_large_patch16_224": ModelSpec("vit_large_patch16_224", 303.0, 61.6, 0.260, saved_gb_per_img=0.3124),
+    "resnet50":              ModelSpec("resnet50", 25.6, 4.1, 0.100, saved_gb_per_img=0.0863),
+    "efficientnet_b0":       ModelSpec("efficientnet_b0", 5.3, 0.4, 0.060, saved_gb_per_img=0.0885),
 }
 
 # Bytes per parameter when only storing the model (no optimizer), by precision.
@@ -251,10 +261,13 @@ def estimate_act_gb_per_img(gflops_fwd: float, convolutional: bool = False) -> f
 
 
 def spec_from_profile(name: str, params_m: float, gflops_fwd: float,
-                      convolutional: bool = False) -> ModelSpec:
-    """ModelSpec for a profiled model: measured params/FLOPs + estimated activations."""
+                      convolutional: bool = False,
+                      saved_gb_per_img: float | None = None) -> ModelSpec:
+    """ModelSpec for a profiled model: measured params/FLOPs (and, when given, saved
+    activation GB for the throughput model) + estimated activation memory."""
     return ModelSpec(name, params_m, gflops_fwd,
-                     estimate_act_gb_per_img(gflops_fwd, convolutional), calibrated=False)
+                     estimate_act_gb_per_img(gflops_fwd, convolutional), calibrated=False,
+                     saved_gb_per_img=saved_gb_per_img)
 
 
 # ── Parameter estimators ─────────────────────────────────────────────────────────
@@ -273,6 +286,96 @@ def estimate_rc(model: ModelSpec, gpu: GpuSpec, precision: str = "fp32",
 
 def precision_factor(gpu: GpuSpec, precision: str) -> float:
     return 1.0 if precision == "fp32" else gpu.tensor_speedup
+
+
+# ── Three-term throughput model (mixed precision) ────────────────────────────────
+# Seconds per training image on ONE GPU (docs/performance_model.md, section 8):
+#
+#     t = a·F + b·A + d/B
+#
+# F = forward GFLOPs per image (the MODEL_TABLE unit), A = GB autograd saves per image
+# (ModelSpec.saved_gb_per_img), B = images per step on that GPU. a is the inverse of an
+# effective compute rate, b of an effective memory rate and d a fixed cost per step
+# (kernel launches, optimizer step, Python). The FLOPs-only form (MFU) misses the memory
+# term: 193 % mean error across 10 architectures against 10 % with it (leave-one-out).
+#
+# Fitted with src/analysis/throughput_model.fit_with_overhead on synthetic batches
+# (`paravit benchmark`, no I/O), AMP, batch 16, 512 px, data in
+# docs/research/datos/throughput_arquitecturas_amp.csv:
+#   * RTX 3060 Ti — 10 architectures, logs/local/benchmark/benchmark_23112026_10*;
+#   * Tesla T4    — 13 architectures, logs/kaggle/benchmark/throughput_t4_23112026.csv.
+# Only measured in mixed precision, so it is applied to amp/bf16 only; fp32 keeps MFU.
+MIXED_PRECISIONS: tuple[str, ...] = ("amp", "bf16")
+
+
+@dataclass(frozen=True)
+class ThroughputFit:
+    a_s_per_gflop: float      # compute term
+    b_s_per_gb: float         # memory-traffic term
+    d_s_per_step: float       # fixed cost per optimizer step
+
+
+THROUGHPUT_FITS: dict[str, ThroughputFit] = {
+    "RTX 3060 Ti": ThroughputFit(2.0186e-4, 1.1165e-2, 30.47e-3),
+    "Tesla T4":    ThroughputFit(3.3472e-4, 3.1043e-2, 23.97e-3),
+}
+# GPUs without a fit get the reference fit scaled by the datasheets: a by TFLOPS·π, b by DRAM
+# bandwidth (d is host-side and kept). On the T4 this transfer was ×1.49 too optimistic,
+# mostly in the memory term (direct fit: a ×1.24, b ×1.65 the transferred values; ×1.99 in
+# the three-term fit), so transferred predictions are flagged as uncalibrated.
+THROUGHPUT_REFERENCE_GPU: str = "RTX 3060 Ti"
+
+
+def throughput_fit(gpu: GpuSpec) -> tuple[ThroughputFit, bool] | None:
+    """``(fit, calibrated)`` for a GPU: its own measured fit, or the reference one
+    transferred by the datasheets (``calibrated=False``); ``None`` if it lacks a bandwidth."""
+    own = THROUGHPUT_FITS.get(gpu.name)
+    if own is not None:
+        return own, True
+    ref_gpu = GPU_TABLE[THROUGHPUT_REFERENCE_GPU]
+    if gpu.mem_bw_gbs <= 0 or gpu.fp32_tflops <= 0:
+        return None
+    ref = THROUGHPUT_FITS[THROUGHPUT_REFERENCE_GPU]
+    k_c = (ref_gpu.fp32_tflops * ref_gpu.tensor_speedup) / (gpu.fp32_tflops * gpu.tensor_speedup)
+    k_m = ref_gpu.mem_bw_gbs / gpu.mem_bw_gbs
+    return ThroughputFit(ref.a_s_per_gflop * k_c, ref.b_s_per_gb * k_m, ref.d_s_per_step), False
+
+
+def three_term_ips(model: ModelSpec, gpu: GpuSpec, batch_per_gpu: int
+                   ) -> tuple[float, bool] | None:
+    """``(train img/s on one GPU, calibrated GPU)`` from the three-term model, or ``None``
+    when it does not apply (no saved-activation figure for the model, or no fit/bandwidth
+    for the GPU). Mixed precision only: the caller checks the precision."""
+    if model.saved_gb_per_img is None or model.saved_gb_per_img <= 0:
+        return None
+    found = throughput_fit(gpu)
+    if found is None:
+        return None
+    fit, calibrated = found
+    t = (fit.a_s_per_gflop * model.gflops_fwd + fit.b_s_per_gb * model.saved_gb_per_img
+         + fit.d_s_per_step / max(1, batch_per_gpu))
+    return 1.0 / t, calibrated
+
+
+THROUGHPUT_MEASURED = "measured"
+THROUGHPUT_THREE_TERM = "three-term"
+THROUGHPUT_MFU = "mfu"
+
+
+def train_throughput(model: ModelSpec, gpu: GpuSpec, precision: str, batch_per_gpu: int,
+                     rc_measured: float | None = None) -> tuple[float, str, bool]:
+    """Training throughput of ONE GPU at ``precision`` (img/s), with how it was obtained
+    (``"measured"`` | ``"three-term"`` | ``"mfu"``) and whether that source is calibrated
+    for this GPU. A measured r_c (fp32) wins; mixed precision uses the three-term model
+    when it applies; everything else is the FLOPs-only MFU estimate × π."""
+    pi = precision_factor(gpu, precision)
+    if rc_measured and rc_measured > 0:
+        return pi * rc_measured, THROUGHPUT_MEASURED, True
+    if precision in MIXED_PRECISIONS:
+        tt = three_term_ips(model, gpu, batch_per_gpu)
+        if tt is not None:
+            return tt[0], THROUGHPUT_THREE_TERM, tt[1]
+    return pi * estimate_rc(model, gpu, precision="fp32"), THROUGHPUT_MFU, model.calibrated
 
 
 def estimate_rio(disk_type: str = "ssd", nfs: bool = False,
@@ -308,22 +411,28 @@ def power_working_gpus(strategy: str, n_gpus: int) -> int:
 def estimate_eval_time_s(model: ModelSpec, gpu: GpuSpec, n_val: int, strategy: str,
                          n_gpus: int, precision: str, disk_type: str = "ssd",
                          nfs: bool = False, rc_measured: float | None = None,
-                         rio_measured: float | None = None) -> float:
+                         rio_measured: float | None = None,
+                         rc_at_precision: float | None = None) -> float:
     """Eval-epoch time (s): a forward-only pass over the val split.
 
     Eval has no backward, so its compute throughput is ≈TRAIN_FLOPS_FACTOR× the train
     r_c (forward is ~1/3 of forward+backward). It still reads the val set from disk, so
-    it is max(compute, I/O), and it shards across the GPUs for ddp/heterogeneous."""
+    it is max(compute, I/O), and it shards across the GPUs for ddp/heterogeneous.
+    ``rc_at_precision`` is the train throughput already at ``precision`` (see
+    :func:`train_throughput`); without it, the fp32 r_c × π is used."""
     phi = 1.3 if nfs else 1.0
-    pi = precision_factor(gpu, precision)
-    rc_train = rc_measured if (rc_measured and rc_measured > 0) else estimate_rc(
-        model, gpu, precision="fp32")
-    rc_fwd = rc_train * TRAIN_FLOPS_FACTOR     # forward-only is ~3× the train rate
+    if rc_at_precision and rc_at_precision > 0:
+        rc_train_p = rc_at_precision
+    else:
+        rc_train = rc_measured if (rc_measured and rc_measured > 0) else estimate_rc(
+            model, gpu, precision="fp32")
+        rc_train_p = precision_factor(gpu, precision) * rc_train
+    rc_fwd = rc_train_p * TRAIN_FLOPS_FACTOR   # forward-only is ~3× the train rate
     rio = estimate_rio(disk_type, nfs, rio_measured)
     # Only DDP sticks the eval set across the GPUs; for heterogeneous the GPU does the
     # eval (the CPU worker's contribution is negligible), so it does not divide.
     n_eff = n_gpus if strategy == "ddp" else 1
-    t_compute = n_val / (pi * rc_fwd * max(1, n_eff))
+    t_compute = n_val / (rc_fwd * max(1, n_eff))
     t_io = n_val / rio
     return phi * max(t_compute, t_io)
 
@@ -389,16 +498,23 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
                   n_train: int, batch_per_gpu: int, precision: str,
                   disk_type: str = "ssd", nfs: bool = False,
                   rc_measured: float | None = None,
-                  rio_measured: float | None = None) -> EpochPrediction:
-    """Train-epoch time + speedup for one strategy, from the master formula."""
+                  rio_measured: float | None = None,
+                  rc_at_precision: float | None = None) -> EpochPrediction:
+    """Train-epoch time + speedup for one strategy, from the master formula.
+
+    ``rc_at_precision`` is one GPU's train throughput already at ``precision`` (see
+    :func:`train_throughput`); without it, the fp32 r_c (measured or MFU) × π is used."""
     phi = 1.3 if nfs else 1.0
-    pi = precision_factor(gpu, precision)
-    rc = rc_measured if (rc_measured and rc_measured > 0) else estimate_rc(model, gpu, precision="fp32")
+    if rc_at_precision and rc_at_precision > 0:
+        rc_p = rc_at_precision
+    else:
+        rc = rc_measured if (rc_measured and rc_measured > 0) else estimate_rc(model, gpu, precision="fp32")
+        rc_p = precision_factor(gpu, precision) * rc
     rio = estimate_rio(disk_type, nfs, rio_measured)
     beta = INTERCONNECT_BW["nvlink" if gpu.interconnect == "nvlink" else "pcie"]
 
     def single_epoch(n: int) -> tuple[float, float, float, float]:
-        t_compute = n_train / (pi * rc * n)
+        t_compute = n_train / (rc_p * n)
         t_io = n_train / rio
         n_batches = math.ceil(n_train / (batch_per_gpu * n))
         t_sync = _sync_time(model.params_m, beta, n_batches) if n > 1 else 0.0
@@ -414,7 +530,7 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
         # Naive pipeline: stages serialize, no data-parallel split. Compute is the
         # whole model on the full data (split across devices but sequential), plus
         # a small inter-stage activation transfer ≈ one extra all-reduce-ish term.
-        t_compute = n_train / (pi * rc)
+        t_compute = n_train / rc_p
         t_io = n_train / rio
         transfer = _sync_time(model.params_m, beta, math.ceil(n_train / batch_per_gpu)) * 0.25
         t = phi * (max(t_compute, t_io) + transfer)
@@ -422,7 +538,7 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
     elif strategy == "heterogeneous":
         # Synchronous DDP at the pace of the slowest rank (GPU + a ~50× slower CPU
         # worker). Throughput sum ≈ rc·(1 + 1/50); barrier dominates → ~no gain.
-        rc_sum = pi * rc * (1 + 1 / 50)
+        rc_sum = rc_p * (1 + 1 / 50)
         t_compute = n_train / rc_sum
         t_io = n_train / rio
         n_batches = math.ceil(n_train / (batch_per_gpu * n_gpus))
@@ -483,6 +599,10 @@ class Prediction:
     energy_per_epoch_wh: float = 0.0   # train + eval, per epoch
     energy_total_wh: float = 0.0       # × epochs (train + eval)
     power_calibrated: bool = False     # power from a real measurement vs TDP fallback
+    # Training throughput of one GPU at this precision and where it comes from:
+    # "measured" (rc_measured), "three-term" (mixed precision, section 8) or "mfu".
+    train_ips_per_gpu: float = 0.0
+    throughput_model: str = THROUGHPUT_MFU
 
 
 def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
@@ -510,13 +630,17 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         return None
 
     batch_per_gpu = max(1, batch // n_gpus) if strategy in ("ddp", "heterogeneous") else batch
+    rc_p, tp_model, tp_calibrated = train_throughput(model, gpu, precision, batch_per_gpu,
+                                                     rc_measured)
     ep = predict_epoch(strategy, model, gpu, n_gpus, dataset_size, batch_per_gpu,
-                       precision, disk_type, nfs, rc_measured, rio_measured)
+                       precision, disk_type, nfs, rc_measured, rio_measured,
+                       rc_at_precision=rc_p)
 
     # Eval-epoch time (forward-only over the val split) → total epoch = train + eval.
     n_val = int(val_size) if val_size and val_size > 0 else round(dataset_size * 0.51)
     t_eval = estimate_eval_time_s(model, gpu, n_val, strategy, n_gpus, precision,
-                                  disk_type, nfs, rc_measured, rio_measured)
+                                  disk_type, nfs, rc_measured, rio_measured,
+                                  rc_at_precision=rc_p)
     t_total_epoch = ep.time_train_s + t_eval
 
     # Energy = effective power × time. Power per GPU is calibrated (or a TDP fallback);
@@ -552,10 +676,16 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     if not model.calibrated:
         notes.append(f"Model profiled automatically ({model.params_m:.1f}M params, "
                      f"{model.gflops_fwd:.2f} GFLOPs measured); activation memory "
-                     f"estimated, not calibrated — treat VRAM/OOM as a rough estimate. "
-                     f"Compute throughput (MFU {MFU}) is calibrated on vit_base and not "
-                     f"on this architecture (known deviations: resnet50 -24%, vit_large "
-                     f"+18%), so time and energy are rough too.")
+                     f"estimated, not calibrated — treat VRAM/OOM as a rough estimate.")
+    if tp_model == THROUGHPUT_MFU and (not model.calibrated or precision in MIXED_PRECISIONS):
+        notes.append(f"Compute throughput from FLOPs only (MFU {MFU}, calibrated on vit_base): "
+                     f"architectures that move much memory per FLOP (Swin, CNNs, "
+                     f"EfficientNet) run slower than this, so time and energy are rough.")
+    if tp_model == THROUGHPUT_THREE_TERM and not tp_calibrated:
+        notes.append(f"Throughput from the three-term model transferred to {gpu.name} by its "
+                     f"datasheet (TFLOPS, bandwidth), not measured on it: the relative cost of "
+                     f"architectures holds (~11 % on a T4), the absolute speed may be "
+                     f"optimistic (×1.49 on a T4).")
     if not gpu.power_calibrated:
         notes.append(f"Energy uses a TDP-fallback power for {gpu.name} (≈"
                      f"{gpu.train_power_w:.0f} W/GPU, not measured here) — treat it as "
@@ -586,6 +716,7 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         energy_train_wh=e_train_wh, energy_eval_wh=e_eval_wh,
         energy_per_epoch_wh=e_epoch_wh, energy_total_wh=e_epoch_wh * epochs,
         power_calibrated=gpu.power_calibrated,
+        train_ips_per_gpu=rc_p, throughput_model=tp_model,
     )
 
 
