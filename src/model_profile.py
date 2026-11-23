@@ -174,6 +174,11 @@ def _count_saved_bytes(model, in_chans: int, img_size: int) -> int:
     # Parameters are excluded: they are read once per BATCH, not once per image.
     params = {p.untyped_storage().data_ptr() for p in model.parameters()}
     seen: set[tuple[int, int]] = set()
+    # The saved tensors stay alive here until the forward ends (so no address is reused and
+    # the dedup by address holds), but the graph keeps only None: returning ``t`` itself
+    # from the pack hook makes a tensor ↔ grad_fn cycle that autograd never frees, and
+    # every model profiled leaked all its activations (~0.5-1 GB each at 512 px).
+    keep: list = []
     total = 0
 
     def pack(t):
@@ -183,20 +188,25 @@ def _count_saved_bytes(model, in_chans: int, img_size: int) -> int:
         if key not in seen and key[0] not in params:   # views of one tensor: stored once
             seen.add(key)
             total += storage.nbytes()
-        return t
+        keep.append(t)
+
+    def unpack(_):          # never called: the graph is not backpropagated
+        raise RuntimeError("_count_saved_bytes graphs are not meant for backward")
 
     from torch.nn.attention import SDPBackend, sdpa_kernel
 
     x = torch.zeros(1, in_chans, img_size, img_size)
     try:
         with sdpa_kernel(SDPBackend.FLASH_ATTENTION), \
-                torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+                torch.autograd.graph.saved_tensors_hooks(pack, unpack):
             model(x).sum()
     except RuntimeError:            # e.g. an attention mask the flash kernel rejects
         seen.clear()
+        keep.clear()
         total = 0
-        with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+        with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
             model(x).sum()
+    keep.clear()
     return total
 
 

@@ -261,3 +261,28 @@ def test_count_saved_bytes_excludes_parameters_and_dedups_views():
 
     total = _count_saved_bytes(Net(), in_chans=3, img_size=4)
     assert total == (48 + 8) * 4                # input (48 floats) + relu output (8), fp32
+
+
+def test_count_saved_bytes_frees_the_graph_it_builds():
+    """Regression: the pack hook used to return the tensor itself, which makes a tensor ↔
+    grad_fn cycle autograd never frees, so every profiled model leaked its activations
+    (~0.5-1 GB per model at 512 px; the architecture study peaked above 9 GB)."""
+    import weakref
+
+    import torch
+    from src.model_profile import _count_saved_bytes
+
+    outputs = []
+
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.w = torch.nn.Parameter(torch.ones(1))
+
+        def forward(self, x):
+            y = torch.sigmoid(x * self.w)       # mul saves x; sigmoid saves its own output
+            outputs.append(weakref.ref(y))
+            return y * 2
+
+    assert _count_saved_bytes(Net(), in_chans=3, img_size=4) == (48 + 48) * 4
+    assert outputs and outputs[0]() is None     # the saved tensor was released
