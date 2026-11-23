@@ -25,7 +25,7 @@ def _capture_ddp(monkeypatch, trainer_cls, rank, device, **kwargs):
     def fake_base_init(self, model, optimizer, scheduler, device, *a, **kw):
         self.model, self.device = model, device
         self.task = SimpleNamespace(sigmoid_outputs=True)
-        self.criterion = None
+        self.criterion = torch.nn.BCEWithLogitsLoss()
 
     def fake_ddp(model, **kw):
         calls.append(kw)
