@@ -108,9 +108,15 @@ uv run paravit.py benchmark --batch-sizes 32,64 --epochs 15
 uv run paravit.py benchmark --model resnet50 --batch-sizes 32,64
 ```
 
-Usa datos sintéticos (no necesita el dataset) y genera un informe de texto y un CSV en
+Usa datos sintéticos (no necesita el dataset para medir) y genera un informe de texto y un CSV en
 `logs/<entorno>/benchmark/`, que el panel web muestra en *Estimate/Benchmark → Benchmark*. Con
 `--convergence-study` añade un estudio de convergencia con datos reales (requiere el dataset).
+
+Con `--config` usa el dataset (`data.name`) y la resolución (`model.img_size`) de esa config. Los
+tiempos por época usan el tamaño de sus splits, leído de la partición del dataset; si no está en
+disco, se indican con `--train-size` y `--val-size`. El perfil de I/O de parches `*.tif` y la
+predicción empírica de F1 solo existen para BigEarthNet: con otro dataset el informe dice que no
+hay prior calibrado.
 
 ### `train` — entrenar
 

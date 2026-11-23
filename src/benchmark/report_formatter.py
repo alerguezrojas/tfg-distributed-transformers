@@ -40,14 +40,14 @@ class ReportFormatter:
         self._benchmark_section(report)
         self._estimates_section(report)
         self._ddp_section(report)
-        self._prediction_section(report.performance_prediction)
+        self._prediction_section(report.performance_prediction, report.prediction_note)
         self._study_section(report)
         self._recommendations_section(report)
         self.flush()
 
     def _header(self, report: BenchmarkReport):
         self._emit("═" * self.W)
-        self._emit("  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)")
+        self._emit(f"  ANÁLISIS DE VIABILIDAD — {report.dataset_name} ({report.model_info.name})")
         self._emit(f"  {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}")
         if not math.isclose(report.nfs_factor, 1.0):
             self._emit(f"  Factor NFS aplicado: ×{report.nfs_factor:.2f}")
@@ -100,7 +100,8 @@ class ReportFormatter:
             if disk.read_mb_per_s > 0:
                 self._emit(f"  Velocidad lectura: {disk.read_mb_per_s:.0f} MB/s  |  {disk.files_per_second:.0f} patches/s")
         if profile:
-            self._emit(f"  Patches encontrados: ~{profile.n_files_total_est:,}")
+            if profile.n_files_total_est:
+                self._emit(f"  Patches encontrados: ~{profile.n_files_total_est:,}")
             if profile.io_bottleneck_ratio > 0:
                 if profile.io_bottleneck_ratio > 1.2:
                     self._emit(f"  Aviso: I/O-BOUND (ratio={profile.io_bottleneck_ratio:.2f}) — data loading más lento que cómputo")
@@ -188,8 +189,11 @@ class ReportFormatter:
         elif best.bottleneck == "sync":
             self._emit("  Aviso: Sincronización de gradientes es el cuello de botella — red lenta")
 
-    def _prediction_section(self, pred: PerformancePrediction | None):
+    def _prediction_section(self, pred: PerformancePrediction | None, note: str = ""):
         if pred is None:
+            if note:
+                self._emit(f"\n{'─'*self.W}  PREDICCIÓN DE RENDIMIENTO (empírica)")
+                self._emit(f"  {note}")
             return
         self._emit(f"\n{'─'*self.W}  PREDICCIÓN DE RENDIMIENTO (empírica)")
         self._emit(f"  Modelo: {pred.model_name}")
