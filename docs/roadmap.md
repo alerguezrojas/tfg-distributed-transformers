@@ -6,8 +6,14 @@
 
 ## Estado actual
 
-> Actualizado el 23/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 23/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
+
+**Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
+(Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
+y una fuga de memoria del perfilado corregida (PRs #259-#263, todos en `develop`). El detalle está
+en "Avance del plan", más abajo. En curso: el lote `strategies_512` en Kaggle. Pendiente del
+autor: la VPN de VERODE, para probar el clúster y validar el predictor en una tercera GPU.
 
 **Fase 0 de la auditoría (23/11/2026): errores corregidos** (PR a `develop`). DDP con el índice del
 dispositivo y no con el rank global (multinodo), `test_<sello>.csv` atribuido a su run y no a toda
@@ -245,8 +251,30 @@ Antes de modelarlas hay que medir el ancho de banda real entre las dos T4.
   (`src/training/strategies.py`); los cuatro `scripts/train_*.py` son envoltorios; todas las
   estrategias aceptan las opciones comunes (`--resume`, `--inspect`, `--batch-size`…). Comprobado
   en GPU: mismos logs y métricas que antes con las cuatro estrategias.
+- **Fase 3, primer bloque, hecho** (PR #260): web con selector de runs con búsqueda y filtros,
+  enlaces directos (`?run=<sello>&tab=<sección>`), tabla de test por dataset, rutas de datos desde
+  los perfiles de máquina, clases desde el manifiesto del run, título ParaViT-Lab, colores aptos
+  para daltonismo y *GPU time* por número de GPU. Pendiente: C2 (estimación frente a medida con el
+  manifiesto del run y el predictor nuevo) y vista de conjuntos.
+- **Fase 4, hecha salvo probarla en el clúster** (PR #261): `paravit train --launcher slurm`
+  (rendezvous `c10d` en el primer nodo, el mismo comando en todos), plantillas
+  `cluster/slurm/*.sbatch` (también con `srun`) y receta Apptainer cu118 **sin construir**
+  (`cluster/README.md`). Falta probarlo en VERODE, que necesita la VPN.
+- **Fase 5, empezada:** acumulación de gradientes y *activation checkpointing* (PR #259).
+- **Predictor de tres términos integrado** (PR #263): con AMP, el throughput sale de cómputo +
+  tráfico de memoria + coste fijo por paso (`THROUGHPUT_FITS` para la 3060 Ti y la T4, el resto
+  por hoja técnica). La 3060 Ti se recalibró con un barrido de lotes que mide el coste fijo
+  (18 ms). Con entrenamientos reales de PANDA, el error medio del tiempo por época baja del 20 %
+  al 8 % (3060 Ti) y del 47 % al 17 % (2 × T4). Revisión independiente hecha. Detalle en
+  [performance_model.md §8](performance_model.md).
+- **Fuga de memoria corregida** (PR #262): perfilar modelos retenía sus activaciones (hasta 9,7 GB)
+  y contribuyó a que `systemd-oomd` cerrara la sesión de escritorio el 23/11. En esta máquina
+  (15 GB) los tests se ejecutan con `systemd-run --user --scope -p MemoryMax=5G` y nunca dos
+  baterías a la vez.
 - **En curso:** lote `strategies_512` en Kaggle (una T4 frente a dos, ancho de banda de all-reduce,
-  control de CPU con 2 *workers*). Siguiente: fase 5 (estrategias nuevas) o fase 3 (web).
+  control de CPU con 2 *workers*); la salida irá a `/media/alejandro/SSD/kaggle-out/panda_strategies_512`.
+  Siguiente: analizarlo (β medido para el término de sincronización del predictor; ¿manda la CPU
+  en ViT-S?), luego pipeline con micro-lotes (fase 5) y C2 de la web.
 
 **Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
 del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
@@ -464,7 +492,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Esquema estándar de cada medida: huella de hardware y software, configuración, throughput
       estable, pico de VRAM, potencia y **espera del DataLoader** (nuevos eventos del flujo).
 - [ ] Script de barrido con sondas cortas (N pasos en régimen estable) para muchas configuraciones.
-- [ ] Entorno portable para HPC (contenedor Apptainer) y plantillas Slurm multinodo.
+- [x] Entorno portable para HPC (contenedor Apptainer) y plantillas Slurm multinodo (PR #261;
+      la imagen está sin construir y falta probarlo en VERODE).
 
 ### Fase 5 — Predictor v2 (caja gris)
 - [x] FLOPs y parámetros automáticos para cualquier modelo de timm (`torch.utils.flop_counter`):
@@ -476,8 +505,10 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Validación con calibración y validación separadas (dejando fuera GPU, modelo o dataset) y baselines (lineal, Amdahl, roofline).
   - [x] Estudio de arquitecturas: FLOPs frente a FLOPs + memoria de activaciones, validado en otra
     GPU (T4) y con modelos fuera de la calibración (23/11/2026; `performance_model.md`, sección 8).
-  - [ ] Integrar el término de memoria en `performance_model.py`: ancho de banda en `GPU_TABLE`,
-    reloj sostenido por GPU, MFU recalibrada y una tercera GPU para validar.
+  - [x] Integrar el término de memoria en `performance_model.py`: ancho de banda en `GPU_TABLE`,
+    coeficientes por GPU y coste fijo por paso medido con barrido de lotes (PR #263, solo AMP).
+  - [ ] Tercera GPU para validar sin ajustarla (V100 de VERODE), el factor común de la T4 (reloj
+    sostenido) y el término de tres partes en fp32.
   - [ ] ¿Contención de CPU en Kaggle? ViT-S a 512 px va a 122 s/época donde la GPU haría ~77 s:
     control con `num_workers=2` o mosaicos ya decodificados; si se confirma, término de CPU.
 
