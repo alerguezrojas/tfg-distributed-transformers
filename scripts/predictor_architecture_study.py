@@ -80,14 +80,19 @@ TRAININGS = (
 PANDA_TRAIN, PANDA_VAL = 7433, 1593
 
 
-def load(path: Path) -> dict[tuple[str, int], dict[str, float]]:
+def load(path: Path, batch: int = 16) -> dict[tuple[str, int], dict[str, float]]:
     """``{(gpu, img_size): {model: train imgs/s}}`` from the tidy CSV (always the versioned
-    one: the study reads no path from the command line). All rows use batch 16."""
+    one: the study reads no path from the command line), rows of one batch size only."""
     out: dict[tuple[str, int], dict[str, float]] = {}
-    with open(path, newline="") as f:
-        for row in csv.DictReader(f):
+    for row in _rows(path):
+        if int(row["batch"]) == batch:
             out.setdefault((row["gpu"], int(row["img_size"])), {})[row["model"]] = float(row["train_ips"])
     return out
+
+
+def _rows(path: Path) -> list[dict[str, str]]:
+    with open(path, newline="") as f:
+        return list(csv.DictReader(f))
 
 
 def features(models, img_size: int, num_classes: int = 6) -> dict[str, tuple[float, float]]:
@@ -102,7 +107,7 @@ def features(models, img_size: int, num_classes: int = 6) -> dict[str, tuple[flo
     return feats
 
 
-BATCH = 16      # every measurement of the CSV uses batch 16
+BATCH = 16      # batch of every measurement except the batch sweep (batch_section)
 
 
 def resolution_section(data, feats_at, cal_gpu: str, cal_size: int, md: bool) -> None:
@@ -222,7 +227,45 @@ def main(argv=None) -> None:
               f"2 términos {mean(s2)} (calibrados {mean(s2[~new])}, no calibrados "
               f"{mean(s2[new]) if new.any() else '—'})\n")
     resolution_section(data, feats_at, args.calibration_gpu, args.img_size, md)
+    batch_section(args.calibration_gpu, md)
     trainings_section(md)
+
+
+def batch_section(gpu: str, md: bool) -> None:
+    """Joint fit of a GPU over every resolution and batch size measured on it: the batch sweep
+    (224 px, batch 8/32/64) is what separates the fixed cost per step d from the per-image
+    terms. These are the coefficients of the predictor (``THROUGHPUT_FITS``)."""
+    from src.model_profile import resolve_model_spec, saved_activation_gb
+
+    rows = [r for r in _rows(DATA) if r["gpu"] == gpu]
+    feats: dict[tuple[str, int], tuple[float, float]] = {}
+    for r in rows:
+        key = (r["model"], int(r["img_size"]))
+        if key not in feats:
+            feats[key] = (resolve_model_spec(key[0], 3, 6, key[1]).gflops_fwd,
+                          saved_activation_gb(key[0], 3, 6, key[1]))
+    F = np.array([feats[(r["model"], int(r["img_size"]))][0] for r in rows])
+    A = np.array([feats[(r["model"], int(r["img_size"]))][1] for r in rows])
+    R = np.array([float(r["train_ips"]) for r in rows])
+    B = np.array([int(r["batch"]) for r in rows])
+    names = np.array([r["model"] for r in rows])
+    a, b, d = fit_with_overhead(F, A, R, B)
+    e = relative_errors(predict_ips(a, b, F, A, d, B), R)
+    loo = []
+    for m in sorted(set(names)):            # leave one MODEL out (all its sizes and batches)
+        k = names == m
+        am, bm, dm = fit_with_overhead(F[~k], A[~k], R[~k], B[~k])
+        loo += list(relative_errors(predict_ips(am, bm, F[k], A[k], dm, B[k]), R[k]))
+    print(f"Ajuste conjunto en {gpu} ({len(rows)} medidas, todas las resoluciones y lotes): "
+          f"a = {a:.4e} s/GFLOP, b = {b:.4e} s/GB, d = {d * 1e3:.1f} ms por paso\n")
+    tab = []
+    for label, mask in [*[(f"{s} px", np.array([int(r["img_size"]) == s for r in rows]))
+                          for s in sorted({int(r["img_size"]) for r in rows})],
+                        *[(f"lote {bb}", B == bb) for bb in sorted(set(B))]]:
+        tab.append([label, str(int(mask.sum())), f"{100 * np.mean(np.abs(e[mask])):.0f} %"])
+    print(_table(["Medidas", "n", "|error| medio"], tab, md))
+    print(f"\n|error| medio {100 * np.mean(np.abs(e)):.0f} % (máx. {100 * np.max(np.abs(e)):.0f} %); "
+          f"dejando fuera cada modelo {100 * np.mean(np.abs(loo)):.0f} %\n")
 
 
 def _median_epoch_s(folder: str, model: str, ts: str) -> float:

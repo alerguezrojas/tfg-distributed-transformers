@@ -144,3 +144,17 @@ def test_vit_base_amp_on_t4_matches_the_measured_speedup():
     fp32 = predict("single", "vit_base_patch16_224", "Tesla T4", batch=32, precision="fp32")
     amp = predict("single", "vit_base_patch16_224", "Tesla T4", batch=32, precision="amp")
     assert fp32.train_ips_per_gpu * 3.80 == pytest.approx(amp.train_ips_per_gpu, rel=0.10)
+
+
+def test_fixed_cost_per_step_matches_the_batch_sweep():
+    """Calibration (in-sample) of d: RTX 3060 Ti, 224 px, AMP, batch 8/32/64 (logs/local/benchmark/
+    benchmark_23112026_2232*). The table models predict those throughputs within ~9 %, and the
+    fitted d agrees with the per-step intercepts measured per model (13-19 ms)."""
+    measured = {"vit_small_patch16_224": {8: 318.5, 32: 507.8, 64: 573.5},
+                "resnet50": {8: 282.6, 32: 409.1, 64: 446.7},
+                "efficientnet_b0": {8: 286.6, 32: 657.4, 64: 718.0}}
+    g = gpu_spec("RTX 3060 Ti")
+    errs = [abs(three_term_ips(model_spec(m), g, b)[0] / ips - 1)
+            for m, by_batch in measured.items() for b, ips in by_batch.items()]
+    assert sum(errs) / len(errs) < 0.12
+    assert 0.013 <= THROUGHPUT_FITS["RTX 3060 Ti"].d_s_per_step <= 0.020

@@ -300,12 +300,15 @@ def precision_factor(gpu: GpuSpec, precision: str) -> float:
 # term: 193 % mean error across 10 architectures against 10 % with it (leave-one-out).
 #
 # Fitted with src/analysis/throughput_model.fit_with_overhead on synthetic batches
-# (`paravit benchmark`, no I/O), AMP, batch 16, 512 px, data in
-# docs/research/datos/throughput_arquitecturas_amp.csv:
-#   * RTX 3060 Ti — 10 architectures, logs/local/benchmark/benchmark_23112026_10*;
-#   * Tesla T4    — 13 architectures, logs/kaggle/benchmark/throughput_t4_23112026.csv.
-# Only measured in mixed precision, so it is applied to amp/bf16 only; fp32 keeps MFU.
-MIXED_PRECISIONS: tuple[str, ...] = ("amp", "bf16")
+# (`paravit benchmark`, no I/O), AMP, data in docs/research/datos/throughput_arquitecturas_amp.csv:
+#   * RTX 3060 Ti — 10 architectures at 224/384/512 px with batch 16 plus 5 of them at 224 px with
+#     batch 8/32/64 (45 points; logs/local/benchmark/benchmark_23112026_{10,16,2232}*). The batch
+#     sweep pins d: the per-step intercepts measured per model are 13-19 ms, the fit gives 18 ms;
+#   * Tesla T4    — 13 architectures at 512 px, batch 16 only (logs/kaggle/benchmark/
+#     throughput_t4_23112026.csv), so its d is not separated from the per-image terms.
+# Only measured with AMP (fp16 autocast), so it is applied to amp only; fp32 keeps MFU and bf16
+# (not measured; the T4 and V100 have no native bf16) keeps MFU × π.
+MIXED_PRECISIONS: tuple[str, ...] = ("amp",)
 
 
 @dataclass(frozen=True)
@@ -316,13 +319,13 @@ class ThroughputFit:
 
 
 THROUGHPUT_FITS: dict[str, ThroughputFit] = {
-    "RTX 3060 Ti": ThroughputFit(2.0186e-4, 1.1165e-2, 30.47e-3),
+    "RTX 3060 Ti": ThroughputFit(2.0453e-4, 1.2468e-2, 17.77e-3),
     "Tesla T4":    ThroughputFit(3.3472e-4, 3.1043e-2, 23.97e-3),
 }
 # GPUs without a fit get the reference fit scaled by the datasheets: a by TFLOPS·π, b by DRAM
-# bandwidth (d is host-side and kept). On the T4 this transfer was ×1.49 too optimistic,
-# mostly in the memory term (direct fit: a ×1.24, b ×1.65 the transferred values; ×1.99 in
-# the three-term fit), so transferred predictions are flagged as uncalibrated.
+# bandwidth (d is host-side and kept). On the T4 this transfer was ×1.5 too optimistic (median
+# ratio of the 13 models, 1.46), mostly in the memory term, while the relative cost of the
+# architectures held within 11 %; so transferred predictions are flagged as uncalibrated.
 THROUGHPUT_REFERENCE_GPU: str = "RTX 3060 Ti"
 
 
@@ -685,7 +688,7 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         notes.append(f"Throughput from the three-term model transferred to {gpu.name} by its "
                      f"datasheet (TFLOPS, bandwidth), not measured on it: the relative cost of "
                      f"architectures holds (~11 % on a T4), the absolute speed may be "
-                     f"optimistic (×1.49 on a T4).")
+                     f"optimistic (×1.5 on a T4).")
     if not gpu.power_calibrated:
         notes.append(f"Energy uses a TDP-fallback power for {gpu.name} (≈"
                      f"{gpu.train_power_w:.0f} W/GPU, not measured here) — treat it as "

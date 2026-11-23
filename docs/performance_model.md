@@ -42,8 +42,9 @@ TFLOPS that pins **MFU ≈ 0.17**.
 `π` is the *measured* Tensor-core speedup per GPU (T4 = 3.8, RTX 3060 Ti = 2.54),
 not the raw fp16/fp32 TFLOPS ratio (which is ~8× and never reached in practice).
 
-**Mixed precision (since 23/11/2026).** In `amp`/`bf16`, `r_c` comes from the three-term model of
-section 8 instead, when the model has a saved-activation figure:
+**Mixed precision (since 23/11/2026).** In `amp`, `r_c` comes from the three-term model of
+section 8 instead, when the model has a saved-activation figure (`bf16`, not measured, keeps
+MFU × π):
 
 ```
 1 / r_c(amp) = a·F + b·A + d/B      (F: GFLOPs fwd, A: GB saved by autograd, B: images per step)
@@ -112,10 +113,13 @@ fits and flags OOM for any (model, GPU).
 
 ## 4. Calibration vs. validation (be honest about which is which)
 
-The model has **two** fitted constants, each pinned by **one** measurement:
+The fp32 model has **two** fitted constants, each pinned by **one** measurement:
 
 * `MFU = 0.17` — from the single-GPU fp32 throughput of vit_base on a T4.
 * `k = 0.86e-9` — from the measured vit_large OOM point (13.78 GB @ batch 32, T4).
+
+Mixed precision (AMP) adds the three coefficients per GPU of `THROUGHPUT_FITS` (section 8),
+fitted on synthetic benchmarks of 10-13 architectures; the rows below that use AMP are marked ¹.
 
 Reproducing those two points is therefore **interpolation, not prediction** — they
 are *calibration targets*, marked **(in-sample)** below.
@@ -123,8 +127,8 @@ are *calibration targets*, marked **(in-sample)** below.
 The genuinely predictive results are the **speedups and regimes**, and they are
 **out-of-sample because they do not depend on the fitted constants**. A speedup is
 a ratio `S(n)=T(N,1)/T(N,n)`: in the compute-bound regime `MFU` cancels, so `S→n`
-regardless of its value; the FP32→AMP factor is the separately-measured `π` from
-`GPU_TABLE` (not `MFU`); the I/O-bound and heterogeneous regimes are set by
+regardless of its value; the FP32→AMP factor comes from the three-term AMP model, not from
+`MFU` (see ¹); the I/O-bound and heterogeneous regimes are set by
 `r_io`/β, again independent of the calibration. These are the rows that actually
 test the model.
 
@@ -480,19 +484,31 @@ el coste relativo se transfiere entre GPUs a partir de las hojas técnicas.
 ### Integración en el predictor (23/11/2026)
 
 `src/performance_model.py` usa desde el 23/11/2026 el modelo de tres términos para el throughput
-de entrenamiento **en precisión mixta** (`amp`/`bf16`), que es donde está medido:
+de entrenamiento **en precisión mixta AMP** (`amp`), que es donde está medido (`bf16` no se ha
+medido y sigue con la MFU × π):
 
-- **Coeficientes por GPU** (`THROUGHPUT_FITS`, ajuste con `fit_with_overhead` a 512 px, lote 16):
-  RTX 3060 Ti, con 10 arquitecturas (a = 2,02·10⁻⁴ s/GFLOP, b = 1,12·10⁻² s/GB y d = 30 ms por
-  paso), y T4, con 13 arquitecturas (3,35·10⁻⁴, 3,10·10⁻² y 24 ms). Son calibración: cada GPU
-  reproduce sus propias medidas con un 7-8 % de error medio.
+- **Coeficientes por GPU** (`THROUGHPUT_FITS`, `fit_with_overhead`):
+  - RTX 3060 Ti: ajuste conjunto con 45 medidas (10 arquitecturas a 224, 384 y 512 px con lote 16,
+    y 5 de ellas a 224 px con lotes 8, 32 y 64). Da a = 2,05·10⁻⁴ s/GFLOP, b = 1,25·10⁻² s/GB y
+    d = 18 ms por paso.
+  - T4: 13 arquitecturas, solo a 512 px y con lote 16 (3,35·10⁻⁴, 3,10·10⁻² y 24 ms).
+
+  Ambos son calibración: cada GPU reproduce sus propias medidas a 512 px con un error medio del
+  8,3 % (3060 Ti) y del 11,6 % (T4).
+- **El coste fijo por paso (d/B) está medido.** Sin variar el lote, d no se puede separar de los
+  términos por imagen: el primer ajuste, solo a 512 px y lote 16, daba 30 ms y con lote 8 se
+  quedaba un 30 % corto. El barrido de lotes de la 3060 Ti (`logs/local/benchmark/
+  benchmark_23112026_2232*`) da, para cada modelo, un tiempo por paso que crece en línea recta
+  con el lote. La ordenada en el origen es de 13-19 ms según el modelo, y el ajuste conjunto
+  da 18 ms. Error por lote: 13 % (8), 8 % (16), 9 % (32) y 8 % (64). Dejando fuera cada modelo
+  entero, el error es del 11 %. En la T4 no se ha variado el lote: su d (24 ms) es un supuesto.
 - **GPU sin medidas** (V100, A100…): los coeficientes de la 3060 Ti se escalan por TFLOPS·π y
   por el ancho de banda (`GpuSpec.mem_bw_gbs`, de las hojas de NVIDIA). La predicción lleva una
-  nota: el coste relativo entre arquitecturas se sostiene (11 % en la T4), pero el absoluto puede
-  ser optimista (×1,49 en la T4).
+  nota: el coste relativo entre arquitecturas se sostiene (11 % en la T4 con los tres términos),
+  pero el absoluto puede ser optimista (×1,5 en la T4, mediana de los 13 modelos).
 - **Rasgos del modelo**: `ModelSpec.saved_gb_per_img`, medido con `saved_activation_gb` (en
-  `MODEL_TABLE`, a 224 px; para los modelos perfilados, a la resolución pedida). Sin ese dato, o
-  en fp32, el predictor sigue con la MFU, igual que antes.
+  `MODEL_TABLE`, a 224 px; para los modelos perfilados, a la resolución pedida, o a 512 px y escalado por los píxeles si es mayor, para no retener gigas
+  de activaciones al perfilar). Sin ese dato, o en fp32 o bf16, el predictor sigue con la MFU, igual que antes.
 - `Prediction` informa de `train_ips_per_gpu` y del origen del throughput (`throughput_model`:
   `three-term`, `mfu` o `measured`); la CLI y la web lo muestran en la línea de supuestos.
 

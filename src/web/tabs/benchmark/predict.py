@@ -44,8 +44,9 @@ def _analytic_predictor() -> None:
     st.caption(
         "Pick the parameters and get the full estimate — **with the formulas behind "
         "it** — from analytic models calibrated on real data, **without running "
-        "anything**. Same engine as `paravit estimate`. Errors vs the real Kaggle 2×T4 "
-        "runs: time +4%, DDP speedup <1%, AMP <2%."
+        "anything**. Same engine as `paravit estimate`. Errors vs real runs: DDP speedup <1%, "
+        "FP32→AMP +3%; epoch time of PANDA trainings in mixed precision 8% (RTX 3060 Ti) "
+        "and 17% (2×T4)."
     )
 
     c1, c2, c3 = st.columns(3)
@@ -97,9 +98,10 @@ def _analytic_predictor() -> None:
         if not ms.calibrated:
             st.caption(f"Profiled automatically: {ms.params_m:.1f}M params, "
                        f"{ms.gflops_fwd:.2f} GFLOPs/image (multiply-add = 1, as in the "
-                       f"curated table). Activation memory is estimated by rule and the compute "
-                       f"throughput (MFU) is calibrated on vit_base, not on this "
-                       f"architecture — time, energy and VRAM are rough, quality is low-confidence.")
+                       f"curated table). Activation memory is estimated by rule, so VRAM is rough; "
+                       f"in mixed precision the throughput comes from the three-term model "
+                       f"(compute + memory traffic), in fp32 from FLOPs only (MFU calibrated on "
+                       f"vit_base) — quality is low-confidence.")
 
     with st.expander("Calibrate with a measured throughput (optional)"):
         st.caption("Pure formulas assume a typical model-FLOPs utilization. Enter a real "
@@ -133,7 +135,7 @@ def _analytic_predictor() -> None:
     # ── Time / epoch formula ──────────────────────────────────────────────────────
     st.markdown("#### Time / epoch = max(compute, I/O) + sync")
     time_tbl = pd.DataFrame([
-        {"Term": "Compute", "Value": f"{p.t_compute_s:.0f} s", "Formula": "N / (π · r_c · n_gpus)"},
+        {"Term": "Compute", "Value": f"{p.t_compute_s:.0f} s", "Formula": "N / (r_c(precision) · n_gpus)"},
         {"Term": "Data I/O", "Value": f"{p.t_io_s:.0f} s", "Formula": "N / r_io  (fixed, shared disk)"},
         {"Term": "Grad sync", "Value": f"{p.t_sync_s:.1f} s", "Formula": "(8·P / β) · n_batches"},
         {"Term": "Time / epoch", "Value": _fmt_secs(p.time_per_epoch_train_s),

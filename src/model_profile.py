@@ -152,11 +152,28 @@ def resolve_model_spec(name: str, in_chans: int = 3, num_classes: int = 19,
     except (ValueError, ImportError):
         return None
     try:        # feature of the three-term throughput model; optional (falls back to MFU)
-        saved = round(saved_activation_gb(_base_name(name), in_chans, num_classes, img_size), 4)
+        saved = round(_saved_gb_at(_base_name(name), in_chans, num_classes, img_size), 4)
     except (ValueError, ImportError):
         saved = None
     return spec_from_profile(prof.name, round(prof.params_m, 2), round(prof.gflops_fwd, 3),
                              convolutional=prof.convolutional, saved_gb_per_img=saved)
+
+
+# Above this resolution the saved activations are measured at it and scaled by the pixel
+# count: profiling is a real CPU forward that keeps every activation (vit_large at 1024 px
+# would hold ~6.5 GB inside the web process). The scaling is near exact for the architectures
+# measured here (224 → 512 px: ×5.2 against (512/224)² = 5.22 for every MODEL_TABLE model),
+# since flash attention keeps no N×N matrix and convolution maps grow with the pixels.
+SAVED_MEASURE_MAX_PX: int = 512
+
+
+def _saved_gb_at(name: str, in_chans: int, num_classes: int, img_size: int) -> float:
+    """``saved_activation_gb`` at ``img_size``, measured at ``SAVED_MEASURE_MAX_PX`` and scaled
+    by the pixel ratio when the requested size is larger."""
+    if img_size <= SAVED_MEASURE_MAX_PX:
+        return saved_activation_gb(name, in_chans, num_classes, img_size)
+    base = saved_activation_gb(name, in_chans, num_classes, SAVED_MEASURE_MAX_PX)
+    return base * (img_size / SAVED_MEASURE_MAX_PX) ** 2
 
 
 # ── Activation memory saved for the backward pass ────────────────────────────────

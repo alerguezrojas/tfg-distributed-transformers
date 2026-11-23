@@ -286,3 +286,18 @@ def test_count_saved_bytes_frees_the_graph_it_builds():
 
     assert _count_saved_bytes(Net(), in_chans=3, img_size=4) == (48 + 48) * 4
     assert outputs and outputs[0]() is None     # the saved tensor was released
+
+
+def test_saved_activations_above_512_px_are_measured_at_512_and_scaled(monkeypatch):
+    """Profiling keeps every activation in RAM, so above 512 px it is measured at 512 and
+    scaled by the pixel count (vit_large at 1024 px would hold ~6.5 GB in the web process)."""
+    calls = []
+
+    def fake(name, in_chans, num_classes, img_size):
+        calls.append(img_size)
+        return 1.0
+
+    monkeypatch.setattr(model_profile, "saved_activation_gb", fake)
+    assert model_profile._saved_gb_at("m", 3, 6, 384) == 1.0 and calls == [384]
+    assert model_profile._saved_gb_at("m", 3, 6, 1024) == pytest.approx(4.0)
+    assert calls[-1] == model_profile.SAVED_MEASURE_MAX_PX

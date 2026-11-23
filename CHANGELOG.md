@@ -6,15 +6,15 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
-- Predictor: el throughput de entrenamiento en precisión mixta (`amp`/`bf16`) sale del modelo
+- Predictor: el throughput de entrenamiento con AMP (`amp`) sale del modelo
   de tres términos (`t = a·F + b·A + d/B`: cómputo, tráfico de memoria medido en CPU y coste fijo
   por paso) en lugar de solo los FLOPs. Coeficientes medidos en la RTX 3060 Ti y la T4
   (`THROUGHPUT_FITS`) y transferidos por hoja técnica al resto (`GpuSpec.mem_bw_gbs`, con nota de
   no calibrado); `ModelSpec.saved_gb_per_img` (tabla a 224 px; perfilado a la resolución pedida);
   `Prediction.train_ips_per_gpu` y `throughput_model`, mostrados en la CLI y la web. Validado con
-  el tiempo por época de entrenamientos reales de PANDA que no intervinieron en el ajuste: error
-  medio del 20 % al 8 % en la 3060 Ti (8 modelos) y del 47 % al 17 % en 2 × T4 (7 modelos); fp32 no
-  cambia. Nueva sección del estudio (`scripts/predictor_architecture_study.py`) que lo reproduce.
+  el tiempo por época de entrenamientos reales de PANDA (con datos, validación y DDP; el ajuste se
+  hizo con lotes sintéticos de los mismos modelos y GPU): error medio del 20 % al 8 % en la 3060 Ti
+  (8 modelos) y del 47 % al 17 % en 2 × T4 (7 modelos). fp32 y bf16 no cambian. Nueva sección del estudio (`scripts/predictor_architecture_study.py`) que lo reproduce.
 
 - Ejecución en clúster (fase 4): `paravit train --launcher slurm` construye, dentro de un trabajo
   de Slurm, un `torchrun` con rendezvous `c10d` en el primer nodo de `SLURM_JOB_NODELIST` (el

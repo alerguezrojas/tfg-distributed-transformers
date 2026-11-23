@@ -447,7 +447,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     tt = Table(title="Time / epoch = max(compute, I/O) + sync", border_style="cyan")
     tt.add_column("Term", style="bold"); tt.add_column("Value", justify="right")
     tt.add_column("Formula", style="dim")
-    tt.add_row("Compute", f"{p.t_compute_s:.0f} s", "N / (π · r_c · n_gpus)")
+    tt.add_row("Compute", f"{p.t_compute_s:.0f} s", "N / (r_c(precision) · n_gpus)")
     tt.add_row("Data I/O", f"{p.t_io_s:.0f} s", "N / r_io  (fixed, shared disk)")
     tt.add_row("Grad sync", f"{p.t_sync_s:.1f} s", "(8·P / β) · n_batches")
     tt.add_row("Time/epoch", _fmt_secs(p.time_per_epoch_train_s),
