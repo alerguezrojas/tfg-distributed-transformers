@@ -70,6 +70,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   Kaggle).
 - `.gitignore`: `logs/**/events_*.jsonl` y `logs/**/test_preds_*.npz` se ignoran de forma explícita
   (no se versionaban ni estaban ignorados); el manifiesto `run_<sello>.json` sigue versionándose.
+- Documentación al día con el código: `infraestructura.md` (flujo de ramas en vez de
+  `git push origin main`, 7 secciones de la web), `arquitectura.md` (secciones de la web, sin
+  «Import», límite de 12 runs en Compare), `guia_de_uso.md` (subcomandos `predict`,
+  `compare-preds` y `select-ensemble`; sin vista en español inexistente), `primeros_pasos.md`
+  (`eval` con `--data-root`), `configs/README.md` (registro con «ustedes») y `AGENTS.md` (comandos
+  y módulos nuevos). En `src/cli.py` solo textos de ayuda: ejemplo de `eval`, secciones de
+  `dashboard` y alcance de `--precision`.
 - `paravit benchmark` ya no supone BigEarthNet con otros datasets: los tamaños de split salen del
   dataset de la config (`data.name`; PANDA lee `splits.csv`, MedMNIST el `.npz`) o de
   `--train-size`/`--val-size`, y si no se pueden leer falla con un mensaje en vez de usar los de

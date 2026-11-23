@@ -211,6 +211,20 @@ estrategias). Predicciones de validación y test en `checkpoints/runs/panda_m_*/
 `/media/alejandro/SSD/kaggle-out/panda_models_512/results/` (Kaggle). Las colas locales están en
 `~/experimentos_paravit/cola_*.sh`. VERODE no es accesible sin la VPN de la ULL.
 
+**Plan de profesionalización (23/11/2026, a petición del autor).** El autor pidió más estrategias
+distribuidas consolidadas, un predictor más completo y una arquitectura, una usabilidad y una web
+preparadas para trabajar en otras máquinas. Hay dos informes de base:
+[research/auditoria_arquitectura_usabilidad.md](research/auditoria_arquitectura_usabilidad.md)
+(hallazgos con evidencia y plan por fases) y
+[research/estrategias_distribuidas.md](research/estrategias_distribuidas.md) (qué estrategias,
+en qué orden y qué términos necesita el predictor). Orden: fase 0, errores (DDP multinodo con el
+rank global, resultados de test atribuidos por carpeta, QWK y semilla en los resúmenes, búsqueda
+de GPU); fase 1, entorno y perfiles de máquina (`paravit doctor`, torch por CUDA); fase 2, un solo
+lanzador con un registro de estrategias; fase 3, web; fase 4, clúster (Slurm, Apptainer); fase 5,
+estrategias nuevas (pipeline con micro-lotes, acumulación de gradientes y *activation
+checkpointing*, FSDP2, ZeRO-1), cada una con su término en el predictor y validada en Kaggle.
+Antes de modelarlas hay que medir el ancho de banda real entre las dos T4.
+
 **Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
 del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
 normalización de tinción (Macenko). (2) Con Swin-T como referencia: ver si los modelos grandes de

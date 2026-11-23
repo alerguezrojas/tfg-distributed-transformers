@@ -76,7 +76,10 @@ alias). `--help` funciona en cada subcomando.
 | `estimate` | Predicción **analítica** de tiempo, memoria, energía, coste y F1 (solo fórmulas) | No |
 | `benchmark` | Medición **empírica** en la máquina: throughput real, VRAM, I/O, escalado DDP | Sí |
 | `train` | Entrenamiento con la estrategia elegida | Sí |
-| `eval` | Evaluación de un checkpoint sobre el split de test (o val) | Sí |
+| `eval` | Evaluación de un checkpoint (o de un conjunto de ellos) sobre el split de test (o val) | Sí |
+| `predict` | Clasifica imágenes sueltas (o carpetas) con un checkpoint entrenado | Sí (o CPU, más lento) |
+| `compare-preds` | Compara dos grupos de runs (p. ej. 3 semillas) desde sus predicciones de test: media ± desviación, conjunto y bootstrap pareado | No |
+| `select-ensemble` | Elige un conjunto de runs solo con validación y lo evalúa una vez en test | No |
 | `runs` | Tabla de todos los entrenamientos registrados con su mejor F1 | No |
 | `report` | Informe HTML autocontenido de un run (métricas con IC, calibración, TRIPOD+AI) | No |
 | `dashboard` | Abre el panel web en `http://localhost:8501` | No |
@@ -456,7 +459,7 @@ curso, ver más abajo), **Inspector** (análisis a fondo de un run, ver más aba
 confusiones, lotes y detalles del run activo), **Compare** (hasta 12 runs de un mismo dataset:
 aceleración frente a una referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
-del conjunto e importación de runs). Idioma inglés con vista opcional en español y modo oscuro.
+del conjunto e importación de runs). Interfaz en inglés, con modo claro y oscuro.
 
 **La web conoce el dataset y la métrica de cada run.** Los metadatos salen del manifiesto del run
 (`run_*.json`), de los eventos o de la línea `Configuración:` del log, por ese orden

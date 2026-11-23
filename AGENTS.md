@@ -19,7 +19,7 @@ multi-dataset y mejora del predictor analítico con medidas de más máquinas.
 ```bash
 uv sync                                  # entorno (Python 3.12, gestionado con uv)
 uv run pytest -q                         # tests: solo CPU, sin GPU ni dataset (~1,5 min)
-uv run paravit.py --help                 # CLI: train | estimate | benchmark | eval | runs | dashboard | menu
+uv run paravit.py --help                 # CLI: train | estimate | benchmark | eval | predict | compare-preds | select-ensemble | runs | report | dashboard | menu
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
 uv run paravit.py train --strategy single --config configs/train.yaml --dry-run   # ver el comando sin ejecutar
 uv run streamlit run src/web/app.py      # panel web (solo lectura de logs/)
@@ -32,7 +32,7 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 
 | Ruta | Responsabilidad |
 |---|---|
-| `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`): BigEarthNet y MedMNIST |
+| `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`): BigEarthNet, MedMNIST y PANDA; `image_io.py` lee imágenes sueltas (`predict`) |
 | `src/models/` | `TimmClassifier` (backbone + cabeza), registro de backbones no timm (`backbones.py`: `BackboneSpec`, `hf:`; [guía](docs/modelos/README.md)), optimizador LLRD, `ModelParallelViT` |
 | `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, tareas (`tasks.py`), pérdidas, métricas |
 | `src/training/decorators/` | Decoradores GoF: controladores (`EpochController` → tracing/deep) y aspectos (plot, hooks, confusion, batch-monitor, reporters) |
@@ -40,12 +40,12 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | `src/training/checkpoints.py` | Política de checkpoints: carpeta por run, `best.pt`/`last.pt` (`checkpoint.keep`), escritura atómica y `resolve_checkpoint` |
 | `src/training/fn_decorators.py` | Decoradores `@` de Python: `timed`, `measure_energy`, `retry_on_cuda_oom` |
 | `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md) |
-| `src/analysis/` | Análisis puro (NumPy) de los datos de inspección: curvas, calibración, umbrales, confusión, dinámica, proyección; lo usa la web |
+| `src/analysis/` | Análisis puro (NumPy) de los datos de inspección: curvas, calibración, umbrales, confusión, dinámica, proyección, `compare.py`/`ensemble.py` (comparar y elegir conjuntos de runs), `throughput_model.py`; lo usa la web |
 | `src/benchmark/` | Benchmark empírico en la máquina real (Facade `BenchmarkChecker`) |
-| `src/cli.py`, `src/cli_menu.py` | CLI Typer y menú interactivo; lanzadores `paravit.py` / `tfg.py` (alias) |
+| `src/cli.py`, `src/cli_menu.py`, `src/config_io.py` | CLI Typer, menú interactivo y carga de YAML; lanzadores `paravit.py` / `tfg.py` (alias) |
 | `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV |
-| `scripts/` | Puntos de entrada por estrategia (`train_single_gpu.py`, `train_ddp.py`, …) + `benchmark.py`, `eval.py` |
-| `kaggle/` | Kernels de Kaggle (2 × T4) para PANDA: mosaicos y entrenamientos con DDP; [guía](kaggle/README.md) |
+| `scripts/` | Puntos de entrada por estrategia (`train_single_gpu.py`, `train_ddp.py`, …) + `benchmark.py`, `eval.py`, `predict.py`, `select_ensemble.py`, `compare_predictions.py`, `predictor_architecture_study.py` |
+| `kaggle/` | Kernels de Kaggle (2 × T4): mosaicos y entrenamientos de PANDA con DDP, y `benchmark_t4/`; [guía](kaggle/README.md) |
 | `configs/` | YAML de entrenamiento (índice en `configs/README.md`) |
 | `logs/{env}/[{dataset}/]{mode}/{model}/` | Artefactos de cada run (se commitean); `checkpoints/<env>/.../<sello>/{best,last}.pt` no |
 | `tests/unit`, `tests/integration` | pytest, todo en CPU |

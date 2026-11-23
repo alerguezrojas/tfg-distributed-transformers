@@ -292,7 +292,7 @@ uv run paravit.py eval --checkpoint checkpoints/local/single/vit_base_patch16_22
 uv run paravit.py dashboard
 ```
 
-- Subcomandos: `train` (elige estrategia → lanza el script correcto, con `torchrun` para ddp/heterogéneo), `estimate` (antes `predict`; predictor **analítico** en terminal, sin GPU — tabla rich), `benchmark` (antes `feasibility`; **medición empírica** real en la máquina), `eval` (test split), `predict` (clasifica imágenes sueltas con un checkpoint), `runs` (lista los entrenamientos de `logs/` con el mejor valor de validación y el de test de la métrica principal de cada run: QWK, AUC o F1), `dashboard` (streamlit), `menu` (interactivo guiado — pregunta los parámetros, ideal para la defensa). **Renombrados el 24/06 (analítico/empírico)** y consolidados después: los builders y el paquete web también pasaron a `benchmark` (`build_benchmark_cmd`, `src/web/tabs/benchmark/`).
+- Subcomandos: `train` (elige estrategia → lanza el script correcto, con `torchrun` para ddp/heterogéneo), `estimate` (antes `predict`; predictor **analítico** en terminal, sin GPU — tabla rich), `benchmark` (antes `feasibility`; **medición empírica** real en la máquina), `eval` (test split), `predict` (clasifica imágenes sueltas con un checkpoint), `compare-preds` y `select-ensemble` (comparan o eligen conjuntos de runs desde sus predicciones guardadas, sin GPU), `runs` (lista los entrenamientos de `logs/` con el mejor valor de validación y el de test de la métrica principal de cada run: QWK, AUC o F1), `report` (informe HTML de un run), `dashboard` (streamlit), `menu` (interactivo guiado — pregunta los parámetros, ideal para la defensa). **Renombrados el 24/06 (analítico/empírico)** y consolidados después: los builders y el paquete web también pasaron a `benchmark` (`build_benchmark_cmd`, `src/web/tabs/benchmark/`).
 - Builders puros `build_train_cmd` / `build_benchmark_cmd` / `build_eval_cmd` + helper `_run_row` (testeados: `tests/unit/test_cli.py`). `paravit train --strategy model-parallel` también reenvía `--layers/--fn` (arreglado 25/06). `--dry-run` imprime el comando sin ejecutarlo (para copiarlo en Verode/Kaggle). Opciones de lista por coma (`--batch-sizes 32,64`, `--layers plot,confusion`).
 - Los scripts de `scripts/` siguen funcionando por separado; `paravit` solo los unifica. Dependencia nueva: `typer`. Rama: `feature/unified-cli`.
 
@@ -582,7 +582,9 @@ src/web/
     benchmark/              # paquete: Estimate (predict.py, analítico) / Benchmark (report.py + ddp.py + study.py) / Estimate vs Benchmark vs Run (validate.py)
                             #   predict.py = formulario → headline + tabla fórmula tiempo + tabla fórmula memoria
                             #   + calidad + escalado 1→8 GPU + coste; validate.py = Compare vs runs; report.py + ddp.py + study.py
-    data_models.py          # Import runs (subir zip / apuntar a carpeta → copia a logs/)
+    dataset.py              # Dataset: composición del conjunto + importar runs (subir zip / apuntar a carpeta → copia a logs/)
+    inspector/              # Inspector: análisis a fondo de un run (inspección por época)
+    data_models.py          # utilidades de la importación de runs
   run_import.py             # import_run_archive (zip) / import_run_folder / _dest_relpath (puro, testeable)
   events_reader.py          # lector incremental de events_*.jsonl (EventsFollower, RunState) y
                             # descubrimiento de runs activos; puro (sin Streamlit)
@@ -621,17 +623,19 @@ uv run streamlit run src/web/app.py
 # Abre http://localhost:8501
 ```
 
-### Estructura (v9 — menú de iconos, 5 secciones, selección de run por tabla)
+### Estructura (menú de iconos, 7 secciones, selección de run por tabla)
 
-**Navegación:** menú lateral con iconos (`streamlit-option-menu`) — **5 secciones**. **Regla de diseño: nunca más de un nivel de pestañas dentro de una sección.** El **run activo** es estado compartido (`session_state["run_label"]`): se elige clicando una fila de la tabla del Overview (`st.dataframe(on_select)`) o con el selector compacto de la sidebar (filtro de entorno, filtro de dataset cuando hay más de uno + etiquetas cortas, sin desbordamiento). System se eliminó (el monitor de hardware no servía con el flujo Kaggle) y "Import runs" vive en su propia sección.
+**Navegación:** menú lateral con iconos (`streamlit-option-menu`) — **7 secciones** (Overview, Live, Inspector, Run results, Compare, Estimate/Benchmark, Dataset). **Regla de diseño: nunca más de un nivel de pestañas dentro de una sección.** El **run activo** es estado compartido (`session_state["run_label"]`): se elige clicando una fila de la tabla del Overview (`st.dataframe(on_select)`) o con el selector compacto de la sidebar (filtro de entorno, filtro de dataset cuando hay más de uno + etiquetas cortas, sin desbordamiento). System se eliminó (el monitor de hardware no servía con el flujo Kaggle) y la importación de runs vive en la sección Dataset.
 
 | Sección (menú) | Contenido |
 |---|---|
 | **Overview** | Dashboard compacto: tira de 8 KPIs · ranking Best F1 · tarjeta del run activo (mini F1/loss + veredicto) · velocidad media/epoch · donut de estrategias · **panel del dataset** (splits, subset usado por los runs recientes, clases frecuentes, **galería de las 19 clases** con info multi-etiqueta) · tabla "All runs" seleccionable con sparklines |
 | **Run results** | **Una fila de pestañas**: Curves · Per-class (barras+tendencia) · Confusions (diagnósticos multi-etiqueta) · Batch (selector de vista) · Details (tiempo + config/anomalías/log) |
-| **Compare** | **Sección única**: multiselect (≤8 runs) → resumen · speedup vs baseline (tabla+barras+veredictos+validación feasibility+escalado) · radar · energía · overlays |
+| **Compare** | **Sección única**: multiselect (hasta 12 runs, `MAX_RUNS` en `src/web/tabs/comparison/__init__.py`) → resumen · speedup vs baseline (tabla+barras+veredictos+validación feasibility+escalado) · radar · energía · overlays |
 | **Estimate/Benchmark** (antes "Feasibility"→"Performance") | 3 pestañas, en orden: **Estimate** (antes "Predict"; predictor **analítico**: formulario → headline + **tablas con las fórmulas** de tiempo `max(compute,I/O)+sync`, memoria `weights+grad+Adam+activations+overhead` y **energía `potencia × tiempo`** con los valores puestos + calidad + escalado 1→8 GPU + coste nube; mismo motor que `paravit estimate`) · **Benchmark** (antes "Report"; **medición empírica** generada en terminal con `paravit benchmark`: hardware, throughput, tiempo, escalado distribuido, coste, estudio de convergencia) · **Estimate vs Benchmark vs Run** (antes "Benchmark vs Run"; comparación a **3 fuentes** — analítico / benchmark / run real — con **gráficas de barras agrupadas por métrica** (tiempo, energía, F1) en rojo/verde/azul, selector de fuente por gráfica, scorecard y scatter de calibración; el benchmark solo modela single+DDP, así que para MP/heterogéneo se ocultan sus barras y manda el analítico) |
-| **Import** | Importar runs entrenados en otra máquina (zip o carpeta → copia a `logs/`) |
+| **Live** | Sigue un run en curso a partir de `events_*.jsonl` (estado, ETA, curvas, loss por batch) |
+| **Inspector** | Análisis a fondo de un run desde `events_*.jsonl` y `inspect_<sello>/` (calibración, umbrales, dinámica, Grad-CAM…) |
+| **Dataset** | Composición del conjunto del run activo e importación de runs entrenados en otra máquina (zip o carpeta → copia a `logs/`) |
 
 **Predicción vs realidad** (rediseño de la antigua "Comparar vs training"): elige el run en la barra lateral → auto-empareja su feasibility (mismo modelo/entorno); muestra estimado vs real con semáforo y un veredicto en lenguaje natural (precisa / optimista por I/O / pesimista). Avisa si el run es distribuido (la estimación es single-GPU → la diferencia incluye el speedup).
 
