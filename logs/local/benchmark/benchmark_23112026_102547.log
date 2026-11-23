@@ -1,0 +1,65 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  23/11/2026 10:25:57
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               convnext_tiny.fb_in22k
+  Parámetros totales:   27,824,742 (27.8M)
+  FLOPs/imagen:         1570.7 MFLOPs
+  Memoria estática:     0.43 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: amp (Tensor cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 3267 MHz
+  RAM: 16.7 GB total / 11.2 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+  Patches encontrados: ~3
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch         VRAM     Fuente      Estado
+     16       5.66 GB     medido          OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     16  off              78.0       227.9   5.66 GB
+     16  simple           80.0       227.4   5.66 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  15 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     16  off         0h 50m   0h 08m    0h 59m   14h 56m
+     16  simple      0h 49m   0h 08m    0h 58m   14h 38m
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         16            16        8    1.00×  100.0%   compute
+     2         16            32        8    1.87×   93.6%   compute
+     4         16            64        4    3.75×   93.6%   compute
+     8         16           128        2    7.49×   93.6%   compute
+
+  Configuración recomendada: 8 GPU(s) con batch=16/GPU
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: convnext_tiny.fb_in22k
+  Val F1 esperado:    ~0.680  (epoch ≈ 7)
+  Early stop aprox.:  epoch ≈ 15  (patience=10)
+  Confianza:          high
+  Nota: Empirical prior anchored to documented vit_base runs on BigEarthNet-S2; confidence high. | Dataset =
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  Batch size óptimo: 16 (78.0 imgs/s)
+  → --trace off      15 epochs: ~14h 56m
+  → --trace simple   15 epochs: ~14h 38m
+
+  Nota: En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+
