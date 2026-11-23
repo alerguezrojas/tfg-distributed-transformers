@@ -6,6 +6,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- `paravit predict` (`scripts/predict.py`): clasifica imágenes sueltas o carpetas con un checkpoint
+  o un conjunto (probabilidades promediadas) sin pasar por el bucle de entrenamiento. La ficha del
+  dataset aporta el lector de imágenes (`DatasetSpec.image_reader`, nuevo y opcional; PANDA y
+  MedMNIST lo tienen, BigEarthNet no y falla con un error claro) y se aplica la misma
+  transformación de evaluación que en test. Salida: tabla con clase, probabilidad máxima y, en
+  tareas ordinales, grado esperado; `--out` guarda un CSV con todas las probabilidades; en
+  multietiqueta, las clases por encima del umbral del checkpoint.
 - Kernel de Kaggle `benchmark_t4`: `paravit benchmark` con lotes sintéticos de las 13 arquitecturas
   de la criba de PANDA (512 px, AMP) en una T4, para validar el predictor fuera de muestra en una
   GPU distinta de la de calibración, sin que la carga de datos de Kaggle (4 CPU) interfiera.

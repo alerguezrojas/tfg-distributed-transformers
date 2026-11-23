@@ -202,7 +202,7 @@ sobre los tiles si el mosaico se queda corto. (3) Grad-CAM frente a las máscara
 por potencia, lotes pequeños por GPU).
 
 Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es
-un aviso, no detiene el run). Pendientes de la fase 4: `paravit predict`/`explain` con la prueba
+un aviso, no detiene el run). Pendientes de la fase 4: `paravit explain` con la prueba
 de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
@@ -381,7 +381,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Que la web lea las predicciones de test (`test_preds_<ts>.npz`) además del panel de validación:
       selector «Validation / Test» en el Inspector (Curves, Clinical con cortes «grado ≥ k»,
       Calibration y Subgroups).
-- [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.
+- [x] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint (o un conjunto),
+      con la transformación de evaluación de la ficha del dataset (`DatasetSpec.image_reader`).
 - [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
 - Segunda ola, según el [inventario del sector](research/inventario_herramientas_observabilidad.md)
   (lo que ninguna herramienta general trae y la imagen médica exige):

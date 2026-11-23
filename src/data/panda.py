@@ -126,16 +126,27 @@ class PandaDataset(Dataset):
         return len(self.image_ids)
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        with Image.open(self._path(self.image_ids[idx])) as im:
-            im = im.convert("RGB")
-            if im.size != (self.image_size, self.image_size):
-                im = im.resize((self.image_size, self.image_size), Image.Resampling.BILINEAR)
-            image = np.array(im)                    # (H, W, 3) uint8; copia: asarray da solo lectura
+        image = read_mosaic(self._path(self.image_ids[idx]), self.image_size)
         if self.transform is not None:
             image = self.transform(image)
         else:
             image = torch.from_numpy(image).permute(2, 0, 1)
         return image, self.targets[idx]
+
+
+def read_mosaic(path: str | Path, image_size: int) -> np.ndarray:
+    """A mosaic as the (H, W, 3) uint8 array the transform expects, resized to ``image_size``.
+    Shared by the Dataset and by ``paravit predict`` so both see the same pixels."""
+    with Image.open(path) as im:
+        im = im.convert("RGB")
+        if im.size != (image_size, image_size):
+            im = im.resize((image_size, image_size), Image.Resampling.BILINEAR)
+        return np.array(im)                         # copia: asarray da solo lectura
+
+
+def _image_reader(data_cfg: dict):
+    size = int(data_cfg.get("image_size", DEFAULT_IMAGE_SIZE))
+    return lambda path: read_mosaic(path, size)
 
 
 class RandomRot90:
@@ -234,4 +245,5 @@ PANDA = register_dataset(DatasetSpec(
     transforms=get_transforms,
     class_counts=class_counts,
     ordinal=True,
+    image_reader=_image_reader,
 ))

@@ -32,6 +32,7 @@ from pathlib import Path
 
 import numpy as np
 import torch
+from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -198,6 +199,12 @@ def make_transforms(channels: int, image_size: int = 224):
     return lambda split: tfm
 
 
+def read_image(path: str | Path, channels: int) -> np.ndarray:
+    """An image file as the array a MedMNIST sample has: (H, W) grayscale or (H, W, 3) RGB, uint8."""
+    with Image.open(path) as im:
+        return np.array(im.convert("L" if channels == 1 else "RGB"))
+
+
 def _npz_path(subset: Subset, data_cfg: dict) -> Path:
     size = int(data_cfg.get("size", DEFAULT_SIZE))
     return Path(data_cfg["root"]).expanduser() / npz_filename(subset, size)
@@ -222,6 +229,7 @@ def _spec(name: str, subset: Subset) -> DatasetSpec:
         build=build,
         transforms=make_transforms(subset.channels),
         class_counts=class_counts,
+        image_reader=lambda data_cfg: (lambda path: read_image(path, subset.channels)),
     )
 
 
