@@ -6,6 +6,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- Estudio del predictor con arquitecturas distintas de ViT: `saved_activation_gb` en
+  `src/model_profile.py` (GB que autograd guarda por imagen, medidos en CPU),
+  `src/analysis/throughput_model.py` (modelo de dos términos FLOPs + memoria, validación cruzada
+  y transferencia entre GPUs) y `scripts/predictor_architecture_study.py`, que reproduce el
+  estudio de `docs/performance_model.md` (sección 8) desde los datos versionados.
 - Kernel de Kaggle `benchmark_t4`: `paravit benchmark` con lotes sintéticos de las 13 arquitecturas
   de la criba de PANDA (512 px, AMP) en una T4, para validar el predictor fuera de muestra en una
   GPU distinta de la de calibración, sin que la carga de datos de Kaggle (4 CPU) interfiera.
@@ -51,6 +56,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Experimentos
 
+- Predictor: con 13 arquitecturas medidas a 512 px (RTX 3060 Ti y T4), el tiempo no sigue a los
+  FLOPs (error medio en validación cruzada 193 %); con un segundo término de memoria de
+  activaciones baja al 10 %, y el coste relativo de las arquitecturas se transfiere a la T4
+  desde las hojas técnicas con un 11 % de error (82 % con solo FLOPs), más un factor común de 1,49
+  de causa sin identificar. El −40 % de ViT-S a 512 px en Kaggle no es la GPU (la T4 lo haría en
+  ~77 s); la hipótesis es contención de CPU, pendiente de un experimento de control.
 - PANDA, modelos grandes en Kaggle (2 × T4, semilla 42): SwinV2-T 0,835, ViT-B 0,823,
   ConvNeXt-S 0,811, MaxViT-T 0,806 y EfficientNet-B3 0,775 de QWK de test; ninguno supera a Swin-T
   de forma significativa, ni las variantes de Swin-T con pesos in22k o 25 épocas.

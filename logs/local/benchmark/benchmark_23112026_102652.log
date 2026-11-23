@@ -1,0 +1,50 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  23/11/2026 10:26:55
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               swinv2_tiny_window8_256
+  Parámetros totales:   27,582,768 (27.6M)
+  FLOPs/imagen:         124.4 MFLOPs
+  Memoria estática:     0.43 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: amp (Tensor cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 3520 MHz
+  RAM: 16.7 GB total / 11.1 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch         VRAM     Fuente      Estado
+     16       8.84 GB   estimado         OOM
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     16  off                 OOM
+     16  simple              OOM
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  15 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     16  off       OOM
+     16  simple    OOM
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: swinv2_tiny_window8_256
+  Val F1 esperado:    ~0.680  (epoch ≈ 7)
+  Early stop aprox.:  epoch ≈ 15  (patience=10)
+  Confianza:          high
+  Nota: Empirical prior anchored to documented vit_base runs on BigEarthNet-S2; confidence high. | Dataset =
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  Ningún batch size viable

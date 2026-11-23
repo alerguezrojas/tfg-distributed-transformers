@@ -1,0 +1,65 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  23/11/2026 10:25:44
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               swin_tiny_patch4_window7_224
+  Parámetros totales:   27,523,968 (27.5M)
+  FLOPs/imagen:         283.7 MFLOPs
+  Memoria estática:     0.43 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: amp (Tensor cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 3259 MHz
+  RAM: 16.7 GB total / 11.1 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+  Patches encontrados: ~3
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch         VRAM     Fuente      Estado
+     16       6.74 GB     medido          OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     16  off              57.1       154.5   6.73 GB
+     16  simple           57.3       154.1   6.74 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  15 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     16  off         1h 09m   0h 13m    1h 22m   20h 39m
+     16  simple      1h 09m   0h 13m    1h 22m   20h 35m
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         16            16        8    1.00×  100.0%   compute
+     2         16            32        8    1.91×   95.3%   compute
+     4         16            64        4    3.81×   95.3%   compute
+     8         16           128        2    7.63×   95.3%   compute
+
+  Configuración recomendada: 8 GPU(s) con batch=16/GPU
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: swin_tiny_patch4_window7_224
+  Val F1 esperado:    ~0.680  (epoch ≈ 7)
+  Early stop aprox.:  epoch ≈ 15  (patience=10)
+  Confianza:          high
+  Nota: Empirical prior anchored to documented vit_base runs on BigEarthNet-S2; confidence high. | Dataset =
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  Batch size óptimo: 16 (57.1 imgs/s)
+  → --trace off      15 epochs: ~20h 39m
+  → --trace simple   15 epochs: ~20h 35m
+
+  Nota: En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+

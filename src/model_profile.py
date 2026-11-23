@@ -153,3 +153,72 @@ def resolve_model_spec(name: str, in_chans: int = 3, num_classes: int = 19,
         return None
     return spec_from_profile(prof.name, round(prof.params_m, 2), round(prof.gflops_fwd, 3),
                              convolutional=prof.convolutional)
+
+
+# ── Activation memory saved for the backward pass ────────────────────────────────
+# FLOPs alone do not set the training time of every architecture: hierarchical
+# transformers (Swin), CNNs and above all depthwise CNNs (EfficientNet) move far more
+# memory per FLOP than a ViT. The bytes autograd keeps for the backward pass are a
+# direct, GPU-free measure of that traffic. Measured on CPU (meta tensors have no
+# storage to count) with one image, fp32. Under AMP part of it is stored in half
+# precision (LayerNorm and softmax stay fp32), so "about half" is an ASSUMPTION, not a
+# measurement. Attention runs through the flash SDPA kernel, which does not keep the
+# N×N attention matrix, like the fused kernels used on the GPU (the "math" kernel
+# would keep it and double a ViT's figure at 512 px).
+# See docs/performance_model.md, "Arquitecturas distintas de ViT".
+
+
+def _count_saved_bytes(model, in_chans: int, img_size: int) -> int:
+    import torch
+
+    # Parameters are excluded: they are read once per BATCH, not once per image.
+    params = {p.untyped_storage().data_ptr() for p in model.parameters()}
+    seen: set[tuple[int, int]] = set()
+    total = 0
+
+    def pack(t):
+        nonlocal total
+        storage = t.untyped_storage()
+        key = (storage.data_ptr(), storage.nbytes())
+        if key not in seen and key[0] not in params:   # views of one tensor: stored once
+            seen.add(key)
+            total += storage.nbytes()
+        return t
+
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+
+    x = torch.zeros(1, in_chans, img_size, img_size)
+    try:
+        with sdpa_kernel(SDPBackend.FLASH_ATTENTION), \
+                torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+            model(x).sum()
+    except RuntimeError:            # e.g. an attention mask the flash kernel rejects
+        seen.clear()
+        total = 0
+        with torch.autograd.graph.saved_tensors_hooks(pack, lambda t: t):
+            model(x).sum()
+    return total
+
+
+@lru_cache(maxsize=64)
+def saved_activation_gb(name: str, in_chans: int = 3, num_classes: int = 1000,
+                        img_size: int = 224) -> float:
+    """GB that autograd saves for the backward pass of ONE ``img_size``² image (fp32).
+
+    Everything the graph keeps per image (activations, attention maps, masks), without the
+    parameters it saves by reference (those are read once per batch, not per image).
+    Raises ``ValueError`` if timm does not know the model or it cannot run on CPU."""
+    import timm
+
+    if not timm.is_model(name):
+        raise ValueError(f"unknown timm model: {name}")
+    model = _build(name, "cpu", in_chans, num_classes, None).train()
+    try:
+        return _count_saved_bytes(model, in_chans, img_size) / 1e9
+    except (AssertionError, RuntimeError, ValueError) as first:
+        # Fixed-resolution models (ViT/Swin at 224) reject other sizes: rebuild them.
+        try:
+            model = _build(name, "cpu", in_chans, num_classes, img_size).train()
+            return _count_saved_bytes(model, in_chans, img_size) / 1e9
+        except Exception as exc:  # timm raises TypeError for models without img_size
+            raise ValueError(f"could not measure {name} at {img_size} px: {first} | {exc}") from exc
