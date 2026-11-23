@@ -17,6 +17,7 @@ from pathlib import Path
 from src.web.run_meta import MetricInfo, RunMeta, load_run_meta, metric_info
 
 _TIMESTAMP_RE = re.compile(r"(\d{8}_\d{6})")
+_TEST_CSV_RE = re.compile(r"^(?:test|eval)_(\d{8}_\d{6})\.csv$")
 _PRECISION_RE = re.compile(r"precision=(fp32|tf32|amp|bf16)")
 
 
@@ -77,10 +78,11 @@ class RunInfo:
     meta: RunMeta | None = None
     # Show seconds in the label: set when two runs would otherwise share one.
     label_seconds: bool = False
-    # Held-out test-set results (from scripts/eval.py). Keyed by folder, not
-    # timestamp — eval CSVs are named by loss/config (test_bce.csv …), so all
-    # test_*.csv in the run's folder are offered against runs of that model.
+    # Held-out test-set results (from scripts/eval.py): the test_<ts>.csv / eval_<ts>.csv
+    # whose stamp is this run's.
     test_csv_paths: list[Path] = field(default_factory=list)
+    # test_*/eval_*.csv of the folder that no run claims by stamp (not attributed to any run)
+    unassigned_test_csv_paths: list[Path] = field(default_factory=list)
 
     @property
     def sort_key(self) -> str:
@@ -224,16 +226,20 @@ def discover_runs(root: Path = Path(".")) -> list[RunInfo]:
         if m and m.group(1) in runs and runs[m.group(1)].confusion_matrix_csv_path is None:
             runs[m.group(1)].confusion_matrix_csv_path = csv_path
 
-    # Held-out test CSVs: associate by folder (they carry no run timestamp).
-    # Every test_*.csv / eval_*.csv in a run's directory is offered to runs there.
-    _test_by_dir: dict[Path, list[Path]] = {}
+    # Held-out test CSVs: test_<ts>.csv / eval_<ts>.csv belong to the run with that stamp.
+    # Any other test_*/eval_*.csv (no stamp, or one of no run) is NOT attributed: the folder's
+    # runs only list it in unassigned_test_csv_paths.
+    _unassigned_by_dir: dict[Path, list[Path]] = {}
     for pat in ("test_*.csv", "eval_*.csv"):
         for csv_path in logs_root.rglob(pat):
-            _test_by_dir.setdefault(csv_path.parent, []).append(csv_path)
+            m = _TEST_CSV_RE.match(csv_path.name)
+            if m and m.group(1) in runs:
+                runs[m.group(1)].test_csv_paths.append(csv_path)
+            else:
+                _unassigned_by_dir.setdefault(csv_path.parent, []).append(csv_path)
     for r in runs.values():
-        found = _test_by_dir.get(r.log_path.parent, [])
-        if found:
-            r.test_csv_paths = sorted(found)
+        r.test_csv_paths.sort()
+        r.unassigned_test_csv_paths = sorted(_unassigned_by_dir.get(r.log_path.parent, []))
 
     for r in runs.values():
         r.meta = load_run_meta(r)
