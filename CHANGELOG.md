@@ -51,6 +51,37 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   runs) de la media, del conjunto y de cada pareja; con `--markdown`, tablas para `docs/`.
   Reproduce las cifras de `docs/datasets/panda.md` (limpieza de etiquetas). Solo multiclase.
 
+### Cambiado
+
+- **Un solo lanzador para las cuatro estrategias** (fase 2 de la auditoría, A6 y A7). El flujo de
+  `scripts/train_single_gpu.py`, `train_ddp.py`, `train_heterogeneous_ddp.py` y
+  `train_model_parallel.py` (~150 líneas duplicadas y divergentes en cada uno) vive ahora en
+  `src/training/launch.py` (`build_parser`, `main`), y lo propio de cada estrategia en un
+  `StrategySpec` registrado en `src/training/strategies.py` (como `DatasetSpec` para los datasets):
+  modo de lanzamiento (proceso normal o `torchrun`), grupo de procesos y dispositivo, `DataLoader`,
+  `with_*` del builder, texto de la línea `Configuración:` y opciones propias. Los scripts son
+  envoltorios de 5 líneas con su docstring de uso; nombres, rutas y opciones previas no cambian, ni
+  los valores por defecto de `--config` (siguen siendo uno por estrategia). La línea
+  `Configuración:` de cada estrategia sale con el mismo texto de antes (test de instantánea que
+  ejecuta los cuatro lanzadores reales en CPU). Añadir una estrategia pasa a tocar su `Trainer`, un
+  `with_*` en el builder y su `StrategySpec`.
+- Nombre canónico de las estrategias: `single`, `ddp`, `heterogeneous` y `model_parallel` (el de
+  las carpetas de logs y de `estimate`); `model-parallel`, `heterogeneous_ddp`, `hetero`, `mp` y
+  `single_gpu` son alias (`get_strategy`). `paravit train --strategy` acepta ambos y la CLI y el
+  menú leen la lista del registro (`STRATEGIES`, que ahora contiene `model_parallel`).
+- Las cuatro estrategias aceptan ya las mismas opciones: `--batch-size`, `--resume` e `--inspect`
+  llegan a las que no las tenían (`--resume` a DDP, heterogéneo y model-parallel: cada rank
+  carga el mismo `last.pt`; `--inspect` a DDP y heterogéneo, solo en el rank 0). Lo que una estrategia no puede
+  cumplir da un error claro en vez de ignorarse: `--precision` y `--batch-size` en heterogéneo (su
+  bucle es fp32 y el lote va por rank en `distributed.ranks`) e `--inspect` en model-parallel.
+  `paravit train` gana `--batch-size`, `--resume` e `--inspect`, avisa si descarta `--precision` en
+  heterogeneous y el menú ofrece la precisión también en ddp y model-parallel.
+- Un lanzador distribuido sin `torchrun` (sin `RANK`/`WORLD_SIZE`) da un mensaje que lo explica en
+  vez de un `KeyError`. `--model` actualiza también `model.name` de la config antes de validarla en
+  todas las estrategias (antes solo en model-parallel): un YAML con `hf:...` y `pooling: cls`
+  lanzado con `--model <timm>` ahora falla con un error claro en vez de ignorar el pooling, y en heterogéneo los reporteros de métricas
+  quedan en el rank 0, como en DDP.
+
 ### Corregido
 
 - DDP en varios nodos: `DDPTrainer` envolvía el modelo con `device_ids=[rank]` (el rank global), de

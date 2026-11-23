@@ -94,7 +94,7 @@ uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" \
 Devuelve el titular (s/época, aceleración, VRAM, energía, cuello de botella) y las tablas con las
 fórmulas de tiempo `max(cómputo, I/O) + sincronización`, memoria, energía, calidad esperada,
 escalado de 1 a 8 GPU y coste en proveedores de nube. Estrategias: `single`, `ddp`,
-`model-parallel`, `heterogeneous`. La derivación completa del modelo está en
+`model_parallel`, `heterogeneous`. La derivación completa del modelo está en
 [`docs/performance_model.md`](performance_model.md).
 
 `--model` acepta cualquier modelo de timm. Los seis de la tabla del predictor están calibrados;
@@ -139,13 +139,16 @@ Opciones principales:
 
 | Opción | Valores | Efecto |
 |---|---|---|
-| `--strategy` | `single` · `ddp` · `model-parallel` · `heterogeneous` | Estrategia de distribución; las distribuidas se lanzan solas con `torchrun` |
+| `--strategy` | `single` · `ddp` · `model_parallel` · `heterogeneous` | Estrategia de distribución (también vale `model-parallel`); las distribuidas se lanzan solas con `torchrun` |
 | `--config` | fichero YAML | Rutas, modelo, lote, épocas, regularización (sección 4) |
 | `--model` | id de timm | Sustituye el modelo del config (`vit_tiny_patch16_224`, `resnet50`…) |
 | `--epochs` | entero | Sustituye el número de épocas; si queda `epochs <= warmup_epochs`, baja `warmup_epochs` a `epochs - 1` (mínimo 0) y avisa |
 | `--seed` | entero | Sustituye `training.seed` (repeticiones con distinta semilla) |
 | `--data-root` | ruta | Sustituye `data.root` (dónde está el dataset en esta máquina). Solo esa clave: las rutas absolutas de `data.metadata` (BigEarthNet) o `data.splits`/`data.mosaics` (PANDA) se cambian en el YAML |
-| `--precision` | `fp32` · `tf32` · `amp` · `bf16` | fp32 usa núcleos CUDA; el resto, núcleos tensoriales |
+| `--precision` | `fp32` · `tf32` · `amp` · `bf16` | fp32 usa núcleos CUDA; el resto, núcleos tensoriales. No en `heterogeneous` (su bucle es fp32): la CLI avisa y lo descarta |
+| `--batch-size` | entero | Sustituye `training.batch_size` (por GPU en `ddp`). No en `heterogeneous`: el lote va por rank en `distributed.ranks` |
+| `--resume` | `.pt` o carpeta del run | Reanuda desde `last.pt` y entrena solo las épocas que faltan; en las distribuidas, todos los ranks cargan el mismo fichero |
+| `--inspect` | `model-summary,grad-monitor,batch-table,anomalies` | Inspección modular (activa la traza profunda). No en `model_parallel`; en las distribuidas, solo el rank 0 |
 | `--trace` | `off` · `simple` · `deep` | Solo consola / registro a fichero / traza profunda por capas |
 | `--layers` | `plot,confusion,batch-monitor,hooks` | Decoradores de aspecto, combinables por comas |
 | `--fn` | `timing,energy` | Cronometraje por fase y energía de todas las GPU del run |
@@ -155,9 +158,10 @@ Opciones principales:
 | `--dry-run` | | Imprime el comando final sin ejecutarlo |
 
 Los scripts de `scripts/` (`train_single_gpu.py`, `train_ddp.py`, `train_model_parallel.py`,
-`train_heterogeneous_ddp.py`) pueden ejecutarse también directamente; aceptan además `--metrics`
-(reporteros individuales de métricas) y `--inspect` (inspección modular del modelo:
-`model-summary`, `batch-table`, `grad-monitor`, `anomalies`).
+`train_heterogeneous_ddp.py`) pueden ejecutarse también directamente: son envoltorios del mismo
+lanzador y aceptan las mismas opciones, más `--metrics` (reporteros individuales de métricas),
+`--batch-log-every` y las propias de cada estrategia (`--devices` y `--split-block` en
+`model_parallel`).
 
 ![Listado de runs](img/term_runs.png)
 

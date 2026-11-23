@@ -35,6 +35,7 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 | `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`): BigEarthNet, MedMNIST y PANDA; `image_io.py` lee imágenes sueltas (`predict`) |
 | `src/models/` | `TimmClassifier` (backbone + cabeza), registro de backbones no timm (`backbones.py`: `BackboneSpec`, `hf:`; [guía](docs/modelos/README.md)), optimizador LLRD, `ModelParallelViT` |
 | `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, tareas (`tasks.py`), pérdidas, métricas |
+| `src/training/strategies.py`, `launch.py` | Registro de estrategias (`StrategySpec`: lanzamiento, entorno, loaders, `with_*`, línea `Configuración:`) y lanzador común (`build_parser`, `main`) que usan los `scripts/train_*.py` y la CLI |
 | `src/training/decorators/` | Decoradores GoF: controladores (`EpochController` → tracing/deep) y aspectos (plot, hooks, confusion, batch-monitor, reporters) |
 | `src/training/events.py` | Observadores del bucle (`TrainingListener`) y flujo de eventos `events_*.jsonl` ([esquema](docs/eventos.md)) |
 | `src/training/checkpoints.py` | Política de checkpoints: carpeta por run, `best.pt`/`last.pt` (`checkpoint.keep`), escritura atómica y `resolve_checkpoint` |
@@ -55,7 +56,8 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 
 - **El bucle de entrenamiento vive solo en `EpochController.fit()`** (Template Method). `Trainer.fit()`
   lanza `NotImplementedError` a propósito. Las cuatro estrategias comparten el mismo bucle y los
-  mismos decoradores; una estrategia nueva es una subclase de `Trainer` + un `with_*` en el builder.
+  mismos decoradores; una estrategia nueva es una subclase de `Trainer` + un `with_*` en el builder + un `StrategySpec`
+  registrado en `src/training/strategies.py` (la CLI, el menú y el lanzador salen del registro).
 - **Nuevo comportamiento transversal = nuevo decorador**, no `if`s dentro de `Trainer`.
 - **El núcleo no asume un dataset.** Clases, canales y lector vienen de la `DatasetSpec`; lo que
   depende del tipo de problema (pérdida, sigmoide/softmax, métricas, umbral) vive en la `Task`.

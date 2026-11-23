@@ -311,10 +311,23 @@ def test_only_rank_zero_prints(cfg_file, monkeypatch, capsys):
     assert capsys.readouterr().out == ""
 
 
-@pytest.mark.parametrize("script", ["train_single_gpu", "train_ddp", "train_heterogeneous_ddp",
-                                    "train_model_parallel", "eval", "predict", "benchmark"])
+_TRAIN_SCRIPTS = ["train_single_gpu", "train_ddp", "train_heterogeneous_ddp", "train_model_parallel"]
+
+
+@pytest.mark.parametrize("script", ["eval", "predict", "benchmark"])
 def test_every_entry_point_goes_through_prepare_config(script):
     src = (ROOT / "scripts" / f"{script}.py").read_text()
     assert "prepare_config(" in src
     assert re.search(r"add_machine_options|add_common_overrides", src)
     assert "safe_load" not in src                       # no YAML read bypassing the profile
+
+
+def test_training_launcher_goes_through_prepare_config():
+    """The four training scripts are wrappers of src/training/launch.py: that is where the config
+    is built (profile + overrides) and the options registered."""
+    src = (ROOT / "src" / "training" / "launch.py").read_text()
+    assert "prepare_config(" in src and "add_common_overrides" in src
+    assert "safe_load" not in src
+    for script in _TRAIN_SCRIPTS:
+        wrapper = (ROOT / "scripts" / f"{script}.py").read_text()
+        assert "from src.training.launch import" in wrapper and "safe_load" not in wrapper
