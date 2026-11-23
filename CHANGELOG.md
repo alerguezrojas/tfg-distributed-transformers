@@ -6,6 +6,15 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- Ejecución en clúster (fase 4): `paravit train --launcher slurm` construye, dentro de un trabajo
+  de Slurm, un `torchrun` con rendezvous `c10d` en el primer nodo de `SLURM_JOB_NODELIST` (el
+  mismo comando en todos los nodos, sin `--node_rank` ni `--master_addr`); `src/slurm.py` (puro,
+  recibe el entorno como dict) trae el intérprete de listas compactas (`verode[16,21]`,
+  `n[01-03],m5`) y usa `scontrol show hostnames` si existe. Error claro fuera de Slurm o con
+  estrategias que no son torchrun; sin `--launcher` el comando no cambia. Plantillas
+  `cluster/slurm/{single,ddp_multinode}.sbatch` (válidas también con `srun` mientras `sbatch` falle
+  en VERODE), definición Apptainer con PyTorch cu118 (`cluster/apptainer/paravit.def`, sin
+  construir aún) y guía [`cluster/README.md`](cluster/README.md).
 - `training.grad_accum_steps: k` (acumulación de gradientes, por defecto 1) y
   `training.grad_checkpointing: true` (*activation checkpointing* del backbone, por defecto
   false). La acumulación vive en `Trainer.train_epoch` (paso del optimizador cada `k` lotes,
