@@ -1,0 +1,8 @@
+# Kaggle (2 x T4). Los nombres de host de Kaggle no son estables: se selecciona con
+# `--machine kaggle` o PARAVIT_MACHINE=kaggle. Las rutas de los datos dependen de los datasets
+# que se adjunten al kernel, así que no se fijan aquí (los kernels de kaggle/ las pasan con
+# --data-root o --set); añada una entrada en data_roots si siempre usa la misma.
+env: kaggle
+data_roots: {}
+checkpoint_dir: checkpoints/kaggle
+num_workers: 2

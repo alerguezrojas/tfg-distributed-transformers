@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.benchmark import BenchmarkChecker, ReportFormatter
 from src.benchmark.dataset_sizes import resolve_split_sizes
+from src.training.config_overrides import add_machine_options, prepare_config
 
 
 def parse_args():
@@ -63,15 +64,14 @@ def parse_args():
     parser.add_argument("--compare-precision", action="store_true",
                         help="Mide FP32 vs la mejor precisión Tensor-core y reporta el speedup.")
     parser.add_argument("--output", type=Path, default=None)
+    add_machine_options(parser)
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
 
-    import yaml
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    cfg = prepare_config(args, common=False)
 
     # Heterogeneous configs put batch_size per-rank under distributed.ranks and omit
     # the top-level training.batch_size, so fall back to the largest per-rank batch.

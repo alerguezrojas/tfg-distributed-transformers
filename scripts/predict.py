@@ -38,7 +38,7 @@ from torch.utils.data import DataLoader, Dataset
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.config_io import load_config  # noqa: E402
+from src.training.config_overrides import add_machine_options, prepare_config  # noqa: E402
 from src.data.registry import dataset_spec_from_config  # noqa: E402
 from src.training.checkpoints import resolve_checkpoint  # noqa: E402
 from eval import (load_member, resolve_model_name,  # noqa: E402
@@ -64,6 +64,7 @@ def parse_args(argv=None):
     parser.add_argument("--batch-size", type=int, default=16, help="Images per batch")
     parser.add_argument("--device", choices=["cpu", "cuda"], default=None,
                         help="Device (default: cuda if available, else cpu)")
+    add_machine_options(parser)
     return parser.parse_args(argv)
 
 
@@ -195,7 +196,7 @@ def main(argv=None):
     except ValueError as err:
         sys.exit(f"ERROR: {err}")
 
-    cfg = load_config(args.config)
+    cfg = prepare_config(args, common=False)
     spec = dataset_spec_from_config(cfg)
     if spec.image_reader is None:
         sys.exit(f"ERROR: el dataset '{spec.name}' no se puede leer desde imágenes sueltas "

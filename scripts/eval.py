@@ -35,7 +35,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import yaml
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,7 +45,7 @@ from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
 from src.training.checkpoints import resolve_checkpoint, strip_wrapper_prefix
-from src.training.config_overrides import add_data_root_override, apply_common_overrides
+from src.training.config_overrides import add_data_root_override, add_machine_options, prepare_config
 from src.training.tasks import MultiLabelTask, Task
 
 
@@ -65,6 +64,7 @@ def parse_args():
     parser.add_argument("--model", type=str, default=None,
                         help="Override model name from config")
     add_data_root_override(parser)
+    add_machine_options(parser)
     parser.add_argument("--batch-size", type=int, default=None,
                         help="Override batch size (default: from config)")
     parser.add_argument("--output", type=str, nargs="?", const=AUTO_PATH, default=None,
@@ -358,9 +358,7 @@ def main():
         sys.exit("ERROR: con varios checkpoints (conjunto), --save-predictions necesita una "
                  "ruta explícita: no hay un único run del que deducir el sello.")
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
-    apply_common_overrides(cfg, args)       # --data-root (eval has no --seed/--epochs)
+    cfg = prepare_config(args)              # profile, --data-root (eval has no --seed/--epochs), --set
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model_name = resolve_model_name(args.model, cfg, paths)

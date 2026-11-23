@@ -22,7 +22,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import yaml
 import torch
 from torch.utils.data import DataLoader
 
@@ -32,7 +31,7 @@ from src.data.registry import dataset_spec_from_config
 from src.training.losses import loss_log_label, ousm_log_field
 from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
-from src.training.config_overrides import add_common_overrides, apply_common_overrides
+from src.training.config_overrides import add_common_overrides, prepare_config
 from src.training.reproducibility import set_seed, make_generator, seed_worker
 
 
@@ -82,13 +81,11 @@ def _pick_devices(arg: str | None) -> list[str]:
 
 def main():
     args = parse_args()
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    cfg = prepare_config(args)
     if args.model:
         cfg["model"]["name"] = args.model
     if args.precision:
         cfg["training"]["precision"] = args.precision
-    apply_common_overrides(cfg, args)
     if args.batch_size:
         cfg["training"]["batch_size"] = args.batch_size
 

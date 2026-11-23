@@ -33,6 +33,10 @@ from rich.table import Table
 
 ROOT = Path(__file__).resolve().parents[1]
 _DRY_RUN_HELP = "Print the command without running it."
+_MACHINE_HELP = ("Machine profile (configs/machines/<name>.yaml; 'none' = no profile). Default: "
+                 "$PARAVIT_MACHINE, else the profile matching this hostname.")
+_SET_HELP = ("Override any config key, e.g. --set training.lr=1e-4 (repeatable; YAML value; "
+             "applied after the machine profile).")
 console = Console()
 app = typer.Typer(
     add_completion=False, no_args_is_help=True,
@@ -43,6 +47,14 @@ STRATEGIES = ("single", "ddp", "model-parallel", "heterogeneous")
 
 
 # ── Pure command builders (unit-tested) ───────────────────────────────────────
+
+def _config_flags(machine: str | None, overrides: list[str] | None) -> list[str]:
+    """``--machine`` / ``--set`` forwarded to the script, which applies them to its config."""
+    flags = ["--machine", machine] if machine else []
+    for item in overrides or []:
+        flags += ["--set", item]
+    return flags
+
 
 def _torchrun(nproc: int, nnodes: int, node_rank: int,
               master_addr: str, master_port: int) -> list[str]:
@@ -60,7 +72,9 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     fn: list[str] | None = None, n_gpus: int = 2, nnodes: int = 1,
                     node_rank: int = 0, master_addr: str = "localhost",
                     master_port: int = 29500, monitor: bool = False,
-                    seed: int | None = None, data_root: str | None = None) -> list[str]:
+                    seed: int | None = None, data_root: str | None = None,
+                    machine: str | None = None,
+                    overrides: list[str] | None = None) -> list[str]:
     """Build the exact command for a training strategy.
 
     single / model-parallel run a plain script; ddp / heterogeneous run under
@@ -78,6 +92,7 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
         common += ["--seed", str(seed)]
     if data_root:
         common += ["--data-root", data_root]
+    common += _config_flags(machine, overrides)
     common += ["--trace", trace]                      # every script accepts --trace
     if monitor:
         common += ["--monitor"]                       # every script accepts --monitor
@@ -115,7 +130,8 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
                           convergence_study: bool = False, study_steps: int = 60,
                           nfs_factor: float = 1.0, device: int = 0,
                           train_size: int | None = None,
-                          val_size: int | None = None) -> list[str]:
+                          val_size: int | None = None, machine: str | None = None,
+                          overrides: list[str] | None = None) -> list[str]:
     """Build the benchmark.py command (the GPU benchmark / measurement)."""
     cmd = [sys.executable, "scripts/benchmark.py", "--epochs", str(epochs)]
     if config:
@@ -142,7 +158,7 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
         cmd += ["--nfs-factor", str(nfs_factor)]
     if device:
         cmd += ["--device", str(device)]
-    return cmd
+    return cmd + _config_flags(machine, overrides)
 
 
 def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | None = None,
@@ -151,7 +167,8 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
                    max_batches: int | None = None,
                    save_predictions: str | None = None,
                    save_predictions_auto: bool = False,
-                   data_root: str | None = None) -> list[str]:
+                   data_root: str | None = None, machine: str | None = None,
+                   overrides: list[str] | None = None) -> list[str]:
     """Build the eval.py command (held-out evaluation). Several checkpoints = an ensemble
     (eval.py averages their probabilities)."""
     checkpoints = [checkpoint] if isinstance(checkpoint, str) else list(checkpoint)
@@ -175,7 +192,7 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
         cmd += ["--save-predictions", save_predictions]
     elif save_predictions_auto:
         cmd += ["--save-predictions"]       # no path: eval.py picks the run's log folder
-    return cmd
+    return cmd + _config_flags(machine, overrides)
 
 
 def _abspath(path: str) -> str:
@@ -186,7 +203,9 @@ def _abspath(path: str) -> str:
 
 def build_predict_cmd(checkpoint: str | list[str], config: str, inputs: list[str], *,
                       model: str | None = None, out: str | None = None,
-                      batch_size: int | None = None, device: str | None = None) -> list[str]:
+                      batch_size: int | None = None, device: str | None = None,
+                      machine: str | None = None,
+                      overrides: list[str] | None = None) -> list[str]:
     """Build the predict.py command (classify loose images or folders). Several checkpoints =
     an ensemble (predict.py averages their probabilities)."""
     checkpoints = [checkpoint] if isinstance(checkpoint, str) else list(checkpoint)
@@ -202,7 +221,7 @@ def build_predict_cmd(checkpoint: str | list[str], config: str, inputs: list[str
         cmd += ["--batch-size", str(batch_size)]
     if device:
         cmd += ["--device", device]
-    return cmd + [_abspath(i) for i in inputs]
+    return cmd + _config_flags(machine, overrides) + [_abspath(i) for i in inputs]
 
 
 def build_compare_cmd(a: list[str], b: list[str], *, label_a: str = "A", label_b: str = "B",
@@ -294,6 +313,8 @@ def train(
     monitor: bool = typer.Option(False, "--monitor",
                                  help="Per-sample predictions, embeddings, Grad-CAM and "
                                       "layer stats every epoch (see the web Inspector)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Launch a training run with the chosen distribution strategy."""
@@ -301,7 +322,7 @@ def train(
                           precision=precision, layers=_csv(layers), fn=_csv(fn), n_gpus=n_gpus,
                           nnodes=nnodes, node_rank=node_rank, master_addr=master_addr,
                           master_port=master_port, monitor=monitor, seed=seed,
-                          data_root=data_root)
+                          data_root=data_root, machine=machine, overrides=set_)
     _run(cmd, dry_run)
 
 
@@ -493,6 +514,8 @@ def benchmark(
     device: int = typer.Option(0, help="CUDA device index."),
     train_size: Optional[int] = typer.Option(None, help="Train images (default: the config's dataset)."),
     val_size: Optional[int] = typer.Option(None, help="Val images (default: the config's dataset)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Empirical benchmark on this machine — measures real throughput, memory and scaling."""
@@ -502,7 +525,8 @@ def benchmark(
                                 compare_precision=compare_precision,
                                 convergence_study=convergence_study, study_steps=study_steps,
                                 nfs_factor=nfs_factor, device=device,
-                                train_size=train_size, val_size=val_size)
+                                train_size=train_size, val_size=val_size,
+                                machine=machine, overrides=set_)
     _run(cmd, dry_run)
 
 
@@ -525,13 +549,16 @@ def eval(
         False, "--save-predictions-auto",
         help="Save the predictions as test_preds_<ts>.npz in the run's log folder "
              "(the web Inspector reads them)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Evaluate a checkpoint (or an ensemble of several) on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
                          data_root=data_root, save_predictions=save_predictions,
-                         save_predictions_auto=save_predictions_auto)
+                         save_predictions_auto=save_predictions_auto,
+                         machine=machine, overrides=set_)
     _run(cmd, dry_run)
 
 
@@ -546,6 +573,8 @@ def predict_images(
     out: Optional[str] = typer.Option(None, help="CSV path with the probability of every class."),
     batch_size: Optional[int] = typer.Option(None, help="Images per batch."),
     device: Optional[str] = typer.Option(None, help="cpu | cuda (default: cuda if available)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Classify loose images (or folders of them) with a trained checkpoint, outside training.
@@ -553,7 +582,8 @@ def predict_images(
     if device is not None and device not in ("cpu", "cuda"):
         raise typer.BadParameter("must be cpu or cuda", param_hint="--device")
     cmd = build_predict_cmd(checkpoint, config, inputs, model=model, out=out,
-                            batch_size=batch_size, device=device)
+                            batch_size=batch_size, device=device,
+                            machine=machine, overrides=set_)
     _run(cmd, dry_run)
 
 
@@ -598,6 +628,40 @@ def select_ensemble(
                                     method=method, max_size=max_size, reference=reference,
                                     n_boot=n_boot, seed=seed, markdown=markdown)
     _run(cmd, dry_run)
+
+
+@app.command()
+def doctor(
+    config: Optional[str] = typer.Option(
+        None, help="YAML config to check too (its paths, with the machine profile applied)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
+    require_gpu: bool = typer.Option(False, "--require-gpu", help="FAIL if no GPU is usable."),
+) -> None:
+    """Check that this machine is ready: Python, torch/CUDA, GPUs, AVX2, profile, paths, disk.
+    Only reads the state (the GPU is not touched). Exit code 1 if any check FAILs."""
+    import argparse
+    import os
+
+    from src import doctor as dr
+    from src.machine import select_machine
+    from src.training.config_overrides import prepare_config
+
+    cfg = None
+    if config:
+        cfg = prepare_config(argparse.Namespace(config=config, machine=machine, set_=set_ or []),
+                             common=False)
+    selection = select_machine(machine, os.environ)
+    label = f"{selection.profile.name} ({selection.reason})" if selection else None
+    checks = dr.evaluate(dr.collect(cfg, config, label), require_gpu=require_gpu)
+    colors = {dr.OK: "green", dr.WARN: "yellow", dr.FAIL: "red"}
+    table = Table(title="paravit doctor")
+    for col in ("Check", "Status", "Detail"):
+        table.add_column(col)
+    for c in checks:
+        table.add_row(c.name, f"[{colors[c.status]}]{c.status}[/]", c.detail)
+    console.print(table)
+    raise typer.Exit(dr.exit_code(checks))
 
 
 @app.command()

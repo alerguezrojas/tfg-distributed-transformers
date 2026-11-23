@@ -54,6 +54,25 @@ module add slurm/client/20.11.04   # o añadir al ~/.bashrc
 - El login node (`verode00`) no soporta instrucciones AVX2 → "Illegal instruction" al ejecutar Python con numpy/torch. Usar siempre nodo de cómputo (`srun`) para ejecutar código
 - `srun` es el único mecanismo que funciona; ver sección de comandos
 
+## Una máquina, un perfil
+
+El proyecto se usa en cuatro sitios: el PC del autor (RTX 3060 Ti), Kaggle (2 × T4), VERODE (V100,
+Slurm) y el equipo de quien se incorpora. Lo que cambia entre ellos (rutas de los datasets, carpeta
+de checkpoints, `output.env`, `num_workers`) está en `configs/machines/<nombre>.yaml`, no en cada
+config de experimento.
+
+| Máquina | Perfil | Cómo se activa |
+|---|---|---|
+| PC del autor | `local.yaml` | automático por el host (`pc-ubuntu`) |
+| VERODE | `verode.yaml` | automático por el host (`verode*`); si no, `export PARAVIT_MACHINE=verode` |
+| Kaggle | `kaggle.yaml` | `--machine kaggle` o `PARAVIT_MACHINE=kaggle` (el host no es estable); las rutas de los datos dependen de los datasets adjuntos y se pasan con `--data-root` |
+| Equipo nuevo | copia de `example.yaml` | `PARAVIT_MACHINE=<nombre>` (los `*.local.yaml` no se commitean) |
+
+Orden de selección: `--machine` > `PARAVIT_MACHINE` > `hosts` > ninguno (la config tal cual). El
+primer comando en una máquina es `uv run paravit.py doctor [--config ...]`: comprueba Python,
+torch/CUDA, GPUs (y si el predictor las conoce), AVX2 (el nodo de login de VERODE no lo tiene),
+rutas y espacio para checkpoints. Detalle en la [guía de uso](guia_de_uso.md).
+
 ## Gestión de dependencias
 
 ### Local (uv)

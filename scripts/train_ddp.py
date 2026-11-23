@@ -32,7 +32,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import yaml
 import torch
 import torch.distributed as dist
 from torch.utils.data import DataLoader, DistributedSampler
@@ -43,7 +42,7 @@ from src.data.registry import dataset_spec_from_config
 from src.models.backbones import backbone_log_fields
 from src.training.builder import TrainingSessionBuilder
 from src.training.losses import loss_log_label, ousm_log_field
-from src.training.config_overrides import add_common_overrides, apply_common_overrides
+from src.training.config_overrides import add_common_overrides, prepare_config
 from src.training.reproducibility import set_seed, make_generator, sampler_seed, seed_worker
 
 
@@ -89,8 +88,7 @@ def main():
     # ── Distributed init ─────────────────────────────────────────────────────
     args = parse_args()
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    cfg = prepare_config(args)
 
     backend = cfg.get("distributed", {}).get("backend", "nccl")
     use_cuda = backend == "nccl" and torch.cuda.is_available()
@@ -110,7 +108,6 @@ def main():
     rank = dist.get_rank()
     world_size = dist.get_world_size()
 
-    apply_common_overrides(cfg, args)
     if args.precision:
         cfg["training"]["precision"] = args.precision
 
