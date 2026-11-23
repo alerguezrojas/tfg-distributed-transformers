@@ -224,7 +224,9 @@ Clasifica ficheros de imagen (PNG, JPEG, TIFF, BMP) o carpetas (recorrido recurs
 alfabético) con un checkpoint, fuera del bucle de entrenamiento y sin tocar el dataset. Repetir
 `--checkpoint` forma un conjunto (se promedian las probabilidades, igual que en `eval`); sin
 `--model` se usa el modelo guardado en el checkpoint. `--batch-size` (16 por defecto) y
-`--device cpu|cuda` (por defecto, CUDA si hay).
+`--device cpu|cuda` (por defecto, CUDA si hay). La config tiene que ser una de la carpeta `configs/`
+del repositorio (se busca por nombre: `configs/train_panda.yaml` o `train_panda.yaml`); por
+seguridad, `predict` no abre una ruta de config arbitraria.
 
 **Qué hace la ficha del dataset.** La config (`data.name`) decide cómo se lee el fichero
 (`DatasetSpec.image_reader`) y se le aplica **la misma transformación de evaluación** que en test

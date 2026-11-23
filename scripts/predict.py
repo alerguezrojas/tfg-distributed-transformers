@@ -185,6 +185,23 @@ def print_table(table: pd.DataFrame) -> None:
     print(table[cols].to_string(index=False))
 
 
+CONFIGS = Path(__file__).resolve().parent.parent / "configs"
+
+
+def find_config(name: str) -> Path:
+    """The YAML of the repo's ``configs/`` whose file name is that of ``name``
+    (``configs/train_panda.yaml`` or just ``train_panda.yaml``). Only the repo's configs are
+    read: the path opened comes from listing that folder, never from the argument."""
+    wanted = Path(name).name
+    matches = sorted(p for p in CONFIGS.rglob("*.y*ml") if p.name == wanted)
+    if not matches:
+        sys.exit(f"ERROR: no hay ninguna config '{wanted}' en {CONFIGS}")
+    if len(matches) > 1:
+        sys.exit(f"ERROR: hay varias configs '{wanted}' en {CONFIGS}: "
+                 + ", ".join(str(m.relative_to(CONFIGS)) for m in matches))
+    return matches[0]
+
+
 def main(argv=None):
     args = parse_args(argv)
     out = Path(args.out) if args.out else None
@@ -195,8 +212,7 @@ def main(argv=None):
     except ValueError as err:
         sys.exit(f"ERROR: {err}")
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
+    cfg = yaml.safe_load(find_config(args.config).read_text(encoding="utf-8"))
     spec = dataset_spec_from_config(cfg)
     if spec.image_reader is None:
         sys.exit(f"ERROR: el dataset '{spec.name}' no se puede leer desde imágenes sueltas "

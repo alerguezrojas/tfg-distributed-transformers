@@ -53,6 +53,12 @@ def _images(folder, n=3, size=40):
     return paths
 
 
+@pytest.fixture(autouse=True)
+def configs_in_tmp(tmp_path, monkeypatch):
+    """predict only reads configs of the repo's configs/: point that folder at tmp_path."""
+    monkeypatch.setattr(predict, "CONFIGS", tmp_path)
+
+
 @pytest.fixture
 def setup(tmp_path):
     cfg = _cfg()
@@ -229,3 +235,21 @@ def test_cli_predict_dry_run_builds_the_command():
     assert cmd[2:6] == ["--checkpoint", "x.pt", "--checkpoint", "y.pt"]
     assert "--out p.csv --batch-size 4 --device cpu" in " ".join(cmd)
     assert build_predict_cmd("x.pt", "c.yaml", ["a.png"])[-1] == "a.png"
+
+
+def test_find_config_only_reads_the_configs_folder(tmp_path):
+    (tmp_path / "models").mkdir()
+    (tmp_path / "train_x.yaml").write_text("a: 1\n")
+    (tmp_path / "models" / "m.yaml").write_text("b: 2\n")
+    assert predict.find_config("configs/train_x.yaml") == tmp_path / "train_x.yaml"
+    assert predict.find_config("/anywhere/else/m.yaml") == tmp_path / "models" / "m.yaml"
+    with pytest.raises(SystemExit, match="no hay ninguna"):
+        predict.find_config("../../etc/passwd")
+    (tmp_path / "models" / "train_x.yaml").write_text("c: 3\n")
+    with pytest.raises(SystemExit, match="varias"):
+        predict.find_config("train_x.yaml")
+
+
+def test_find_config_real_repo_configs(monkeypatch):
+    monkeypatch.setattr(predict, "CONFIGS", Path(predict.__file__).resolve().parent.parent / "configs")
+    assert predict.find_config("configs/train_panda.yaml").name == "train_panda.yaml"
