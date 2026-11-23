@@ -244,13 +244,14 @@ carpeta del run). No usa GPU ni torch.
 ```bash
 uv run paravit.py select-ensemble \
     --runs RUN_VIT_S42 RUN_VIT_S43 RUN_SWIN_S42 RUN_DEIT_S42 \
-    --group-by grupos.csv --method per-group \
+    --group 'RUN_VIT_*=vit_s' --method per-group \
     --reference RUN_VIT_S42 RUN_VIT_S43 RUN_VIT_S44 --markdown
 ```
 
-`grupos.csv` (o YAML `run: grupo`) asigna cada run, por el nombre de su carpeta, a un grupo (por
-ejemplo, su arquitectura); sin él, cada run es su propio grupo. El fichero tiene que estar dentro
-del directorio de trabajo (por seguridad, no se leen rutas de fuera). Hay dos métodos:
+`--group PATRÓN=GRUPO` (se repite) asigna a un grupo, por ejemplo su arquitectura, los runs cuya
+carpeta encaja con el patrón (comodines de la *shell*: `'panda_m_swin_t*=swin_t'`); gana el primer
+patrón que encaja y un run sin patrón es su propio grupo. Los grupos se dan en la línea de
+comandos y no en un fichero: la herramienta no lee nada más que las predicciones. Hay dos métodos:
 
 - `per-group` (por defecto): el mejor run de cada grupo según validación, ordenados de mejor a peor;
   se evalúa en validación el conjunto de los k primeros (k = 1…) y se elige el k de máxima

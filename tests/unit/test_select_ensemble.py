@@ -130,12 +130,9 @@ def runs(tmp_path):
                                         ("junk", 0.2)], start=1)}, (yv, yt)
 
 
-def test_script_text_and_markdown(runs, tmp_path, capsys, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_script_text_and_markdown(runs, capsys):
     r, _ = runs
-    groups = tmp_path / "groups.csv"
-    groups.write_text("run,group\nvit_s42,vit\nvit_s43,vit\nswin_s42,swin\njunk,junk\n")
-    base = ["--runs", *r.values(), "--group-by", str(groups), "--reference",
+    base = ["--runs", *r.values(), "--group", "vit_*=vit", "--group", "swin_*=swin", "--reference",
             r["vit_s42"], r["vit_s43"], "--n-boot", "30"]
     script.main(base)
     text = capsys.readouterr().out
@@ -168,32 +165,26 @@ def test_script_misaligned_test(runs, tmp_path):
         script.main(["--runs", *r.values(), bad])
 
 
-def test_script_unknown_group_name(runs, tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_script_group_pattern_that_matches_nothing(runs):
     r, _ = runs
-    g = tmp_path / "g.yaml"
-    g.write_text("nope: x\n")
-    with pytest.raises(SystemExit, match="unknown runs"):
-        script.main(["--runs", *r.values(), "--group-by", str(g)])
+    with pytest.raises(SystemExit, match="match no run"):
+        script.main(["--runs", *r.values(), "--group", "nope*=x"])
 
 
-def test_read_group_map_yaml_and_csv(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    y = tmp_path / "g.yaml"
-    y.write_text("a: vit\nb: swin\n")
-    assert script.read_group_map(str(y)) == {"a": "vit", "b": "swin"}
-    c = tmp_path / "g.csv"
-    c.write_text("run,group\n# comentario\na,vit\n")
-    assert script.read_group_map(str(c)) == {"a": "vit"}
-    with pytest.raises(SystemExit, match="not found"):
-        script.read_group_map(str(tmp_path / "x.csv"))
+def test_group_runs_patterns():
+    names = ["vit_s42", "vit_s43", "swin_s42", "junk"]
+    g = script.group_runs(names, ["vit_*=vit", "swin_*=swin", "*_s42=other"])
+    assert g == {"vit_s42": "vit", "vit_s43": "vit", "swin_s42": "swin", "junk": "junk"}
+    assert script.group_runs(names, None) == {n: n for n in names}
+    with pytest.raises(SystemExit, match="PATTERN=GROUP"):
+        script.group_runs(names, ["vit_*"])
 
 
 def test_build_select_ensemble_cmd_and_cli_dry_run():
-    s = " ".join(build_select_ensemble_cmd(["r1", "r2"], group_by="g.csv", method="greedy",
+    s = " ".join(build_select_ensemble_cmd(["r1", "r2"], groups=["a*=x", "b*=y"], method="greedy",
                                            reference=["b1"], markdown=True))
     assert "scripts/select_ensemble.py --runs r1 r2" in s
-    assert "--group-by g.csv" in s and "--method greedy" in s and "--reference b1" in s
+    assert "--group a*=x --group b*=y" in s and "--method greedy" in s and "--reference b1" in s
     assert "--markdown" in s
     assert "--reference" not in " ".join(build_select_ensemble_cmd(["r"]))
     from typer.testing import CliRunner
@@ -204,24 +195,3 @@ def test_build_select_ensemble_cmd_and_cli_dry_run():
     r = CliRunner().invoke(app, ["select-ensemble", "--runs", "x", "--method", "nope", "--dry-run"])
     assert r.exit_code != 0
 
-
-def test_group_map_must_be_inside_the_working_directory(tmp_path, monkeypatch):
-    work, outside = tmp_path / "work", tmp_path / "outside"
-    work.mkdir()
-    outside.mkdir()
-    (outside / "g.csv").write_text("a,vit\n")
-    monkeypatch.chdir(work)
-    with pytest.raises(SystemExit, match="working directory"):
-        script.read_group_map(str(outside / "g.csv"))
-    with pytest.raises(SystemExit, match="working directory"):
-        script.read_group_map("../outside/g.csv")
-
-
-def test_group_map_symlink_cannot_escape(tmp_path, monkeypatch):
-    work = tmp_path / "work"
-    work.mkdir()
-    (tmp_path / "g.csv").write_text("a,vit\n")
-    (work / "link.csv").symlink_to(tmp_path / "g.csv")
-    monkeypatch.chdir(work)
-    with pytest.raises(SystemExit, match="working directory"):
-        script.read_group_map("link.csv")

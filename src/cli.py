@@ -187,7 +187,7 @@ def build_compare_cmd(a: list[str], b: list[str], *, label_a: str = "A", label_b
 
 
 def build_select_ensemble_cmd(runs: list[str], *, val_name: str = "val_preds.npz",
-                              test_name: str = "test_preds.npz", group_by: str | None = None,
+                              test_name: str = "test_preds.npz", groups: list[str] | None = None,
                               method: str = "per-group", max_size: int = 8,
                               reference: list[str] | None = None, n_boot: int = 2000,
                               seed: int = 0, markdown: bool = False) -> list[str]:
@@ -195,8 +195,8 @@ def build_select_ensemble_cmd(runs: list[str], *, val_name: str = "val_preds.npz
     cmd = [sys.executable, "scripts/select_ensemble.py", "--runs", *runs,
            "--val-name", val_name, "--test-name", test_name, "--method", method,
            "--max-size", str(max_size), "--n-boot", str(n_boot), "--seed", str(seed)]
-    if group_by:
-        cmd += ["--group-by", group_by]
+    for g in groups or []:
+        cmd += ["--group", g]
     if reference:
         cmd += ["--reference", *reference]
     if markdown:
@@ -519,7 +519,7 @@ def select_ensemble(
     runs: List[str] = typer.Option(..., "--runs", help="Run folder with val and test predictions. Repeat it per run."),
     val_name: str = typer.Option("val_preds.npz", help="Validation predictions file in each run folder."),
     test_name: str = typer.Option("test_preds.npz", help="Test predictions file in each run folder."),
-    group_by: Optional[str] = typer.Option(None, help="CSV/YAML run,group (default: every run its own group)."),
+    group: Optional[List[str]] = typer.Option(None, "--group", help="PATTERN=GROUP on run folder names (e.g. 'swin_t*=swin_t'). Repeat it; default: every run its own group."),
     method: str = typer.Option("per-group", help="greedy | per-group."),
     max_size: int = typer.Option(8, help="Greedy: maximum ensemble size."),
     reference: Optional[List[str]] = typer.Option(None, "--reference", help="Run folder of the reference ensemble. Repeat it."),
@@ -532,7 +532,7 @@ def select_ensemble(
     against a reference ensemble with the paired bootstrap). From saved predictions; no GPU."""
     if method not in ("greedy", "per-group"):
         raise typer.BadParameter("must be greedy or per-group", param_hint="--method")
-    cmd = build_select_ensemble_cmd(runs, val_name=val_name, test_name=test_name, group_by=group_by,
+    cmd = build_select_ensemble_cmd(runs, val_name=val_name, test_name=test_name, groups=group,
                                     method=method, max_size=max_size, reference=reference,
                                     n_boot=n_boot, seed=seed, markdown=markdown)
     _run(cmd, dry_run)

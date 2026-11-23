@@ -9,13 +9,12 @@ the paired bootstrap. No GPU, no torch: pure NumPy.
 Usage:
     uv run python scripts/select_ensemble.py \\
         --runs logs/.../vit_s42 logs/.../swin_s42 logs/.../deit_s42 \\
-        --group-by groups.csv --method per-group \\
+        --group 'vit_s*=vit_s' --group 'swin_*=swin' --method per-group \\
         --reference logs/.../vit_s42 logs/.../vit_s43 logs/.../vit_s44 --markdown
 """
 
 import argparse
-import csv
-import os
+import fnmatch
 import sys
 from pathlib import Path
 
@@ -40,32 +39,20 @@ def run_names(dirs: list[str]) -> list[str]:
     return names
 
 
-def read_group_map(path: str) -> dict[str, str]:
-    """``run name -> group`` from a CSV (``run,group`` per line, optional header) or YAML mapping.
-
-    The file must live under the working directory (real path, so ``..`` or a symlink cannot
-    point elsewhere): it is a small table that goes with the experiment, not an arbitrary path."""
-    base = os.path.realpath(os.getcwd())
-    target = os.path.realpath(path)
-    if os.path.commonpath([base, target]) != base:
-        raise SystemExit(f"--group-by: {path} must be inside the working directory ({base})")
-    p = Path(target)
-    if not p.is_file():
-        raise SystemExit(f"--group-by: file not found: {path}")
-    if p.suffix.lower() in (".yaml", ".yml"):
-        import yaml
-        data = yaml.safe_load(p.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            raise SystemExit(f"--group-by: {path} must be a mapping run: group")
-        return {str(k): str(v) for k, v in data.items()}
-    out = {}
-    with p.open(encoding="utf-8", newline="") as f:
-        for row in csv.reader(f):
-            if len(row) >= 2 and row[0].strip() and not row[0].lstrip().startswith("#"):
-                out[row[0].strip()] = row[1].strip()
-    if out.get("run") in ("group", "grupo"):        # header row
-        del out["run"]
-    return out
+def group_runs(names: list[str], specs: list[str] | None) -> dict[str, str]:
+    """``run name -> group`` from ``PATTERN=GROUP`` specs (shell-style patterns on the run folder
+    name, first match wins); a run that no pattern matches is its own group. Groups come from the
+    command line, not from a file: the tool reads nothing but the predictions."""
+    rules = []
+    for spec in specs or []:
+        pattern, sep, group = spec.partition("=")
+        if not sep or not pattern.strip() or not group.strip():
+            raise SystemExit(f"--group {spec!r}: expected PATTERN=GROUP, e.g. 'swin_t*=swin_t'")
+        rules.append((pattern.strip(), group.strip()))
+    unused = [p for p, _ in rules if not any(fnmatch.fnmatchcase(n, p) for n in names)]
+    if unused:
+        raise SystemExit(f"--group patterns match no run: {unused}; runs are {names}")
+    return {n: next((g for p, g in rules if fnmatch.fnmatchcase(n, p)), n) for n in names}
 
 
 def _load(dirs: list[str], fname: str, what: str):
@@ -151,13 +138,7 @@ def build_report(args) -> dict:
         ref_names = run_names(args.reference)
         ref_test = _load(args.reference, args.test_name, "test")
         _check(test + ref_test, names + ref_names, "test")
-    group_of = {n: n for n in names}
-    if args.group_by:
-        gm = read_group_map(args.group_by)
-        unknown = sorted(set(gm) - set(names))
-        if unknown:
-            raise SystemExit(f"--group-by names unknown runs: {unknown}; runs are {names}")
-        group_of = {n: gm.get(n, n) for n in names}     # a run without a row is its own group
+    group_of = group_runs(names, args.group)
     prim, metrics = default_primary(ordinal), default_metrics(ordinal)
     score_fn = METRICS[prim][0]
     vp = {n: q.probs.astype(np.float64) for n, q in zip(names, val)}
@@ -192,8 +173,9 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Run folders, each with its val and test predictions.")
     p.add_argument("--val-name", default="val_preds.npz")
     p.add_argument("--test-name", default="test_preds.npz")
-    p.add_argument("--group-by", default=None, metavar="FILE",
-                   help="CSV (run,group) or YAML (run: group); default: every run is its own group.")
+    p.add_argument("--group", action="append", default=None, metavar="PATTERN=GROUP",
+                   help="Group of the runs whose folder name matches PATTERN (shell-style, e.g. "
+                        "'swin_t*=swin_t'); repeat it. A run no pattern matches is its own group.")
     p.add_argument("--method", choices=("greedy", "per-group"), default="per-group")
     p.add_argument("--max-size", type=int, default=8, help="Greedy: maximum ensemble size.")
     p.add_argument("--reference", nargs="+", action="extend", default=None, metavar="DIR",
