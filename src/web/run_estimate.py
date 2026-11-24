@@ -12,6 +12,7 @@ torch, only for models outside the curated table).
 """
 from __future__ import annotations
 
+import math
 import re
 import statistics
 from collections.abc import Callable, Mapping, Sequence
@@ -104,7 +105,7 @@ class RunEstimate:
 def measured_epoch_time_s(epoch_times_s: Sequence[float | None]) -> float | None:
     """Median epoch time without the first epoch (it pays the warm-up); with a single epoch,
     that one. None when there is no time."""
-    vals = [float(v) for v in epoch_times_s if v is not None and v == v and v > 0]
+    vals = [float(v) for v in epoch_times_s if v is not None and not math.isnan(v) and v > 0]
     if not vals:
         return None
     return statistics.median(vals[1:] if len(vals) > 1 else vals)
