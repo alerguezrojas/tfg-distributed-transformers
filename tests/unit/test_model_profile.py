@@ -93,9 +93,11 @@ def test_table_models_resolve_to_table_entry(name):
 
 # Pinned from develop's predictor (src/performance_model.py before model profiling), at
 # dataset_size=5000, batch=96, epochs=15: (model, gpu, strategy, n_gpus, precision) →
-# (time/epoch s, VRAM/GPU GB, energy/epoch Wh). The table path must not move.
+# (time/epoch s, VRAM/GPU GB, energy/epoch Wh). The table path must not move. Deliberate
+# changes since: the DDP sync term became the ring all-reduce with the measured T4 bandwidth
+# on 24/11/2026 (was 40.7352 s and 2.0761 Wh with 8P at the 16 GB/s PCIe nominal).
 _PINNED = [
-    (("vit_base_patch16_224", "Tesla T4", "ddp", 2, "amp"), (40.7352, 4.8228, 2.0761)),
+    (("vit_base_patch16_224", "Tesla T4", "ddp", 2, "amp"), (42.9528, 4.8228, 2.1549)),
     (("resnet50", "Tesla V100", "single", 1, "fp32"), (38.4615, 10.6096, 1.6055)),
     (("vit_large_patch16_224", "Tesla T4", "model_parallel", 2, "fp32"), (673.0313, 30.408, 22.8917)),
     (("vit_tiny_patch16_224", "RTX 3060 Ti", "single", 1, "fp32"), (38.4615, 2.9952, 2.8058)),

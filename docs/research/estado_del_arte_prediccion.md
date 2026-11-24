@@ -197,8 +197,9 @@ tipo; no predice desde especificaciones. Ninguno de los trabajos revisados predi
 
 ## 4. Dónde encaja ParaViT-Lab
 
-El predictor actual (`src/performance_model.py`, derivación en
-[`performance_model.md`](../performance_model.md)) es una fórmula cerrada:
+El predictor, tal como estaba al escribir este informe (`src/performance_model.py`, derivación en
+[`performance_model.md`](../performance_model.md); desde el 23-24/11/2026 tiene throughput de tres
+términos con AMP y all-reduce en anillo con ancho de banda medido, §2 y §8), era una fórmula cerrada:
 
 ```
 T(N, n) = φ · [ max( N/(π·r_c·n), N/r_io ) + (8P/β)·⌈N/(b·n)⌉ ]

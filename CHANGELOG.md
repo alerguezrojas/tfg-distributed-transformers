@@ -93,6 +93,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Cambiado
 
+- Predictor: la sincronización de DDP es ahora un all-reduce en anillo (`2(n−1)/n · 4P/β` por
+  paso, `allreduce_time`) con el ancho de banda medido cuando lo hay (`GpuSpec.allreduce_busbw_gbs`:
+  T4 de Kaggle, 4,05 GB/s; `scripts/measure_allreduce.py`) y, si no, el nominal de
+  `INTERCONNECT_BW` reducido a la mitad (con 2 GPU deja igual la predicción de las GPU sin medida,
+  y con más el término crece hasta 1,5-1,75× el anterior; la predicción lleva una nota). Antes era `8P/β` con los 16 GB/s de PCIe. El speedup de DDP en 2 × T4
+  (BigEarthNet, vit_base fp32) pasa de 1,95× a 1,91× (real 1,96×); el paralelismo de modelo y el
+  heterogéneo conservan su término anterior.
+
 - Web: sin rutas del autor en `home.py`, `dataset.py` ni `helpers.py` (perfiles de máquina y mensaje
   claro si no hay dataset local); las confusiones y la matriz de *Run results* toman las clases del
   manifiesto del run y solo agrupan por ecosistema en BigEarthNet. Eliminados `model_explorer.py`

@@ -7,14 +7,15 @@ benchmark on the target machine) into a closed-form predictor, as requested by
 the tutor. The formulas are derived in docs/performance_model.md; the master
 equation for a DDP train epoch is:
 
-    T(N, n) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (8P/β)·⌈N/(b·n)⌉ ]
-              \_______ compute ∥ disk (the slower) ______/   \__ gradient sync __/
+    T(N, n) = φ · [ max( N/(r_c·n) , N/r_io )  +  (2(n−1)/n · 4P/β)·⌈N/(b·n)⌉ ]
+              \____ compute ∥ disk (the slower) ____/   \_____ gradient sync ______/
 
 with parameters estimated from specs:
-    r_c  = MFU · TFLOPS_fp32(gpu) / FLOPs_train(model)     (compute throughput)
-    π    = Tensor-core speedup for the precision (fp32 → 1)
+    r_c  = training throughput of one GPU at the precision: MFU · TFLOPS_fp32 / FLOPs_train
+           × π (Tensor-core speedup) in fp32/bf16; three terms (compute + memory traffic +
+           fixed cost per step) with AMP
     r_io = disk throughput (img/s), from a disk-type table or a real probe
-    β    = interconnect bandwidth (NVLink/PCIe/Ethernet)
+    β    = all-reduce bus bandwidth (measured per GPU, else derated NVLink/PCIe nominal)
     φ    = NFS penalty (~1.3 on the cluster, 1.0 on local disk)
 
 Pure module: no torch, no GPU, no I/O — fully unit-testable. If a real measured
@@ -98,6 +99,9 @@ class GpuSpec:
     train_power_w: float = 0.0     # effective avg power per GPU during train (W)
     power_calibrated: bool = False  # True = measured here; False = TDP fallback
     mem_bw_gbs: float = 0.0        # DRAM bandwidth from the datasheet (GB/s); 0 = unknown
+    # MEASURED all-reduce bus bandwidth between the GPUs of one machine (GB/s, nccl-tests
+    # convention, scripts/measure_allreduce.py); 0 = not measured: INTERCONNECT_BW is used.
+    allreduce_busbw_gbs: float = 0.0
 
 
 # fp32 TFLOPS, the measured/typical Tensor-core speedup π, and the effective average
@@ -107,7 +111,11 @@ class GpuSpec:
 # mem_bw_gbs: DRAM bandwidth of the NVIDIA datasheets (GB/s); the SXM figure where the key
 # covers both forms (A100 80GB, H100), consistent with the fp32_tflops of the same row.
 GPU_TABLE: dict[str, GpuSpec] = {
-    "Tesla T4":      GpuSpec("Tesla T4", 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True, mem_bw_gbs=320.0),    # Kaggle: 64 W fp32 ≈ 63 W amp
+    # T4 all-reduce: 2 × T4 on Kaggle, 4.05 GB/s with 64-512 MB messages and 4.01 GB/s with
+    # 16 MB, close to DDP's 25 MB buckets (strategies_512 batch, 23/11/2026; docs/research/datos/
+    # allreduce_t4_kaggle.csv) — a quarter of the PCIe nominal. Measured with 2 GPUs only.
+    "Tesla T4":      GpuSpec("Tesla T4", 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True, mem_bw_gbs=320.0,
+                             allreduce_busbw_gbs=4.05),    # Kaggle: 64 W fp32 ≈ 63 W amp
     "Tesla V100":    GpuSpec("Tesla V100", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
     "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),
     "RTX 3060 Ti":   GpuSpec("RTX 3060 Ti", 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True, mem_bw_gbs=448.0),   # local: ~180 W (SSD, compute-bound)
@@ -125,7 +133,9 @@ DISK_RIO: dict[str, float] = {
     "nvme": 220.0, "ssd": 130.0, "hdd": 45.0, "nfs": 100.0, "unknown": 130.0,
 }
 
-# Interconnect bandwidth in bytes/s for the gradient all-reduce.
+# Nominal interconnect bandwidth in bytes/s, used as the all-reduce bus bandwidth when a GPU
+# has no measured one (GpuSpec.allreduce_busbw_gbs). Datasheet figures: the measured T4 pair on
+# Kaggle sustained a quarter of the PCIe value, so these are optimistic.
 INTERCONNECT_BW: dict[str, float] = {
     "nvlink": 300e9, "pcie": 16e9, "ethernet": 0.125e9,  # 1 GbE
 }
@@ -480,8 +490,49 @@ def max_batch(model: ModelSpec, gpu: GpuSpec, precision: str = "fp32",
 
 # ── The master time formula, per strategy ────────────────────────────────────────
 
+# DDP all-reduces the fp32 gradients (also under AMP: the parameters and their gradients stay
+# fp32). A ring all-reduce over n GPUs moves 2(n−1)/n of those bytes through each link, which is
+# what the bus bandwidth measures, so the time per step is 2(n−1)/n · 4P / busbw. The overlap of
+# the all-reduce with the backward pass (DDP buckets) is not modelled: this is an upper bound.
+GRAD_BYTES_PER_PARAM: int = 4
+
+
+# Without a measurement the nominal bandwidth is derated by half, which keeps the sync term of
+# unmeasured GPUs where it was before 24/11/2026 (8P/β equals a ring of 2 GPUs at β/2). It is
+# still optimistic: the measured T4 pair on Kaggle sustains a quarter of the PCIe nominal; such
+# predictions carry a note (see predict()).
+NOMINAL_ALLREDUCE_DERATE: float = 0.5
+
+
+def allreduce_bandwidth(gpu: GpuSpec) -> tuple[float, bool]:
+    """``(bus bandwidth in bytes/s, measured)`` of an all-reduce between GPUs of this kind in
+    one machine: the measured one if any, else the derated nominal one of its interconnect."""
+    if gpu.allreduce_busbw_gbs > 0:
+        return gpu.allreduce_busbw_gbs * 1e9, True
+    nominal = INTERCONNECT_BW["nvlink" if gpu.interconnect == "nvlink" else "pcie"]
+    return nominal * NOMINAL_ALLREDUCE_DERATE, False
+
+
+# How each strategy's sync/transfer term is computed, for the CLI and the web to display.
+SYNC_FORMULA: dict[str, str] = {
+    "single": "— (one GPU)",
+    "ddp": "2(n−1)/n · 4P / β · n_batches  (ring all-reduce)",
+    "model_parallel": "0.25 · 8P / β · N/b  (activations between stages)",
+    "heterogeneous": "8P / β_ethernet · n_batches",
+}
+
+
+def allreduce_time(params_m: float, n_gpus: int, busbw: float, n_batches: int) -> float:
+    """Ring all-reduce time of the gradients over ``n_batches`` steps (0 with one GPU)."""
+    if n_gpus <= 1:
+        return 0.0
+    grad_bytes = GRAD_BYTES_PER_PARAM * params_m * 1e6
+    return 2 * (n_gpus - 1) / n_gpus * grad_bytes / busbw * n_batches
+
+
 def _sync_time(params_m: float, beta: float, n_batches: int) -> float:
-    """All-reduce time: 8·P bytes (2·P fp32 grads) per batch / interconnect bw."""
+    """Coarse transfer term of the model-parallel and heterogeneous strategies: 8·P bytes per
+    batch / bandwidth (their calibration was made with it; DDP uses :func:`allreduce_time`)."""
     p = params_m * 1e6
     return (8 * p / beta) * n_batches
 
@@ -515,12 +566,13 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
         rc_p = precision_factor(gpu, precision) * rc
     rio = estimate_rio(disk_type, nfs, rio_measured)
     beta = INTERCONNECT_BW["nvlink" if gpu.interconnect == "nvlink" else "pcie"]
+    busbw, _ = allreduce_bandwidth(gpu)
 
     def single_epoch(n: int) -> tuple[float, float, float, float]:
         t_compute = n_train / (rc_p * n)
         t_io = n_train / rio
         n_batches = math.ceil(n_train / (batch_per_gpu * n))
-        t_sync = _sync_time(model.params_m, beta, n_batches) if n > 1 else 0.0
+        t_sync = allreduce_time(model.params_m, n, busbw, n_batches)
         return phi * (max(t_compute, t_io) + t_sync), t_compute, t_io, t_sync
 
     t1, *_ = single_epoch(1)
@@ -689,6 +741,13 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
                      f"datasheet (TFLOPS, bandwidth), not measured on it: the relative cost of "
                      f"architectures holds (~11 % on a T4), the absolute speed may be "
                      f"optimistic (×1.5 on a T4).")
+    if strategy == "ddp" and n_gpus > 1:
+        _, bw_measured = allreduce_bandwidth(gpu)
+        if not bw_measured:
+            notes.append(f"Gradient sync uses a nominal interconnect bandwidth for {gpu.name} "
+                         f"(not measured here, derated ×{NOMINAL_ALLREDUCE_DERATE}); the measured "
+                         f"T4 pair on Kaggle sustained a quarter of its nominal, so the sync "
+                         f"time may be optimistic. Measure it with scripts/measure_allreduce.py.")
     if not gpu.power_calibrated:
         notes.append(f"Energy uses a TDP-fallback power for {gpu.name} (≈"
                      f"{gpu.train_power_w:.0f} W/GPU, not measured here) — treat it as "
