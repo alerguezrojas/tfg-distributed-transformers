@@ -48,6 +48,7 @@ app = typer.Typer(
 )
 
 _DEFAULT_CONFIG = "configs/train.yaml"
+_PIPELINE = "pipeline"
 
 # Canonical names of the strategy registry (src/training/strategies.py); aliases such as
 # "model-parallel" are also accepted wherever a strategy is given.
@@ -99,7 +100,8 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     machine: str | None = None,
                     overrides: list[str] | None = None, batch_size: int | None = None,
                     resume: str | None = None, inspect: list[str] | None = None,
-                    launcher: str = "local", env: Mapping[str, str] | None = None) -> list[str]:
+                    launcher: str = "local", env: Mapping[str, str] | None = None,
+                    micro_batches: int | None = None) -> list[str]:
     """Build the exact command for a training strategy.
 
     ``strategy`` is a canonical name or an alias of the strategy registry. Plain-process
@@ -142,6 +144,11 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
     if fn:
         common += ["--fn", *fn]
     common += _strategy_flags(spec, batch_size=batch_size, resume=resume, inspect=inspect)
+    if micro_batches is not None:
+        if spec.name != _PIPELINE:
+            raise ValueError(f"--micro-batches only applies to strategy '{_PIPELINE}', "
+                             f"not '{spec.name}'")
+        common += ["--micro-batches", str(micro_batches)]
 
     # Plain process, or torchrun: one process per GPU (ddp) / one per node (heterogeneous).
     if launcher == "slurm":
@@ -348,6 +355,9 @@ def train(
     resume: Optional[str] = typer.Option(None, help="Checkpoint (.pt or run folder) to resume from."),
     inspect: Optional[str] = typer.Option(None, help="Comma-separated: model-summary,grad-monitor,"
                                                      "batch-table,anomalies (not model-parallel)."),
+    micro_batches: Optional[int] = typer.Option(None, "--micro-batches",
+                                                help="Micro-batches per batch (strategy pipeline; "
+                                                     "default 4)."),
     launcher: str = typer.Option("local", help="local | slurm. slurm (inside a Slurm job, torchrun "
                                  "strategies): c10d rendezvous at the first node, the same "
                                  "command on every node; --nnodes/--node-rank/--master-addr "
@@ -368,7 +378,8 @@ def train(
                               master_addr=master_addr, master_port=master_port,
                               monitor=monitor, seed=seed, data_root=data_root, machine=machine,
                               overrides=set_, batch_size=batch_size, resume=resume,
-                              inspect=_csv(inspect), launcher=launcher)
+                              inspect=_csv(inspect), launcher=launcher,
+                              micro_batches=micro_batches)
     except ValueError as err:
         raise typer.BadParameter(str(err)) from None
     _run(cmd, dry_run)

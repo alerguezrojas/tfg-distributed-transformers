@@ -415,13 +415,28 @@ def estimate_power(gpu: GpuSpec, phase: str = "train") -> float:
     return base * (EVAL_POWER_FRACTION if phase == "eval" else 1.0)
 
 
+def split_power_fraction(strategy: str, n_work: int, micro_batches: int = 1) -> float:
+    """Average power per GPU, as a fraction of a busy GPU's, for the strategies that split the
+    model: naive model parallelism measured 0.83 (each GPU busy ~half the step); GPipe keeps
+    each GPU busy m/(m+p−1) of the step, interpolated linearly between that point (busy 1/2)
+    and a fully busy GPU (1.0) — not measured."""
+    if strategy not in SPLIT_STRATEGIES or n_work <= 1:
+        return 1.0
+    if strategy == "model_parallel":
+        return MODEL_PARALLEL_POWER_FRACTION
+    busy = micro_batches / (micro_batches + n_work - 1)
+    naive_busy = 1 / n_work
+    frac = (busy - naive_busy) / (1 - naive_busy)
+    return MODEL_PARALLEL_POWER_FRACTION + frac * (1 - MODEL_PARALLEL_POWER_FRACTION)
+
+
 def power_working_gpus(strategy: str, n_gpus: int) -> int:
     """How many GPUs draw power for a strategy. ddp/model-parallel power all the GPUs
     in the run (naive model-parallel keeps both GPUs powered even though the stages
     serialize). single and heterogeneous draw on ONE GPU: in this project's
     heterogeneous strategy the second worker is a CPU, not a GPU, so the GPU-power
     calibration applies to a single GPU (the CPU's wall power is negligible)."""
-    if strategy in ("ddp", "model_parallel"):
+    if strategy in ("ddp", *SPLIT_STRATEGIES):
         return max(1, n_gpus)
     return 1
 
@@ -457,12 +472,16 @@ def estimate_eval_time_s(model: ModelSpec, gpu: GpuSpec, n_val: int, strategy: s
 
 # ── Memory model ─────────────────────────────────────────────────────────────────
 
-def estimate_vram_gb(model: ModelSpec, batch: int, precision: str = "fp32") -> float:
+def estimate_vram_gb(model: ModelSpec, batch: int, precision: str = "fp32",
+                     stages: int = 1) -> float:
     """Peak VRAM (GB) for training: weights+grad+optimizer + activations + overhead.
 
     Activations use the model's per-image figure (``act_gb_per_img``), not a
     single per-parameter constant — that is what makes the per-model max batch
-    realistic (e.g. vit_base on an 8 GB card tops out at batch 32, not 64)."""
+    realistic (e.g. vit_base on an 8 GB card tops out at batch 32, not 64).
+    ``stages > 1`` (model parallel / pipeline): each GPU holds ~1/stages of the blocks,
+    so of the weights, optimizer state and the activations of the batch (GPipe keeps those
+    of every micro-batch until the backward); the CUDA overhead is per GPU."""
     p = model.params_m * 1e6
     weights_opt_gb = BYTES_PER_PARAM_GRAD_OPT * p / 1e9
     if precision in ("amp", "bf16"):
@@ -470,22 +489,22 @@ def estimate_vram_gb(model: ModelSpec, batch: int, precision: str = "fp32") -> f
     act_gb = model.act_gb_per_img * batch
     if precision in ("amp", "bf16"):
         act_gb *= 0.6                          # half-precision activations
-    return weights_opt_gb + act_gb + CUDA_OVERHEAD_GB
+    return (weights_opt_gb + act_gb) / max(1, stages) + CUDA_OVERHEAD_GB
 
 
 def fits_in_memory(model: ModelSpec, gpu: GpuSpec, batch: int,
-                   precision: str = "fp32") -> bool:
+                   precision: str = "fp32", stages: int = 1) -> bool:
     """Fits if the estimate is within the *usable* VRAM (not 100% of it)."""
-    return estimate_vram_gb(model, batch, precision) <= gpu.vram_gb * USABLE_VRAM_FRACTION
+    return estimate_vram_gb(model, batch, precision, stages) <= gpu.vram_gb * USABLE_VRAM_FRACTION
 
 
 def max_batch(model: ModelSpec, gpu: GpuSpec, precision: str = "fp32",
-              cap: int = 512) -> int:
+              cap: int = 512, stages: int = 1) -> int:
     """Largest power-of-two-ish batch that fits in this GPU's VRAM (0 if none)."""
     b = 1
     best = 0
     while b <= cap:
-        if fits_in_memory(model, gpu, b, precision):
+        if fits_in_memory(model, gpu, b, precision, stages):
             best = b
         else:
             break
@@ -518,11 +537,18 @@ def allreduce_bandwidth(gpu: GpuSpec) -> tuple[float, bool]:
     return nominal * NOMINAL_ALLREDUCE_DERATE, False
 
 
+# Strategies the predictor models (names of src/training/strategies.py) and those that split the
+# model across GPUs (each GPU holds 1/n of it).
+STRATEGIES: tuple[str, ...] = ("single", "ddp", "model_parallel", "pipeline", "heterogeneous")
+SPLIT_STRATEGIES: tuple[str, ...] = ("model_parallel", "pipeline")
+DEFAULT_MICRO_BATCHES: int = 4         # --micro-batches default of the pipeline strategy
+
 # How each strategy's sync/transfer term is computed, for the CLI and the web to display.
 SYNC_FORMULA: dict[str, str] = {
     "single": "— (one GPU)",
     "ddp": "2(n−1)/n · 4P / β · n_batches  (ring all-reduce)",
     "model_parallel": "0.25 · 8P / β · N/b  (activations between stages)",
+    "pipeline": "0.25 · 8P / β · N/b  (activations between stages)",
     "heterogeneous": "8P / β_ethernet · n_batches",
 }
 
@@ -558,7 +584,9 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
                   disk_type: str = "ssd", nfs: bool = False,
                   rc_measured: float | None = None,
                   rio_measured: float | None = None,
-                  rc_at_precision: float | None = None) -> EpochPrediction:
+                  rc_at_precision: float | None = None,
+                  micro_batches: int = 1,
+                  rc_single: float | None = None) -> EpochPrediction:
     """Train-epoch time + speedup for one strategy, from the master formula.
 
     ``rc_at_precision`` is one GPU's train throughput already at ``precision`` (see
@@ -581,6 +609,8 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
         return phi * (max(t_compute, t_io) + t_sync), t_compute, t_io, t_sync
 
     t1, *_ = single_epoch(1)
+    if rc_single and rc_single > 0:            # the 1-GPU reference at the full batch (pipeline)
+        t1 = phi * (max(n_train / rc_single, n_train / rio))
 
     if strategy == "single":
         t, tc, tio, tsync = single_epoch(1)
@@ -591,6 +621,18 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
         # whole model on the full data (split across devices but sequential), plus
         # a small inter-stage activation transfer ≈ one extra all-reduce-ish term.
         t_compute = n_train / rc_p
+        t_io = n_train / rio
+        transfer = _sync_time(model.params_m, beta, math.ceil(n_train / batch_per_gpu)) * 0.25
+        t = phi * (max(t_compute, t_io) + transfer)
+        tc, tio, tsync = t_compute, t_io, transfer
+    elif strategy == "pipeline":
+        # GPipe with p = n_gpus balanced stages and m micro-batches: each GPU computes 1/p of
+        # the model and idles a fraction (p−1)/(m+p−1) of the step (the bubble), so the
+        # compute time is the single-GPU one × (m+p−1)/(m·p). rc_p is already the throughput
+        # at the micro-batch size (predict()). Same coarse activation-transfer term as above.
+        p_st = max(1, n_gpus)
+        m = max(1, micro_batches)
+        t_compute = n_train / rc_p * (m + p_st - 1) / (m * p_st)
         t_io = n_train / rio
         transfer = _sync_time(model.params_m, beta, math.ceil(n_train / batch_per_gpu)) * 0.25
         t = phi * (max(t_compute, t_io) + transfer)
@@ -671,7 +713,8 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
             rc_measured: float | None = None,
             rio_measured: float | None = None,
             val_size: int | None = None,
-            model: ModelSpec | None = None) -> Prediction | None:
+            model: ModelSpec | None = None,
+            micro_batches: int = DEFAULT_MICRO_BATCHES) -> Prediction | None:
     """Closed-form prediction for any combination. Returns None for unknown specs.
 
     ``batch`` is the GLOBAL batch; it is split across the n GPUs for DDP.
@@ -686,15 +729,20 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     gpu = gpu_spec(gpu_name)
     if model is None or gpu is None:
         return None
-    if strategy not in ("single", "ddp", "model_parallel", "heterogeneous"):
+    if strategy not in STRATEGIES:
         return None
 
     batch_per_gpu = max(1, batch // n_gpus) if strategy in ("ddp", "heterogeneous") else batch
-    rc_p, tp_model, tp_calibrated = train_throughput(model, gpu, precision, batch_per_gpu,
-                                                     rc_measured)
+    # GPipe runs the model on micro-batches: its throughput (and fixed cost per step) is that
+    # of the micro-batch size.
+    micro = max(1, micro_batches) if strategy == "pipeline" else 1
+    rc_p, tp_model, tp_calibrated = train_throughput(model, gpu, precision,
+                                                     max(1, batch_per_gpu // micro), rc_measured)
+    rc_full = (train_throughput(model, gpu, precision, batch_per_gpu, rc_measured)[0]
+               if micro > 1 else None)
     ep = predict_epoch(strategy, model, gpu, n_gpus, dataset_size, batch_per_gpu,
                        precision, disk_type, nfs, rc_measured, rio_measured,
-                       rc_at_precision=rc_p)
+                       rc_at_precision=rc_p, micro_batches=micro, rc_single=rc_full)
 
     # Eval-epoch time (forward-only over the val split) → total epoch = train + eval.
     n_val = int(val_size) if val_size and val_size > 0 else round(dataset_size * 0.51)
@@ -707,7 +755,7 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     # the working-GPU count scales it for distributed strategies. Naive model parallelism
     # keeps every GPU powered but idling between stages, so each draws less (×0.83).
     n_work = power_working_gpus(strategy, n_gpus)
-    mp = MODEL_PARALLEL_POWER_FRACTION if (strategy == "model_parallel" and n_work > 1) else 1.0
+    mp = split_power_fraction(strategy, n_work, micro)
     p_train = estimate_power(gpu, "train") * mp
     p_eval = estimate_power(gpu, "eval") * mp
     power_total = p_train * n_work
@@ -715,16 +763,21 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     e_eval_wh = (p_eval * n_work) * t_eval / 3600.0
     e_epoch_wh = e_train_wh + e_eval_wh
 
-    vram = estimate_vram_gb(model, batch_per_gpu, precision)
+    stages = n_gpus if strategy in SPLIT_STRATEGIES else 1
+    vram = estimate_vram_gb(model, batch_per_gpu, precision, stages)
     # Use the SAME usable-VRAM threshold (0.92) as max_batch/fits_in_memory, so the
     # `fits` flag, the OOM note and the recommended batch never contradict each other.
-    fits = fits_in_memory(model, gpu, batch_per_gpu, precision)
-    rec_b = max_batch(model, gpu, precision)
+    fits = fits_in_memory(model, gpu, batch_per_gpu, precision, stages)
+    rec_b = max_batch(model, gpu, precision, stages=stages)
 
     notes: list[str] = []
     if strategy == "model_parallel":
         notes.append("Model parallelism does not accelerate (≈1×); it exists to fit "
                      "models too big for one GPU.")
+    if strategy == "pipeline":
+        notes.append(f"GPipe with {n_gpus} stages and {micro} micro-batches: each GPU idles "
+                     f"{(n_gpus - 1) / (micro + n_gpus - 1):.0%} of the step (bubble). Balanced "
+                     f"stages assumed and power not measured for this strategy (interpolated).")
     if strategy == "heterogeneous":
         notes.append("Synchronous DDP runs at the pace of the slowest worker (the CPU); "
                      "imbalanced hardware penalizes.")

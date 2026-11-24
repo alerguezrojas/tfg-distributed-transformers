@@ -101,7 +101,7 @@ def test_train_unknown_strategy_raises():
 
 
 def test_strategies_constant():
-    assert set(STRATEGIES) == {"single", "ddp", "model_parallel", "heterogeneous"}
+    assert set(STRATEGIES) == {"single", "ddp", "model_parallel", "heterogeneous", "pipeline"}
 
 
 # ── benchmark ──────────────────────────────────────────────────────────────────

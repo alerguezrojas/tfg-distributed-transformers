@@ -73,6 +73,7 @@ class RunEstimateInputs:
     gpu: str | None
     gpu_source: str = ""
     notes: tuple[str, ...] = ()
+    micro_batches: int | None = None   # GPipe micro-batches (pipeline runs)
 
     @property
     def missing(self) -> list[str]:
@@ -176,7 +177,7 @@ def inputs_from_run(*, model: str, dataset: str, mode: str, precision: str | Non
         model=model, dataset=dataset, strategy=strategy, precision=precision or "fp32",
         img_size=img_size, in_chans=in_chans, num_classes=num_classes, n_train=n_train,
         n_val=n_val, batch_per_gpu=batch, n_gpus=n_gpus, gpu=gpu, gpu_source=source,
-        notes=tuple(notes))
+        notes=tuple(notes), micro_batches=_int(config_line.get("micro_batches")))
 
 
 def estimate_run(inp: RunEstimateInputs, epoch_times_s: Sequence[float | None],
@@ -195,8 +196,10 @@ def estimate_run(inp: RunEstimateInputs, epoch_times_s: Sequence[float | None],
     if spec is None:
         return skip(f"model '{inp.model}' cannot be profiled")
     batch = inp.batch_per_gpu * (inp.n_gpus if inp.strategy in _DATA_PARALLEL else 1)
+    extra = {"micro_batches": inp.micro_batches} if inp.micro_batches else {}
     p = predict(inp.strategy, inp.model, inp.gpu, n_gpus=inp.n_gpus, dataset_size=inp.n_train,
-                batch=batch, precision=inp.precision, epochs=1, val_size=inp.n_val, model=spec)
+                batch=batch, precision=inp.precision, epochs=1, val_size=inp.n_val, model=spec,
+                **extra)
     if p is None:
         return skip("the predictor does not model this configuration")
     notes = (*inp.notes, *p.notes)

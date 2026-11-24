@@ -104,6 +104,18 @@ Gustafson on the predicted curve.
 * **model-parallel** (naive pipeline): stages serialize → `T ≈ N/r_c + transfer ≥
   T_single` → `S ≈ 1`. It does not accelerate; it exists to **fit models too big
   for one GPU** (vit_large OOMs on one T4, trains split across two).
+* **pipeline** (GPipe, since 24/11/2026): the same split into `p = n` stages, but each batch
+  goes through in `m` micro-batches, so while stage 1 runs micro-batch `i`, stage 0 runs `i+1`.
+  Each GPU idles `(p−1)/(m+p−1)` of the step (the *bubble*):
+  `T ≈ N/r_c(b/m) · (m+p−1)/(m·p) + transfer`, so `S ≈ m·p/(m+p−1)` (1.6× with 2 GPUs and 4
+  micro-batches) when the stages are balanced and `r_c` does not drop much at the micro-batch
+  size (the three-term model's `d/B` term says how much it drops). Power is interpolated
+  between naive model parallelism (0.83×) and a busy GPU: not measured yet.
+* **VRAM of the split strategies**: each GPU holds `1/p` of the weights, optimizer state and
+  activations (GPipe keeps those of every micro-batch until the backward), plus its own CUDA
+  overhead. Before 24/11/2026 the predictor put the whole model on one GPU and flagged OOM in the
+  very case the strategy exists for (vit_large, batch 48, fp32 trained split over 2 × T4:
+  `logs/kaggle/model_parallel/vit_large_patch16_224/train_10062026_214332`).
 * **heterogeneous** (GPU + CPU, synchronous DDP): the slowest rank sets the pace.
   Ceiling `S ≤ 1 + r_CPU/r_GPU ≈ 1.02×`; in practice 0.12× from the synchronous
   barrier + gloo/Ethernet overhead. Imbalanced hardware penalizes.

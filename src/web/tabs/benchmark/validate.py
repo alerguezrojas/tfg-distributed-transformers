@@ -187,7 +187,7 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
         n_val = est_in.n_val or round(n_train * 0.51)
     # All multi-GPU strategies draw power on n GPUs (model-parallel powers both even though
     # the stages serialize); only 'single' is one GPU.
-    ng = (est_in.n_gpus or _run_ngpus(r)) if strat in ("ddp", "heterogeneous", "model_parallel") else 1
+    ng = (est_in.n_gpus or _run_ngpus(r)) if strat in ("ddp", "heterogeneous", "model_parallel", "pipeline") else 1
     gpu = est_in.gpu
     spec = (_resolve_cached(r.model, est_in.in_chans, est_in.num_classes, est_in.img_size)
             if est_in.in_chans and est_in.num_classes else None)
@@ -261,7 +261,7 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
     # not the 2-GPU run) or heterogeneous (it has no notion of the GPU waiting on a slow CPU
     # — it would read ~30× too fast). Drop its time/energy bars for those strategies; the
     # analytic column is the estimate for them. (F1 is strategy-independent, so it stays.)
-    if strat in ("model_parallel", "heterogeneous"):
+    if strat in ("model_parallel", "pipeline", "heterogeneous"):
         b_t = b_e = None
         note_bits.append(f"benchmark does not model {r.mode} (single-GPU only) — analytic is the estimate")
 

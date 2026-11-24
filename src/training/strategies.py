@@ -324,6 +324,13 @@ def _build_model_parallel(ctx: LaunchContext):
             .with_model_parallel(ctx.extras["devices"], ctx.args.split_block))
 
 
+def _build_pipeline(ctx: LaunchContext):
+    return (_builder_class()(ctx.cfg, ctx.device, ctx.timestamp)
+            .with_model_parallel(ctx.extras["devices"], ctx.args.split_block,
+                                 micro_batches=ctx.args.micro_batches)
+            .with_output_mode("pipeline"))
+
+
 # ── `Configuración:` line (contract with src/web and src/run_manifest.py) ─────
 
 def _config_tail(ctx: LaunchContext, *, precision: bool = True, loss: str | None = None,
@@ -393,6 +400,20 @@ def _describe_heterogeneous(ctx: LaunchContext) -> list[str]:
             f"{len(ctx.extras['train_sampler'])} train / {len(ctx.extras['val_sampler'])} val"]
 
 
+def _line_pipeline(ctx: LaunchContext) -> str:
+    bs = ctx.cfg["training"]["batch_size"]
+    return (f"modelo={ctx.model_name} | paralelismo=pipeline(GPipe) | "
+            f"micro_batches={ctx.args.micro_batches} | "
+            f"devices={'+'.join(ctx.extras['devices'])} | "
+            f"split_block={ctx.args.split_block or 'auto'} | batch={bs} (global) | "
+            f"{_config_tail(ctx)}")
+
+
+def _describe_pipeline(ctx: LaunchContext) -> list[str]:
+    return [*_describe_model_parallel(ctx),
+            f"Micro-lotes : {ctx.args.micro_batches} por lote (GPipe)"]
+
+
 def _describe_model_parallel(ctx: LaunchContext) -> list[str]:
     devices = ctx.extras["devices"]
     real = "reparto real en 2 dispositivos" if len(set(devices)) > 1 else "un solo dispositivo — demo"
@@ -407,7 +428,13 @@ def _add_model_parallel_arguments(parser) -> None:
                              "Auto-detected if omitted.")
 
 
-# ── The four strategies ───────────────────────────────────────────────────────
+def _add_pipeline_arguments(parser) -> None:
+    _add_model_parallel_arguments(parser)
+    parser.add_argument("--micro-batches", type=int, default=4,
+                        help="Micro-batches each batch is split into (GPipe); default 4")
+
+
+# ── The strategies ────────────────────────────────────────────────────────────
 
 register_strategy(StrategySpec(
     name="single", description="Single-GPU training",
@@ -447,4 +474,16 @@ register_strategy(StrategySpec(
     init_env=_init_model_parallel, make_loaders=_make_plain_loaders,
     make_builder=_build_model_parallel, config_line=_line_model_parallel,
     describe=_describe_model_parallel, add_arguments=_add_model_parallel_arguments,
+    unsupported={"inspect": "la inspección profunda necesita un modelo en un solo dispositivo"}))
+
+register_strategy(StrategySpec(
+    name="pipeline",
+    description="Pipeline parallelism with micro-batches (GPipe) across two devices",
+    script="scripts/train_pipeline.py",
+    default_config="configs/train_model_parallel_kaggle.yaml",
+    aliases=("gpipe",),
+    default_workers=4, trace_choices=("off", "simple"),
+    init_env=_init_model_parallel, make_loaders=_make_plain_loaders,
+    make_builder=_build_pipeline, config_line=_line_pipeline,
+    describe=_describe_pipeline, add_arguments=_add_pipeline_arguments,
     unsupported={"inspect": "la inspección profunda necesita un modelo en un solo dispositivo"}))

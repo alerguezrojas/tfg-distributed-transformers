@@ -6,7 +6,7 @@ from src.training.launch import build_parser, check_options
 from src.training.strategies import (
     LaunchContext, StrategySpec, available_strategies, get_strategy, register_strategy)
 
-CANONICAL = ["single", "ddp", "heterogeneous", "model_parallel"]
+CANONICAL = ["single", "ddp", "heterogeneous", "model_parallel", "pipeline"]
 COMMON_OPTIONS = ["--config", "--epochs", "--model", "--precision", "--batch-size", "--monitor",
                   "--trace", "--inspect", "--layers", "--fn", "--metrics", "--batch-log-every",
                   "--resume", "--data-root", "--seed", "--machine", "--set"]
@@ -62,7 +62,7 @@ def test_spec_validates_its_name_and_launcher():
 
 
 def test_launch_modes():
-    assert [get_strategy(n).torchrun for n in CANONICAL] == [False, True, True, False]
+    assert [get_strategy(n).torchrun for n in CANONICAL] == [False, True, True, False, False]
     assert get_strategy("heterogeneous").nproc == 1 and get_strategy("ddp").nproc is None
 
 
@@ -76,10 +76,12 @@ def test_every_strategy_accepts_every_common_option(name):
 
 
 def test_model_parallel_has_its_own_options_and_nobody_else():
-    own = {"--split-block", "--devices"}
+    """The split options belong to the two split strategies; --micro-batches only to pipeline."""
+    split, micro = {"--split-block", "--devices"}, {"--micro-batches"}
     for name in CANONICAL:
         flags = {o for a in build_parser(get_strategy(name))._actions for o in a.option_strings}
-        assert own <= flags if name == "model_parallel" else not (own & flags)
+        assert split <= flags if name in ("model_parallel", "pipeline") else not (split & flags)
+        assert micro <= flags if name == "pipeline" else not (micro & flags)
 
 
 def test_default_config_is_per_strategy():
@@ -192,3 +194,12 @@ def test_model_parallel_line_names_devices_and_split():
     assert get_strategy("model_parallel").config_line(ctx).startswith(
         "modelo=m | paralelismo=modelo(pipeline) | devices=cuda:0+cuda:1 | split_block=6 | "
         "batch=8 (global) | epochs=3")
+
+
+def test_pipeline_strategy_builds_the_command_with_micro_batches():
+    from src.cli import build_train_cmd
+    cmd = build_train_cmd("gpipe", "configs/train_model_parallel_kaggle.yaml", micro_batches=8)
+    assert cmd[1].endswith("scripts/train_pipeline.py")
+    assert cmd[-2:] == ["--micro-batches", "8"]
+    with pytest.raises(ValueError, match="micro-batches"):
+        build_train_cmd("ddp", "configs/train.yaml", micro_batches=8)
