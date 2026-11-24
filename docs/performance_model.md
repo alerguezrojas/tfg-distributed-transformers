@@ -520,7 +520,7 @@ medido y sigue con la MFU × π):
     b = 3,12·10⁻² y d = 20 ms.
 
   Ambos son calibración: cada GPU reproduce sus propias medidas a 512 px con un error medio del
-  8,3 % (3060 Ti) y del 11,6 % (T4).
+  8,3 % (3060 Ti) y del 11,4 % (T4).
 - **El coste fijo por paso (d/B) está medido.** Sin variar el lote, d no se puede separar de los
   términos por imagen: el primer ajuste, solo a 512 px y lote 16, daba 30 ms y con lote 8 se
   quedaba un 30 % corto. El barrido de lotes de la 3060 Ti (`logs/local/benchmark/
@@ -556,7 +556,7 @@ La última sección de `scripts/predictor_architecture_study.py` lo reproduce:
 Con 2 × T4, MaxViT-T pasa de −67 % a +3 % y ConvNeXt-S de −37 % a −1 % (cifras con el all-reduce
 medido y el ajuste conjunto de la T4, 24/11/2026). Siguen quedándose cortos
 la familia Swin, por el mismo motivo que en el estudio (operaciones pequeñas que no son ni FLOPs
-ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−28 % y −20 %): son los dos runs en los que se
+ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−26 % y −19 %): son los dos runs en los que se
 sospecha que manda la CPU de Kaggle (sección 4, "Revisión"), algo que el predictor no modela.
 
 **Lo que gana AMP depende de la arquitectura (24/11/2026).** El predictor en fp32 multiplica por un

@@ -332,7 +332,7 @@ class ThroughputFit:
 
 THROUGHPUT_FITS: dict[str, ThroughputFit] = {
     "RTX 3060 Ti": ThroughputFit(2.0453e-4, 1.2468e-2, 17.77e-3),
-    "Tesla T4":    ThroughputFit(3.3620e-4, 3.1241e-2, 20.10e-3),
+    "Tesla T4":    ThroughputFit(3.3620e-4, 3.1241e-2, 20.08e-3),
 }
 # GPUs without a fit get the reference fit scaled by the datasheets: a by TFLOPS·π, b by DRAM
 # bandwidth (d is host-side and kept). On the T4 this transfer was ×1.5 too optimistic (median
