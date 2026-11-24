@@ -7,11 +7,11 @@ removed (the Benchmark predictor already covers model specs).
 """
 from __future__ import annotations
 
-from pathlib import Path
 
 import streamlit as st
 
-from src.web.run_import import import_run_archive, import_run_folder, summarize_import
+from src.web.run_import import (import_run_archive, import_run_folder, safe_import_folder,
+                                 summarize_import)
 
 from src.web.ui.context import DashboardContext
 from src.web.ui.helpers import ROOT, _get_runs, _get_benchmark_csvs
@@ -44,8 +44,11 @@ def render(ctx: DashboardContext) -> None:
                "(for example via `scp` from the cluster).")
     folder_str = st.text_input("Folder path", placeholder="/home/alejandro/Downloads/kaggle_logs")
     if folder_str and st.button("Import folder"):
-        folder = Path(folder_str).expanduser()
-        if not folder.is_dir():
+        folder = safe_import_folder(folder_str)
+        if folder is None:
+            st.error("Only folders under your home or a mounted drive (/media, /mnt) "
+                     "can be imported.")
+        elif not folder.is_dir():
             st.error(f"Not a folder: {folder}")
         else:
             _report_import(import_run_folder(folder, logs_root))

@@ -100,3 +100,32 @@ def test_import_no_escribe_en_carpeta_hermana_con_mismo_prefijo(tmp_path):
     data = _make_zip({"salida/train_1.log": b"x"})
     assert import_run_archive(data, logs) == []
     assert not (evil / "train_1.log").exists()
+
+
+# ── Folder typed in the web: only under the allowed roots ────────────────────
+
+def test_safe_import_folder_accepts_home_and_mounted_drives(tmp_path, monkeypatch):
+    from src.web import run_import
+    monkeypatch.setattr(run_import, "allowed_import_roots", lambda: (str(tmp_path),))
+    inside = tmp_path / "kaggle_logs"
+    inside.mkdir()
+    assert run_import.safe_import_folder(str(inside)) == inside
+    assert run_import.safe_import_folder(str(tmp_path)) is None      # the root itself: no
+
+
+def test_safe_import_folder_rejects_paths_outside_and_traversal(tmp_path, monkeypatch):
+    from src.web import run_import
+    base = tmp_path / "home"
+    base.mkdir()
+    monkeypatch.setattr(run_import, "allowed_import_roots", lambda: (str(base),))
+    assert run_import.safe_import_folder("/etc") is None
+    assert run_import.safe_import_folder(str(base / ".." / "other")) is None
+    assert run_import.safe_import_folder(str(tmp_path / "home_evil")) is None   # prefix trap
+
+
+def test_default_roots_are_home_and_mounts():
+    from pathlib import Path
+
+    from src.web.run_import import allowed_import_roots
+    roots = allowed_import_roots()
+    assert str(Path.home().resolve()) in roots and any(r.endswith("media") for r in roots)

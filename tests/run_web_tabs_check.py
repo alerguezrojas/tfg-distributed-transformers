@@ -497,11 +497,11 @@ def test_live_monitor():
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=3,
         )
-        if out.returncode == 0:
-            parts = [p.strip() for p in out.stdout.strip().split(",")]
-            assert len(parts) >= 4
-    except Exception:
-        pass  # no GPU is fine
+    except (OSError, subprocess.SubprocessError):
+        out = None  # no GPU (or no nvidia-smi) is fine
+    if out is not None and out.returncode == 0:
+        parts = [p.strip() for p in out.stdout.strip().split(",")]
+        assert len(parts) >= 4
 
     # Log progress
     for r in runs[:3]:
