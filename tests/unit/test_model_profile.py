@@ -98,11 +98,12 @@ def test_table_models_resolve_to_table_entry(name):
 # on 24/11/2026 (was 40.7352 s and 2.0761 Wh with 8P at the 16 GB/s PCIe nominal); model
 # parallelism splits the VRAM across its stages since 24/11/2026 (was 30.408 GB, the whole model
 # on one GPU; at this batch of 96 it still does not fit — the batch-48 run that did is in
-# tests/unit/test_performance_model.py).
+# tests/unit/test_performance_model.py); and its power per GPU went from 0.83× to 0.86× with the
+# split-power calibration of 24/11/2026 (energy was 22.8917 Wh; 0.860× → 0.859× after fixing the slope in review).
 _PINNED = [
     (("vit_base_patch16_224", "Tesla T4", "ddp", 2, "amp"), (42.9528, 4.8228, 2.1549)),
     (("resnet50", "Tesla V100", "single", 1, "fp32"), (38.4615, 10.6096, 1.6055)),
-    (("vit_large_patch16_224", "Tesla T4", "model_parallel", 2, "fp32"), (673.0313, 15.504, 22.8917)),
+    (("vit_large_patch16_224", "Tesla T4", "model_parallel", 2, "fp32"), (673.0313, 15.504, 23.6915)),
     (("vit_tiny_patch16_224", "RTX 3060 Ti", "single", 1, "fp32"), (38.4615, 2.9952, 2.8058)),
     (("efficientnet_b0", "Tesla V100", "heterogeneous", 2, "fp32"), (112.8783, 3.5648, 3.7347)),
 ]

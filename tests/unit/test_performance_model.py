@@ -279,7 +279,7 @@ def test_unknown_strategy_returns_none():
 
 
 def test_model_parallel_powers_both_gpus_with_idle_factor():
-    """MP keeps both GPUs powered but each idles between stages (×0.83)."""
+    """MP keeps both GPUs powered but each idles between stages (×0.86)."""
     from src.performance_model import MODEL_PARALLEL_POWER_FRACTION
     single = predict("single", "vit_base_patch16_224", "Tesla T4", n_gpus=1, batch=96)
     mp = predict("model_parallel", "vit_base_patch16_224", "Tesla T4", n_gpus=2, batch=96)
@@ -387,10 +387,58 @@ def test_pipeline_speedup_follows_the_gpipe_bubble():
     assert _vit_large_t4("model_parallel").speedup == pytest.approx(1.0, rel=0.02)
 
 
-def test_pipeline_power_lies_between_naive_and_busy():
+def test_pipeline_power_grows_with_the_busy_fraction():
     from src.performance_model import MODEL_PARALLEL_POWER_FRACTION, split_power_fraction
     assert split_power_fraction("model_parallel", 2) == MODEL_PARALLEL_POWER_FRACTION
     assert split_power_fraction("pipeline", 2, 1) == pytest.approx(MODEL_PARALLEL_POWER_FRACTION)
-    assert MODEL_PARALLEL_POWER_FRACTION < split_power_fraction("pipeline", 2, 4) < 1.0
+    fracs = [split_power_fraction("pipeline", 2, m) for m in (1, 2, 4, 8, 16)]
+    assert fracs == sorted(fracs)
     assert split_power_fraction("ddp", 2, 4) == 1.0
     assert any("bubble" in n for n in _vit_large_t4("pipeline").notes)
+
+
+@pytest.mark.parametrize("strategy, micro, watts, calibration", [
+    ("model_parallel", 1, 109.7, True), ("pipeline", 2, 118.8, True),
+    ("pipeline", 4, 125.0, True), ("pipeline", 8, 129.2, True),
+    ("pipeline", 16, 131.7, False),        # pipeline_micro1: out of sample
+    ("pipeline", 8, 132.0, False),         # pipeline_micro1, batch 8 (same busy as m = 8)
+])
+def test_split_power_matches_the_kaggle_runs(strategy, micro, watts, calibration):
+    """Power of the 2 T4 (train) in the 24/11/2026 Kaggle runs (ViT-B, 512 px), against the
+    calibrated T4 power (64 W per GPU) × the split fraction: ≤0.5 % in calibration, ≤2.5 % out."""
+    from src.performance_model import gpu_spec, split_power_fraction
+    predicted = 2 * gpu_spec("Tesla T4").train_power_w * split_power_fraction(strategy, 2, micro)
+    assert predicted == pytest.approx(watts, rel=0.005 if calibration else 0.025)
+
+
+def test_pipeline_charges_the_step_cost_once_plus_a_small_cost_per_micro_batch():
+    """With AMP (three-term throughput) the pipeline runs at the full batch's throughput plus
+    PIPELINE_MICRO_BATCH_COST_S per extra micro-batch, not at the micro-batch's throughput."""
+    from src.performance_model import (PIPELINE_MICRO_BATCH_COST_S, gpu_spec, model_spec,
+                                       train_throughput)
+    vit_b = model_spec("vit_base_patch16_224")
+    gpu = gpu_spec("Tesla T4")
+    full = train_throughput(vit_b, gpu, "amp", 16)[0]
+    p = predict("pipeline", "vit_base_patch16_224", "Tesla T4", n_gpus=2, dataset_size=1600,
+                batch=16, precision="amp", epochs=1, micro_batches=8)
+    expected = 1 / (1 / full + PIPELINE_MICRO_BATCH_COST_S * 7 / 16)
+    assert p.train_ips_per_gpu == pytest.approx(expected)
+    assert p.train_ips_per_gpu > train_throughput(vit_b, gpu, "amp", 2)[0]
+
+
+def test_pipeline_micro_batches_are_capped_at_the_batch():
+    """ModelParallelViT never makes more micro-batches than images: m = 64 at batch 16 is m = 16."""
+    capped = _vit_large_t4("pipeline", 64, batch=16)
+    assert capped.time_per_epoch_train_s == pytest.approx(
+        _vit_large_t4("pipeline", 16, batch=16).time_per_epoch_train_s)
+    assert any("16 micro-batches" in n for n in capped.notes)
+
+
+def test_split_calibration_is_flagged_outside_the_t4_with_amp():
+    def flagged(gpu, precision):
+        p = predict("pipeline", "vit_base_patch16_224", gpu, n_gpus=2, batch=16,
+                    precision=precision, epochs=1)
+        return any("extrapolated" in n for n in p.notes)
+    assert not flagged("Tesla T4", "amp")
+    assert flagged("Tesla T4", "fp32")
+    assert flagged("Tesla V100", "amp")

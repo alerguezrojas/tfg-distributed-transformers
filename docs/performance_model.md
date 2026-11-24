@@ -107,21 +107,39 @@ Gustafson on the predicted curve.
 * **pipeline** (GPipe, since 24/11/2026): the same split into `p = n` stages, but each batch
   goes through in `m` micro-batches, so while stage 1 runs micro-batch `i`, stage 0 runs `i+1`.
   Each GPU idles `(p−1)/(m+p−1)` of the step (the *bubble*):
-  `T ≈ N/r_c(b/m) · (m+p−1)/(m·p) + transfer`, so `S ≈ m·p/(m+p−1)` (1.6× with 2 GPUs and 4
-  micro-batches) when the stages are balanced and `r_c` does not drop much at the micro-batch
-  size (the three-term model's `d/B` term says how much it drops). Power is interpolated between
-  naive model parallelism (0.83×) and a busy GPU. **Measured on 2 × T4 (24/11/2026, Kaggle,
-  ViT-B, 512 px, batch 16;
-  [panda.md](datasets/panda.md#pipeline-gpipe-en-las-dos-t4-24112026)):** speedups ×1.38, ×1.56
-  and ×1.64 with 2, 4 and 8 micro-batches (ideal ×1.33, ×1.60, ×1.78), despite the host-staged
-  copy between the T4s; the predictor's epoch time is +7, +7 and +11 % off and its power 3-5 %
-  low. The error grows with `m` because `d` is charged per micro-batch; charging it once per
-  step gives +5, +1 and −2 %, and the `pipeline_micro1` batch (1-image micro-batches, where the
-  two readings differ by ~30 %) decides before the predictor changes. Naive model parallelism
-  ran 7 % *faster* than one T4: the 70 W cap throttles a fully busy T4 to 720 MHz, while each
-  half-busy T4 stays under it. The stages are unbalanced (GPU 0 at 88 % vs GPU 1 at 74 % with
-  m = 8). The implementation has 2 stages; `--layers hooks` synchronizes CPU and GPU on every
-  layer and cancels the overlap.
+  `T ≈ N/r_c' · (m+p−1)/(m·p) + transfer`, with `1/r_c' = 1/r_c(b) + c·(m−1)/b`: the
+  throughput of the **full** batch `b` (the fixed cost per step `d` of the three-term model is
+  paid once per step) plus `c = PIPELINE_MICRO_BATCH_COST_S = 3.4 ms` per extra micro-batch.
+  So `S ≈ m·p/(m+p−1)` (1.6× with 2 GPUs and 4 micro-batches) when the stages are balanced and
+  `c` is small next to the compute of a micro-batch. Power per GPU is linear in the busy
+  fraction, `train_power_w · (0.664 + 0.390 · m/(m+p−1))` (naive model parallelism is `m = 1`).
+  **Calibrated and validated on 2 × T4 (24/11/2026, Kaggle, ViT-B, 512 px;
+  [panda.md](datasets/panda.md#pipeline-gpipe-en-las-dos-t4-24112026)):**
+  `c` and the power line are fitted to the batch-16 runs with `m` = 1/2/4/8 and checked out of
+  sample on two runs with 1-image micro-batches (`m = 16` at batch 16, `m = 8` at batch 8):
+
+  | Run | Epoch time, measured | Predicted | Error | Power (2 GPU), measured | Predicted |
+  |---|---|---|---|---|---|
+  | model parallel (`m = 1`) | 430 s | 455 s | +6 % | 109.7 W | 110.0 W |
+  | `m = 2` | 335 s | 351 s | +5 % | 118.8 W | 118.3 W |
+  | `m = 4` | 296 s | 301 s | +1 % | 125.0 W | 124.9 W |
+  | `m = 8` | 282 s | 278 s | −1 % | 129.2 W | 129.4 W |
+  | `m = 16`, batch 16 (validation) | 287 s | 272 s | **−5 %** | 131.7 W | 132.0 W |
+  | `m = 8`, batch 8 (validation) | 306 s | 296 s | **−3 %** | 132.0 W | 129.4 W |
+
+  Before (fixed cost `d` charged to every micro-batch, interpolated power) the validation runs
+  erred +19 %; charging `d` once per step and nothing per micro-batch, −10 % and −8 %. Caveat:
+  the value of `c` is fitted without the validation runs, but the *form* (a cost per micro-batch)
+  was chosen after seeing them (16 micro-batches ran slower than 8). The predictor caps `m` at the
+  batch size, as `ModelParallelViT` does, and notes that power and `c` are extrapolated outside
+  the T4 with AMP. The
+  measured speedups over one T4 are ×1.38, ×1.56 and ×1.64 with 2, 4 and 8 micro-batches (ideal
+  ×1.33, ×1.60, ×1.78), despite the host-staged copy between the T4s. Naive model parallelism ran
+  7 % *faster* than one T4: the 70 W cap throttles a fully busy T4 to 720 MHz, while each
+  half-busy T4 stays under it (and that is why the power fraction exceeds 1 near `busy = 1`:
+  the reference 64 W is a capped single T4). The stages are unbalanced (GPU 0 at 88 % vs GPU 1 at
+  74 % with m = 8). Both constants come from the T4 only. The implementation has 2 stages;
+  `--layers hooks` synchronizes CPU and GPU on every layer and cancels the overlap.
 * **VRAM of the split strategies**: each GPU holds `1/p` of the weights, optimizer state and
   activations (GPipe keeps those of every micro-batch until the backward), plus its own CUDA
   overhead. Before 24/11/2026 the predictor put the whole model on one GPU and flagged OOM in the
@@ -262,7 +280,7 @@ the project's own `--fn energy` logs (the `potencia media XX W` lines):
 
 ```
 energy_train_wh = power_total · time_train_s / 3600
-power_total     = train_power_w(gpu) · n_working_gpus            (× 0.83 for model-parallel)
+power_total     = train_power_w(gpu) · n_working_gpus · f_split   (f_split = 1 unless split)
 energy_eval_wh  = 0.9 · train_power_w · n · time_eval_s / 3600   (eval ≈ 0.9× train power)
 ```
 
@@ -272,9 +290,11 @@ Two measured facts shape it:
    energy by finishing ~4× faster — through **time** — not by drawing less power. So
    precision is not a parameter of the power, only of the time.
 2. **n_working_gpus**: `single`/`heterogeneous` = 1 (the heterogeneous second worker is
-   a CPU, not a GPU), `ddp`/`model_parallel` = n. Naive model-parallel keeps both GPUs
-   powered but idling between stages, so each draws ~0.83× (calibrated from the 2×T4 MP
-   run: 106 W ≈ 0.83 × 2 × 64 W).
+   a CPU, not a GPU), `ddp`/`model_parallel`/`pipeline` = n. The split strategies keep every
+   GPU powered but idling part of the step, so each draws
+   `f_split = 0.664 + 0.390 · m/(m+p−1)` (0.86 for naive model parallelism on 2 GPUs; calibrated
+   on 2 × T4 runs of 24/11/2026, see the pipeline bullet in §4; an older model-parallel run gave
+   0.83).
 
 Calibrated per GPU: **T4 64 W, V100 103 W, RTX 3060 Ti 180 W** (measured); the rest fall
 back to `0.65 × nameplate TDP` and are flagged `power_calibrated=False`.

@@ -667,15 +667,29 @@ decorador `--fn energy` durante el entrenamiento, sumando las dos GPU (el run de
   partición (`split_block=auto`, la mitad de los bloques en cada GPU) deja además en la GPU 0 la
   entrada del lote y el *patch embedding*; mover un bloque a la GPU 1 (`--split-block`) es una
   prueba pendiente, no medida.
-- **Predictor** (`predict`, sin calibrar con estos runs): tiempo por época con error de −3 % (una
-  T4), +6 % (modelo partido) y +7, +7 y +11 % (pipeline con 2, 4 y 8). Potencia: entre un 3 y un 5
-  % por debajo. El error crece con m porque el predictor cobra el coste fijo por paso (`d`, 20 ms
-  en la T4) a **cada micro-lote**; si se cobra una vez por paso, los errores del pipeline bajan a
-  +5, +1 y −2 %. Las dos lecturas se separan del todo con micro-lotes de una imagen, que mide el
-  lote `pipeline_micro1` (en curso) antes de cambiar el predictor.
+- **Predictor.** Antes de estos runs se equivocaba en el tiempo por época un +6 a +11 % (más
+  cuantos más micro-lotes) y en la potencia un −3 a −5 %: cobraba el coste fijo por paso (`d`,
+  20 ms en la T4) a **cada micro-lote** e interpolaba la potencia sin medidas. Para separar las
+  dos explicaciones posibles se lanzó el lote `pipeline_micro1`, con micro-lotes de **una
+  imagen**:
+
+  | Run | s/época | Potencia (2 GPU) | QWK test |
+  |---|---|---|---|
+  | Pipeline, m = 16, lote 16 | 287 | 132 W | 0,789 |
+  | Pipeline, m = 8, lote 8 | 306 | 132 W | 0,793 |
+
+  Con 16 micro-lotes la época es **más lenta** que con 8 (287 frente a 282 s): cada micro-lote
+  tiene un coste propio, pero mucho menor que `d`. El predictor pasa a cobrar `d` una vez por
+  paso más 3,4 ms por cada micro-lote extra, y la potencia por GPU crece en línea recta con la
+  fracción del paso en que la GPU trabaja. Ambas cosas se ajustan con los runs de lote 16 (m = 1,
+  2, 4, 8) y se comprueban con los dos de esta tabla, que no se usaron para ajustar: tiempo −5 y
+  −3 % (antes +19 %), potencia +0,2 y −2 %. El valor del coste por micro-lote se ajusta sin
+  estos dos runs, pero la idea de que exista salió de verlos. Detalle en
+  [performance_model.md](../performance_model.md), §4.
 
 Logs: `logs/kaggle/panda/{single,model_parallel,pipeline}/vit_base_patch16_224.augreg2_in21k_ft_in1k/`
-(`train_24112026_153912`, `160621`, y `163008`, `164927`, `170648` para m = 2, 4, 8).
+(`train_24112026_153912`, `160621`, y `163008`, `164927`, `170648` para m = 2, 4, 8; `173602` y
+`175336` para m = 16 con lote 16 y m = 8 con lote 8).
 
 ## Riesgos
 

@@ -13,7 +13,7 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   `scripts/train_pipeline.py`, `paravit train --strategy pipeline` y la línea `Configuración:` con
   `micro_batches=`. Con 1 micro-lote, `model_parallel` no cambia (mismo test de caracterización).
 - Predictor: estrategia `pipeline` con la burbuja de GPipe (`(m+p−1)/(m·p)`, throughput al tamaño
-  del micro-lote), en la CLI y la web. La potencia se interpola (sin calibrar).
+  del micro-lote), en la CLI y la web (calibrado después en 2 × T4: ver *Cambiado*).
 - Medida del pipeline en 2 × T4 (Kaggle, ViT-B a 512 px, lote 16): ×1,38, ×1,56 y ×1,64 frente a
   una T4 con 2, 4 y 8 micro-lotes, con el mismo QWK; el modelo partido sin solapamiento, ×1,07 (el
   límite de 70 W frena a una T4 sola). El predictor acierta el tiempo con un error de +6 a +11 %
@@ -23,6 +23,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Cambiado
 
+- Pipeline calibrado en 2 × T4: el coste fijo por paso (`d`) se cobra una vez por paso más 3,4 ms
+  por cada micro-lote extra (`PIPELINE_MICRO_BATCH_COST_S`), en lugar de cobrar `d` a cada
+  micro-lote; y la potencia por GPU de las estrategias que parten el modelo crece en línea recta
+  con la fracción del paso en que trabaja cada GPU (`SPLIT_POWER_BASE`, `SPLIT_POWER_SLOPE`;
+  `MODEL_PARALLEL_POWER_FRACTION` pasa de 0,83 a 0,86). Ajuste con los runs de lote 16 (m = 1, 2,
+  4, 8) y validación con el lote `pipeline_micro1` (micro-lotes de una imagen), que no se usó
+  para ajustar: tiempo −5 y −3 % (antes +19 %), potencia +0,2 y −2 %. El predictor limita m al
+  tamaño del lote, como la implementación.
 - Predictor: la memoria por GPU de las estrategias que parten el modelo (`model_parallel`,
   `pipeline`) reparte pesos, optimizador y activaciones entre las etapas. Antes ponía el modelo
   entero en una GPU y marcaba falta de memoria justo donde la estrategia hace falta: vit_large con
