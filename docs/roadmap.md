@@ -13,9 +13,16 @@
 (errores, `paravit doctor` y perfiles de máquina, lanzador único, web, Slurm y Apptainer), la
 acumulación de gradientes y el *activation checkpointing*, el predictor de tres términos con AMP y
 el all-reduce en anillo con el ancho de banda medido, los resultados de Kaggle (una T4 frente a
-dos) y la limpieza de los avisos de SonarCloud y CodeQL. En curso: medidas de la T4 en Kaggle
-(barrido de lotes y fp32, kernel `benchmark_t4`) y el punto C2 de la web (estimación frente a
-medida con el manifiesto del run).
+dos) y la limpieza de los avisos de SonarCloud y CodeQL (triple A en `main`).
+
+**Después de la 1.4.0 (24/11/2026, en `develop`):** la web compara la estimación con el tiempo
+real de cada run usando su manifiesto (resolución, GPU, lote; PR #272, punto C2); la T4 tiene su
+coste fijo por paso medido con un barrido de lotes en Kaggle (20 ms; el ajuste anterior predijo
+esas medidas con un 13 % de error, y frente a los entrenamientos reales en 2 × T4 el error queda
+en el 15 %; PR #273); y los literales repetidos de SonarCloud están resueltos (PR #274).
+Siguiente: pipeline con micro-lotes (fase 5, validado en Kaggle con 2 × T4), un término de
+decodificación en CPU para el I/O del predictor (lo que limita DDP en Kaggle) y la vista de
+conjuntos en la web. Pendiente del autor: la VPN de VERODE.
 
 **Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
 (Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
