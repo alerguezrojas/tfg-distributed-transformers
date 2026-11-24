@@ -12,7 +12,7 @@
 **Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
 (Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
 y una fuga de memoria del perfilado corregida (PRs #259-#263, todos en `develop`). El detalle está
-en "Avance del plan", más abajo. En curso: el lote `strategies_512` en Kaggle. Pendiente del
+en "Avance del plan", más abajo. El lote `strategies_512` de Kaggle ya está analizado (una T4 frente a dos). Pendiente del
 autor: la VPN de VERODE, para probar el clúster y validar el predictor en una tercera GPU.
 
 **Fase 0 de la auditoría (23/11/2026): errores corregidos** (PR a `develop`). DDP con el índice del
@@ -271,10 +271,13 @@ Antes de modelarlas hay que medir el ancho de banda real entre las dos T4.
   y contribuyó a que `systemd-oomd` cerrara la sesión de escritorio el 23/11. En esta máquina
   (15 GB) los tests se ejecutan con `systemd-run --user --scope -p MemoryMax=5G` y nunca dos
   baterías a la vez.
-- **En curso:** lote `strategies_512` en Kaggle (una T4 frente a dos, ancho de banda de all-reduce,
-  control de CPU con 2 *workers*); la salida irá a `/media/alejandro/SSD/kaggle-out/panda_strategies_512`.
-  Siguiente: analizarlo (β medido para el término de sincronización del predictor; ¿manda la CPU
-  en ViT-S?), luego pipeline con micro-lotes (fase 5) y C2 de la web.
+- **Una T4 frente a dos (24/11/2026):** con la segunda T4, ViT-S acelera ×1,35 y Swin-T ×1,71, sin
+  cambio de QWK. Con dos GPU manda la decodificación en CPU de Kaggle (4 vCPU al 100 %); el control
+  con 2 procesos de carga es más lento, así que no es contención. All-reduce medido: 4,05 GB/s
+  (el predictor supone 16). Detalle en
+  [datasets/panda.md](datasets/panda.md#una-t4-frente-a-dos-en-la-misma-máquina-23-24112026).
+  Siguiente: término de comunicación del predictor con la fórmula en anillo y el β medido,
+  throughput en fp32, pipeline con micro-lotes (fase 5) y C2 de la web.
 
 **Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
 del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
@@ -509,8 +512,9 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
     coeficientes por GPU y coste fijo por paso medido con barrido de lotes (PR #263, solo AMP).
   - [ ] Tercera GPU para validar sin ajustarla (V100 de VERODE), el factor común de la T4 (reloj
     sostenido) y el término de tres partes en fp32.
-  - [ ] ¿Contención de CPU en Kaggle? ViT-S a 512 px va a 122 s/época donde la GPU haría ~77 s:
-    control con `num_workers=2` o mosaicos ya decodificados; si se confirma, término de CPU.
+  - [x] ¿Contención de CPU en Kaggle? Descartada (24/11/2026): con `num_workers=2` la época es más
+    lenta; con 2 × T4 manda la decodificación en CPU (4 vCPU al 100 %). Falta el término de CPU
+    en el modelo de I/O (casilla de arriba).
 
 ### Fase 6 — Campaña en máquinas nuevas y publicación
 - [ ] Barridos con ≥3 repeticiones por configuración.

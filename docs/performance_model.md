@@ -214,6 +214,14 @@ frente a ~100 % en los modelos pesados. El experimento que la cierra: el mismo r
 `num_workers=2`, o con los mosaicos ya decodificados. En los modelos pesados (ViT-B, ConvNeXt-S,
 SwinV2-T, MaxViT-T: GPU al 94-100 %, reloj a 817-967 MHz) sí manda la GPU.
 
+**Resuelto (24/11/2026): manda la decodificación en CPU, no la contención.** El control con
+`num_workers=2` (lote `strategies_512`) hizo la época **más lenta** (164 s frente a 144 s con 4
+procesos por GPU), con la CPU al 100 %: el límite es cuántos mosaicos puede decodificar la CPU de
+Kaggle (4 vCPU), no que los procesos se estorben. Con una sola T4 la misma receta va al 98 % de GPU
+(195 s/época, reloj a 795 MHz por el límite de potencia). El ancho de banda de all-reduce medido
+entre las dos T4 es de 4,05 GB/s, no los 16 GB/s de PCIe de `INTERCONNECT_BW`. Detalle en
+[datasets/panda.md](datasets/panda.md#una-t4-frente-a-dos-en-la-misma-máquina-23-24112026).
+
 ---
 
 ## 5. Energy model
@@ -543,6 +551,24 @@ Con 2 × T4, MaxViT-T pasa de −69 % a +1 % y ConvNeXt-S de −42 % a −6 %. S
 la familia Swin, por el mismo motivo que en el estudio (operaciones pequeñas que no son ni FLOPs
 ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−28 % y −20 %): son los dos runs en los que se
 sospecha que manda la CPU de Kaggle (sección 4, "Revisión"), algo que el predictor no modela.
+
+**Lo que gana AMP depende de la arquitectura (24/11/2026).** El predictor en fp32 multiplica por un
+π fijo por GPU (2,54 en la RTX 3060 Ti) para pasar a AMP; con AMP ya no lo usa (tres términos), pero
+fp32 y bf16 sí. Medido en la 3060 Ti (`docs/research/datos/throughput_fp32_3060ti.csv`, frente a
+las filas AMP del estudio), el cociente AMP/fp32 va de **×1,0 a ×3,4**:
+
+| Modelo | 224 px, lote 8 | 224 px, lote 16 | 224 px, lote 64 | 512 px, lote 16 |
+|---|---|---|---|---|
+| ViT-S | 1,81 | 2,05 | 2,56 | 3,44 |
+| ResNet-50 | 1,78 | 1,91 | 2,32 | — |
+| ConvNeXt-T | 2,17 | 2,61 | (lote 32: 2,55) | — |
+| Swin-T | 1,40 | 1,92 | (lote 32: 1,89) | — |
+| EfficientNet-B0 | 1,00 | 1,48 | 1,90 | — |
+
+Con lotes pequeños manda el coste fijo por paso, que AMP no acelera. EfficientNet, con mucho
+tráfico de memoria, gana poco; los ViT a 512 px, con mucho cálculo en matrices grandes, ganan más
+que el π de la tabla. Un modelo de tres términos propio de fp32 necesita medidas a 512 px, que en
+8 GB no caben (8 de 10 modelos se quedan sin memoria con lote 16); queda para una GPU mayor.
 
 **Pendiente.** Validar en una tercera GPU con medidas propias (V100 de VERODE), sin ajustarla, y
 entender el factor común de la T4 para no depender de una medida por GPU.
