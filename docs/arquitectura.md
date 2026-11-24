@@ -229,6 +229,35 @@ Todos los tensores se calculan en GPU con `.detach().float()`, solo se transfier
 
 ---
 
+## Acumulación de gradientes y activation checkpointing
+
+Dos opciones de memoria, desactivadas por defecto (`training.grad_accum_steps: k` y
+`training.grad_checkpointing: true`), para entrenar con un lote efectivo o un modelo que no cabe
+en la GPU. Los números medidos están en la [guía de uso](guia_de_uso.md#memoria-acumulación-de-gradientes-y-activation-checkpointing).
+
+- **Acumulación** vive en `Trainer.train_epoch`, no en un decorador: el paso del optimizador
+  (`zero_grad`, `backward`, recorte, `step`) es el propio bucle por lote, y los decoradores solo
+  reciben notificaciones *después* del lote. Tres métodos pequeños lo aíslan: `_accum_group`
+  (tamaño del grupo y si el lote lo cierra), `_no_sync_unless` (en DDP, `model.no_sync()` salvo en
+  el último micro-lote del grupo, de modo que solo ese hace all-reduce) y `_optimizer_step`
+  (`unscale_` + recorte + `step` + `update`, solo al cerrar el grupo). La pérdida de cada
+  micro-lote se divide entre el tamaño real de su grupo (el último grupo de la época puede ser
+  más corto y también da su paso). Con `k = 1` la ruta es idéntica a la anterior
+  (`test_behaviour_golden.py` no cambia).
+- El scheduler sigue avanzando **por época** (como antes), no por paso del optimizador.
+  Los hooks por lote, el monitor y las métricas de época ven cada micro-lote; la norma de
+  gradiente (`grad_norm_total`) se actualiza solo al cerrar el grupo.
+- No soportan la acumulación el DDP heterogéneo (normaliza el gradiente a mano con el lote global
+  de cada paso) ni la inspección `--trace deep` con `batch-table` (su bucle propio); ambos dan un
+  error claro.
+- **Checkpointing**: `TimmClassifier.set_grad_checkpointing()` delega en el backbone (timm lo
+  ofrece en ViT, Swin, ResNet, ConvNeXt…; `HFEncoder` usa `gradient_checkpointing_enable()` de
+  `transformers`). Un backbone sin soporte da un error claro. No se admite con paralelismo de
+  modelo (su `forward` recorre los bloques a mano, así que no aplicaría): lo rechaza el validador.
+- El benchmark (`paravit benchmark --config ... --set training.grad_accum_steps=2`) aplica las
+  mismas dos opciones para medir su efecto.
+- La línea `Configuración:` del log gana `accum=k` y `ckpt=true` solo cuando están activas.
+
 ## Análisis de la inspección (`src/analysis/`)
 
 Paquete **puro** (solo NumPy: sin torch, sin Streamlit, sin GPU) con el que la web analiza en CPU
@@ -286,17 +315,54 @@ helpers de imagen de `src/web/`. Tests: `tests/unit/test_reporting.py`.
 ```bash
 uv run paravit.py --help
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2 --precision amp
-uv run paravit.py train --strategy {single|ddp|model-parallel|heterogeneous} --config ... [--dry-run]
+uv run paravit.py train --strategy {single|ddp|heterogeneous|model_parallel} --config ... [--dry-run]
 uv run paravit.py benchmark --model vit_base_patch16_224 --batch-sizes 32,64 --epochs 30
 uv run paravit.py eval --checkpoint checkpoints/local/single/vit_base_patch16_224/19112026_101500/best.pt --split test
 uv run paravit.py dashboard
 ```
 
-- Subcomandos: `train` (elige estrategia → lanza el script correcto, con `torchrun` para ddp/heterogéneo), `estimate` (antes `predict`; predictor **analítico** en terminal, sin GPU — tabla rich), `benchmark` (antes `feasibility`; **medición empírica** real en la máquina), `eval` (test split), `runs` (lista los entrenamientos de `logs/` con Best Val F1 / Test F1), `dashboard` (streamlit), `menu` (interactivo guiado — pregunta los parámetros, ideal para la defensa). **Renombrados el 24/06 (analítico/empírico)** y consolidados después: los builders y el paquete web también pasaron a `benchmark` (`build_benchmark_cmd`, `src/web/tabs/benchmark/`).
+- Subcomandos: `train` (elige estrategia → lanza el script correcto, con `torchrun` para ddp/heterogéneo), `estimate` (antes `predict`; predictor **analítico** en terminal, sin GPU — tabla rich), `benchmark` (antes `feasibility`; **medición empírica** real en la máquina), `eval` (test split), `predict` (clasifica imágenes sueltas con un checkpoint), `compare-preds` y `select-ensemble` (comparan o eligen conjuntos de runs desde sus predicciones guardadas, sin GPU), `runs` (lista los entrenamientos de `logs/` con el mejor valor de validación y el de test de la métrica principal de cada run: QWK, AUC o F1), `report` (informe HTML de un run), `dashboard` (streamlit), `menu` (interactivo guiado — pregunta los parámetros, ideal para la defensa). **Renombrados el 24/06 (analítico/empírico)** y consolidados después: los builders y el paquete web también pasaron a `benchmark` (`build_benchmark_cmd`, `src/web/tabs/benchmark/`).
 - Builders puros `build_train_cmd` / `build_benchmark_cmd` / `build_eval_cmd` + helper `_run_row` (testeados: `tests/unit/test_cli.py`). `paravit train --strategy model-parallel` también reenvía `--layers/--fn` (arreglado 25/06). `--dry-run` imprime el comando sin ejecutarlo (para copiarlo en Verode/Kaggle). Opciones de lista por coma (`--batch-sizes 32,64`, `--layers plot,confusion`).
 - Los scripts de `scripts/` siguen funcionando por separado; `paravit` solo los unifica. Dependencia nueva: `typer`. Rama: `feature/unified-cli`.
 
-## Script de entrenamiento
+## Lanzador de entrenamiento y registro de estrategias
+
+Los cuatro `scripts/train_*.py` son envoltorios de 5 líneas (`from src.training.launch import
+main; main("ddp")`) con su docstring de uso: el flujo común está en `src/training/launch.py` y lo
+propio de cada estrategia en un `StrategySpec` de `src/training/strategies.py`, registrado como se
+registra un `DatasetSpec` (`register_strategy`, `get_strategy`, `available_strategies`).
+
+| Lo que declara el `StrategySpec` | Ejemplo |
+|---|---|
+| `name`, `aliases` | `model_parallel` (carpeta de logs y de `estimate`); alias `model-parallel`, `mp` |
+| `script`, `launcher`, `nproc` | `scripts/train_ddp.py`, `torchrun`, un proceso por GPU (`None`) o por nodo (`1`) |
+| `init_env` | grupo de procesos, `rank`/`world_size` y dispositivo (heterogéneo: `distributed.ranks`; model-parallel: `--devices`) |
+| `make_loaders` | `DataLoader` y muestreadores (DDP: `DistributedSampler`; heterogéneo: reparto por `compute_weight` y lote por rank) |
+| `make_builder` | el `TrainingSessionBuilder` con su `with_*` (`with_heterogeneous_ddp`, `with_model_parallel`…) |
+| `config_line` | texto de `Configuración:` (contrato con la web: no se cambia sin tocar los parsers) |
+| `add_arguments`, `unsupported`, `trace_choices` | opciones propias (`--split-block`, `--devices`), opciones que no puede cumplir (error, no se ignoran) y modos de `--trace` |
+
+Flujo de `main(strategy_name, argv=None)`: `prepare_config` (perfil de máquina, `--set`, `--seed`,
+`--epochs`…) → `init_env` → semillas (distribuidas: `seed + rank`) → marca de tiempo compartida →
+datasets y `make_loaders` → builder (decoradores, trazas y reporteros solo en el rank 0) →
+`--resume` → resumen por consola y línea `Configuración:` (rank 0) → `fit` → cierre del grupo de
+procesos. Todas las estrategias aceptan las mismas opciones comunes (`--config`, `--epochs`,
+`--model`, `--precision`, `--batch-size`, `--monitor`, `--trace`, `--inspect`, `--layers`, `--fn`,
+`--metrics`, `--batch-log-every`, `--resume`, `--data-root`, `--seed`, `--machine`, `--set`) más las
+de su spec; las que una estrategia no puede cumplir fallan con un error que dice por qué.
+
+**Añadir una estrategia** (p. ej. pipeline, FSDP o ZeRO), tocando solo:
+
+1. `src/training/<nombre>_trainer.py`: la subclase de `Trainer`.
+2. `src/training/builder.py`: un `with_<nombre>()` y la rama que crea ese trainer.
+3. `src/training/strategies.py`: sus hooks y un `register_strategy(StrategySpec(...))`.
+4. `scripts/train_<nombre>.py`: el envoltorio de 5 líneas, si se va a lanzar por ruta (la CLI y el
+   menú ya la leen del registro).
+
+El predictor (`performance_model.py`) y la web siguen necesitando su propio soporte, porque
+exigen medidas reales que lo validen.
+
+### Script de entrenamiento (single GPU)
 
 `scripts/train_single_gpu.py`
 
@@ -310,7 +376,7 @@ uv run paravit.py dashboard
 
 --model NAME               Override del modelo timm (default: cfg model.name)
                              Ejemplos: vit_tiny_patch16_224, resnet50, efficientnet_b0
-                             Si el modelo no es ViT/DeiT/Swin → AdamW estándar (sin LLRD)
+                             LLRD con cualquier modelo de timm (los no ViT, por su group_matcher())
 
 --layers [plot] [hooks] [confusion] [batch-monitor]
                            Decoradores de aspecto (combinables):
@@ -582,7 +648,9 @@ src/web/
     benchmark/              # paquete: Estimate (predict.py, analítico) / Benchmark (report.py + ddp.py + study.py) / Estimate vs Benchmark vs Run (validate.py)
                             #   predict.py = formulario → headline + tabla fórmula tiempo + tabla fórmula memoria
                             #   + calidad + escalado 1→8 GPU + coste; validate.py = Compare vs runs; report.py + ddp.py + study.py
-    data_models.py          # Import runs (subir zip / apuntar a carpeta → copia a logs/)
+    dataset.py              # Dataset: composición del conjunto + importar runs (subir zip / apuntar a carpeta → copia a logs/)
+    inspector/              # Inspector: análisis a fondo de un run (inspección por época)
+    data_models.py          # utilidades de la importación de runs
   run_import.py             # import_run_archive (zip) / import_run_folder / _dest_relpath (puro, testeable)
   events_reader.py          # lector incremental de events_*.jsonl (EventsFollower, RunState) y
                             # descubrimiento de runs activos; puro (sin Streamlit)
@@ -594,7 +662,6 @@ src/web/
   perclass_parser.py        # lee perclass_metrics_*.csv → DataFrame por clase
   benchmark_parser.py     # lee benchmark_*.csv → (metadata dict, benchmark DataFrame); bloque #gpu
   confusion_matrix_parser.py # lee confusion_matrix_*.csv → matriz numpy por epoch
-  system_monitor.py         # snapshot CPU/RAM/disco/GPU/red; GpuInfo con specs de GPU (usado por el predictor)
 ```
 
 **Pestaña Live.** Sigue un run en curso a partir de su flujo de eventos (`events_*.jsonl`, esquema
@@ -608,7 +675,7 @@ tipos desconocidos o de versión mayor se ignoran. La web sigue siendo de solo l
 
 **Predicción de calidad honesta (`predict_quality`, 18/06/26):** la F1 esperada ya **no** es una tabla histórica plana que ignoraba el tamaño del dataset (devolvía 0.68 para vit_base aunque fuera el subset de 5000, real ≈ 0.55). Ahora usa la ley de escalado por datos `F1_inf(N) = F1_full − k·log10(N_full/N)`, calibrada con dos puntos reales (vit_base full=0.68 / subset-5000=0.55 → k≈0.078; vit_tiny subset-5000 → 0.27, también medido). Curva de aprendizaje saturante estándar, banda de incertidumbre por confianza, etiquetada honestamente como **empirical prior** (no medición — el estudio de convergencia sigue siendo la vía medida). `PerformancePredictor (src/benchmark/predictor.py)` delega en este motor y le pasa el tamaño real del split. Rama: `feature/unified-prediction-engine`.
 
-**`scripts/eval.py` — evaluación en TEST (arreglado 18/06/26):** estaba **roto** (llamaba a `build_model(dropout=…)`, kwarg inexistente → reventaba; por eso nunca generó un `test_*.csv`). Corregido + endurecido (guard de split vacío, `--metadata`, `--max-batches`). Verificado end-to-end. Su salida (`test_*.csv`: per-clase + fila `# aggregate`) ya **se muestra en la web**: `run_registry` descubre los `test_*.csv` por carpeta y **Run results** muestra una tarjeta "Held-out test set" (F1 macro @0.5 y @umbral óptimo, accuracy, clases con F1=0) — el número honesto final, separado de la validación. Parser: `src/web/eval_parser.py`.
+**`scripts/eval.py` — evaluación en TEST (arreglado 18/06/26):** estaba **roto** (llamaba a `build_model(dropout=…)`, kwarg inexistente → reventaba; por eso nunca generó un `test_*.csv`). Corregido + endurecido (guard de split vacío, `--metadata`, `--max-batches`). Verificado end-to-end. Su salida (`test_*.csv`: per-clase + fila `# aggregate`) ya **se muestra en la web**: `run_registry` empareja cada `test_<sello>.csv` con el run de ese sello (los que no tienen sello de ningún run quedan sin asignar) y **Run results** muestra una tarjeta "Held-out test set" (F1 macro @0.5 y @umbral óptimo, accuracy, clases con F1=0) — el número honesto final, separado de la validación. Parser: `src/web/eval_parser.py`.
 
 **Specs de GPU** (`src/gpu_specs.py`): deriva núcleos CUDA y Tensor de cada GPU a partir de su compute capability (→ arquitectura → cores/SM) × nº de SMs (V100 5120/640, T4 2560/320, RTX 3060 Ti 4864/152). El `benchmark.py` los registra (bloque CSV `#gpu`) y acepta `--device INDEX`; el predictor analítico los usa para estimar `r_c`.
 
@@ -621,17 +688,19 @@ uv run streamlit run src/web/app.py
 # Abre http://localhost:8501
 ```
 
-### Estructura (v9 — menú de iconos, 5 secciones, selección de run por tabla)
+### Estructura (menú de iconos, 7 secciones, selección de run por tabla)
 
-**Navegación:** menú lateral con iconos (`streamlit-option-menu`) — **5 secciones**. **Regla de diseño: nunca más de un nivel de pestañas dentro de una sección.** El **run activo** es estado compartido (`session_state["run_label"]`): se elige clicando una fila de la tabla del Overview (`st.dataframe(on_select)`) o con el selector compacto de la sidebar (filtro de entorno, filtro de dataset cuando hay más de uno + etiquetas cortas, sin desbordamiento). System se eliminó (el monitor de hardware no servía con el flujo Kaggle) y "Import runs" vive en su propia sección.
+**Navegación:** menú lateral con iconos (`streamlit-option-menu`) — **7 secciones** (Overview, Live, Inspector, Run results, Compare, Estimate/Benchmark, Dataset). **Regla de diseño: nunca más de un nivel de pestañas dentro de una sección.** El **run activo** es estado compartido (`session_state["run_label"]`): se elige clicando una fila de la tabla del Overview (`st.dataframe(on_select)`) o con el selector compacto de la sidebar (filtro de entorno, filtro de dataset cuando hay más de uno + etiquetas cortas, sin desbordamiento). System se eliminó (el monitor de hardware no servía con el flujo Kaggle) y la importación de runs vive en la sección Dataset.
 
 | Sección (menú) | Contenido |
 |---|---|
 | **Overview** | Dashboard compacto: tira de 8 KPIs · ranking Best F1 · tarjeta del run activo (mini F1/loss + veredicto) · velocidad media/epoch · donut de estrategias · **panel del dataset** (splits, subset usado por los runs recientes, clases frecuentes, **galería de las 19 clases** con info multi-etiqueta) · tabla "All runs" seleccionable con sparklines |
 | **Run results** | **Una fila de pestañas**: Curves · Per-class (barras+tendencia) · Confusions (diagnósticos multi-etiqueta) · Batch (selector de vista) · Details (tiempo + config/anomalías/log) |
-| **Compare** | **Sección única**: multiselect (≤8 runs) → resumen · speedup vs baseline (tabla+barras+veredictos+validación feasibility+escalado) · radar · energía · overlays |
+| **Compare** | **Sección única**: multiselect (hasta 12 runs, `MAX_RUNS` en `src/web/tabs/comparison/__init__.py`) → resumen · speedup vs baseline (tabla+barras+veredictos+validación feasibility+escalado) · radar · energía · overlays |
 | **Estimate/Benchmark** (antes "Feasibility"→"Performance") | 3 pestañas, en orden: **Estimate** (antes "Predict"; predictor **analítico**: formulario → headline + **tablas con las fórmulas** de tiempo `max(compute,I/O)+sync`, memoria `weights+grad+Adam+activations+overhead` y **energía `potencia × tiempo`** con los valores puestos + calidad + escalado 1→8 GPU + coste nube; mismo motor que `paravit estimate`) · **Benchmark** (antes "Report"; **medición empírica** generada en terminal con `paravit benchmark`: hardware, throughput, tiempo, escalado distribuido, coste, estudio de convergencia) · **Estimate vs Benchmark vs Run** (antes "Benchmark vs Run"; comparación a **3 fuentes** — analítico / benchmark / run real — con **gráficas de barras agrupadas por métrica** (tiempo, energía, F1) en rojo/verde/azul, selector de fuente por gráfica, scorecard y scatter de calibración; el benchmark solo modela single+DDP, así que para MP/heterogéneo se ocultan sus barras y manda el analítico) |
-| **Import** | Importar runs entrenados en otra máquina (zip o carpeta → copia a `logs/`) |
+| **Live** | Sigue un run en curso a partir de `events_*.jsonl` (estado, ETA, curvas, loss por batch) |
+| **Inspector** | Análisis a fondo de un run desde `events_*.jsonl` y `inspect_<sello>/` (calibración, umbrales, dinámica, Grad-CAM…) |
+| **Dataset** | Composición del conjunto del run activo e importación de runs entrenados en otra máquina (zip o carpeta → copia a `logs/`) |
 
 **Predicción vs realidad** (rediseño de la antigua "Comparar vs training"): elige el run en la barra lateral → auto-empareja su feasibility (mismo modelo/entorno); muestra estimado vs real con semáforo y un veredicto en lenguaje natural (precisa / optimista por I/O / pesimista). Avisa si el run es distribuido (la estimación es single-GPU → la diferencia incluye el speedup).
 

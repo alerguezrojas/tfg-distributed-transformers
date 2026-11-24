@@ -9,8 +9,6 @@ primary navigation destination, so it no longer deserves a top-level nav slot.
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 import plotly.graph_objects as go
 import streamlit as st
 
@@ -19,20 +17,12 @@ from src.web.tabs import data_models
 from src.web.ui.charts import _show
 from src.web.ui.context import DashboardContext
 from src.analysis.io import load_monitor_set
+from src.web.data_paths import NOT_AVAILABLE
 from src.web.dataset_view import inspect_dir_of
 from src.web.run_registry import _DEFAULT_DATASET
 from src.web.ui import dataset_panels
-from src.web.ui.helpers import (_run_config, _load_class_distribution, _class_gallery,
+from src.web.ui.helpers import (_bigearthnet_paths, _run_config, _load_class_distribution, _class_gallery,
                                 _load_perclass, _scope_dataset, _scope_run)
-
-_META_CANDIDATES = [
-    "/media/alejandro/SSD/datasets/bigearthnet/metadata.parquet",
-    "/home/bejeque/alu0101317038/datasets/bigearthnet/metadata.parquet",
-]
-_ROOT_CANDIDATES = [
-    "/media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2",
-    "/home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2",
-]
 
 
 def render(ctx: DashboardContext) -> None:
@@ -103,8 +93,8 @@ def _classes_from_logs(run) -> list[str]:
 
 
 def _dataset_story(runs) -> None:
-    meta = next((p for p in _META_CANDIDATES if Path(p).exists()), None)
-    root = next((p for p in _ROOT_CANDIDATES if Path(p).exists()), None)
+    paths = _bigearthnet_paths()
+    meta, root = paths.metadata, paths.root
 
     # Subset actually used in the most recent runs (from their config line).
     subset = ""
@@ -160,8 +150,8 @@ def _dataset_story(runs) -> None:
                     f"{cnt:,} · {pct:.0f}%</div>",
                     unsafe_allow_html=True)
     elif not (meta and root):
-        st.caption("Dataset not mounted on this machine — splits and class counts "
-                   "shown from metadata.")
+        st.caption(f"{NOT_AVAILABLE} Splits and class counts are shown from built-in "
+                   "figures.")
 
 
 def _imbalance_treemap(meta: str | None) -> None:

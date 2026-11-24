@@ -21,9 +21,17 @@ def _test_callout(ctx: DashboardContext) -> None:
 
     Every metric elsewhere in the dashboard is *validation*; this is the honest
     final number on the test split that training never touches. Appears only
-    when a test_*.csv sits in the run's folder."""
+    when a test_<stamp>.csv of this very run sits in its folder; test CSVs of the folder that
+    no run claims by stamp are not attributed (only mentioned)."""
     run = ctx.run
-    if run is None or not getattr(run, "test_csv_paths", None):
+    if run is None:
+        return
+    unassigned = getattr(run, "unassigned_test_csv_paths", [])
+    if not getattr(run, "test_csv_paths", None):
+        if unassigned:
+            st.caption(f"{len(unassigned)} test CSV(s) in this folder match no run's stamp "
+                       "and are not attributed to this one: "
+                       + ", ".join(p.name for p in unassigned[:4]))
         return
     with st.container(border=True):
         st.markdown("#### Held-out test set")

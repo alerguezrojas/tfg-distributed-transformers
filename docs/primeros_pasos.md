@@ -46,11 +46,19 @@ Trampas conocidas:
 ## 3. Comprobar que todo funciona
 
 ```bash
+uv run paravit.py doctor              # primer paso: Python, torch/CUDA, GPU, AVX2, perfil de máquina
 uv run pytest -q                      # solo CPU, sin datos; algo más de un minuto (más de 1.200 tests)
 uv run ruff check src scripts tests   # lo mismo que pasa la CI
-uv run paravit.py --help              # train | estimate | benchmark | eval | runs | dashboard | report | menu
+uv run paravit.py --help              # train | estimate | benchmark | eval | predict | compare-preds | select-ensemble | runs | dashboard | report | menu
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
 ```
+
+`doctor` avisa de lo que falta (torch sin CUDA, GPU que el predictor no conoce, rutas…). Las
+configs traen rutas de las máquinas del autor: para las suyas, copie
+`configs/machines/example.yaml` a `configs/machines/mi_equipo.local.yaml` (no se commitea), ajuste
+las rutas de los datasets, `export PARAVIT_MACHINE=mi_equipo.local` y repita
+`doctor --config configs/<la_que_vaya_a_usar>.yaml`; así las configs no hay que editarlas y sus
+runs van a `logs/mi_equipo/`, separados de los del autor.
 
 `estimate` es el predictor analítico: da tiempo, memoria y energía sin GPU ni datos. El repositorio
 ya trae los logs de los runs reales, así que la web se puede explorar ya mismo:
@@ -97,6 +105,7 @@ Los artefactos quedan en dos sitios: `logs/local/medmnist_breast/single/vit_tiny
 
 ```bash
 uv run paravit.py eval --config configs/medmnist_breast_local.yaml \
+    --data-root ~/datasets/medmnist \
     --checkpoint checkpoints/local/medmnist_breast/single/vit_tiny_patch16_224/<sello> \
     --split test --save-predictions-auto
 ```

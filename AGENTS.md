@@ -19,7 +19,7 @@ multi-dataset y mejora del predictor analítico con medidas de más máquinas.
 ```bash
 uv sync                                  # entorno (Python 3.12, gestionado con uv)
 uv run pytest -q                         # tests: solo CPU, sin GPU ni dataset (~1,5 min)
-uv run paravit.py --help                 # CLI: train | estimate | benchmark | eval | runs | dashboard | menu
+uv run paravit.py --help                 # CLI: train | estimate | benchmark | eval | predict | compare-preds | select-ensemble | runs | report | dashboard | menu
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
 uv run paravit.py train --strategy single --config configs/train.yaml --dry-run   # ver el comando sin ejecutar
 uv run streamlit run src/web/app.py      # panel web (solo lectura de logs/)
@@ -32,20 +32,22 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 
 | Ruta | Responsabilidad |
 |---|---|
-| `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`): BigEarthNet y MedMNIST |
+| `src/data/` | Fichas de dataset (`DatasetSpec`) y su registro por nombre (`data.name`): BigEarthNet, MedMNIST y PANDA; `image_io.py` lee imágenes sueltas (`predict`) |
 | `src/models/` | `TimmClassifier` (backbone + cabeza), registro de backbones no timm (`backbones.py`: `BackboneSpec`, `hf:`; [guía](docs/modelos/README.md)), optimizador LLRD, `ModelParallelViT` |
 | `src/training/` | `Trainer` y subclases por estrategia (DDP, heterogéneo, model-parallel), `TrainingSessionBuilder`, tareas (`tasks.py`), pérdidas, métricas |
+| `src/training/strategies.py`, `launch.py` | Registro de estrategias (`StrategySpec`: lanzamiento, entorno, loaders, `with_*`, línea `Configuración:`) y lanzador común (`build_parser`, `main`) que usan los `scripts/train_*.py` y la CLI |
 | `src/training/decorators/` | Decoradores GoF: controladores (`EpochController` → tracing/deep) y aspectos (plot, hooks, confusion, batch-monitor, reporters) |
 | `src/training/events.py` | Observadores del bucle (`TrainingListener`) y flujo de eventos `events_*.jsonl` ([esquema](docs/eventos.md)) |
 | `src/training/checkpoints.py` | Política de checkpoints: carpeta por run, `best.pt`/`last.pt` (`checkpoint.keep`), escritura atómica y `resolve_checkpoint` |
 | `src/training/fn_decorators.py` | Decoradores `@` de Python: `timed`, `measure_energy`, `retry_on_cuda_oom` |
-| `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md) |
-| `src/analysis/` | Análisis puro (NumPy) de los datos de inspección: curvas, calibración, umbrales, confusión, dinámica, proyección; lo usa la web |
+| `src/performance_model.py` | **Predictor analítico** (puro: sin torch, sin GPU, sin I/O). Fórmula maestra en [`docs/performance_model.md`](docs/performance_model.md); con AMP, throughput de tres términos (cómputo + tráfico de memoria + coste por paso, `THROUGHPUT_FITS`, §8) |
+| `src/analysis/` | Análisis puro (NumPy) de los datos de inspección: curvas, calibración, umbrales, confusión, dinámica, proyección, `compare.py`/`ensemble.py` (comparar y elegir conjuntos de runs), `throughput_model.py`; lo usa la web |
 | `src/benchmark/` | Benchmark empírico en la máquina real (Facade `BenchmarkChecker`) |
-| `src/cli.py`, `src/cli_menu.py` | CLI Typer y menú interactivo; lanzadores `paravit.py` / `tfg.py` (alias) |
-| `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV |
-| `scripts/` | Puntos de entrada por estrategia (`train_single_gpu.py`, `train_ddp.py`, …) + `benchmark.py`, `eval.py` |
-| `kaggle/` | Kernels de Kaggle (2 × T4) para PANDA: mosaicos y entrenamientos con DDP; [guía](kaggle/README.md) |
+| `src/cli.py`, `src/cli_menu.py`, `src/config_io.py` | CLI Typer, menú interactivo y carga de YAML; lanzadores `paravit.py` / `tfg.py` (alias) |
+| `src/web/` | Dashboard Streamlit: `app.py` orquesta, `tabs/*` con `render(ctx)`, parsers de logs/CSV; lógica pura del selector y los enlaces en `run_select.py`, rutas de datos desde los perfiles en `data_paths.py` |
+| `scripts/` | Puntos de entrada por estrategia (`train_single_gpu.py`, `train_ddp.py`, …) + `benchmark.py`, `eval.py`, `predict.py`, `select_ensemble.py`, `compare_predictions.py`, `predictor_architecture_study.py` |
+| `src/slurm.py`, `cluster/` | `paravit train --launcher slurm` (rendezvous `c10d`, mismo comando en todos los nodos), plantillas `cluster/slurm/*.sbatch` y receta Apptainer; [guía](cluster/README.md) |
+| `kaggle/` | Kernels de Kaggle (2 × T4): mosaicos y entrenamientos de PANDA con DDP, y `benchmark_t4/`; [guía](kaggle/README.md) |
 | `configs/` | YAML de entrenamiento (índice en `configs/README.md`) |
 | `logs/{env}/[{dataset}/]{mode}/{model}/` | Artefactos de cada run (se commitean); `checkpoints/<env>/.../<sello>/{best,last}.pt` no |
 | `tests/unit`, `tests/integration` | pytest, todo en CPU |
@@ -55,7 +57,8 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
 
 - **El bucle de entrenamiento vive solo en `EpochController.fit()`** (Template Method). `Trainer.fit()`
   lanza `NotImplementedError` a propósito. Las cuatro estrategias comparten el mismo bucle y los
-  mismos decoradores; una estrategia nueva es una subclase de `Trainer` + un `with_*` en el builder.
+  mismos decoradores; una estrategia nueva es una subclase de `Trainer` + un `with_*` en el builder + un `StrategySpec`
+  registrado en `src/training/strategies.py` (la CLI, el menú y el lanzador salen del registro).
 - **Nuevo comportamiento transversal = nuevo decorador**, no `if`s dentro de `Trainer`.
 - **El núcleo no asume un dataset.** Clases, canales y lector vienen de la `DatasetSpec`; lo que
   depende del tipo de problema (pérdida, sigmoide/softmax, métricas, umbral) vive en la `Task`.
@@ -81,6 +84,10 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
   mergear.
 - **Commits:** Conventional Commits en español (`feat:`, `fix(web):`, `docs:`, `chore:`…), cortos.
   **Sin** `Co-Authored-By` ni "Generated with…" en commits ni PRs.
+- **Máquina:** las rutas dependientes del equipo van en `configs/machines/<perfil>.yaml`
+  (`--machine`, `PARAVIT_MACHINE` o host; `src/machine.py`), no en las configs de experimento; todo
+  punto de entrada carga la config con `prepare_config` (perfil + `--set`) y `paravit doctor`
+  diagnostica la máquina.
 - **Idioma:** documentación en español (registro canario: "ustedes", no "vosotros"); UI de la web en
   inglés. En el código, seguir el idioma del fichero que se edita.
 - **YAML:** escribir los floats en decimal (`lr: 0.0001`); `1e-4` se parsea como string.
@@ -96,6 +103,8 @@ basta un modelo pequeño: `--model vit_tiny_patch16_224 --epochs 1`.
   incompatible con el driver → reinstalar cu118. Detalle en [`docs/infraestructura.md`](docs/infraestructura.md).
 - NCCL no admite dos ranks en la misma GPU; gloo no admite `ReduceOp.AVG`.
 - Los tests y la CI usan torch CPU; no asumir CUDA en tests.
+- PC del autor con 15 GB de RAM: la batería de tests llega a ~4,5 GB; nunca dos a la vez y, en
+  local, con `systemd-run --user --scope -p MemoryMax=5G` (el 23/11 `systemd-oomd` cerró la sesión).
 
 ## Continuidad
 

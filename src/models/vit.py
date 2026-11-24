@@ -31,7 +31,8 @@ class TimmClassifier(nn.Module):
     the pretrained position embeddings. ``None`` keeps the model's default (224).
     """
 
-    # Model families whose backbone exposes `.blocks` and `.patch_embed` → LLRD-compatible
+    # Name prefixes read as "a ViT" by ``is_vit`` (model parallelism splits ``.blocks``).
+    # LLRD does not use them: see ``supports_llrd``.
     VIT_PATTERNS = ("vit_", "deit_", "swin_")
 
     def __init__(
@@ -110,10 +111,33 @@ class TimmClassifier(nn.Module):
             self.backbone.eval()
         return self
 
+    def set_grad_checkpointing(self, enable: bool = True) -> None:
+        """Activation checkpointing del backbone: recalcula las activaciones de cada bloque
+        en el backward en vez de guardarlas (menos memoria, ~30 % más de cómputo). Lo ofrecen
+        los modelos de timm y los backbones registrados que lo declaren; si no, error claro."""
+        fn = getattr(self.backbone, "set_grad_checkpointing", None)
+        if fn is None:
+            raise ValueError(f"el backbone de '{self.model_name}' no admite activation "
+                             "checkpointing: quiten training.grad_checkpointing")
+        fn(enable)
+
+    @property
+    def supports_llrd(self) -> bool:
+        """True when ``build_llrd_optimizer`` can split the backbone into layers: a
+        registered/``hf:`` encoder with ``llrd_layout()``, a timm ViT (``blocks`` +
+        ``patch_embed``) or any timm model with ``group_matcher()`` (Swin, ConvNeXt,
+        EfficientNet, ResNet, EVA…)."""
+        if self.backbone_spec is not None:
+            return self.backbone_spec.llrd
+        b = self.backbone
+        return (hasattr(b, "llrd_layout") or (hasattr(b, "blocks") and hasattr(b, "patch_embed"))
+                or hasattr(b, "group_matcher"))
+
     @property
     def is_vit(self) -> bool:
-        """True for backbones LLRD can walk: timm ViT/DeiT/Swin, or a registered/``hf:``
-        encoder that exposes ``llrd_layout()``."""
+        """True for a ViT-like backbone by name (or a registered/``hf:`` encoder with
+        ``llrd_layout()``). Only model parallelism uses it (it splits ``backbone.blocks``);
+        whether LLRD applies is ``supports_llrd``."""
         if self.backbone_spec is not None:
             return self.backbone_spec.llrd
         return any(self.model_name.startswith(p) for p in self.VIT_PATTERNS)
@@ -176,10 +200,49 @@ def _llrd_layout(backbone: nn.Module):
     """``(embedding, [block…], other)`` parameter lists as ``(name, param)`` pairs."""
     if hasattr(backbone, "llrd_layout"):      # non-timm encoders (src.models.backbones)
         return backbone.llrd_layout()
-    top = [(n, p) for n, p in backbone.named_parameters()
-           if "blocks" not in n and "patch_embed" not in n]
-    return (list(backbone.patch_embed.named_parameters()),
-            [list(b.named_parameters()) for b in backbone.blocks], top)
+    if _is_vit_layout(backbone):                                                # timm ViT/DeiT
+        # "top" is every parameter outside patch_embed and blocks, by identity: a name
+        # filter would also drop CaiT's ``blocks_token_only`` or XCiT's ``cls_attn_blocks``.
+        seen = {id(p) for p in backbone.patch_embed.parameters()}
+        seen |= {id(p) for p in backbone.blocks.parameters()}
+        top = [(n, p) for n, p in backbone.named_parameters() if id(p) not in seen]
+        return (list(backbone.patch_embed.named_parameters()),
+                [list(b.named_parameters()) for b in backbone.blocks], top)
+    return _group_matcher_layout(backbone)
+
+
+def _is_vit_layout(backbone: nn.Module) -> bool:
+    return (not hasattr(backbone, "llrd_layout") and hasattr(backbone, "blocks")
+            and hasattr(backbone, "patch_embed"))
+
+
+#: Depth the decay of a non-ViT model is spread over (a ViT-S/B has 12 blocks): with it,
+#: ``llrd_decay`` means the same total decay from head to stem for every family.
+LLRD_REFERENCE_BLOCKS = 12
+
+
+def _group_matcher_layout(backbone: nn.Module):
+    """The same ``(embedding, [block…], other)`` split for any timm model, from its own
+    fine-grained ``group_matcher()`` (the grouping timm uses for layer decay): the first
+    group is the stem / patch embedding and every later group is one block, in
+    input-to-output order (timm folds the final norm into the last block). "other" holds
+    what is left of timm's classifier ``head`` module (``head.norm``…), which timm leaves
+    unmatched in a last group of its own: like a ViT's final norm, it gets ``decay^1``."""
+    from timm.models import group_parameters
+    if not hasattr(backbone, "group_matcher"):
+        raise ValueError(f"LLRD needs a backbone with blocks or group_matcher(), "
+                         f"got {type(backbone).__name__}: set training.llrd_decay: 0.0")
+    named = dict(backbone.named_parameters())
+    layers = group_parameters(backbone, backbone.group_matcher(coarse=False))
+    # what is left of timm's classifier ``head`` module (``head.norm``, ``head.pre_logits``
+    # in ConvNeXt/MaxViT…) is not a block: it goes to "other", next to the head.
+    top = [(n, named[n]) for k in sorted(layers) for n in layers[k] if n.startswith("head.")]
+    groups = [g for g in ([(n, named[n]) for n in layers[k] if not n.startswith("head.")]
+                          for k in sorted(layers)) if g]
+    if len(groups) < 2:
+        raise ValueError(f"{type(backbone).__name__}.group_matcher() gives a single group; "
+                         "LLRD needs a stem and blocks: set training.llrd_decay: 0.0")
+    return groups[0], groups[1:], top
 
 
 def build_llrd_optimizer(
@@ -191,23 +254,28 @@ def build_llrd_optimizer(
     """Build AdamW with layer-wise learning rate decay (LLRD) for ViT fine-tuning.
 
     LR decays geometrically from head (lr_base) toward patch_embed
-    (lr_base * llrd_decay^(num_blocks+2)). Bias and norm params skip weight decay.
+    (lr_base * llrd_decay^(num_blocks+2)). Biases, norms and every 1-D parameter
+    (BatchNorm, layer-scale) skip weight decay.
 
-    Only valid for ViT/DeiT/Swin backbones (model.is_vit == True).
-    For CNN models, use standard AdamW instead.
+    Valid for any backbone with ``model.supports_llrd``: timm ViT/DeiT use their
+    ``blocks``; other timm models (Swin, ConvNeXt, EfficientNet, ResNet…) are split by
+    their ``group_matcher()``, so "block" there is a timm block (a stage's block). Their
+    depth varies a lot (5 groups in MaxViT-T, 37 in ConvNeXt-S), so for them the decay is
+    spread as if they had ``LLRD_REFERENCE_BLOCKS`` (12) blocks: the first block gets
+    ``decay^12`` and the stem ``decay^14``, as in a ViT-S/B.
 
     Decay schedule (ViT-B/16, 12 blocks):
-      head            → lr_base
-      backbone.norm   → lr_base * decay^1
-      blocks[11]      → lr_base * decay^2
+      head                  → lr_base
+      backbone.norm, tokens → lr_base * decay^1
+      blocks[11]            → lr_base * decay^1
       ...
-      blocks[0]       → lr_base * decay^13
-      patch_embed     → lr_base * decay^14
+      blocks[0]             → lr_base * decay^12
+      patch_embed           → lr_base * decay^14
     """
-    if not model.is_vit:
+    if not model.supports_llrd:
         raise ValueError(
-            f"LLRD requires a ViT/DeiT/Swin backbone, got '{model.model_name}'. "
-            "Use standard AdamW for CNN models."
+            f"LLRD cannot split the backbone of '{model.model_name}' into layers: "
+            "set training.llrd_decay: 0.0 (plain AdamW)."
         )
 
     no_decay = {"bias", "norm"}
@@ -217,7 +285,7 @@ def build_llrd_optimizer(
         for name, param in named_params:
             if not param.requires_grad:
                 continue
-            if any(kw in name for kw in no_decay):
+            if param.ndim <= 1 or any(kw in name for kw in no_decay):
                 no_decay_p.append(param)
             else:
                 decay_p.append(param)
@@ -226,6 +294,10 @@ def build_llrd_optimizer(
     groups: list[dict] = []
     embed_named, blocks_named, top_named = _llrd_layout(model.backbone)
     num_blocks = len(blocks_named)
+    vit = _is_vit_layout(model.backbone) or hasattr(model.backbone, "llrd_layout")
+    # exponent of the decay at a block's depth (1 = last block) and at the stem
+    scale = 1.0 if vit else LLRD_REFERENCE_BLOCKS / num_blocks
+    stem_exp = num_blocks + 2 if vit else LLRD_REFERENCE_BLOCKS + 2
 
     def _add(params_decay, params_no_decay, lr):
         if params_decay:
@@ -242,10 +314,26 @@ def build_llrd_optimizer(
     # Transformer blocks — deeper blocks get lower LR
     for block_idx in reversed(range(num_blocks)):
         depth = num_blocks - block_idx  # block 11 → depth 1, block 0 → depth 12
-        lr_block = lr_base * (llrd_decay ** depth)
+        lr_block = lr_base * (llrd_decay ** (depth * scale))
         _add(*_split(blocks_named[block_idx]), lr_block)
 
     # patch_embed — deepest
-    _add(*_split(embed_named), lr_base * (llrd_decay ** (num_blocks + 2)))
+    _add(*_split(embed_named), lr_base * (llrd_decay ** stem_exp))
 
+    grouped = [id(p) for g in groups for p in g["params"]]
+    trainable = {id(p) for p in model.parameters() if p.requires_grad}
+    if len(grouped) != len(set(grouped)) or set(grouped) != trainable:
+        raise RuntimeError(f"LLRD layout of '{model.model_name}' misses or repeats parameters "
+                           f"({len(set(grouped))} grouped of {len(trainable)} trainable)")
     return torch.optim.AdamW(groups)
+
+
+def warn_if_below_lr_min(optimizer: torch.optim.Optimizer, lr_min: float) -> int:
+    """Number of parameter groups that start below the cosine's ``eta_min`` (it would
+    *raise* their LR during training, flattening LLRD), with an ``[aviso]`` if any."""
+    low = [g["lr"] for g in optimizer.param_groups if g["lr"] < lr_min]
+    if low:
+        print(f"  [aviso] {len(low)} de {len(optimizer.param_groups)} grupos de LLRD empiezan "
+              f"por debajo de lr_min={lr_min:g} (mínimo {min(low):.1e}): el coseno les subirá "
+              "la tasa. Bajen lr_min o suban llrd_decay.")
+    return len(low)

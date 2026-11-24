@@ -6,8 +6,48 @@
 
 ## Estado actual
 
-> Actualizado el 21/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 23/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
+
+**Versión 1.4.0 (24/11/2026), en `main`.** Recoge las fases 0-4 del plan de profesionalización
+(errores, `paravit doctor` y perfiles de máquina, lanzador único, web, Slurm y Apptainer), la
+acumulación de gradientes y el *activation checkpointing*, el predictor de tres términos con AMP y
+el all-reduce en anillo con el ancho de banda medido, los resultados de Kaggle (una T4 frente a
+dos) y la limpieza de los avisos de SonarCloud y CodeQL. En curso: medidas de la T4 en Kaggle
+(barrido de lotes y fp32, kernel `benchmark_t4`) y el punto C2 de la web (estimación frente a
+medida con el manifiesto del run).
+
+**Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
+(Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
+y una fuga de memoria del perfilado corregida (PRs #259-#263, todos en `develop`). El detalle está
+en "Avance del plan", más abajo. El lote `strategies_512` de Kaggle ya está analizado (una T4 frente a dos). Pendiente del
+autor: la VPN de VERODE, para probar el clúster y validar el predictor en una tercera GPU.
+
+**Fase 0 de la auditoría (23/11/2026): errores corregidos** (PR a `develop`). DDP con el índice del
+dispositivo y no con el rank global (multinodo), `test_<sello>.csv` atribuido a su run y no a toda
+la carpeta, `paravit runs` con la métrica principal del run, QWK y semilla en los resúmenes de
+semillas (la línea `Configuración:` de DDP lleva ya `seed=` y `loss=`), `gpu_spec()` sin coincidencia
+por subcadena, test del muestreador independiente de `CUDA_VISIBLE_DEVICES` y reglas de `.gitignore`
+para `events_*.jsonl` y `test_preds_*.npz`. Siguiente: fase 1 (entorno y perfiles de máquina).
+
+**Criba de modelos en PANDA (22/11/2026): Swin-T mejora a la base.** Con la misma receta que el
+ViT-S a 512 px (el LLRD ya funciona con cualquier modelo de timm, PR #234) se probaron siete
+modelos con una semilla en la GPU local. Solo Swin-T (`swin_tiny_patch4_window7_224`) se sale:
+con tres semillas, **QWK de test 0,821 ± 0,011 frente a 0,794 ± 0,012, +0,027 [+0,008; +0,046]**,
+la primera mejora significativa del QWK en el proyecto; también la exactitud (+0,058) y el AUC de
+cáncer sí o no (+0,017). Un Swin-T rinde como el conjunto de tres ViT-S (0,819), con un 60 % más
+de tiempo por run (38 min). ConvNeXt-T, que parecía mejorar con la semilla 42, queda igual con tres
+(+0,002); DeiT-III-S, EVA-02-S, EfficientNet-B0 y EfficientNetV2-S empatan con la base y ResNet-50
+queda por debajo (−0,075). Swin-T pasa a ser el modelo de referencia. Tablas en
+[datasets/panda.md](datasets/panda.md#criba-de-modelos-22112026).
+
+**Modelos grandes y conjuntos de arquitecturas (23/11/2026): QWK de test 0,858.** En Kaggle
+(2 × T4), SwinV2-T (0,835), ViT-B (0,823) y ConvNeXt-S (0,811) superan a la base con la semilla 42,
+pero ninguno a Swin-T; tampoco las variantes de Swin-T (pesos in22k, 25 épocas). Lo que sí sube es
+**mezclar arquitecturas**: con los miembros elegidos solo en validación (el mejor run de cada
+arquitectura, los 8 primeros), el conjunto da **0,858 en test**, +0,029 [+0,013; +0,047] sobre el
+conjunto de tres semillas de Swin-T (0,829), y dos arquitecturas (Swin-T + SwinV2-T) ya dan 0,852.
+Para elegir sin mirar el test se guardaron las predicciones de validación de los 21 runs.
 
 **PANDA a 1.024 px en Kaggle (20-21/11/2026), pregunta cerrada:** con tres semillas por
 resolución (1.024 px en 2 × T4 con DDP; 512 px en local), el QWK de test pasa de 0,794 ± 0,012 a
@@ -167,15 +207,96 @@ en [datasets/panda.md](datasets/panda.md#limpieza-de-etiquetas-fuera-de-pliegue-
 probabilidades de varios modelos (cargados de uno en uno). Con las tres semillas base reproduce el
 QWK de test de 0,819 (0,8193, exactitud 0,674).
 
+**Confirmación con semillas (23/11/2026).** Con tres semillas, ViT-B (0,822 ± 0,003), Swin-T
+(0,821) y SwinV2-T (0,820) superan a la base (0,794) por igual; la pérdida ordinal con Swin-T da
+0,827 ± 0,014 (+0,006, no significativo, igual que con ViT-S). El conjunto de 6 arquitecturas
+repetido con runs de semillas que no intervinieron en su elección da 0,852 y 0,846 (+0,017-0,023
+sobre el mejor conjunto de una arquitectura): la ganancia de mezclar arquitecturas se confirma.
+Detalle en [datasets/panda.md](datasets/panda.md#confirmación-con-más-semillas-23112026).
+
+**Predictor y arquitecturas (23/11/2026).** El tiempo de entrenamiento de arquitecturas que no
+son ViT no sigue a los FLOPs: con 13 arquitecturas medidas con lotes sintéticos a 512 px (RTX 3060
+Ti y una T4 de Kaggle), un modelo de dos términos (FLOPs + GB de activaciones que guarda autograd,
+medidos en CPU) baja el error en validación cruzada de 193 % a 10 % y predice el coste relativo de
+las arquitecturas en la T4, sin reajustar, con un 11 % (82 % con solo FLOPs). En la T4 queda un
+factor común de 1,49 de causa sin identificar (sobre todo en el término de memoria) y la familia
+Swin se escapa (+24-42 %). El −40 % de ViT-S a 512 px en Kaggle no es la GPU; la hipótesis es
+contención de CPU, pendiente de un control con `num_workers=2`. Es estudio, no predictor todavía:
+[performance_model.md, sección 8](performance_model.md#8-arquitecturas-distintas-de-vit-flops-frente-a-flops--memoria-23112026).
+El benchmark ya usa los tamaños de partición del dataset de la config (PR #246).
+
+**En curso (23/11/2026):** en Kaggle, el lote `seeds_512` (versión 5 del kernel): semillas 43 y 44
+de SwinV2-T y ViT-B, para confirmarlos y repetir el conjunto con runs que no intervinieron en la
+elección, y Swin-T con DDP en 2 × T4, el mismo run que el local en una GPU (comparación de
+estrategias). Predicciones de validación y test en `checkpoints/runs/panda_m_*/` (local) y en
+`/media/alejandro/SSD/kaggle-out/panda_models_512/results/` (Kaggle). Las colas locales están en
+`~/experimentos_paravit/cola_*.sh`. VERODE no es accesible sin la VPN de la ULL.
+
+**Plan de profesionalización (23/11/2026, a petición del autor).** El autor pidió más estrategias
+distribuidas consolidadas, un predictor más completo y una arquitectura, una usabilidad y una web
+preparadas para trabajar en otras máquinas. Hay dos informes de base:
+[research/auditoria_arquitectura_usabilidad.md](research/auditoria_arquitectura_usabilidad.md)
+(hallazgos con evidencia y plan por fases) y
+[research/estrategias_distribuidas.md](research/estrategias_distribuidas.md) (qué estrategias,
+en qué orden y qué términos necesita el predictor). Orden: fase 0, errores (DDP multinodo con el
+rank global, resultados de test atribuidos por carpeta, QWK y semilla en los resúmenes, búsqueda
+de GPU); fase 1, entorno y perfiles de máquina (`paravit doctor`, torch por CUDA); fase 2, un solo
+lanzador con un registro de estrategias; fase 3, web; fase 4, clúster (Slurm, Apptainer); fase 5,
+estrategias nuevas (pipeline con micro-lotes, acumulación de gradientes y *activation
+checkpointing*, FSDP2, ZeRO-1), cada una con su término en el predictor y validada en Kaggle.
+Antes de modelarlas hay que medir el ancho de banda real entre las dos T4.
+
+**Avance del plan (23/11/2026):**
+- **Fase 0, hecha** (PRs #250-#252): DDP multinodo con el índice de la GPU local, resultados de test
+  emparejados por sello (con respaldo para carpetas de un solo run), `paravit runs` con la métrica
+  principal, QWK y semilla en los resúmenes, `seed=`/`loss=` en la línea `Configuración:` de todas
+  las estrategias, búsqueda exacta de GPU, documentación al día, `.gitignore` de eventos.
+- **Fase 1, en parte** (PR #254): `paravit doctor`, perfiles de máquina (`configs/machines/`,
+  `--machine`, `PARAVIT_MACHINE` o el nombre del host; una config de la propia máquina no cambia) y
+  `--set clave=valor`. Pendiente: torch por variante de CUDA (A2; cuidado: el `uv` local reescribe
+  el lock) y el paquete instalable (A8).
+- **Fase 2, hecha** (PR #257): lanzador único (`src/training/launch.py`) con registro de estrategias
+  (`src/training/strategies.py`); los cuatro `scripts/train_*.py` son envoltorios; todas las
+  estrategias aceptan las opciones comunes (`--resume`, `--inspect`, `--batch-size`…). Comprobado
+  en GPU: mismos logs y métricas que antes con las cuatro estrategias.
+- **Fase 3, primer bloque, hecho** (PR #260): web con selector de runs con búsqueda y filtros,
+  enlaces directos (`?run=<sello>&tab=<sección>`), tabla de test por dataset, rutas de datos desde
+  los perfiles de máquina, clases desde el manifiesto del run, título ParaViT-Lab, colores aptos
+  para daltonismo y *GPU time* por número de GPU. Pendiente: C2 (estimación frente a medida con el
+  manifiesto del run y el predictor nuevo) y vista de conjuntos.
+- **Fase 4, hecha salvo probarla en el clúster** (PR #261): `paravit train --launcher slurm`
+  (rendezvous `c10d` en el primer nodo, el mismo comando en todos), plantillas
+  `cluster/slurm/*.sbatch` (también con `srun`) y receta Apptainer cu118 **sin construir**
+  (`cluster/README.md`). Falta probarlo en VERODE, que necesita la VPN.
+- **Fase 5, empezada:** acumulación de gradientes y *activation checkpointing* (PR #259).
+- **Predictor de tres términos integrado** (PR #263): con AMP, el throughput sale de cómputo +
+  tráfico de memoria + coste fijo por paso (`THROUGHPUT_FITS` para la 3060 Ti y la T4, el resto
+  por hoja técnica). La 3060 Ti se recalibró con un barrido de lotes que mide el coste fijo
+  (18 ms). Con entrenamientos reales de PANDA, el error medio del tiempo por época baja del 20 %
+  al 8 % (3060 Ti) y del 47 % al 17 % (2 × T4). Revisión independiente hecha. Detalle en
+  [performance_model.md §8](performance_model.md).
+- **Fuga de memoria corregida** (PR #262): perfilar modelos retenía sus activaciones (hasta 9,7 GB)
+  y contribuyó a que `systemd-oomd` cerrara la sesión de escritorio el 23/11. En esta máquina
+  (15 GB) los tests se ejecutan con `systemd-run --user --scope -p MemoryMax=5G` y nunca dos
+  baterías a la vez.
+- **Una T4 frente a dos (24/11/2026):** con la segunda T4, ViT-S acelera ×1,35 y Swin-T ×1,71, sin
+  cambio de QWK. Con dos GPU manda la decodificación en CPU de Kaggle (4 vCPU al 100 %); el control
+  con 2 procesos de carga es más lento, así que no es contención. All-reduce medido: 4,05 GB/s
+  (el predictor supone 16). Detalle en
+  [datasets/panda.md](datasets/panda.md#una-t4-frente-a-dos-en-la-misma-máquina-23-24112026).
+  Siguiente: término de comunicación del predictor con la fórmula en anillo y el β medido,
+  throughput en fp32, pipeline con micro-lotes (fase 5) y C2 de la web.
+
 **Siguiente paso recomendado:** (1) **Adaptación a otro hospital:** ajustar con pocas biopsias
 del otro centro y medir cuántas hacen falta (lo que habrá que hacer con el dataset del médico);
-normalización de tinción (Macenko). (2) Un modelo más capaz que el ViT-S sobre mosaico (MIL con
-atención sobre los tiles, o un backbone mayor), ya que el cuello de botella es el modelo y no los
-datos. (3) Grad-CAM frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación
+normalización de tinción (Macenko). (2) Con Swin-T como referencia: ver si los modelos grandes de
+Kaggle (SwinV2-T sobre todo) suben más, y llevar Swin-T a las estrategias de distribución (DDP en
+2 × T4 frente a una GPU, y el tiempo medido frente al del predictor). Después, MIL con atención
+sobre los tiles si el mosaico se queda corto. (3) Grad-CAM frente a las máscaras de PANDA. (4) Predictor: el tiempo en T4 (limitación
 por potencia, lotes pequeños por GPU).
 
 Técnicos: aumentos de color en GPU y el Grad-CAM del monitor sin memoria a 1.024 px en la T4 (es
-un aviso, no detiene el run). Pendientes de la fase 4: `paravit predict`/`explain` con la prueba
+un aviso, no detiene el run). Pendientes de la fase 4: `paravit explain` con la prueba
 de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
@@ -218,7 +339,9 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 ### Limitaciones del predictor (`src/performance_model.py`)
 
 1. **Una sola MFU (0,17)**, calibrada con vit_base en T4 y aplicada a toda GPU y modelo (de ahí el
-   −24 % en ResNet50 y el +18 % en vit_large).
+   −24 % en ResNet50 y el +18 % en vit_large). *(Resuelto en precisión mixta el 23/11/2026: modelo de tres
+   términos, cómputo + tráfico de memoria + coste fijo por paso, con coeficientes medidos en la
+   3060 Ti y la T4 y transferidos por hoja técnica al resto; fp32 sigue con la MFU.)*
 2. **Tabla cerrada de 6 modelos:** con cualquier otro, `predict()` devuelve `None`. *(Resuelto en la
    fase 5: perfilado automático; las activaciones siguen sin calibrar fuera de la tabla.)*
 3. **`r_io` en img/s de BigEarthNet:** mezcla disco, decodificación y transforms, y no modela
@@ -286,8 +409,10 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Corregido: `model.dropout` del YAML no se aplicaba (la cabeza usaba siempre 0.1).
 - [x] Corregido: el builder no pasaba la pérdida configurada al trainer heterogéneo (`pos_weight` se perdía).
 - [ ] La web (galería y estadísticas del dataset) sigue siendo específica de BigEarthNet.
-- [ ] El benchmark aún toma de BigEarthNet los tamaños de split por defecto y el perfil de I/O
-      (ficheros `*.tif`); se generaliza junto con el modelo de I/O en la fase 5.
+- [x] El benchmark ya no toma de BigEarthNet los tamaños de split (salen del dataset de la config
+      o de `--train-size/--val-size`), ni el perfil de I/O `*.tif` ni el prior de F1 (solo con
+      BigEarthNet). Pendiente: un perfil de I/O propio de cada dataset, junto con el modelo de
+      I/O de la fase 5.
 
 ### Fase 3 — Nuevos datasets (en curso)
 - [x] MedMNIST: BreastMNIST (binaria, cáncer de mama), DermaMNIST (multiclase, melanoma),
@@ -309,10 +434,18 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
   - [x] `groups.npz` con `data_provider` (vista *Subgroups*) y pérdida ordinal (sin mejora clara con 3 semillas).
   - [x] Aumentos de color y entrenamiento por hospital (generalización entre centros).
   - [x] Tres semillas de base y ordinal; ordinal y color entrenando en un solo hospital.
+  - [x] Herramienta de comparación estadística de grupos de runs (`paravit compare-preds`, `docs/guia_de_uso.md`): media ± std, conjunto y *bootstrap* emparejado desde `test_preds.npz`.
+  - [x] Selección de conjuntos en validación (`paravit select-ensemble`, `docs/guia_de_uso.md`): `per-group` y `greedy`, una sola evaluación en test.
   - [x] Más resolución: 1.024 px en Kaggle con tres semillas (21/11/2026). No mejora el QWK de
     forma significativa.
   - [x] Etiquetas ruidosas con OUSM (21/11/2026): no mejora el QWK.
   - [x] Limpieza de etiquetas fuera de pliegue (21/11/2026): empeora el QWK (−0,015).
+  - [x] Criba de modelos a 512 px (22/11/2026): Swin-T mejora el QWK de forma significativa
+    (0,821 ± 0,011, tres semillas); ConvNeXt-T, DeiT-III, EVA-02 y EfficientNet empatan.
+  - [x] Modelos grandes en Kaggle (ViT-B, ConvNeXt-S, SwinV2-T, EfficientNet-B3, MaxViT-T):
+    ninguno supera a Swin-T (23/11/2026).
+  - [x] Conjunto de arquitecturas elegido en validación: QWK de test 0,858 (23/11/2026).
+  - [x] Semillas 43 y 44 de SwinV2-T, ViT-B, EVA-02-S y Swin-T ordinal; conjunto repetido con ellas (23/11/2026).
   - [ ] Adaptación a otro hospital y normalización de tinción.
 - [ ] Siguiente dataset médico grande: NIH ChestX-ray14 a resolución completa o PatchCamelyon.
 - [ ] NIH ChestX-ray14 (multi-etiqueta, 14 clases, PNG grandes: I/O dominado por la decodificación).
@@ -344,7 +477,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [x] Que la web lea las predicciones de test (`test_preds_<ts>.npz`) además del panel de validación:
       selector «Validation / Test» en el Inspector (Curves, Clinical con cortes «grado ≥ k»,
       Calibration y Subgroups).
-- [ ] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint.
+- [x] `paravit predict`: clasificar imágenes sueltas o una carpeta con un checkpoint (o un conjunto),
+      con la transformación de evaluación de la ficha del dataset (`DatasetSpec.image_reader`).
 - [ ] `paravit explain`: mapas Grad-CAM del panel fijo fuera del bucle medido; la web los muestra.
 - Segunda ola, según el [inventario del sector](research/inventario_herramientas_observabilidad.md)
   (lo que ninguna herramienta general trae y la imagen médica exige):
@@ -369,7 +503,8 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Esquema estándar de cada medida: huella de hardware y software, configuración, throughput
       estable, pico de VRAM, potencia y **espera del DataLoader** (nuevos eventos del flujo).
 - [ ] Script de barrido con sondas cortas (N pasos en régimen estable) para muchas configuraciones.
-- [ ] Entorno portable para HPC (contenedor Apptainer) y plantillas Slurm multinodo.
+- [x] Entorno portable para HPC (contenedor Apptainer) y plantillas Slurm multinodo (PR #261;
+      la imagen está sin construir y falta probarlo en VERODE).
 
 ### Fase 5 — Predictor v2 (caja gris)
 - [x] FLOPs y parámetros automáticos para cualquier modelo de timm (`torch.utils.flop_counter`):
@@ -379,6 +514,15 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Comunicación: ring all-reduce, latencia, solapamiento y multinodo.
 - [ ] Calibración por microbenchmarks en la máquina destino; intervalos de incertidumbre.
 - [ ] Validación con calibración y validación separadas (dejando fuera GPU, modelo o dataset) y baselines (lineal, Amdahl, roofline).
+  - [x] Estudio de arquitecturas: FLOPs frente a FLOPs + memoria de activaciones, validado en otra
+    GPU (T4) y con modelos fuera de la calibración (23/11/2026; `performance_model.md`, sección 8).
+  - [x] Integrar el término de memoria en `performance_model.py`: ancho de banda en `GPU_TABLE`,
+    coeficientes por GPU y coste fijo por paso medido con barrido de lotes (PR #263, solo AMP).
+  - [ ] Tercera GPU para validar sin ajustarla (V100 de VERODE), el factor común de la T4 (reloj
+    sostenido) y el término de tres partes en fp32.
+  - [x] ¿Contención de CPU en Kaggle? Descartada (24/11/2026): con `num_workers=2` la época es más
+    lenta; con 2 × T4 manda la decodificación en CPU (4 vCPU al 100 %). Falta el término de CPU
+    en el modelo de I/O (casilla de arriba).
 
 ### Fase 6 — Campaña en máquinas nuevas y publicación
 - [ ] Barridos con ≥3 repeticiones por configuración.

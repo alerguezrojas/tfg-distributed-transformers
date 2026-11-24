@@ -22,12 +22,25 @@ from src.training.checkpoints import DEFAULT_KEEP
 from src.training.trainer import Trainer
 
 
+def ddp_device_ids(device: torch.device) -> list[int] | None:
+    """``device_ids`` for ``DDP(...)``: the index of the device the model really lives on.
+
+    Not the global rank: on several nodes with one GPU each (VERODE) rank 1 uses ``cuda:0``
+    of its node, and the script places the model on ``cuda:(local_rank % device_count)``.
+    ``None`` on CPU (gloo), where ``device_ids`` must be omitted.
+    """
+    if device.type != "cuda":
+        return None
+    return [device.index if device.index is not None else torch.cuda.current_device()]
+
+
 class DDPTrainer(Trainer):
     """DDP-aware trainer for multi-GPU training on a single node.
 
     Parameters
     ----------
-    rank:       Global rank of this process (0 … world_size-1).
+    rank:       Global rank of this process (0 … world_size-1). Not used to pick the GPU:
+                that is ``device``'s index.
     world_size: Total number of processes / GPUs.
 
     The model is wrapped with DDP in __init__, AFTER the optimizer is built
@@ -50,20 +63,29 @@ class DDPTrainer(Trainer):
         rank: int = 0,
         world_size: int = 1,
         checkpoint_keep: str = DEFAULT_KEEP,
+        model_name: str | None = None,
+        grad_accum_steps: int = 1,
     ):
         super().__init__(model, optimizer, scheduler, device, checkpoint_dir,
                          criterion, grad_clip, label_smoothing, mixup_alpha,
-                         precision=precision, task=task, checkpoint_keep=checkpoint_keep)
+                         precision=precision, task=task, checkpoint_keep=checkpoint_keep,
+                         model_name=model_name, grad_accum_steps=grad_accum_steps)
         self.rank = rank
         self.world_size = world_size
         self._epoch = 0
-        # device_ids only valid for CUDA; omit for CPU (gloo backend)
-        if device.type == "cuda":
-            self.model = DDP(self.model, device_ids=[rank])
-        else:
-            self.model = DDP(self.model)
+        # device_ids only valid for CUDA (the model's own device, not the global rank);
+        # omitted for CPU (gloo backend)
+        device_ids = ddp_device_ids(device)
+        self.model = DDP(self.model, device_ids=device_ids) if device_ids else DDP(self.model)
 
     # ── Overrides ────────────────────────────────────────────────────────────
+
+    def load_checkpoint(self, path) -> dict:
+        # After --resume the sampler must continue with the next epoch's shuffle, not repeat
+        # epoch 1's (Trainer.load_checkpoint only sets _current_epoch / _epoch_offset).
+        ckpt = super().load_checkpoint(path)
+        self._epoch = ckpt.get("epoch", 0)
+        return ckpt
 
     def train_epoch(self, loader: DataLoader) -> dict:
         self._epoch += 1

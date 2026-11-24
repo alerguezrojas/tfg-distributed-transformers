@@ -72,6 +72,10 @@ cover/
 *.log
 # Per-run inspection data (predictions, embeddings, Grad-CAM): large, not versioned
 logs/**/inspect_*/
+# Event streams and saved test predictions: bulky and regenerable, not versioned
+# (the run manifest run_<ts>.json, a few KB, is)
+logs/**/events_*.jsonl
+logs/**/test_preds_*.npz
 
 # Training logs at any depth under logs/ are always committed
 !logs/**/*.log
@@ -231,3 +235,6 @@ mlartifacts/
 
 # Informes HTML de un run (paravit report): pesan ~5 MB cada uno
 logs/**/report_*.html
+
+# Perfiles de máquina personales (copia de configs/machines/example.yaml)
+configs/machines/*.local.yaml

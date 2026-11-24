@@ -62,11 +62,13 @@ class HardwareProbe:
 class DiskProbe:
     """Detecta el tipo de disco del dataset y mide velocidad de lectura."""
 
-    def probe(self, dataset_path: str | None) -> DiskInfo:
+    def probe(self, dataset_path: str | None, measure_io: bool = True) -> DiskInfo:
+        """``measure_io=False`` only detects the disk type: the read test samples
+        BigEarthNet's ``*.tif`` patches, which other datasets do not have."""
         path = Path(dataset_path) if dataset_path else None
         is_nfs = self._detect_nfs(path)
         disk_type = "NFS" if is_nfs else self._detect_disk_type(path)
-        read_mb_s, files_s = self._measure_io(path)
+        read_mb_s, files_s = self._measure_io(path) if measure_io else (0.0, 0.0)
         return DiskInfo(
             dataset_path=str(path) if path else "",
             is_nfs=is_nfs,

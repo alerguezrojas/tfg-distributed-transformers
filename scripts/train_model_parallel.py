@@ -16,149 +16,18 @@ Model-parallel specific:
   --devices cuda:0,cuda:1            where to place the two stages (auto-detected if omitted)
   --split-block N                    block index where stage 0 ends (default: half)
 """
-import argparse
-import logging
-import sys
-from datetime import datetime
-from pathlib import Path
 
-import yaml
-import torch
-from torch.utils.data import DataLoader
+import sys
+from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from src.data.registry import dataset_spec_from_config
-from src.training.losses import configured_loss_name, ousm_log_field
-from src.models.backbones import backbone_log_fields
-from src.training.builder import TrainingSessionBuilder
-from src.training.config_overrides import add_common_overrides, apply_common_overrides
-from src.training.reproducibility import set_seed, make_generator, seed_worker
-
-
-def parse_args():
-    p = argparse.ArgumentParser(description="Model-parallel training")
-    p.add_argument("--monitor", action="store_true",
-                   help="Prediction/layer monitor (docs/inspeccion.md)")
-    p.add_argument("--config", type=str, default="configs/train_model_parallel_kaggle.yaml")
-    p.add_argument("--model", type=str, default=None, help="Override model name (timm ViT)")
-    p.add_argument("--precision", choices=["fp32", "tf32", "amp", "bf16"], default=None,
-                   help="Override training.precision (Tensor cores)")
-    p.add_argument("--epochs", type=int, default=None)
-    add_common_overrides(p)
-    p.add_argument("--batch-size", type=int, default=None)
-    p.add_argument("--split-block", type=int, default=None,
-                   help="Block index where stage 0 ends (default: half the blocks)")
-    p.add_argument("--devices", type=str, default=None,
-                   help="Comma-separated device list, e.g. 'cuda:0,cuda:1'. Auto-detected if omitted.")
-    p.add_argument("--trace", choices=["off", "simple"], default="simple",
-                   help="Logging controller (deep tracing needs a single-device model)")
-    p.add_argument("--layers", nargs="*", choices=["plot", "hooks", "confusion", "batch-monitor"],
-                   default=[], help="Stackable aspect decorators")
-    p.add_argument("--fn", nargs="*", choices=["timing", "energy"], default=[],
-                   help="@ decorators; 'energy' samples the power of BOTH split GPUs")
-    p.add_argument("--metrics", nargs="*",
-                   choices=["loss", "f1", "accuracy", "precision_recall"],
-                   default=["loss", "f1", "accuracy", "precision_recall"],
-                   help="Metric reporters (pass --metrics with no args to disable all)")
-    p.add_argument("--batch-log-every", type=int, default=None, metavar="N",
-                   help="Log batch metrics every N batches (with --layers batch-monitor)")
-    return p.parse_args()
-
-
-_CUDA_0 = "cuda:0"
-
-
-def _pick_devices(arg: str | None) -> list[str]:
-    if arg:
-        return [d.strip() for d in arg.split(",")]
-    n = torch.cuda.device_count() if torch.cuda.is_available() else 0
-    if n >= 2:
-        return [_CUDA_0, "cuda:1"]
-    if n == 1:
-        return [_CUDA_0, _CUDA_0]
-    return ["cpu", "cpu"]
+from src.training.launch import main as launch  # noqa: E402
 
 
 def main():
-    args = parse_args()
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
-    if args.model:
-        cfg["model"]["name"] = args.model
-    if args.precision:
-        cfg["training"]["precision"] = args.precision
-    apply_common_overrides(cfg, args)
-    if args.batch_size:
-        cfg["training"]["batch_size"] = args.batch_size
-
-    model_name = cfg["model"]["name"]
-    devices = _pick_devices(args.devices)
-    distinct = len(set(devices)) > 1
-    timestamp = datetime.now().strftime("%d%m%Y_%H%M%S")
-
-    # ── Reproducibility (mirror train_single_gpu.py) ──────────────────────────────
-    seed = cfg["training"].get("seed")
-    loader_generator, worker_init = None, None
-    if seed is not None:
-        set_seed(int(seed))
-        loader_generator = make_generator(int(seed))
-        worker_init = seed_worker
-        print(f"Semilla     : {seed} (run determinista)")
-
-    metrics = args.metrics if args.metrics is not None else []
-    layers = args.layers or []
-    fn = args.fn or []
-
-    # ── Data ──────────────────────────────────────────────────────────────────
-    spec = dataset_spec_from_config(cfg)
-    train_ds = spec.dataset(cfg["data"], "train")
-    val_ds = spec.dataset(cfg["data"], "val")
-    bs = cfg["training"]["batch_size"]
-    nw = cfg["data"].get("num_workers", 4)
-    train_loader = DataLoader(train_ds, batch_size=bs, shuffle=True, num_workers=nw,
-                              pin_memory=True, generator=loader_generator, worker_init_fn=worker_init)
-    val_loader = DataLoader(val_ds, batch_size=bs, shuffle=False, num_workers=nw,
-                            pin_memory=True, worker_init_fn=worker_init)
-    print(f"Train: {len(train_ds)} patches | Val: {len(val_ds)} patches")
-
-    # ── Build the stack via the Builder (model split + full decorator stack) ────
-    builder = (
-        TrainingSessionBuilder(cfg, torch.device(devices[-1]), timestamp)
-        .with_model_parallel(devices, args.split_block)
-        .with_trace(args.trace)
-        .with_layers(*layers)
-        .with_fn(*fn)
-        .with_metrics(*metrics)
-    )
-    if args.model:
-        builder = builder.with_model(args.model)
-    if args.batch_log_every is not None:
-        builder = builder.with_batch_log_every(args.batch_log_every)
-    if args.monitor:
-        builder = builder.with_monitor()
-    trainer = builder.build()
-
-    print(f"Modelo      : {model_name} (paralelismo de modelo)")
-    print(f"Devices     : {devices} "
-          f"({'reparto real en 2 dispositivos' if distinct else 'un solo dispositivo — demo'})")
-    print(f"Traza       : {args.trace} | Capas: {layers or 'ninguna'} | "
-          f"Decoradores@: {fn or 'ninguno'} | Métricas: {metrics or 'ninguna'}")
-
-    # Config line for the dashboard's Run -> Info panel.
-    _prec = cfg["training"].get("precision", "fp32")
-    _loss = configured_loss_name(cfg["training"], spec.make_task())
-    logging.getLogger("trainer").info(
-        f"Configuración: modelo={model_name} | paralelismo=modelo(pipeline) | "
-        f"devices={'+'.join(devices)} | split_block={args.split_block or 'auto'} | "
-        f"batch={bs} (global) | epochs={cfg['training']['epochs']} | "
-        f"lr={cfg['training']['lr']} | precision={_prec} | loss={_loss} | "
-        f"train={len(train_ds)} | val={len(val_ds)} | dataset={spec.name} | "
-        f"{backbone_log_fields(cfg['model'], model_name)}"
-        f"{ousm_log_field(cfg['training'])}"
-    )
-
-    trainer.fit(train_loader, val_loader, epochs=cfg["training"]["epochs"])
+    """The flow lives in src/training/launch.py; this strategy is registered in strategies.py."""
+    launch("model_parallel")
 
 
 if __name__ == "__main__":

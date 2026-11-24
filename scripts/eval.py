@@ -35,7 +35,6 @@ from pathlib import Path
 
 import numpy as np
 import torch
-import yaml
 from torch.utils.data import DataLoader
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -46,7 +45,7 @@ from src.data.registry import dataset_spec_from_config
 from src.models.vit import build_model
 from src.training import metrics as m
 from src.training.checkpoints import resolve_checkpoint, strip_wrapper_prefix
-from src.training.config_overrides import add_data_root_override, apply_common_overrides
+from src.training.config_overrides import add_data_root_override, add_machine_options, prepare_config
 from src.training.tasks import MultiLabelTask, Task
 
 
@@ -65,10 +64,14 @@ def parse_args():
     parser.add_argument("--model", type=str, default=None,
                         help="Override model name from config")
     add_data_root_override(parser)
+    add_machine_options(parser)
     parser.add_argument("--batch-size", type=int, default=None,
                         help="Override batch size (default: from config)")
-    parser.add_argument("--output", type=str, default=None,
-                        help="CSV path to save per-class results")
+    parser.add_argument("--output", type=str, nargs="?", const=AUTO_PATH, default=None,
+                        metavar="PATH",
+                        help="CSV to save per-class results. Without a path it goes to the "
+                             "run's log folder as <split>_<ts>.csv (test_<ts>.csv is what the "
+                             "web shows in that run)")
     parser.add_argument("--split", choices=["test", "val"], default="test",
                         help="Dataset split to evaluate on (default: test)")
     parser.add_argument("--metadata", type=str, default=None,
@@ -257,11 +260,55 @@ def build_eval_model(cfg: dict, model_name: str, spec):
     )
 
 
+def checkpoint_model_name(path) -> str | None:
+    """Model a checkpoint was trained with (``model_name`` key), or None for old ones.
+    Read with mmap so peeking at an ensemble does not load every set of weights."""
+    path = resolve_checkpoint(path)
+    try:
+        ckpt = torch.load(path, map_location="cpu", weights_only=True, mmap=True)
+    except RuntimeError:            # legacy (non-zip) format: mmap is not possible
+        ckpt = torch.load(path, map_location="cpu", weights_only=True)
+    return ckpt.get("model_name")
+
+
+def check_model_matches(path, ckpt_name: str | None, model_name: str) -> None:
+    """Fail clearly if the checkpoint says it holds another model than the one requested."""
+    if ckpt_name is not None and ckpt_name != model_name:
+        sys.exit(f"ERROR: {path} es un checkpoint de '{ckpt_name}', pero se pide '{model_name}' "
+                 f"(--model o la config). Quita --model para usar el del checkpoint.")
+
+
+def resolve_model_name(cli_model: str | None, cfg: dict, paths) -> str:
+    """--model, else the model recorded in the checkpoint(s), else the config's.
+
+    Checkpoints without ``model_name`` (older runs) fall back to the config, as always. An
+    ensemble must not mix models unless --model forces one (a mismatch then fails on load)."""
+    names = {p: checkpoint_model_name(p) for p in paths}
+    if cli_model:
+        for p, n in names.items():
+            check_model_matches(p, n, cli_model)
+        return cli_model
+    distinct = {n for n in names.values() if n is not None}
+    if len(distinct) > 1:
+        sys.exit("ERROR: los checkpoints son de modelos distintos ("
+                 + ", ".join(f"{p}: {n or 'sin registrar'}" for p, n in names.items())
+                 + "); un conjunto necesita el mismo modelo.")
+    if not distinct:
+        return cfg["model"]["name"]
+    name = distinct.pop()
+    unnamed = [str(p) for p, n in names.items() if n is None]
+    if unnamed:
+        print(f"[aviso] {len(unnamed)} checkpoint(s) sin modelo registrado; se supone '{name}', "
+              f"el de los demás: {', '.join(unnamed)}")
+    return name
+
+
 def load_member(path, cfg: dict, model_name: str, spec, device):
     """Model with the checkpoint's weights (DDP / model-parallel prefixes stripped), and the
     checkpoint dict (epoch, metrics)."""
-    model = build_eval_model(cfg, model_name, spec)
     ckpt = torch.load(resolve_checkpoint(path), map_location=device, weights_only=True)
+    check_model_matches(path, ckpt.get("model_name"), model_name)
+    model = build_eval_model(cfg, model_name, spec)
     model.load_state_dict(strip_wrapper_prefix(ckpt["model_state_dict"]))
     return model.to(device), ckpt
 
@@ -305,16 +352,16 @@ def main():
     args = parse_args()
     paths = [resolve_checkpoint(c) for c in args.checkpoint]
     is_ensemble = len(paths) > 1
+    if is_ensemble and args.output == AUTO_PATH:
+        sys.exit("ERROR: con varios checkpoints (conjunto), --output necesita una ruta explícita.")
     if is_ensemble and args.save_predictions == AUTO_PATH:
         sys.exit("ERROR: con varios checkpoints (conjunto), --save-predictions necesita una "
                  "ruta explícita: no hay un único run del que deducir el sello.")
 
-    with open(args.config) as f:
-        cfg = yaml.safe_load(f)
-    apply_common_overrides(cfg, args)       # --data-root (eval has no --seed/--epochs)
+    cfg = prepare_config(args)              # profile, --data-root (eval has no --seed/--epochs), --set
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model_name = args.model or cfg["model"]["name"]
+    model_name = resolve_model_name(args.model, cfg, paths)
     batch_size = args.batch_size or cfg["training"].get("batch_size", 32)
     spec = dataset_spec_from_config(cfg)
     task = spec.make_task()
@@ -425,7 +472,13 @@ def main():
 
     # ── Save CSV ──────────────────────────────────────────────────────────────
     if args.output:
-        out_path = Path(args.output)
+        if args.output == AUTO_PATH:
+            out_path = default_predictions_path(
+                paths[0], checkpoint_dir=cfg.get("checkpoint", {}).get("dir"),
+                env=cfg.get("output", {}).get("env", "local"),
+                warn=lambda msg: print(f"  aviso: {msg}"), prefix=args.split, suffix=".csv")
+        else:
+            out_path = Path(args.output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         with open(out_path, "w", newline="") as f:
             writer = csv.DictWriter(f, fieldnames=["class_idx", "class_name", "f1", "precision", "recall"])
@@ -435,9 +488,10 @@ def main():
         with open(out_path, "a") as f:
             thresh = (f"f1_opt={best_f1:.4f},threshold={best_t:.2f},threshold_source={source},"
                       if task.searches_threshold else "")
+            qwk_col = f",qwk={agg['qwk']:.4f}" if "qwk" in agg else ""   # ordinal: new column
             f.write(f"\n# aggregate,loss={avg_loss:.6f},f1_t05={f1_05:.4f},{thresh}"
                     f"accuracy={acc_05:.4f},precision={prec_05:.4f},recall={rec_05:.4f},"
-                    f"auc={auc:.4f}\n")
+                    f"auc={auc:.4f}{qwk_col}\n")
         print(f"\nResultados guardados en: {out_path}")
 
 

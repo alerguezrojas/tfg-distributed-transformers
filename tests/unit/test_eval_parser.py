@@ -35,18 +35,35 @@ def test_parse_eval_csv_missing_file(tmp_path):
     assert pcdf.empty and agg == {}
 
 
-def test_discover_associates_test_csv_by_folder(tmp_path):
-    # A run log + a test CSV in the same model folder are linked.
-    d = tmp_path / "logs" / "verode" / "single" / "vit_base_patch16_224"
+def test_discover_associates_test_csv_by_stamp(tmp_path):
+    # Each run gets only the test CSV carrying its own stamp; the others are not attributed.
+    d = tmp_path / "logs" / "local" / "medmnist_breast" / "single" / "vit_tiny_patch16_224"
     d.mkdir(parents=True)
-    (d / "train_27052026_210223.log").write_text("Configuración: modelo\n")
-    (d / "test_bce.csv").write_text(_EVAL_CSV)
-    (d / "test_focal.csv").write_text(_EVAL_CSV)
+    for ts in ("17102026_133907", "17102026_163153"):
+        (d / f"train_{ts}.log").write_text("Configuración: modelo\n")
+        (d / f"test_{ts}.csv").write_text(_EVAL_CSV)
+    (d / "train_17102026_170000.log").write_text("Configuración: modelo\n")   # never evaluated
+    (d / "test_bce.csv").write_text(_EVAL_CSV)                  # no stamp
+    (d / "test_20102026_000000.csv").write_text(_EVAL_CSV)      # stamp of no run
 
-    runs = discover_runs(tmp_path)
-    assert len(runs) == 1
-    names = sorted(p.name for p in runs[0].test_csv_paths)
-    assert names == ["test_bce.csv", "test_focal.csv"]
+    by_ts = {r.timestamp: r for r in discover_runs(tmp_path)}
+    assert [p.name for p in by_ts["17102026_133907"].test_csv_paths] == ["test_17102026_133907.csv"]
+    assert [p.name for p in by_ts["17102026_163153"].test_csv_paths] == ["test_17102026_163153.csv"]
+    assert by_ts["17102026_170000"].test_csv_paths == []
+    # the unclaimed CSVs are reported apart, never attributed
+    assert [p.name for p in by_ts["17102026_170000"].unassigned_test_csv_paths] == [
+        "test_20102026_000000.csv", "test_bce.csv"]
+
+
+def test_discover_real_medmnist_breast_runs_do_not_share_test_csv():
+    # Real logs of the repo (when present): every run sees at most its own test CSV.
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    if not (root / "logs" / "local" / "medmnist_breast").exists():
+        return
+    for r in discover_runs(root):
+        if r.dataset == "medmnist_breast":
+            assert all(r.timestamp in p.name for p in r.test_csv_paths)
 
 
 def test_discover_no_test_csv_is_empty_list(tmp_path):
@@ -55,3 +72,14 @@ def test_discover_no_test_csv_is_empty_list(tmp_path):
     (d / "train_01062026_120000.log").write_text("x\n")
     runs = discover_runs(tmp_path)
     assert runs[0].test_csv_paths == []
+
+
+def test_unstamped_test_csv_goes_to_the_folders_only_run(tmp_path):
+    # e.g. the TFG's BigEarthNet run: one log, test_best_epoch007.csv
+    d = tmp_path / "logs" / "verode" / "single" / "vit_base_patch16_224"
+    d.mkdir(parents=True)
+    (d / "train_27052026_210223.log").write_text("Configuración: modelo\n")
+    (d / "test_best_epoch007.csv").write_text(_EVAL_CSV)
+    r = discover_runs(tmp_path)[0]
+    assert [p.name for p in r.test_csv_paths] == ["test_best_epoch007.csv"]
+    assert r.unassigned_test_csv_paths == []

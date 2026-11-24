@@ -10,7 +10,7 @@ same separation used by Weights & Biases / MLflow / TensorBoard.
     uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2
     uv run paravit.py train   --strategy single --config configs/train.yaml
     uv run paravit.py train   --strategy ddp --n-gpus 2 --config configs/train_demo_ddp.yaml
-    uv run paravit.py eval    --checkpoint checkpoints/local/checkpoint_epoch_009.pt --split test
+    uv run paravit.py eval    --checkpoint checkpoints/local/single/vit_base_patch16_224/<sello>/best.pt --split test
     uv run paravit.py dashboard
 
 (``uv run tfg.py`` keeps working as a backward-compatible alias.)
@@ -21,28 +21,46 @@ just assemble them and run them (or print them with ``--dry-run``).
 from __future__ import annotations
 
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Mapping, Optional
 
 import typer
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
+from src.slurm import LAUNCHERS, slurm_torchrun
+from src.training.strategies import available_strategies, get_strategy
+
 ROOT = Path(__file__).resolve().parents[1]
 _DRY_RUN_HELP = "Print the command without running it."
+_MACHINE_HELP = ("Machine profile (configs/machines/<name>.yaml; 'none' = no profile). Default: "
+                 "$PARAVIT_MACHINE, else the profile matching this hostname.")
+_SET_HELP = ("Override any config key, e.g. --set training.lr=1e-4 (repeatable; YAML value; "
+             "applied after the machine profile).")
 console = Console()
 app = typer.Typer(
     add_completion=False, no_args_is_help=True,
     help="ParaViT-Lab — distributed Vision Transformers. Train, estimate, benchmark, evaluate and visualise.",
 )
 
-STRATEGIES = ("single", "ddp", "model-parallel", "heterogeneous")
+# Canonical names of the strategy registry (src/training/strategies.py); aliases such as
+# "model-parallel" are also accepted wherever a strategy is given.
+STRATEGIES = tuple(available_strategies())
 
 
 # ── Pure command builders (unit-tested) ───────────────────────────────────────
+
+def _config_flags(machine: str | None, overrides: list[str] | None) -> list[str]:
+    """``--machine`` / ``--set`` forwarded to the script, which applies them to its config."""
+    flags = ["--machine", machine] if machine else []
+    for item in overrides or []:
+        flags += ["--set", item]
+    return flags
+
 
 def _torchrun(nproc: int, nnodes: int, node_rank: int,
               master_addr: str, master_port: int) -> list[str]:
@@ -54,20 +72,53 @@ def _torchrun(nproc: int, nnodes: int, node_rank: int,
     return base
 
 
+def _strategy_flags(spec, **options) -> list[str]:
+    """``--batch-size`` / ``--resume`` / ``--inspect``: forwarded when given, and an error if the
+    strategy cannot honour them (the launcher would reject them anyway)."""
+    flags = []
+    for dest, value in options.items():
+        if value is None:
+            continue
+        flag = "--" + dest.replace("_", "-")
+        if dest in spec.unsupported:
+            raise ValueError(f"{flag} is not available in strategy '{spec.name}': "
+                             f"{spec.unsupported[dest]}")
+        flags += [flag, *(value if isinstance(value, list) else [str(value)])]
+    return flags
+
+
 def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
                     epochs: int | None = None, trace: str = "simple",
                     precision: str | None = None, layers: list[str] | None = None,
                     fn: list[str] | None = None, n_gpus: int = 2, nnodes: int = 1,
                     node_rank: int = 0, master_addr: str = "localhost",
                     master_port: int = 29500, monitor: bool = False,
-                    seed: int | None = None, data_root: str | None = None) -> list[str]:
+                    seed: int | None = None, data_root: str | None = None,
+                    machine: str | None = None,
+                    overrides: list[str] | None = None, batch_size: int | None = None,
+                    resume: str | None = None, inspect: list[str] | None = None,
+                    launcher: str = "local", env: Mapping[str, str] | None = None) -> list[str]:
     """Build the exact command for a training strategy.
 
-    single / model-parallel run a plain script; ddp / heterogeneous run under
-    torchrun. Flags are only added where the target script accepts them.
+    ``strategy`` is a canonical name or an alias of the strategy registry. Plain-process
+    strategies run their script directly; the distributed ones run under torchrun. A flag the
+    strategy cannot honour (``StrategySpec.unsupported``) is not forwarded, except
+    ``batch_size`` / ``inspect``, whose absence would change what the user asked for: those
+    raise ``ValueError``.
+
+    ``launcher="slurm"`` (torchrun strategies, inside a Slurm job) replaces the manual
+    ``--nnodes/--node_rank/--master_*`` by the ``c10d`` rendezvous of :mod:`src.slurm`: the same
+    command on every node. ``env`` is the environment it reads (default ``os.environ``).
     """
-    if strategy not in STRATEGIES:
-        raise ValueError(f"unknown strategy: {strategy}")
+    spec = get_strategy(strategy)            # ValueError (with the available ones) if unknown
+    if launcher not in LAUNCHERS:
+        raise ValueError(f"--launcher {launcher} is not valid (one of {', '.join(LAUNCHERS)})")
+    if launcher == "slurm" and not spec.torchrun:
+        raise ValueError(f"--launcher slurm needs a torchrun strategy; '{spec.name}' runs as a "
+                         "plain process (use --launcher local)")
+    if trace not in spec.trace_choices:
+        raise ValueError(f"--trace {trace} is not available in strategy '{spec.name}' "
+                         f"(one of {', '.join(spec.trace_choices)})")
 
     common = []
     if model:
@@ -78,34 +129,27 @@ def build_train_cmd(strategy: str, config: str, *, model: str | None = None,
         common += ["--seed", str(seed)]
     if data_root:
         common += ["--data-root", data_root]
+    common += _config_flags(machine, overrides)
     common += ["--trace", trace]                      # every script accepts --trace
     if monitor:
         common += ["--monitor"]                       # every script accepts --monitor
-    layers_fn = []
+    if precision and precision != "fp32" and "precision" not in spec.unsupported:
+        common += ["--precision", precision]          # fp32 is the implicit default
     if layers:
-        layers_fn += ["--layers", *layers]
+        common += ["--layers", *layers]
     if fn:
-        layers_fn += ["--fn", *fn]
-    # Tensor-core precision for the strategies whose loop honours it (single, ddp and
-    # model-parallel all go through Trainer.train_epoch). Heterogeneous runs on gloo/CPU
-    # with a hand-written fp32 loop, so it does not expose --precision.
-    precision_arg = (["--precision", precision]
-                     if precision and precision != "fp32" else [])
+        common += ["--fn", *fn]
+    common += _strategy_flags(spec, batch_size=batch_size, resume=resume, inspect=inspect)
 
-    if strategy == "single":
-        return ([sys.executable, "scripts/train_single_gpu.py", "--config", config]
-                + common + precision_arg + layers_fn)
-    if strategy == "model-parallel":
-        # model_parallel runs through the builder, so it honours --layers/--fn/--precision.
-        return ([sys.executable, "scripts/train_model_parallel.py", "--config", config]
-                + common + precision_arg + layers_fn)
-    if strategy == "ddp":
-        return (_torchrun(n_gpus, nnodes, node_rank, master_addr, master_port)
-                + ["scripts/train_ddp.py", "--config", config]
-                + common + precision_arg + layers_fn)
-    # heterogeneous: one process per node, multi-node by definition
-    return (_torchrun(1, nnodes, node_rank, master_addr, master_port)
-            + ["scripts/train_heterogeneous_ddp.py", "--config", config] + common + layers_fn)
+    # Plain process, or torchrun: one process per GPU (ddp) / one per node (heterogeneous).
+    if launcher == "slurm":
+        prefix = slurm_torchrun(spec.nproc or n_gpus, os.environ if env is None else env,
+                                master_port)
+    elif spec.torchrun:
+        prefix = _torchrun(spec.nproc or n_gpus, nnodes, node_rank, master_addr, master_port)
+    else:
+        prefix = [sys.executable]
+    return prefix + [spec.script, "--config", config] + common
 
 
 def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
@@ -113,7 +157,10 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
                           config: str | None = None, dataset_path: str | None = None,
                           precision: str = "fp32", compare_precision: bool = False,
                           convergence_study: bool = False, study_steps: int = 60,
-                          nfs_factor: float = 1.0, device: int = 0) -> list[str]:
+                          nfs_factor: float = 1.0, device: int = 0,
+                          train_size: int | None = None,
+                          val_size: int | None = None, machine: str | None = None,
+                          overrides: list[str] | None = None) -> list[str]:
     """Build the benchmark.py command (the GPU benchmark / measurement)."""
     cmd = [sys.executable, "scripts/benchmark.py", "--epochs", str(epochs)]
     if config:
@@ -126,6 +173,10 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
         cmd += ["--trace-modes", *trace_modes]
     if dataset_path:
         cmd += ["--dataset-path", dataset_path]
+    if train_size is not None:
+        cmd += ["--train-size", str(train_size)]
+    if val_size is not None:
+        cmd += ["--val-size", str(val_size)]
     if precision and precision != "fp32":
         cmd += ["--precision", precision]
     if compare_precision:
@@ -136,7 +187,7 @@ def build_benchmark_cmd(models: list[str] | None, batch_sizes: list[int] | None,
         cmd += ["--nfs-factor", str(nfs_factor)]
     if device:
         cmd += ["--device", str(device)]
-    return cmd
+    return cmd + _config_flags(machine, overrides)
 
 
 def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | None = None,
@@ -145,7 +196,8 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
                    max_batches: int | None = None,
                    save_predictions: str | None = None,
                    save_predictions_auto: bool = False,
-                   data_root: str | None = None) -> list[str]:
+                   data_root: str | None = None, machine: str | None = None,
+                   overrides: list[str] | None = None) -> list[str]:
     """Build the eval.py command (held-out evaluation). Several checkpoints = an ensemble
     (eval.py averages their probabilities)."""
     checkpoints = [checkpoint] if isinstance(checkpoint, str) else list(checkpoint)
@@ -169,6 +221,67 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
         cmd += ["--save-predictions", save_predictions]
     elif save_predictions_auto:
         cmd += ["--save-predictions"]       # no path: eval.py picks the run's log folder
+    return cmd + _config_flags(machine, overrides)
+
+
+def _abspath(path: str) -> str:
+    """Paths given by the user are relative to WHERE they ran paravit, not to the repo root
+    the scripts run from (``_run`` uses ``cwd=ROOT``)."""
+    return str(Path(path).expanduser().resolve())
+
+
+def build_predict_cmd(checkpoint: str | list[str], config: str, inputs: list[str], *,
+                      model: str | None = None, out: str | None = None,
+                      batch_size: int | None = None, device: str | None = None,
+                      machine: str | None = None,
+                      overrides: list[str] | None = None) -> list[str]:
+    """Build the predict.py command (classify loose images or folders). Several checkpoints =
+    an ensemble (predict.py averages their probabilities)."""
+    checkpoints = [checkpoint] if isinstance(checkpoint, str) else list(checkpoint)
+    cmd = [sys.executable, "scripts/predict.py"]
+    for ckpt in checkpoints:
+        cmd += ["--checkpoint", _abspath(ckpt)]
+    cmd += ["--config", _abspath(config)]
+    if model:
+        cmd += ["--model", model]
+    if out:
+        cmd += ["--out", _abspath(out)]
+    if batch_size:
+        cmd += ["--batch-size", str(batch_size)]
+    if device:
+        cmd += ["--device", device]
+    return cmd + _config_flags(machine, overrides) + [_abspath(i) for i in inputs]
+
+
+def build_compare_cmd(a: list[str], b: list[str], *, label_a: str = "A", label_b: str = "B",
+                      group: str | None = None, n_boot: int = 2000, seed: int = 0,
+                      markdown: bool = False) -> list[str]:
+    """Build the compare_predictions.py command (paired comparison of two groups of runs)."""
+    cmd = [sys.executable, "scripts/compare_predictions.py", "--a", *a, "--b", *b,
+           "--label-a", label_a, "--label-b", label_b,
+           "--n-boot", str(n_boot), "--seed", str(seed)]
+    if group:
+        cmd += ["--group", group]
+    if markdown:
+        cmd += ["--markdown"]
+    return cmd
+
+
+def build_select_ensemble_cmd(runs: list[str], *, val_name: str = "val_preds.npz",
+                              test_name: str = "test_preds.npz", groups: list[str] | None = None,
+                              method: str = "per-group", max_size: int = 8,
+                              reference: list[str] | None = None, n_boot: int = 2000,
+                              seed: int = 0, markdown: bool = False) -> list[str]:
+    """Build the select_ensemble.py command (ensemble chosen on val, evaluated once on test)."""
+    cmd = [sys.executable, "scripts/select_ensemble.py", "--runs", *runs,
+           "--val-name", val_name, "--test-name", test_name, "--method", method,
+           "--max-size", str(max_size), "--n-boot", str(n_boot), "--seed", str(seed)]
+    for g in groups or []:
+        cmd += ["--group", g]
+    if reference:
+        cmd += ["--reference", *reference]
+    if markdown:
+        cmd += ["--markdown"]
     return cmd
 
 
@@ -211,14 +324,14 @@ def _fmt_secs(s: float) -> str:
 
 @app.command()
 def train(
-    strategy: str = typer.Option("single", help=f"One of {', '.join(STRATEGIES)}."),
+    strategy: str = typer.Option("single", help=f"One of {', '.join(STRATEGIES)} (aliases such as model-parallel also work)."),
     config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model, batch…)."),
     model: Optional[str] = typer.Option(None, help="Override the model (any timm ID)."),
     epochs: Optional[int] = typer.Option(None, help="Override the number of epochs."),
     seed: Optional[int] = typer.Option(None, help="Override training.seed (repetitions)."),
     data_root: Optional[str] = typer.Option(None, help="Override data.root (dataset location)."),
     trace: str = typer.Option("simple", help="off | simple | deep."),
-    precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (single-GPU)."),
+    precision: Optional[str] = typer.Option(None, help="fp32 | tf32 | amp | bf16 (not heterogeneous: its loop is fp32)."),
     layers: Optional[str] = typer.Option(None, help="Comma-separated: plot,confusion,batch-monitor,hooks."),
     fn: Optional[str] = typer.Option(None, help="Comma-separated: timing,energy."),
     n_gpus: int = typer.Option(2, help="GPUs per node (ddp)."),
@@ -229,14 +342,33 @@ def train(
     monitor: bool = typer.Option(False, "--monitor",
                                  help="Per-sample predictions, embeddings, Grad-CAM and "
                                       "layer stats every epoch (see the web Inspector)."),
+    batch_size: Optional[int] = typer.Option(None, help="Override training.batch_size (per GPU in ddp)."),
+    resume: Optional[str] = typer.Option(None, help="Checkpoint (.pt or run folder) to resume from."),
+    inspect: Optional[str] = typer.Option(None, help="Comma-separated: model-summary,grad-monitor,"
+                                                     "batch-table,anomalies (not model-parallel)."),
+    launcher: str = typer.Option("local", help="local | slurm. slurm (inside a Slurm job, torchrun "
+                                 "strategies): c10d rendezvous at the first node, the same "
+                                 "command on every node; --nnodes/--node-rank/--master-addr "
+                                 "are then ignored (--master-port is the rendezvous port)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Launch a training run with the chosen distribution strategy."""
-    cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
-                          precision=precision, layers=_csv(layers), fn=_csv(fn), n_gpus=n_gpus,
-                          nnodes=nnodes, node_rank=node_rank, master_addr=master_addr,
-                          master_port=master_port, monitor=monitor, seed=seed,
-                          data_root=data_root)
+    try:
+        spec = get_strategy(strategy)
+        if precision and precision != "fp32" and "precision" in spec.unsupported:
+            console.print(f"[yellow]--precision {precision} ignored in '{spec.name}': "
+                          f"{spec.unsupported['precision']}.[/]")
+        cmd = build_train_cmd(strategy, config, model=model, epochs=epochs, trace=trace,
+                              precision=precision, layers=_csv(layers), fn=_csv(fn),
+                              n_gpus=n_gpus, nnodes=nnodes, node_rank=node_rank,
+                              master_addr=master_addr, master_port=master_port,
+                              monitor=monitor, seed=seed, data_root=data_root, machine=machine,
+                              overrides=set_, batch_size=batch_size, resume=resume,
+                              inspect=_csv(inspect), launcher=launcher)
+    except ValueError as err:
+        raise typer.BadParameter(str(err)) from None
     _run(cmd, dry_run)
 
 
@@ -244,7 +376,7 @@ def train(
 def predict(
     model: str = typer.Option("vit_base_patch16_224", help="Model (timm ID)."),
     gpu: str = typer.Option("Tesla T4", help="GPU name, e.g. 'Tesla V100', 'RTX 3060 Ti'."),
-    strategy: str = typer.Option("single", help="single | ddp | model_parallel | heterogeneous."),
+    strategy: str = typer.Option("single", help=" | ".join(STRATEGIES) + "."),
     n_gpus: int = typer.Option(1, help="Number of GPUs."),
     batch: int = typer.Option(96, help="Global batch size."),
     precision: str = typer.Option("fp32", help="fp32 | amp | tf32 | bf16."),
@@ -274,13 +406,20 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     from src.model_profile import resolve_model_spec
     from src.performance_model import (
         predict as _predict, predict_quality, gpu_spec,
-        estimate_rc, estimate_rio, precision_factor,
+        estimate_rio, SYNC_FORMULA,
         BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, EVAL_POWER_FRACTION)
     nfs = disk == "nfs"
-    strat = strategy.replace("-", "_")
+    try:
+        strat = get_strategy(strategy).name
+    except ValueError as err:
+        raise typer.BadParameter(str(err)) from None
     ms, gs = resolve_model_spec(model, in_chans, num_classes, img_size), gpu_spec(gpu)
     if ms is None:
         console.print(f"[red]Unknown model '{model}': not in the table and timm cannot build it.[/]")
+        return
+    if gs is None:
+        console.print(f"[red]Unknown GPU '{gpu}': not in the table (see GPU_TABLE in "
+                      "src/performance_model.py); a similar card is never assumed.[/]")
         return
     p = _predict(strat, model, gpu, n_gpus=n_gpus, dataset_size=dataset_size,
                  batch=batch, precision=precision, epochs=epochs, disk_type=disk, nfs=nfs,
@@ -308,9 +447,9 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     tt = Table(title="Time / epoch = max(compute, I/O) + sync", border_style="cyan")
     tt.add_column("Term", style="bold"); tt.add_column("Value", justify="right")
     tt.add_column("Formula", style="dim")
-    tt.add_row("Compute", f"{p.t_compute_s:.0f} s", "N / (π · r_c · n_gpus)")
+    tt.add_row("Compute", f"{p.t_compute_s:.0f} s", "N / (r_c(precision) · n_gpus)")
     tt.add_row("Data I/O", f"{p.t_io_s:.0f} s", "N / r_io  (fixed, shared disk)")
-    tt.add_row("Grad sync", f"{p.t_sync_s:.1f} s", "(8·P / β) · n_batches")
+    tt.add_row("Grad sync", f"{p.t_sync_s:.1f} s", SYNC_FORMULA.get(strat, ""))
     tt.add_row("Time/epoch", _fmt_secs(p.time_per_epoch_train_s),
                f"max({p.t_compute_s:.0f}, {p.t_io_s:.0f}) + {p.t_sync_s:.1f} → "
                f"[bold]{p.bottleneck}[/]-bound")
@@ -395,17 +534,27 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
 
     # ── Assumptions behind the formulas ──────────────────────────────────────────
     if ms and gs:
-        rc = estimate_rc(ms, gs, precision)
         rio = estimate_rio(disk, nfs)
         console.print(
-            f"[dim]Assumptions: r_c ≈ {rc:.0f} img/s/GPU (incl. precision ×"
-            f"{precision_factor(gs, precision):.2f}) · r_io ≈ {rio:.0f} img/s "
-            f"({disk}{'+NFS' if nfs else ''}) · {ms.params_m:.0f}M params · MFU 0.17. "
+            f"[dim]Assumptions: r_c ≈ {p.train_ips_per_gpu:.0f} img/s/GPU at {precision} "
+            f"({_throughput_source(p.throughput_model, gs, precision)}) · r_io ≈ {rio:.0f} img/s "
+            f"({disk}{'+NFS' if nfs else ''}) · {ms.params_m:.0f}M params. "
             f"Calibrate with a measured throughput in the Benchmark CLI.[/]")
     if p.calibrated:
         console.print("[green]Calibrated with a measured throughput.[/]")
     for note in p.notes:
         console.print(f"[yellow]•[/] {note}")
+
+
+def _throughput_source(model: str, gpu, precision: str) -> str:
+    """One line on where the predicted throughput comes from (see performance_model)."""
+    from src.performance_model import (MFU, THROUGHPUT_MEASURED, THROUGHPUT_THREE_TERM,
+                                       precision_factor)
+    if model == THROUGHPUT_THREE_TERM:
+        return "compute + memory traffic + fixed cost per step"
+    if model == THROUGHPUT_MEASURED:
+        return "measured"
+    return f"FLOPs only, MFU {MFU} × precision {precision_factor(gpu, precision):.2f}"
 
 
 @app.command(name="benchmark")
@@ -422,6 +571,10 @@ def benchmark(
     study_steps: int = typer.Option(60, help="Mini-training steps."),
     nfs_factor: float = typer.Option(1.0, help="NFS latency factor (Verode ≈ 1.3)."),
     device: int = typer.Option(0, help="CUDA device index."),
+    train_size: Optional[int] = typer.Option(None, help="Train images (default: the config's dataset)."),
+    val_size: Optional[int] = typer.Option(None, help="Val images (default: the config's dataset)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Empirical benchmark on this machine — measures real throughput, memory and scaling."""
@@ -430,7 +583,9 @@ def benchmark(
                                 dataset_path=dataset_path, precision=precision,
                                 compare_precision=compare_precision,
                                 convergence_study=convergence_study, study_steps=study_steps,
-                                nfs_factor=nfs_factor, device=device)
+                                nfs_factor=nfs_factor, device=device,
+                                train_size=train_size, val_size=val_size,
+                                machine=machine, overrides=set_)
     _run(cmd, dry_run)
 
 
@@ -453,14 +608,118 @@ def eval(
         False, "--save-predictions-auto",
         help="Save the predictions as test_preds_<ts>.npz in the run's log folder "
              "(the web Inspector reads them)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
     """Evaluate a checkpoint (or an ensemble of several) on the held-out test (or val) split."""
     cmd = build_eval_cmd(checkpoint, config, model=model, split=split, output=output,
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
                          data_root=data_root, save_predictions=save_predictions,
-                         save_predictions_auto=save_predictions_auto)
+                         save_predictions_auto=save_predictions_auto,
+                         machine=machine, overrides=set_)
     _run(cmd, dry_run)
+
+
+@app.command("predict")
+def predict_images(
+    inputs: List[str] = typer.Argument(..., help="Image files or folders (recursive)."),
+    checkpoint: List[str] = typer.Option(
+        ..., help="Path to the .pt checkpoint or run folder. Repeat it for an ensemble "
+                  "(the probabilities of the checkpoints are averaged)."),
+    config: str = typer.Option("configs/train.yaml", help="YAML config (dataset, model)."),
+    model: Optional[str] = typer.Option(None, help="Override the model (default: the checkpoint's)."),
+    out: Optional[str] = typer.Option(None, help="CSV path with the probability of every class."),
+    batch_size: Optional[int] = typer.Option(None, help="Images per batch."),
+    device: Optional[str] = typer.Option(None, help="cpu | cuda (default: cuda if available)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
+) -> None:
+    """Classify loose images (or folders of them) with a trained checkpoint, outside training.
+    Uses the dataset's own evaluation transform; several checkpoints form an ensemble."""
+    if device is not None and device not in ("cpu", "cuda"):
+        raise typer.BadParameter("must be cpu or cuda", param_hint="--device")
+    cmd = build_predict_cmd(checkpoint, config, inputs, model=model, out=out,
+                            batch_size=batch_size, device=device,
+                            machine=machine, overrides=set_)
+    _run(cmd, dry_run)
+
+
+@app.command("compare-preds")
+def compare_preds(
+    a: List[str] = typer.Option(..., "--a", help="Predictions .npz of group A. Repeat it per run."),
+    b: List[str] = typer.Option(..., "--b", help="Predictions .npz of group B (reference). Repeat it per run."),
+    label_a: str = typer.Option("A", help="Name of group A in the tables."),
+    label_b: str = typer.Option("B", help="Name of group B in the tables."),
+    group: Optional[str] = typer.Option(None, help="Subgroup variable of the .npz (e.g. data_provider)."),
+    n_boot: int = typer.Option(2000, help="Bootstrap resamples."),
+    seed: int = typer.Option(0, help="Bootstrap seed."),
+    markdown: bool = typer.Option(False, "--markdown", help="Markdown tables (decimal comma) for docs/."),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
+) -> None:
+    """Compare two groups of runs (e.g. 3 seeds of a variant vs 3 of the base) from their saved
+    test predictions: mean ± std, ensemble and paired bootstrap of the difference. No GPU."""
+    cmd = build_compare_cmd(a, b, label_a=label_a, label_b=label_b, group=group,
+                            n_boot=n_boot, seed=seed, markdown=markdown)
+    _run(cmd, dry_run)
+
+
+@app.command("select-ensemble")
+def select_ensemble(
+    runs: List[str] = typer.Option(..., "--runs", help="Run folder with val and test predictions. Repeat it per run."),
+    val_name: str = typer.Option("val_preds.npz", help="Validation predictions file in each run folder."),
+    test_name: str = typer.Option("test_preds.npz", help="Test predictions file in each run folder."),
+    group: Optional[List[str]] = typer.Option(None, "--group", help="PATTERN=GROUP on run folder names (e.g. 'swin_t*=swin_t'). Repeat it; default: every run its own group."),
+    method: str = typer.Option("per-group", help="greedy | per-group."),
+    max_size: int = typer.Option(8, help="Greedy: maximum ensemble size."),
+    reference: Optional[List[str]] = typer.Option(None, "--reference", help="Run folder of the reference ensemble. Repeat it."),
+    n_boot: int = typer.Option(2000, help="Bootstrap resamples."),
+    seed: int = typer.Option(0, help="Bootstrap seed."),
+    markdown: bool = typer.Option(False, "--markdown", help="Markdown tables (decimal comma) for docs/."),
+    dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
+) -> None:
+    """Choose an ensemble of runs on validation only and evaluate it once on test (optionally
+    against a reference ensemble with the paired bootstrap). From saved predictions; no GPU."""
+    if method not in ("greedy", "per-group"):
+        raise typer.BadParameter("must be greedy or per-group", param_hint="--method")
+    cmd = build_select_ensemble_cmd(runs, val_name=val_name, test_name=test_name, groups=group,
+                                    method=method, max_size=max_size, reference=reference,
+                                    n_boot=n_boot, seed=seed, markdown=markdown)
+    _run(cmd, dry_run)
+
+
+@app.command()
+def doctor(
+    config: Optional[str] = typer.Option(
+        None, help="YAML config to check too (its paths, with the machine profile applied)."),
+    machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
+    set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
+    require_gpu: bool = typer.Option(False, "--require-gpu", help="FAIL if no GPU is usable."),
+) -> None:
+    """Check that this machine is ready: Python, torch/CUDA, GPUs, AVX2, profile, paths, disk.
+    Only reads the state (the GPU is not touched). Exit code 1 if any check FAILs."""
+    import argparse
+
+    from src import doctor as dr
+    from src.machine import select_machine
+    from src.training.config_overrides import prepare_config
+
+    cfg = None
+    if config:
+        cfg = prepare_config(argparse.Namespace(config=config, machine=machine, set_=set_ or []),
+                             common=False)
+    selection = select_machine(machine, os.environ)
+    label = f"{selection.profile.name} ({selection.reason})" if selection else None
+    checks = dr.evaluate(dr.collect(cfg, config, label), require_gpu=require_gpu)
+    colors = {dr.OK: "green", dr.WARN: "yellow", dr.FAIL: "red"}
+    table = Table(title="paravit doctor")
+    for col in ("Check", "Status", "Detail"):
+        table.add_column(col)
+    for c in checks:
+        table.add_row(c.name, f"[{colors[c.status]}]{c.status}[/]", c.detail)
+    console.print(table)
+    raise typer.Exit(dr.exit_code(checks))
 
 
 @app.command()
@@ -468,37 +727,43 @@ def dashboard(
     port: int = typer.Option(8501, help="Port for the Streamlit server."),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
 ) -> None:
-    """Open the read-only web dashboard (Overview · Run results · Compare ·
-    Performance · Dataset). Plan a config without running with `paravit estimate`."""
+    """Open the read-only web dashboard (Overview · Live · Inspector · Run results ·
+    Compare · Estimate/Benchmark · Dataset). Plan a config without running with `paravit estimate`."""
     cmd = [sys.executable, "-m", "streamlit", "run", "src/web/app.py", "--server.port", str(port)]
     _run(cmd, dry_run)
 
 
 def _run_row(r) -> dict:
-    """Summarise a RunInfo for the `runs` table: best Val F1 (from the epoch CSV)
-    and the held-out Test F1 (from a test_*.csv, if present)."""
-    best_val_f1 = None
+    """Summarise a RunInfo for the `runs` table: the best validation value of the run's main
+    metric (QWK for PANDA, AUC for MedMNIST, F1 otherwise; from the epoch CSV) and the
+    held-out test value of that metric (from the run's own test_<ts>.csv, if present)."""
+    from src.web.run_meta import resolve_metric
+    metric = r.main_metric
+    best_val = None
     epochs = None
     if r.epoch_csv_path and Path(r.epoch_csv_path).exists():
         try:
             import pandas as pd
             df = pd.read_csv(r.epoch_csv_path)
             epochs = len(df)
-            if "val_f1" in df.columns and df["val_f1"].notna().any():
-                best_val_f1 = float(df["val_f1"].max())
+            metric = resolve_metric(metric, df)
+            if metric.column in df.columns and df[metric.column].notna().any():
+                best_val = float(df[metric.column].max())
         except Exception:
             pass
-    test_f1 = None
+    test_val = None
     if getattr(r, "test_csv_paths", None):
         try:
             from src.web.eval_parser import parse_eval_csv
             _, agg = parse_eval_csv(r.test_csv_paths[0])
-            test_f1 = agg.get("f1_opt", agg.get("f1_t05"))
+            # the eval CSV carries f1_* for every dataset, auc always, qwk for ordinal ones
+            keys = {"qwk": ("qwk",), "auc": ("auc",)}.get(metric.key, ("f1_opt", "f1_t05"))
+            test_val = next((agg[k] for k in keys if k in agg), None)
         except Exception:
             pass
     return {"label": r.label, "env": r.env, "mode": r.mode,
             "precision": r.precision or "fp32", "epochs": epochs,
-            "best_val_f1": best_val_f1, "test_f1": test_f1}
+            "metric": metric.name, "best_val": best_val, "test": test_val}
 
 
 @app.command()
@@ -506,7 +771,8 @@ def runs(
     env: Optional[str] = typer.Option(None, help="Filter by environment (local/verode/kaggle)."),
     limit: int = typer.Option(20, help="Maximum number of rows."),
 ) -> None:
-    """List the training runs in logs/ (best Val F1, and held-out Test F1 if available)."""
+    """List the training runs in logs/ (best validation and held-out test value of each run's
+    main metric: QWK for PANDA, AUC for MedMNIST, F1 otherwise)."""
     from src.web.run_registry import discover_runs
     found = discover_runs(ROOT)
     if env:
@@ -516,14 +782,14 @@ def runs(
         console.print("[yellow]No runs found in logs/.[/]")
         return
     t = Table(title=f"Runs ({len(found)})", border_style="cyan")
-    for col in ("Run", "Env", "Mode", "Prec", "Epochs", "Best Val F1", "Test F1"):
+    for col in ("Run", "Env", "Mode", "Prec", "Epochs", "Metric", "Best Val", "Test"):
         t.add_column(col)
     for r in found:
         d = _run_row(r)
         t.add_row(d["label"], d["env"], d["mode"], d["precision"],
-                  str(d["epochs"] or "—"),
-                  f"{d['best_val_f1']:.4f}" if d["best_val_f1"] is not None else "—",
-                  f"[bold green]{d['test_f1']:.4f}[/]" if d["test_f1"] is not None else "—")
+                  str(d["epochs"] or "—"), d["metric"],
+                  f"{d['best_val']:.4f}" if d["best_val"] is not None else "—",
+                  f"[bold green]{d['test']:.4f}[/]" if d["test"] is not None else "—")
     console.print(t)
 
 @app.command()

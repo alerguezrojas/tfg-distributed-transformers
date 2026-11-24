@@ -126,3 +126,13 @@ def test_configured_loss_name_defaults_to_task_loss():
     assert configured_loss_name({}, get_task("multiclass")) == "ce"
     assert configured_loss_name({"loss": None}, get_task("multilabel")) == "bce"
     assert configured_loss_name({"loss": "Focal"}, get_task("multilabel")) == "focal"
+
+
+def test_loss_log_label_is_the_same_for_every_strategy():
+    from types import SimpleNamespace
+    from src.training.losses import loss_log_label
+    task = SimpleNamespace(default_loss="bce")
+    assert loss_log_label({}, task) == "bce"
+    assert loss_log_label({"loss": "focal", "focal_gamma": 1.5}, task) == "focal(g=1.5)"
+    assert loss_log_label({"loss": "ce_emd"}, task) == "ce_emd(w=1.0)"
+    assert loss_log_label({"pos_weight": [2.0]}, task) == "bce+pos_weight"

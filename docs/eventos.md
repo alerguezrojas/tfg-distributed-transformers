@@ -34,7 +34,7 @@ cambiar el significado de un campo sí.
 
 | `type` | Campos | Cuándo |
 |---|---|---|
-| `run_start` | `run_id` (el sello), `dataset`, `task` (`multilabel`/`binary`/`multiclass`), `classes`, `model`, `mode` (`single`/`ddp`/`ddp_hetero`/`model_parallel`, como la carpeta de `logs/`), `world_size`, `epochs` (planificadas), `ordinal` (clases ordenadas; solo si la ficha lo dice), `select_metric` (`f1`/`f1_optimal`/`auc`/`qwk`), `config` (YAML completo), `env` (`host`, `python`, `torch`, `timm`, `git_commit` o `null`, `devices`) | Al empezar `fit()` |
+| `run_start` | `run_id` (el sello), `dataset`, `task` (`multilabel`/`binary`/`multiclass`), `classes`, `model`, `mode` (`single`/`ddp`/`ddp_hetero`/`model_parallel`, como la carpeta de `logs/`), `world_size`, `epochs` (planificadas), `ordinal` (clases ordenadas; solo si la ficha lo dice), `select_metric` (`f1`/`f1_optimal`/`auc`/`qwk`), `config` (YAML efectivo: con `--model`, `model.name` es el modelo realmente entrenado), `env` (`host`, `python`, `torch`, `timm`, `git_commit` o `null`, `devices`) | Al empezar `fit()` |
 | `epoch_start` | `epoch`, `epochs` | Al empezar cada época |
 | `batch` | `epoch` (la del bucle, como en `epoch_start`, también tras `--resume`), `batch`, `n_batches`, `metrics` (`batch_loss`, `running_loss`, `lr`, `batch_f1`, `batch_acc`…) | Cada `log_batch_every` batches, si está activo el monitor de batches |
 | `epoch_end` | `epoch`, `epochs`, `train` (métricas), `val` (`loss`, `f1`, `accuracy`, `precision`, `recall`, `auc` y, si la tarea busca umbral, `optimal_threshold` y `f1_at_optimal_threshold`), `epoch_time_s`, `best`, `is_best` | Al terminar cada época |

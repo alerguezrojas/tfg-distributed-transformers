@@ -1,0 +1,8 @@
+# Clúster VERODE (ULL): V100, Slurm. Se reconoce por el nombre del nodo (login y cómputo).
+env: verode
+hosts: ["verode*"]
+data_roots:
+  bigearthnet:
+    root: /home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2
+    metadata_dir: /home/bejeque/alu0101317038/datasets/bigearthnet
+checkpoint_dir: checkpoints/verode

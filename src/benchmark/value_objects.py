@@ -129,3 +129,6 @@ class BenchmarkReport:
     # precision used for the benchmark + optional FP32-vs-Tensor-core comparison
     precision: str = "fp32"
     precision_comparison: dict | None = None  # {batch, fp32_imgs_s, tc_prec, tc_imgs_s, speedup}
+    # dataset of the config; the F1 prior and the *.tif I/O profile are BigEarthNet's
+    dataset_name: str = "bigearthnet"
+    prediction_note: str = ""   # why there is no performance prediction (other dataset)

@@ -1,0 +1,65 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  23/11/2026 10:26:30
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               tf_efficientnetv2_s
+  Parámetros totales:   20,185,174 (20.2M)
+  FLOPs/imagen:         14867.1 MFLOPs
+  Memoria estática:     0.32 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: amp (Tensor cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 3519 MHz
+  RAM: 16.7 GB total / 11.3 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+  Patches encontrados: ~3
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch         VRAM     Fuente      Estado
+     16       6.80 GB     medido          OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     16  off              79.2       256.4   6.80 GB
+     16  simple           80.0       257.2   6.80 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  15 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     16  off         0h 50m   0h 07m    0h 58m   14h 30m
+     16  simple      0h 49m   0h 07m    0h 57m   14h 21m
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         16            16        8    1.00×  100.0%   compute
+     2         16            32        8    1.90×   95.2%   compute
+     4         16            64        4    3.81×   95.2%   compute
+     8         16           128        2    7.62×   95.2%   compute
+
+  Configuración recomendada: 8 GPU(s) con batch=16/GPU
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: tf_efficientnetv2_s
+  Val F1 esperado:    ~0.560  (epoch ≈ 9)
+  Early stop aprox.:  epoch ≈ 15  (patience=10)
+  Confianza:          low
+  Nota: Empirical prior anchored to documented efficientnet runs on BigEarthNet-S2; confidence low. | Datase
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  Batch size óptimo: 16 (79.2 imgs/s)
+  → --trace off      15 epochs: ~14h 30m
+  → --trace simple   15 epochs: ~14h 21m
+
+  Nota: En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+

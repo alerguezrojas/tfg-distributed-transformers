@@ -4,6 +4,258 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-24
+
+### Añadido
+
+- Predictor: el throughput de entrenamiento con AMP (`amp`) sale del modelo
+  de tres términos (`t = a·F + b·A + d/B`: cómputo, tráfico de memoria medido en CPU y coste fijo
+  por paso) en lugar de solo los FLOPs. Coeficientes medidos en la RTX 3060 Ti y la T4
+  (`THROUGHPUT_FITS`) y transferidos por hoja técnica al resto (`GpuSpec.mem_bw_gbs`, con nota de
+  no calibrado); `ModelSpec.saved_gb_per_img` (tabla a 224 px; perfilado a la resolución pedida);
+  `Prediction.train_ips_per_gpu` y `throughput_model`, mostrados en la CLI y la web. Validado con
+  el tiempo por época de entrenamientos reales de PANDA (con datos, validación y DDP; el ajuste se
+  hizo con lotes sintéticos de los mismos modelos y GPU): error medio del 20 % al 8 % en la 3060 Ti
+  (8 modelos) y del 47 % al 17 % en 2 × T4 (7 modelos). fp32 y bf16 no cambian. Nueva sección del estudio (`scripts/predictor_architecture_study.py`) que lo reproduce.
+
+- Ejecución en clúster (fase 4): `paravit train --launcher slurm` construye, dentro de un trabajo
+  de Slurm, un `torchrun` con rendezvous `c10d` en el primer nodo de `SLURM_JOB_NODELIST` (el
+  mismo comando en todos los nodos, sin `--node_rank` ni `--master_addr`); `src/slurm.py` (puro,
+  recibe el entorno como dict) trae el intérprete de listas compactas (`verode[16,21]`,
+  `n[01-03],m5`) y usa `scontrol show hostnames` si existe. Error claro fuera de Slurm o con
+  estrategias que no son torchrun; sin `--launcher` el comando no cambia. Plantillas
+  `cluster/slurm/{single,ddp_multinode}.sbatch` (válidas también con `srun` mientras `sbatch` falle
+  en VERODE), definición Apptainer con PyTorch cu118 (`cluster/apptainer/paravit.def`, sin
+  construir aún) y guía [`cluster/README.md`](cluster/README.md).
+
+- Web (fase 3): selector de runs con búsqueda y filtros (entorno, dataset, modelo, estrategia) y
+  un desplegable con búsqueda en lugar de un botón por run; enlaces directos `?run=<sello>&tab=<sección>`
+  (la URL se actualiza al navegar); tabla *Test results by dataset* en el Overview (mejor test por
+  dataset con su métrica principal); lógica pura en `src/web/run_select.py` y rutas de datos desde
+  los perfiles de máquina en `src/web/data_paths.py`. El título pasa a ser «ParaViT-Lab», el
+  indicador *GPU time* multiplica por las GPU del run (y avisa si no se conocen) y la comparación
+  estimación-benchmark-real usa colores seguros para daltonismo (`theme.CB_*`).
+
+- `training.grad_accum_steps: k` (acumulación de gradientes, por defecto 1) y
+  `training.grad_checkpointing: true` (*activation checkpointing* del backbone, por defecto
+  false). La acumulación vive en `Trainer.train_epoch` (paso del optimizador cada `k` lotes,
+  pérdida dividida entre el tamaño real del grupo, `no_sync()` en DDP salvo en el último
+  micro-lote, `unscale_`/recorte/`step`/`update` solo al cerrar el grupo); el último grupo
+  incompleto también da su paso y el scheduler sigue avanzando por época. El heterogéneo y
+  `--trace deep` (batch-table) no la admiten y lo dicen. El checkpointing pasa por
+  `TimmClassifier.set_grad_checkpointing()` (timm y `hf:`), con error claro si el backbone no lo
+  tiene y con paralelismo de modelo. La línea `Configuración:` gana `accum=` y `ckpt=` solo si
+  están activas. `paravit benchmark` aplica ambas opciones de la config. Medido en la 3060 Ti
+  (Swin-T a 512 px, AMP): checkpointing 6,73 → 2,27 GB a −24 % de velocidad (lote 48 cabe, 56 no);
+  acumulación 2×8 frente a 16: 3,71 frente a 6,73 GB a −4 % ([guía](docs/guia_de_uso.md)).
+- Perfiles de máquina (`configs/machines/{local,verode,kaggle,example}.yaml`, `src/machine.py`):
+  rutas de datos por dataset (`data_roots`), `checkpoint_dir`, `output.env` y `num_workers` fuera de
+  las configs de experimento. Se eligen con `--machine`, `PARAVIT_MACHINE` o el nombre del host
+  (`--machine none` los desactiva); sin perfil, las configs se usan tal cual. Aplicados en un solo
+  sitio (`prepare_config`) por los cuatro `train_*.py`, `eval.py`, `predict.py` y `benchmark.py`
+  y por `paravit train/eval/predict/benchmark`.
+- `--set clave.sub=valor` (repetible, valor YAML, `1e-4` se lee como float, también dentro de listas; entre comillas sigue siendo texto) en los mismos puntos
+  de entrada, aplicado después del perfil.
+- `paravit doctor` (`src/doctor.py`): Python, torch y CUDA, GPUs (y si están en la tabla del
+  predictor), AVX2, perfil activo y, con `--config`, rutas y espacio libre para checkpoints; tabla
+  OK / WARN / FAIL y código de salida 1 si hay FAIL. Solo lee el estado de la GPU.
+- `scripts/measure_allreduce.py`: ancho de banda de all-reduce (NCCL) entre las GPU de la máquina,
+  con la convención de nccl-tests (algbw y busbw), para medir la β del predictor. El kernel de
+  Kaggle `panda_train` lo ejecuta antes de entrenar y admite ahora una estrategia por experimento
+  (`ddp` o `single`), para comparar estrategias en el mismo hardware (lote `strategies_512`).
+- `paravit predict` (`scripts/predict.py`): clasifica imágenes sueltas o carpetas con un checkpoint
+  o un conjunto (probabilidades promediadas) sin pasar por el bucle de entrenamiento. La ficha del
+  dataset aporta el lector de imágenes (`DatasetSpec.image_reader`, nuevo y opcional; PANDA y
+  MedMNIST lo tienen, BigEarthNet no y falla con un error claro) y se aplica la misma
+  transformación de evaluación que en test. Salida: tabla con clase, probabilidad máxima y, en
+  tareas ordinales, grado esperado; `--out` guarda un CSV con todas las probabilidades; en
+  multietiqueta, las clases por encima del umbral del checkpoint. Las imágenes de 16 bits se
+  reescalan a 0-255 en lugar de saturarse (`src/data/image_io.py`) y la config se lee tal cual
+  (`src/config_io.py`).
+- Estudio del predictor con arquitecturas distintas de ViT: `saved_activation_gb` en
+  `src/model_profile.py` (GB que autograd guarda por imagen, medidos en CPU),
+  `src/analysis/throughput_model.py` (modelo de dos términos FLOPs + memoria, validación cruzada
+  y transferencia entre GPUs) y `scripts/predictor_architecture_study.py`, que reproduce el
+  estudio de `docs/performance_model.md` (sección 8) desde los datos versionados.
+- Kernel de Kaggle `benchmark_t4`: `paravit benchmark` con lotes sintéticos de las 13 arquitecturas
+  de la criba de PANDA (512 px, AMP) en una T4, para validar el predictor fuera de muestra en una
+  GPU distinta de la de calibración, sin que la carga de datos de Kaggle (4 CPU) interfiera.
+- `paravit select-ensemble` (`scripts/select_ensemble.py`, `src/analysis/ensemble.py`): elige un
+  conjunto de runs **solo con validación** (`val_preds.npz`) y lo evalúa una vez en test
+  (`test_preds.npz`). Métodos `per-group` (mejor run de cada grupo y k de máxima validación) y
+  `greedy` (Caruana et al. 2004, con repetición); tabla de candidatos, traza de la selección,
+  métricas del conjunto y, con `--reference`, diferencia con IC 95 % por *bootstrap* emparejado.
+  Solo multiclase. Los grupos (p. ej. arquitecturas) se dan con `--group 'swin_t*=swin_t'`.
+- `paravit compare-preds` (`scripts/compare_predictions.py`, `src/analysis/compare.py`): compara
+  dos grupos de runs (p. ej. tres semillas de una variante frente a tres de la base) desde sus
+  `test_preds.npz`. Métricas por run (QWK, exactitud, ±1 grado, AUC de «clase ≥ 1», métrica por
+  subgrupo), media ± desviación, conjunto y *bootstrap* emparejado (mismos índices para todos los
+  runs) de la media, del conjunto y de cada pareja; con `--markdown`, tablas para `docs/`.
+  Reproduce las cifras de `docs/datasets/panda.md` (limpieza de etiquetas). Solo multiclase.
+
+### Cambiado
+
+- Predictor: la sincronización de DDP es ahora un all-reduce en anillo (`2(n−1)/n · 4P/β` por
+  paso, `allreduce_time`) con el ancho de banda medido cuando lo hay (`GpuSpec.allreduce_busbw_gbs`:
+  T4 de Kaggle, 4,05 GB/s; `scripts/measure_allreduce.py`) y, si no, el nominal de
+  `INTERCONNECT_BW` reducido a la mitad (con 2 GPU deja igual la predicción de las GPU sin medida,
+  y con más el término crece hasta 1,5-1,75× el anterior; la predicción lleva una nota). Antes era `8P/β` con los 16 GB/s de PCIe. El speedup de DDP en 2 × T4
+  (BigEarthNet, vit_base fp32) pasa de 1,95× a 1,91× (real 1,96×); el paralelismo de modelo y el
+  heterogéneo conservan su término anterior.
+
+- Web: sin rutas del autor en `home.py`, `dataset.py` ni `helpers.py` (perfiles de máquina y mensaje
+  claro si no hay dataset local); las confusiones y la matriz de *Run results* toman las clases del
+  manifiesto del run y solo agrupan por ecosistema en BigEarthNet. Eliminados `model_explorer.py`
+  (importaba torch y timm) y `system_monitor.py`, que no usaba la web.
+
+- **Un solo lanzador para las cuatro estrategias** (fase 2 de la auditoría, A6 y A7). El flujo de
+  `scripts/train_single_gpu.py`, `train_ddp.py`, `train_heterogeneous_ddp.py` y
+  `train_model_parallel.py` (~150 líneas duplicadas y divergentes en cada uno) vive ahora en
+  `src/training/launch.py` (`build_parser`, `main`), y lo propio de cada estrategia en un
+  `StrategySpec` registrado en `src/training/strategies.py` (como `DatasetSpec` para los datasets):
+  modo de lanzamiento (proceso normal o `torchrun`), grupo de procesos y dispositivo, `DataLoader`,
+  `with_*` del builder, texto de la línea `Configuración:` y opciones propias. Los scripts son
+  envoltorios de 5 líneas con su docstring de uso; nombres, rutas y opciones previas no cambian, ni
+  los valores por defecto de `--config` (siguen siendo uno por estrategia). La línea
+  `Configuración:` de cada estrategia sale con el mismo texto de antes (test de instantánea que
+  ejecuta los cuatro lanzadores reales en CPU). Añadir una estrategia pasa a tocar su `Trainer`, un
+  `with_*` en el builder y su `StrategySpec`.
+- Nombre canónico de las estrategias: `single`, `ddp`, `heterogeneous` y `model_parallel` (el de
+  las carpetas de logs y de `estimate`); `model-parallel`, `heterogeneous_ddp`, `hetero`, `mp` y
+  `single_gpu` son alias (`get_strategy`). `paravit train --strategy` acepta ambos y la CLI y el
+  menú leen la lista del registro (`STRATEGIES`, que ahora contiene `model_parallel`).
+- Las cuatro estrategias aceptan ya las mismas opciones: `--batch-size`, `--resume` e `--inspect`
+  llegan a las que no las tenían (`--resume` a DDP, heterogéneo y model-parallel: cada rank
+  carga el mismo `last.pt`; `--inspect` a DDP y heterogéneo, solo en el rank 0). Lo que una estrategia no puede
+  cumplir da un error claro en vez de ignorarse: `--precision` y `--batch-size` en heterogéneo (su
+  bucle es fp32 y el lote va por rank en `distributed.ranks`) e `--inspect` en model-parallel.
+  `paravit train` gana `--batch-size`, `--resume` e `--inspect`, avisa si descarta `--precision` en
+  heterogeneous y el menú ofrece la precisión también en ddp y model-parallel.
+- Un lanzador distribuido sin `torchrun` (sin `RANK`/`WORLD_SIZE`) da un mensaje que lo explica en
+  vez de un `KeyError`. `--model` actualiza también `model.name` de la config antes de validarla en
+  todas las estrategias (antes solo en model-parallel): un YAML con `hf:...` y `pooling: cls`
+  lanzado con `--model <timm>` ahora falla con un error claro en vez de ignorar el pooling, y en heterogéneo los reporteros de métricas
+  quedan en el rank 0, como en DDP.
+
+### Corregido
+
+- Calidad y seguridad (avisos de SonarCloud y CodeQL en `main`):
+  - la web solo importa carpetas bajo el home o los discos montados (`safe_import_folder`), para
+    cerrar el *path injection* de CodeQL;
+  - `scripts/export_kaggle_subset.py` toma las rutas del perfil de máquina y no de argumentos
+    (S8707), y escribe en `<metadata_dir>/kaggle_subset_<n_train>_<n_val>/`;
+  - un test comprobaba NaN con `loss == loss` (ahora `math.isnan`);
+  - otro tenía un `assert` dentro de un `try` que lo silenciaba.
+
+- Fuga de memoria al medir las activaciones de un modelo (`model_profile.saved_activation_gb`):
+  el gancho de autograd devolvía el propio tensor, lo que crea un ciclo tensor ↔ `grad_fn` que
+  nunca se libera, y cada modelo perfilado dejaba en memoria todas sus activaciones (0,5-1 GB a
+  512 px). El estudio de arquitecturas del predictor llegaba a 9,7 GB y contribuyó a que
+  `systemd-oomd` cerrara la sesión de escritorio; ahora no pasa de 2,9 GB, con los mismos valores.
+
+- DDP en varios nodos: `DDPTrainer` envolvía el modelo con `device_ids=[rank]` (el rank global), de
+  modo que con una GPU por nodo (VERODE) el rank 1 pedía `cuda:1`. Ahora usa el índice del
+  dispositivo del modelo (`ddp_device_ids`), también en el entrenador heterogéneo. Se quita el
+  comentario de `scripts/train_ddp.py` que sugería compartir GPU entre ranks (NCCL no lo admite).
+- Resultados de test por run: la web y `paravit runs` asociaban todos los `test_*.csv` de la carpeta
+  a cada run (cuatro runs de `medmnist_breast` mostraban el mismo F1 de test). Ahora cada run recibe
+  solo su `test_<sello>.csv` (o `eval_<sello>.csv`); los demás quedan «sin asignar»
+  (`RunInfo.unassigned_test_csv_paths`) y no se atribuyen a ningún run.
+  Si la carpeta tiene un solo run, los CSV sin sello (p. ej. `test_best_epoch007.csv` del run de
+  BigEarthNet del TFG) se le asignan. `scripts/eval.py --output` sin ruta escribe
+  `<split>_<sello>.csv` en la carpeta de logs del run (como `--save-predictions` sin ruta); el
+  runbook de VERODE lo usa.
+- El entrenamiento heterogéneo elige la GPU con `local_rank % device_count`, como DDP, y su línea
+  `Configuración:` dice la pérdida que entrena de verdad (`bce` o `bce+pos_weight`).
+- `paravit runs` mostraba «Best Val F1» también en PANDA: ahora usa la métrica principal del run
+  (QWK en PANDA, AUC en MedMNIST, F1 en el resto), con su nombre en una columna, y el valor de
+  test de esa métrica.
+- `scripts/eval.py` guarda el QWK en el CSV de test (clave nueva `qwk=` en la fila `# aggregate`,
+  solo en tareas ordinales) y `src/results_summary.py` lo agrega; además lee la semilla del
+  manifiesto `run_<sello>.json` cuando el log no la trae.
+- La línea `Configuración:` de DDP, heterogéneo y paralelismo de modelo escribe ahora `seed=` y
+  `loss=` con el mismo formato que la de `single` (claves nuevas; los parsers de la web no cambian).
+  La etiqueta de la pérdida sale de `loss_log_label` (`src/training/losses.py`).
+- `gpu_spec()` ya no casa por subcadena: «NVIDIA GeForce RTX 3060» (12 GB) devolvía la RTX 3060 Ti
+  (8 GB). Ahora exige coincidencia exacta tras normalizar o un alias explícito (`_GPU_ALIASES`:
+  variantes `Tesla V100-PCIE-32GB`, `A100-SXM4-40GB`…); una GPU que no está en la tabla da `None` y
+  `paravit estimate` lo dice. Los nombres reales de T4, V100, 3060 Ti, 3090, 4090, A100, P100 y H100
+  resuelven igual que antes; `RTX 3060`, `RTX 3090 Ti` o `A100` a secas dejan de resolver.
+- `tests/unit/test_system_sampler.py` ya no falla si `CUDA_VISIBLE_DEVICES` está definida (Slurm,
+  Kaggle).
+- `.gitignore`: `logs/**/events_*.jsonl` y `logs/**/test_preds_*.npz` se ignoran de forma explícita
+  (no se versionaban ni estaban ignorados); el manifiesto `run_<sello>.json` sigue versionándose.
+- Documentación al día con el código: `infraestructura.md` (flujo de ramas en vez de
+  `git push origin main`, 7 secciones de la web), `arquitectura.md` (secciones de la web, sin
+  «Import», límite de 12 runs en Compare), `guia_de_uso.md` (subcomandos `predict`,
+  `compare-preds` y `select-ensemble`; sin vista en español inexistente), `primeros_pasos.md`
+  (`eval` con `--data-root`), `configs/README.md` (registro con «ustedes») y `AGENTS.md` (comandos
+  y módulos nuevos). En `src/cli.py` solo textos de ayuda: ejemplo de `eval`, secciones de
+  `dashboard` y alcance de `--precision`.
+- `paravit benchmark` ya no supone BigEarthNet con otros datasets: los tamaños de split salen del
+  dataset de la config (`data.name`; PANDA lee `splits.csv`, MedMNIST el `.npz`) o de
+  `--train-size`/`--val-size`, y si no se pueden leer falla con un mensaje en vez de usar los de
+  BigEarthNet; el perfil de I/O (`*.tif`, «Patches encontrados») y el prior empírico de F1 solo
+  se muestran con BigEarthNet (con otro dataset, una línea «Sin prior calibrado»); la cabecera
+  nombra el dataset. Se comprueba además que el benchmark usa `model.img_size`.
+- Con `--model` distinto al de la YAML, el manifiesto del run (`config.model.name`) y los
+  checkpoints ya reflejan el modelo efectivo: los checkpoints guardan `model_name` y
+  `scripts/eval.py` lo usa si no se pasa `--model` (error claro si lo contradice o si un conjunto
+  mezcla modelos; los checkpoints antiguos siguen cargando con la config).
+- LLRD (`training.llrd_decay`) con cualquier modelo de timm: Swin (que figuraba como compatible
+  pero no tiene `.blocks` y fallaba), ConvNeXt, EfficientNet, ResNet, DeiT-III, EVA… Los modelos
+  que no son ViT se reparten en bloques con su propio `group_matcher()` (el mismo reparto que
+  `--layer-decay` en timm), y su decay se reparte como si tuvieran 12 bloques: de la cabeza a la
+  entrada cae lo mismo que en un ViT-S/B, sea cual sea la profundidad (5 grupos en MaxViT-T, 37
+  en ConvNeXt-S). Antes, las CNN se entrenaban sin LLRD aunque la config lo pidiera: para
+  reproducir los runs de ResNet-50 del TFG hay que poner `llrd_decay: 0.0` (como en
+  `configs/models/resnet50.yaml`). El camino de los ViT no cambia (test *golden* intacto) salvo
+  el *weight decay* de los *layer-scale* 1-D (ViT con `init_values`, DINOv2), que ahora no llevan.
+- LLRD: CaiT y XCiT dejaban fuera del optimizador sus bloques de atención de clase (el "resto"
+  se calculaba por nombre); ahora se comprueba que cada parámetro entrenable está en un solo
+  grupo. Los parámetros 1-D (BatchNorm, layer-scale) ya no llevan *weight decay*, como en timm,
+  y hay un aviso si algún grupo empieza por debajo de `lr_min` (el coseno le subiría la tasa).
+- Test de Grad-CAM con backbone congelado: semilla fija (fallaba de vez en cuando).
+
+### Experimentos
+
+- Throughput en fp32 en la RTX 3060 Ti (24/11/2026, `docs/research/datos/throughput_fp32_3060ti.csv`):
+  lo que acelera AMP frente a fp32 depende de la arquitectura, el lote y la resolución (×1,0 a
+  ×3,4), no es un π fijo por GPU. A 512 px en fp32, 8 de 10 modelos no caben en 8 GB.
+
+- PANDA, una T4 frente a dos en la misma máquina de Kaggle (24/11/2026): con la segunda T4, ViT-S
+  acelera ×1,35 y Swin-T ×1,71, sin cambio de QWK (0,782-0,801 y 0,820-0,830). Con dos GPU manda la
+  decodificación en CPU (4 vCPU al 100 %); el control con 2 procesos de carga por GPU es más lento
+  (164 frente a 144 s/época), lo que descarta la contención. All-reduce medido entre las dos T4:
+  4,05 GB/s (`docs/research/datos/allreduce_t4_kaggle.csv`). Logs en `logs/kaggle/panda/`.
+
+- Predictor, otras resoluciones (23/11/2026): el modelo de dos términos calibrado a 512 px predice
+  384 px con un 10 % de error; a 224 px hace falta un coste fijo por paso (d ≈ 20-30 ms), con el
+  que el error baja del 43 % al 15 % (`fit_with_overhead`; `performance_model.md`, sección 8).
+- PANDA, más semillas (23/11/2026): ViT-B 0,822 ± 0,003, Swin-T 0,821 ± 0,011, SwinV2-T
+  0,820 ± 0,017, Swin-T con pérdida ordinal 0,827 ± 0,014 (+0,006, no significativo); el
+  conjunto de 6 arquitecturas repetido con runs independientes da 0,852 y 0,846 de QWK de test
+  (+0,017-0,023 sobre el mejor conjunto de una sola arquitectura).
+- Predictor: con 13 arquitecturas medidas a 512 px (RTX 3060 Ti y T4), el tiempo no sigue a los
+  FLOPs (error medio en validación cruzada 193 %); con un segundo término de memoria de
+  activaciones baja al 10 %, y el coste relativo de las arquitecturas se transfiere a la T4
+  desde las hojas técnicas con un 11 % de error (82 % con solo FLOPs), más un factor común de 1,49
+  de causa sin identificar. El −40 % de ViT-S a 512 px en Kaggle no es la GPU (la T4 lo haría en
+  ~77 s); la hipótesis es contención de CPU, pendiente de un experimento de control.
+- PANDA, modelos grandes en Kaggle (2 × T4, semilla 42): SwinV2-T 0,835, ViT-B 0,823,
+  ConvNeXt-S 0,811, MaxViT-T 0,806 y EfficientNet-B3 0,775 de QWK de test; ninguno supera a Swin-T
+  de forma significativa, ni las variantes de Swin-T con pesos in22k o 25 épocas.
+- PANDA, conjuntos de arquitecturas distintas elegidos solo en validación (predicciones de
+  validación de los 21 runs): el mejor run de cada arquitectura, los 8 primeros, da **QWK de test
+  0,858**, +0,029 [+0,013; +0,047] sobre el conjunto de tres semillas de Swin-T. Es el mejor
+  resultado de PANDA en el proyecto.
+- PANDA, criba de modelos a 512 px con la receta de la base (una semilla; los dos mejores, con
+  tres): **Swin-T mejora el QWK de test de forma significativa**, 0,821 ± 0,011 frente a
+  0,794 ± 0,012 del ViT-S (+0,027 [+0,008; +0,046]), con mejor exactitud (+0,058) y AUC de cáncer
+  sí o no (+0,017). ConvNeXt-T (+0,002 con tres semillas), DeiT-III-S, EVA-02-S, EfficientNet-B0
+  y EfficientNetV2-S empatan con la base; ResNet-50 queda por debajo (−0,075). Detalle en
+  `docs/datasets/panda.md`; logs en `logs/local/panda/single/<modelo>/`.
+
 ## [1.3.0] - 2026-11-21
 
 ### Añadido
@@ -463,7 +715,8 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...v1.2.0

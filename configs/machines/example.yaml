@@ -1,0 +1,33 @@
+# Plantilla de perfil de máquina para quien se incorpora.
+#
+#   cp configs/machines/example.yaml configs/machines/mi_equipo.local.yaml   # *.local.yaml no se commitea
+#   export PARAVIT_MACHINE=mi_equipo.local        # o --machine mi_equipo.local en cada comando
+#   uv run paravit.py doctor --config configs/train_panda.yaml   # comprueba rutas y entorno
+#
+# Un perfil sobrescribe, SOLO si está activo, las rutas y ajustes que dependen de la máquina:
+# el resto de la config del experimento no cambia. `--machine none` lo desactiva.
+
+# Etiqueta del entorno: los artefactos van a logs/<env>/... y plots/<env>/...; póngale un nombre
+# propio para no mezclar sus runs con los de otras máquinas (el panel web filtra por ella).
+env: mi_equipo
+
+# (Opcional) patrones del nombre del host (`hostname`) para activar el perfil automáticamente.
+# hosts: ["mi-portatil*"]
+
+# Dónde está cada dataset, por su `data.name`. Una cadena fija data.root; un diccionario fija
+# cada clave de data (BigEarthNet necesita también `metadata`: `metadata_dir` mueve
+# metadata.parquet o metadata_demo.parquet a esa carpeta conservando el nombre del fichero).
+# Solo se tocan los datasets listados: las demás configs se usan tal cual.
+data_roots:
+  panda: /ruta/a/datasets/panda
+  # bigearthnet:
+  #   root: /ruta/a/datasets/bigearthnet/BigEarthNet-S2
+  #   metadata_dir: /ruta/a/datasets/bigearthnet
+  # medmnist: /ruta/a/datasets/medmnist        # vale para medmnist_breast, medmnist_chest...
+
+# Carpeta de checkpoints (el entrenamiento añade <modo>/<modelo>/<sello> debajo).
+checkpoint_dir: checkpoints/mi_equipo
+
+# Procesos de carga de datos: solo RELLENA las configs que no fijan data.num_workers (nunca pisa
+# el valor de un experimento). Suele ser <= núcleos de la CPU.
+num_workers: 4

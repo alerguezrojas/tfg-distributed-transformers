@@ -1,19 +1,25 @@
 # Configuraciones de entrenamiento
 
 Cada `.yaml` describe **un escenario** (modelo, dataset, hardware, estrategia). Se pasan con
-`--config`, p. ej. `uv run tfg.py train --strategy single --config configs/train_v3.yaml`.
+`--config`, p. ej. `uv run paravit.py train --strategy single --config configs/train_v3.yaml`.
 
 **Dataset:** `metadata.parquet` = BigEarthNet-S2 **completo** (237 871 train) · `metadata_demo.parquet`
 = **subconjunto** de 5 000/1 500 (estudios rápidos y comparables).
 
+**Rutas y máquina:** las rutas de los YAML son las del autor o las de VERODE. Los perfiles de
+`machines/` (`local`, `verode`, `kaggle` y `example.yaml`, plantilla para equipos nuevos) las
+sustituyen según la máquina: `--machine NOMBRE`, `PARAVIT_MACHINE` o el nombre del host; sin perfil
+las configs se usan tal cual. `--set clave.sub=valor` cambia cualquier clave suelta. Ver la
+[guía de uso](../docs/guia_de_uso.md#perfiles-de-máquina-y---set).
+
 ---
 
-## ¿Cuál uso? (guía rápida)
+## ¿Qué config elegir? (guía rápida)
 
-| Quiero… | Config |
+| Si se quiere… | Config |
 |---|---|
-| Entrenar en **mi máquina** (RTX 3060 Ti), baseline | `train.yaml` |
-| Entrenar en **mi máquina** con la regularización buena (v3) | `train_v3.yaml` |
+| Entrenar en **la máquina local** (RTX 3060 Ti), baseline | `train.yaml` |
+| Entrenar en **la máquina local** con la regularización buena (v3) | `train_v3.yaml` |
 | El **mejor resultado** en Verode (V100, dataset completo) | `train_cluster_v3.yaml` |
 | Probar **focal vs BCE** rápido en local | `train_local_demo_focal.yaml` / `train_local_demo_bce.yaml` |
 | Probar **focal vs BCE** a escala en Verode | `train_cluster_focal.yaml` / `train_cluster_bce.yaml` |
@@ -57,6 +63,12 @@ Cada `.yaml` describe **un escenario** (modelo, dataset, hardware, estrategia). 
 | `train_demo_ddp.yaml` | 2 GPU (NCCL) | Paralelismo de **datos** — speedup positivo real (Kaggle 2×T4). |
 | `train_model_parallel_kaggle.yaml` | 2 GPU | Paralelismo de **modelo** — no acelera, pero permite modelos que no caben en 1 GPU (Kaggle 2×T4). |
 
+## Opciones de memoria (cualquier config)
+
+`training.grad_accum_steps: k` (paso del optimizador cada `k` lotes) y `training.grad_checkpointing: true`
+(*activation checkpointing*) están desactivadas por defecto; se activan con `--set` y no tienen
+config propia. Cuándo usarlas y cuánto cuestan: [guía de uso](../docs/guia_de_uso.md).
+
 ## Otros datasets (`data.name`)
 
 | Config | Dataset | Para qué |
@@ -72,4 +84,4 @@ Cada `.yaml` describe **un escenario** (modelo, dataset, hardware, estrategia). 
 
 ---
 
-> Sugerencia: usa `uv run tfg.py menu` → el menú lista estos configs para elegir sin recordar nombres.
+> Sugerencia: con `uv run paravit.py menu` el menú lista estos configs para elegir sin recordar nombres.

@@ -76,7 +76,10 @@ alias). `--help` funciona en cada subcomando.
 | `estimate` | Predicción **analítica** de tiempo, memoria, energía, coste y F1 (solo fórmulas) | No |
 | `benchmark` | Medición **empírica** en la máquina: throughput real, VRAM, I/O, escalado DDP | Sí |
 | `train` | Entrenamiento con la estrategia elegida | Sí |
-| `eval` | Evaluación de un checkpoint sobre el split de test (o val) | Sí |
+| `eval` | Evaluación de un checkpoint (o de un conjunto de ellos) sobre el split de test (o val) | Sí |
+| `predict` | Clasifica imágenes sueltas (o carpetas) con un checkpoint entrenado | Sí (o CPU, más lento) |
+| `compare-preds` | Compara dos grupos de runs (p. ej. 3 semillas) desde sus predicciones de test: media ± desviación, conjunto y bootstrap pareado | No |
+| `select-ensemble` | Elige un conjunto de runs solo con validación y lo evalúa una vez en test | No |
 | `runs` | Tabla de todos los entrenamientos registrados con su mejor F1 | No |
 | `report` | Informe HTML autocontenido de un run (métricas con IC, calibración, TRIPOD+AI) | No |
 | `dashboard` | Abre el panel web en `http://localhost:8501` | No |
@@ -91,7 +94,7 @@ uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" \
 Devuelve el titular (s/época, aceleración, VRAM, energía, cuello de botella) y las tablas con las
 fórmulas de tiempo `max(cómputo, I/O) + sincronización`, memoria, energía, calidad esperada,
 escalado de 1 a 8 GPU y coste en proveedores de nube. Estrategias: `single`, `ddp`,
-`model-parallel`, `heterogeneous`. La derivación completa del modelo está en
+`model_parallel`, `heterogeneous`. La derivación completa del modelo está en
 [`docs/performance_model.md`](performance_model.md).
 
 `--model` acepta cualquier modelo de timm. Los seis de la tabla del predictor están calibrados;
@@ -108,9 +111,15 @@ uv run paravit.py benchmark --batch-sizes 32,64 --epochs 15
 uv run paravit.py benchmark --model resnet50 --batch-sizes 32,64
 ```
 
-Usa datos sintéticos (no necesita el dataset) y genera un informe de texto y un CSV en
+Usa datos sintéticos (no necesita el dataset para medir) y genera un informe de texto y un CSV en
 `logs/<entorno>/benchmark/`, que el panel web muestra en *Estimate/Benchmark → Benchmark*. Con
 `--convergence-study` añade un estudio de convergencia con datos reales (requiere el dataset).
+
+Con `--config` usa el dataset (`data.name`) y la resolución (`model.img_size`) de esa config. Los
+tiempos por época usan el tamaño de sus splits, leído de la partición del dataset; si no está en
+disco, se indican con `--train-size` y `--val-size`. El perfil de I/O de parches `*.tif` y la
+predicción empírica de F1 solo existen para BigEarthNet: con otro dataset el informe dice que no
+hay prior calibrado.
 
 ### `train` — entrenar
 
@@ -130,13 +139,16 @@ Opciones principales:
 
 | Opción | Valores | Efecto |
 |---|---|---|
-| `--strategy` | `single` · `ddp` · `model-parallel` · `heterogeneous` | Estrategia de distribución; las distribuidas se lanzan solas con `torchrun` |
+| `--strategy` | `single` · `ddp` · `model_parallel` · `heterogeneous` | Estrategia de distribución (también vale `model-parallel`); las distribuidas se lanzan solas con `torchrun` |
 | `--config` | fichero YAML | Rutas, modelo, lote, épocas, regularización (sección 4) |
 | `--model` | id de timm | Sustituye el modelo del config (`vit_tiny_patch16_224`, `resnet50`…) |
 | `--epochs` | entero | Sustituye el número de épocas; si queda `epochs <= warmup_epochs`, baja `warmup_epochs` a `epochs - 1` (mínimo 0) y avisa |
 | `--seed` | entero | Sustituye `training.seed` (repeticiones con distinta semilla) |
 | `--data-root` | ruta | Sustituye `data.root` (dónde está el dataset en esta máquina). Solo esa clave: las rutas absolutas de `data.metadata` (BigEarthNet) o `data.splits`/`data.mosaics` (PANDA) se cambian en el YAML |
-| `--precision` | `fp32` · `tf32` · `amp` · `bf16` | fp32 usa núcleos CUDA; el resto, núcleos tensoriales |
+| `--precision` | `fp32` · `tf32` · `amp` · `bf16` | fp32 usa núcleos CUDA; el resto, núcleos tensoriales. No en `heterogeneous` (su bucle es fp32): la CLI avisa y lo descarta |
+| `--batch-size` | entero | Sustituye `training.batch_size` (por GPU en `ddp`). No en `heterogeneous`: el lote va por rank en `distributed.ranks` |
+| `--resume` | `.pt` o carpeta del run | Reanuda desde `last.pt` y entrena solo las épocas que faltan; en las distribuidas, todos los ranks cargan el mismo fichero |
+| `--inspect` | `model-summary,grad-monitor,batch-table,anomalies` | Inspección modular (activa la traza profunda). No en `model_parallel`; en las distribuidas, solo el rank 0 |
 | `--trace` | `off` · `simple` · `deep` | Solo consola / registro a fichero / traza profunda por capas |
 | `--layers` | `plot,confusion,batch-monitor,hooks` | Decoradores de aspecto, combinables por comas |
 | `--fn` | `timing,energy` | Cronometraje por fase y energía de todas las GPU del run |
@@ -146,9 +158,10 @@ Opciones principales:
 | `--dry-run` | | Imprime el comando final sin ejecutarlo |
 
 Los scripts de `scripts/` (`train_single_gpu.py`, `train_ddp.py`, `train_model_parallel.py`,
-`train_heterogeneous_ddp.py`) pueden ejecutarse también directamente; aceptan además `--metrics`
-(reporteros individuales de métricas) y `--inspect` (inspección modular del modelo:
-`model-summary`, `batch-table`, `grad-monitor`, `anomalies`).
+`train_heterogeneous_ddp.py`) pueden ejecutarse también directamente: son envoltorios del mismo
+lanzador y aceptan las mismas opciones, más `--metrics` (reporteros individuales de métricas),
+`--batch-log-every` y las propias de cada estrategia (`--devices` y `--split-block` en
+`model_parallel`).
 
 ![Listado de runs](img/term_runs.png)
 
@@ -161,6 +174,11 @@ uv run paravit.py eval --checkpoint checkpoints/verode/single/vit_base_patch16_2
 `--checkpoint` acepta un fichero (`best.pt`, `last.pt` o un `checkpoint_epoch_NNN.pt` antiguo) o la carpeta
 de un run, que se resuelve a su `best.pt`. `--data-root RUTA` sustituye `data.root` del config (igual
 que en `train`: solo esa clave), útil para evaluar en otra máquina donde el dataset está en otro sitio.
+
+**Modelo.** Los checkpoints nuevos guardan el modelo con el que se entrenaron (`model_name`), así que
+`eval` lo usa sin necesidad de `--model`, aunque el run se lanzase con `--model` distinto al del config.
+Si se pasa `--model` y contradice al checkpoint, o un conjunto mezcla modelos, falla antes de cargar.
+Los checkpoints antiguos (sin esa clave) siguen usando el modelo del config o `--model`.
 
 **Conjunto de checkpoints.** Repetir `--checkpoint` evalúa un *ensemble*: se infiere el mismo split
 con cada modelo (cargados de uno en uno, para no acumular memoria), se **promedian las
@@ -180,8 +198,9 @@ el umbral es la media de los guardados en los miembros (si falta alguno, se ajus
 `--save-predictions` **exige ruta explícita** con un conjunto (no hay un único run del que deducir el
 sello); con un solo checkpoint no cambia nada.
 
-Evalúa una única vez sobre el split de test y escribe un `test_*.csv` (métricas por clase + fila
-agregada, con el AUC macro) que el panel web muestra en la tarjeta «Held-out test set» del run.
+Evalúa una única vez sobre el split de test y con `--output` (sin ruta: `test_<sello>.csv` en la carpeta de logs del run, el nombre que
+empareja la web) escribe un CSV (métricas por clase + fila
+agregada, con el AUC macro y, en tareas ordinales, el QWK) que el panel web muestra en la tarjeta «Held-out test set» del run.
 
 Tras las métricas agregadas y por clase, `eval` añade (solo si procede):
 
@@ -201,6 +220,106 @@ En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbra
 validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos
 que no lo guardan, se ajusta antes sobre el split de validación. `--threshold-from test` reproduce
 el comportamiento anterior (ajustarlo sobre el propio test), que da una cifra optimista.
+
+### `predict` — clasificar imágenes sueltas
+
+```bash
+uv run paravit.py predict --config configs/train_panda.yaml \
+    --checkpoint checkpoints/local/single/swin_t/RUN mosaico.jpg carpeta/ --out preds.csv
+```
+
+Clasifica ficheros de imagen (PNG, JPEG, TIFF, BMP) o carpetas (recorrido recursivo, orden
+alfabético) con un checkpoint, fuera del bucle de entrenamiento y sin tocar el dataset. Repetir
+`--checkpoint` forma un conjunto (se promedian las probabilidades, igual que en `eval`); sin
+`--model` se usa el modelo guardado en el checkpoint. `--batch-size` (16 por defecto) y
+`--device cpu|cuda` (por defecto, CUDA si hay). La config es la del entrenamiento del checkpoint
+(p. ej. `results/<run>/config.yaml` de Kaggle): la resolución y el *pooling* tienen que coincidir,
+y si no encajan con los pesos `predict` lo dice. Las rutas relativas se toman desde donde se
+ejecuta `paravit`.
+
+**Qué hace la ficha del dataset.** La config (`data.name`) decide cómo se lee el fichero
+(`DatasetSpec.image_reader`) y se le aplica **la misma transformación de evaluación** que en test
+(`spec.transforms("test")`), así que el modelo ve los mismos píxeles que en `eval`. En PANDA la
+entrada es el mosaico preparado (`prepare_panda.py`), redimensionado a `data.image_size`; en MedMNIST,
+una imagen en gris o RGB según el subconjunto, llevada al tamaño de entrenamiento (`data.size`, p. ej.
+28 px) como las del dataset. Las imágenes de 16 bits o de coma flotante (radiografías) se
+reescalan a 0-255 con su propio rango en lugar de saturarse (`src/data/image_io.py`).
+BigEarthNet (multibanda) no tiene lector de imagen suelta y `predict` falla con un error claro.
+
+**Salida.** Una tabla por pantalla con `file`, `predicted`, `prob` (la mayor probabilidad) y, en
+tareas ordinales como PANDA, `expected_grade` (el grado esperado, Σ k·p_k). Con `--out` (un `.csv`)
+se guardan además las probabilidades de todas las clases (`p_<clase>`). En multietiqueta,
+`predicted` lista las clases por encima del umbral guardado en el checkpoint (la media de los de un
+conjunto; `-` si no hay ninguna; sin umbral guardado, 0,5 con un aviso).
+
+**Seguridad.** Los checkpoints se cargan con `weights_only=True`. Las rutas de entrada son locales
+y se leen tal cual, pero deben ser ficheros regulares con extensión de imagen; al recorrer una
+carpeta no se siguen enlaces a directorios y se saltan los enlaces a ficheros que apuntan fuera de
+ella.
+
+### `compare-preds` — comparar dos grupos de runs
+
+Con tres semillas por variante, la diferencia entre medias casi siempre cae dentro del ruido. Este
+comando decide con las predicciones guardadas (`eval --save-predictions`): no usa GPU ni torch.
+
+```bash
+uv run paravit.py compare-preds \
+    --a RUN_A_S42/test_preds.npz --a RUN_A_S43/test_preds.npz --a RUN_A_S44/test_preds.npz \
+    --b RUN_B_S42/test_preds.npz --b RUN_B_S43/test_preds.npz --b RUN_B_S44/test_preds.npz \
+    --label-a Variante --label-b Base --group data_provider --markdown
+```
+
+(`scripts/compare_predictions.py --a f1 f2 f3 --b g1 g2 g3` admite también la lista seguida.) Todos
+los ficheros deben ser del mismo test y del mismo orden; si no, falla con un error claro. Hoy solo
+admite tareas multiclase (con QWK y exactitud ±1 si son ordinales). Imprime:
+
+- las métricas de cada run (QWK, exactitud, ±1 grado, AUC de «clase ≥ 1» con la puntuación
+  1 − p(clase 0)) y la métrica principal por subgrupo (`--group`);
+- la media ± desviación (ddof = 1) de cada grupo y su conjunto (media de probabilidades);
+- el *bootstrap* emparejado A − B (`--n-boot`, por defecto 2000; `--seed`, por defecto 0; los
+  mismos índices de remuestreo para todos los runs): media de las semillas, conjunto y, si los
+  grupos tienen el mismo tamaño, cada pareja (la i-ésima de A con la i-ésima de B). IC 95 % por
+  percentiles y P(d ≤ 0).
+
+Con `--markdown` salen tablas con coma decimal, listas para pegar en `docs/datasets/*.md`.
+
+### `select-ensemble` — elegir un conjunto en validación
+
+Para combinar varios runs (arquitecturas y semillas) sin mirar el test al decidir. La elección usa
+**solo validación**; el conjunto elegido se evalúa una única vez en test. Parte de las
+predicciones guardadas de cada run (`eval --split val --save-predictions` y
+`eval --split test --save-predictions`, guardadas como `val_preds.npz` y `test_preds.npz` en la
+carpeta del run). No usa GPU ni torch.
+
+```bash
+uv run paravit.py select-ensemble \
+    --runs RUN_VIT_S42 RUN_VIT_S43 RUN_SWIN_S42 RUN_DEIT_S42 \
+    --group 'RUN_VIT_*=vit_s' --method per-group \
+    --reference RUN_VIT_S42 RUN_VIT_S43 RUN_VIT_S44 --markdown
+```
+
+`--group PATRÓN=GRUPO` (se repite) asigna a un grupo, por ejemplo su arquitectura, los runs cuya
+carpeta encaja con el patrón (comodines de la *shell*: `'panda_m_swin_t*=swin_t'`); gana el primer
+patrón que encaja y un run sin patrón es su propio grupo. Los grupos se dan en la línea de
+comandos y no en un fichero: la herramienta no lee nada más que las predicciones. Hay dos métodos:
+
+- `per-group` (por defecto): el mejor run de cada grupo según validación, ordenados de mejor a peor;
+  se evalúa en validación el conjunto de los k primeros (k = 1…) y se elige el k de máxima
+  validación (a igualdad, el menor).
+- `greedy`: selección hacia delante de Caruana et al. (2004). En cada paso se añade el run (con
+  repetición, que equivale a darle más peso) que más sube la métrica del promedio de
+  probabilidades en validación; termina al no mejorar o al llegar a `--max-size` (8).
+
+El conjunto es siempre la media de probabilidades. La salida trae la tabla de candidatos (métrica
+principal en validación y en test), la traza de la selección (solo validación) y la evaluación
+única en test con todas las métricas de `compare-preds`. Con `--reference` (carpetas del conjunto
+de referencia, p. ej. tres semillas de la base) añade la diferencia elegido − referencia con IC 95 %
+por *bootstrap* emparejado (`--n-boot`, `--seed`). Los ficheros deben ser del mismo split y del
+mismo orden en todos los runs (error claro si no), y solo se admiten tareas multiclase.
+
+Aviso: elegir el conjunto mirando el test (por ejemplo, probar combinaciones y quedarse con la
+mejor en test) sesga el resultado al alza: el test deja de ser una estimación honesta. Si se
+repite la elección con otro criterio, hay que documentarlo; la cifra de test se da una sola vez.
 
 ### `report` — informe de un run
 
@@ -243,15 +362,17 @@ model:
 training:
   epochs: 30
   batch_size: 64                        # por GPU en DDP
-  lr: 0.0001                            # ojo: no escribir 1e-4 (YAML lo lee como texto)
+  lr: 0.0001                            # ojo: en el YAML no escribir 1e-4 (se lee como texto; con --set sí vale)
   weight_decay: 0.1
   warmup_epochs: 5
-  llrd_decay: 0.75                      # learning rate por capas (solo ViT/DeiT/Swin)
+  llrd_decay: 0.75                      # learning rate por capas (cualquier modelo de timm)
   grad_clip: 1.0
   early_stopping_patience: 10
   select_by: f1                         # mejor checkpoint: f1 | f1_optimal | auc | qwk
   label_smoothing: 0.1                  # regularización opcional
   mixup_alpha: 0.2
+  grad_accum_steps: 1                   # opcional: paso del optimizador cada k lotes (ver «Memoria»)
+  grad_checkpointing: false             # opcional: activation checkpointing del backbone
 checkpoint:
   dir: "checkpoints/local"
   keep: best_last                       # best_last (defecto: best.pt + last.pt) | all (uno por época mejorada)
@@ -271,6 +392,90 @@ ordenadas (`ordinal=True` en su ficha, p. ej. un grado de cáncer).
 
 Las claves de `data:` dependen del dataset elegido con `data.name`. Los datasets disponibles y
 cómo añadir uno nuevo están en [`datasets/README.md`](datasets/README.md).
+
+### Memoria: acumulación de gradientes y activation checkpointing
+
+Dos opciones, desactivadas por defecto, para cuando el lote o el modelo no caben en la GPU. Se
+activan en el YAML o con `--set`:
+
+```bash
+uv run paravit.py train --config configs/train_panda.yaml \
+  --set training.batch_size=8 --set training.grad_accum_steps=2      # lote efectivo 16
+uv run paravit.py train --config configs/train_panda.yaml --set training.grad_checkpointing=true
+```
+
+- `training.grad_accum_steps: k` (entero ≥ 1): el optimizador da un paso cada `k` lotes y la
+  pérdida de cada uno se divide entre `k`, así que el gradiente es el del lote efectivo
+  `k × batch_size`. Con AMP, `grad_clip` y LLRD funciona igual (el recorte se hace sobre el
+  gradiente ya acumulado, justo antes del paso); en DDP solo el último lote de cada grupo hace
+  all-reduce. El último grupo incompleto de la época también da su paso. El *scheduler* sigue
+  avanzando por época. Ojo con BatchNorm: cada micro-lote normaliza con sus propias estadísticas,
+  así que en una CNN con BatchNorm `k × b` no equivale a un lote de `k·b` (los ViT, que usan
+  LayerNorm, sí). No se admite en el DDP heterogéneo ni con `--trace deep` (batch-table).
+- `training.grad_checkpointing: true`: *activation checkpointing* del backbone. No guarda las
+  activaciones de cada bloque, las recalcula en el *backward*: menos memoria a cambio de ~25 %
+  menos velocidad. Vale para cualquier modelo de timm que lo ofrezca (ViT, Swin, ResNet,
+  ConvNeXt…) y para los backbones de `transformers`; si no, da un error claro. No se admite con
+  paralelismo de modelo.
+
+Medido en la RTX 3060 Ti (8 GB), PANDA a 512 px, AMP, lote sintético y `paravit benchmark`
+aplicando las mismas opciones (pico de memoria de PyTorch, img/s de entrenamiento):
+
+| Modelo | Lote | Acumulación | Checkpointing | Pico (GB) | img/s |
+|---|---|---|---|---|---|
+| Swin-T | 16 | 1 | no | 6,73 | 56,9 |
+| Swin-T | 16 | 1 | sí | 2,27 | 43,1 |
+| Swin-T | 8 | 2 (efectivo 16) | no | 3,71 | 54,5 |
+| Swin-T | 8 | 2 (efectivo 16) | sí | 1,37 | 39,6 |
+| Swin-T | 32 | 1 | sí | 4,08 | 44,4 |
+| Swin-T | 48 | 1 | sí | 5,90 | 45,0 |
+| Swin-T | 56 | 1 | sí | OOM | — |
+| ViT-S/16 | 16 | 1 | no | 3,25 | 92,4 |
+| ViT-S/16 | 16 | 1 | sí | 0,95 | 72,9 |
+| ViT-S/16 | 8 | 2 (efectivo 16) | no | 1,89 | 84,3 |
+
+Cuándo usar cada una: la **acumulación** es casi gratis en velocidad (−4 % en Swin-T, −9 % en
+ViT-S, por el paso extra y el menor tamaño de cada lote) y reparte la memoria en `k`: úsenla para
+mantener el lote efectivo de una receta con menos memoria. El **checkpointing** recorta la
+memoria ~3× (6,73 → 2,27 GB) pero cuesta ~25 % de velocidad; con él cabe un lote de 48 (3× el de
+16) y el rendimiento sube de 43 a 45 img/s, por lo que solo compensa si el modelo o la resolución
+no caben de otra manera. Pueden combinarse. Medidas de un solo run por configuración: sirven de
+orden de magnitud, no de intervalo.
+
+### Perfiles de máquina y `--set`
+
+Una config describe **qué** entrenar; las rutas y los ajustes que dependen del ordenador viven en
+un **perfil de máquina** (`configs/machines/<nombre>.yaml`): `env`, `data_roots` (la ruta de cada
+dataset según su `data.name`; BigEarthNet también `metadata_dir`), `checkpoint_dir`,
+`num_workers` y, opcionalmente, `hosts` (patrones del nombre del host para reconocer la máquina).
+Con un perfil activo se sobrescriben `data.root` (y las demás rutas del dataset),
+`checkpoint.dir` y `output.env`, y rellena `data.num_workers` si la config no lo trae. Una config
+cuyo `output.env` ya es el del perfil se considera de esa máquina y no cambia nada; sin perfil, la
+config se usa tal cual.
+
+El perfil se elige, por orden de prioridad, con `--machine NOMBRE`, con la variable
+`PARAVIT_MACHINE` o por el nombre del host; `--machine none` lo desactiva. Lo aceptan `train`,
+`eval`, `predict` y `benchmark` (y los scripts que hay debajo). Cada ejecución imprime una línea
+`Machine profile: ...` con lo que cambió. Las opciones explícitas (`--data-root`, `--epochs`,
+`--seed`) ganan al perfil.
+
+`--set clave.sub=valor` (repetible) cambia cualquier clave de la config después del perfil; el
+valor se lee como YAML (números, booleanos, listas) y `1e-4` se convierte a float:
+
+```bash
+uv run paravit.py train --config configs/train_panda.yaml --machine verode \
+    --set training.lr=1e-4 --set data.num_workers=2 --dry-run
+```
+
+### `doctor` — comprobar la máquina
+
+```bash
+uv run paravit.py doctor                                   # Python, torch/CUDA, GPUs, AVX2, perfil
+uv run paravit.py doctor --config configs/train_panda.yaml # además: rutas de la config y disco libre
+```
+
+Tabla con OK / WARN / FAIL y código de salida 1 si hay algún FAIL. Solo lee el estado (la GPU no se
+toca). Una máquina sin GPU da WARN, salvo que la config pida NCCL o se pase `--require-gpu`.
 
 ## 5. Las cuatro estrategias de entrenamiento
 
@@ -311,7 +516,7 @@ Cada run escribe, bajo `logs/<entorno>/<estrategia>/<modelo>/`:
 | `run_<fecha>.json` | Manifiesto del run (dataset, tarea, métrica principal, config completa y comando; unos KB, se versiona): lo que lee la web para saber de qué va el run ([esquema](eventos.md#manifiesto-del-run-run_ddmmyyyy_hhmmssjson)) |
 | `events_*.jsonl` | Flujo de eventos del run ([esquema](eventos.md)): lo que lee la pestaña *Live* |
 | `inspect_<fecha>/` | Con `--monitor`: predicciones por imagen, *embeddings* y Grad-CAM por época ([formato](inspeccion.md)); no se versiona |
-| `test_*.csv` | Resultado de la evaluación en test (si se ejecutó `eval`) |
+| `test_<fecha>.csv` | Resultado de la evaluación en test (si se ejecutó `eval`); el sello es el del run, y la web solo lo muestra en ese run (los `test_*.csv` sin el sello de ningún run quedan sin asignar) |
 | `test_preds_<fecha>.npz` | Predicciones por muestra en test (`eval --save-predictions`); el Inspector las lee |
 
 Los pesos van a `checkpoints/<env>/[<dataset>/]<modo>/<modelo>/<DDMMYYYY_HHMMSS>/` (fuera de git): una
@@ -344,7 +549,25 @@ curso, ver más abajo), **Inspector** (análisis a fondo de un run, ver más aba
 confusiones, lotes y detalles del run activo), **Compare** (hasta 12 runs de un mismo dataset:
 aceleración frente a una referencia, radar, energía, curvas superpuestas), **Estimate/Benchmark** (el estimador analítico, los
 informes del benchmark y la comparación estimación-vs-benchmark-vs-real) y **Dataset** (composición
-del conjunto e importación de runs). Idioma inglés con vista opcional en español y modo oscuro.
+del conjunto e importación de runs). Interfaz en inglés, con modo claro y oscuro.
+
+**Elegir un run y enlazarlo.** La barra lateral tiene un buscador de texto (cada palabra debe
+aparecer en la etiqueta, el modelo, el dataset, el entorno o la estrategia) y filtros por entorno,
+dataset, modelo y estrategia; los runs que quedan se listan en una tabla con selección de fila, que
+aguanta cientos de runs. La URL refleja siempre lo que se ve: `?run=<sello>&tab=<sección>` (por
+ejemplo `?run=17102026_110000&tab=compare`). Abrir un enlace así lleva directamente a ese run y a
+esa sección (`overview`, `live`, `inspector`, `run`, `compare`, `benchmark`, `data`); un enlace con
+un run o sección que no existen cae en los valores por defecto. En el Overview, la tabla *Test
+results by dataset* da el mejor resultado en test de cada dataset (con `paravit eval`) con la
+métrica principal de ese dataset, sin mezclar datasets. El indicador *GPU time* multiplica el
+tiempo de reloj por las GPU del run (manifiesto o línea `Configuración:`) y avisa de los runs que
+no lo registran, que cuenta con una.
+
+**Rutas de los datos.** La web no lleva rutas fijas: busca BigEarthNet en los perfiles de
+`configs/machines/` (el activo por `PARAVIT_MACHINE` o por el host, y luego los demás). Si no
+encuentra el dataset en esta máquina, lo dice y muestra cifras incluidas en el código. Las clases
+y los nombres de *Run results* salen del manifiesto del run (que los escribe desde su `DatasetSpec`);
+los grupos de ecosistema de las confusiones son solo de BigEarthNet.
 
 **La web conoce el dataset y la métrica de cada run.** Los metadatos salen del manifiesto del run
 (`run_*.json`), de los eventos o de la línea `Configuración:` del log, por ese orden

@@ -10,6 +10,7 @@ import streamlit as st
 
 from src.web.benchmark_comparison import build_comparison
 from src.web.benchmark_parser import (parse_ddp_scenarios, parse_benchmark_csv)
+from src.web.ui import theme
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
 from src.web.ui.helpers import (_get_benchmark_csvs, _get_runs, _load_df, _run_config,
                                 _safe_max)
@@ -243,14 +244,14 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
     return record, cmp
 
 
-# Fixed, easy-to-tell-apart colours for the three sources (red/green/blue).
-_SRC_COLOR = {"analytic": "#2563eb", "benchmark": "#10b981", "real": "#ef4444"}
+# Fixed colours for the three sources, from the colour-blind-safe trio of the theme.
+_SRC_COLOR = {"analytic": theme.CB_BLUE, "benchmark": theme.CB_ORANGE, "real": theme.CB_PURPLE}
 
 
 def _metric_block(records: list[dict], metric_key: str, title: str, ytitle: str,
                   key: str, decimals: int = 2) -> None:
     """A per-metric block: a source picker (Analytic / Benchmark / Both — Real is always
-    shown) followed by a grouped bar chart with the chosen sources, in red/green/blue.
+    shown) followed by a grouped bar chart with the chosen sources, in colour-blind-safe colours.
     ``decimals`` controls the bar labels (F1 lives in [0,1] → use 3)."""
     recs = [{"run": d["run"], **{s: d[metric_key].get(s) for s in ("a", "b", "r")}}
             for d in records

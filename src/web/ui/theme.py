@@ -37,6 +37,10 @@ DIVERGING = ["#9E3A47", "#E4E7EB", "#2272B4"]   # worse → neutral → better
 
 GOOD, WARN, BAD = "#2E8B57", "#C57B27", "#B0413E"   # green / amber / red
 
+# Colour-blind-safe trio (Okabe-Ito: blue / orange / reddish purple) for series that must stay
+# distinguishable with red-green colour blindness, e.g. analytic vs benchmark vs real.
+CB_BLUE, CB_ORANGE, CB_PURPLE = "#0072B2", "#E69F00", "#CC79A7"
+
 _FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
 
 

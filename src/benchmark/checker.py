@@ -14,6 +14,7 @@ from src.benchmark.probes import HardwareProbe, DiskProbe, DatasetProfiler
 from src.benchmark.predictor import PerformancePredictor
 from src.benchmark.ddp_optimizer import DDPOptimizer
 from src.benchmark.benchmarker import Benchmarker
+from src.benchmark.dataset_sizes import is_bigearthnet
 
 
 class BenchmarkChecker:
@@ -63,6 +64,11 @@ class BenchmarkChecker:
         # Input side the training uses (model.img_size); 224 when unset.
         self._img_size = (self._config.get("model") or {}).get("img_size")
         self._task = self._spec.make_task()
+        # Opciones de memoria del entrenamiento (training.grad_accum_steps / grad_checkpointing)
+        # que el benchmark también aplica, para medir su efecto real.
+        self._train_cfg = self._config.get("training") or {}
+        # The *.tif patch profile and the F1 prior only exist for BigEarthNet.
+        self._is_ben = is_bigearthnet(self._config)
 
     def run(self) -> BenchmarkReport:
         print(f"Cargando modelo {self._model_name}...")
@@ -71,6 +77,8 @@ class BenchmarkChecker:
                             in_chans=self._spec.in_channels,
                             img_size=self._img_size,
                             pooling=(self._config.get("model") or {}).get("pooling"))
+        if self._train_cfg.get("grad_checkpointing", False):   # training.grad_checkpointing
+            model.set_grad_checkpointing(True)
 
         hw_probe = HardwareProbe()
         model_info = ModelAnalyzer(model, self._model_name, self._device).analyze()
@@ -79,9 +87,9 @@ class BenchmarkChecker:
 
         print("Perfilando CPU y disco...")
         disk_probe = DiskProbe()
-        disk_info = disk_probe.probe(self._dataset_path) if self._profile_disk else None
+        disk_info = disk_probe.probe(self._dataset_path, measure_io=self._is_ben) if self._profile_disk else None
 
-        if disk_info and self._profile_disk:
+        if disk_info and self._profile_disk and self._is_ben:
             # Usar el primer resultado viable del benchmark para el ratio I/O
             # (lo calculamos después del benchmark, lo actualizamos en _finalize)
             DatasetProfiler(
@@ -101,6 +109,7 @@ class BenchmarkChecker:
             precision=self._precision,
             cpu_info=cpu_info,
             disk_info=disk_info,
+            dataset_name=self._spec.name,
         )
 
         total = len(self._batch_sizes) * len(self._trace_modes)
@@ -113,7 +122,7 @@ class BenchmarkChecker:
                 report.results.append(result)
 
         # Actualizar dataset profile con tiempo de cómputo real
-        if disk_info and self._profile_disk:
+        if disk_info and self._profile_disk and self._is_ben:
             base = next((r for r in report.results if not r.oom), None)
             if base:
                 report.dataset_profile = DatasetProfiler(
@@ -121,7 +130,13 @@ class BenchmarkChecker:
                 ).profile(base.seconds_per_batch_train, base.batch_size)
 
         # Predicción de rendimiento
-        if self._predict_performance:
+        if self._predict_performance and not self._is_ben:
+            # predict_quality is anchored on BigEarthNet's F1: no prior for other data.
+            report.prediction_note = (
+                f"Sin prior calibrado para el dataset '{self._spec.name}' "
+                f"(otra métrica que el F1 de BigEarthNet); la predicción empírica de "
+                f"calidad solo existe para BigEarthNet.")
+        elif self._predict_performance:
             target_epochs = max(self._epochs_list)
             report.performance_prediction = PerformancePredictor().predict(
                 model_name=self._model_name,
@@ -187,7 +202,8 @@ class BenchmarkChecker:
     def _benchmarker(self, model, precision: str) -> Benchmarker:
         return Benchmarker(model, self._device, precision=precision,
                            num_classes=self._spec.num_classes,
-                           in_chans=self._spec.in_channels, task=self._task)
+                           in_chans=self._spec.in_channels, task=self._task,
+                           grad_accum_steps=self._train_cfg.get("grad_accum_steps", 1))
 
     def _build_real_loader(self, batch_size: int):
         """Construye un DataLoader del dataset real para el estudio.

@@ -4,9 +4,11 @@ The script was broken (it called build_model with an unsupported ``dropout``
 kwarg) and had never been run. These tests lock in the pure helpers so the
 test-set number that feeds the dashboard stays correct.
 """
+import math
 import sys
 from pathlib import Path
 
+import pytest
 import torch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -51,7 +53,7 @@ def test_evaluate_respects_max_batches():
     probs, labels, loss = eval_script.evaluate(_Tiny(), data, torch.device("cpu"), max_batches=2)
     assert probs.shape[0] == 8           # 2 batches × 4
     assert labels.shape[0] == 8
-    assert loss == loss                  # not NaN (divided by n_batches, not len)
+    assert not math.isnan(loss)          # divided by n_batches, not len
 
 
 class TestChooseThreshold:
@@ -184,3 +186,68 @@ def test_stored_threshold_metrics_single_and_ensemble():
     two = one + [{"epoch": 2, "metrics": {"optimal_threshold": 0.5}}]
     assert eval_script.stored_threshold_metrics(two)["optimal_threshold"] == 0.4
     assert eval_script.stored_threshold_metrics(one + [{"epoch": 3, "metrics": {}}]) == {}
+
+
+# ── Modelo efectivo: el checkpoint dice qué modelo contiene ───────────────────
+
+def _save_named(path, name, seed=1):
+    torch.manual_seed(seed)
+    ckpt = {"model_state_dict": _Lin(3).state_dict(), "epoch": 1, "metrics": {}}
+    if name is not None:
+        ckpt["model_name"] = name
+    torch.save(ckpt, path)
+
+
+CFG = {"model": {"name": "from_config"}}
+
+
+def test_eval_infers_the_model_from_the_checkpoint(tmp_path):
+    p = tmp_path / "a.pt"
+    _save_named(p, "swin_tiny")
+    assert eval_script.resolve_model_name(None, CFG, [p]) == "swin_tiny"
+    assert eval_script.resolve_model_name("swin_tiny", CFG, [p]) == "swin_tiny"
+
+
+def test_eval_rejects_a_model_that_contradicts_the_checkpoint(tmp_path):
+    p = tmp_path / "a.pt"
+    _save_named(p, "swin_tiny")
+    with pytest.raises(SystemExit, match="swin_tiny"):
+        eval_script.resolve_model_name("vit_small", CFG, [p])
+    with pytest.raises(SystemExit, match="swin_tiny"):    # también al cargar el miembro
+        eval_script.load_member(p, CFG, "vit_small", None, torch.device("cpu"))
+
+
+def test_old_checkpoint_without_model_name_uses_the_config(tmp_path, monkeypatch):
+    p = tmp_path / "old.pt"
+    _save_named(p, None)
+    assert eval_script.resolve_model_name(None, CFG, [p]) == "from_config"
+    assert eval_script.resolve_model_name("forced", CFG, [p]) == "forced"
+    monkeypatch.setattr(eval_script, "build_eval_model", lambda cfg, name, spec: _Lin(3))
+    _, ckpt = eval_script.load_member(p, CFG, "from_config", None, torch.device("cpu"))
+    assert "model_name" not in ckpt
+
+
+def test_ensemble_mixing_models_fails_unless_all_agree(tmp_path):
+    a, b, c = tmp_path / "a.pt", tmp_path / "b.pt", tmp_path / "c.pt"
+    _save_named(a, "swin_tiny")
+    _save_named(b, "vit_small")
+    _save_named(c, "swin_tiny", seed=2)
+    with pytest.raises(SystemExit, match="distintos"):
+        eval_script.resolve_model_name(None, CFG, [a, b])
+    assert eval_script.resolve_model_name(None, CFG, [a, c]) == "swin_tiny"
+
+
+def test_ensemble_with_an_unnamed_checkpoint_warns(tmp_path, capsys):
+    a, old = tmp_path / "a.pt", tmp_path / "old.pt"
+    _save_named(a, "swin_tiny")
+    _save_named(old, None)
+    assert eval_script.resolve_model_name(None, CFG, [a, old]) == "swin_tiny"
+    assert "[aviso]" in capsys.readouterr().out
+
+
+def test_model_name_of_a_legacy_checkpoint(tmp_path):
+    """Old non-zip format: mmap cannot open it, the plain load still does."""
+    p = tmp_path / "legacy.pt"
+    torch.save({"model_state_dict": {}, "model_name": "swin_tiny"}, p,
+               _use_new_zipfile_serialization=False)
+    assert eval_script.checkpoint_model_name(p) == "swin_tiny"

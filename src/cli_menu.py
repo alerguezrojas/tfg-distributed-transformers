@@ -13,7 +13,7 @@ import sys
 from rich.panel import Panel
 
 from src.cli import (
-    console, ROOT, STRATEGIES, _csv, resolve_dataset_n, _show_prediction,
+    console, ROOT, STRATEGIES, get_strategy, _csv, resolve_dataset_n, _show_prediction,
     build_train_cmd, build_benchmark_cmd, build_eval_cmd,
 )
 
@@ -132,8 +132,7 @@ def run_menu() -> None:
         if choice == "0":
             return
         if choice == "1":
-            strat = Prompt.ask("Strategy", choices=["single", "ddp", "model_parallel",
-                               "heterogeneous"], default="single")
+            strat = Prompt.ask("Strategy", choices=list(STRATEGIES), default="single")
             _show_prediction(
                 model=_pick("Model", models_l, default="vit_base_patch16_224"),
                 gpu=_pick("GPU", gpus_l, default="Tesla T4"),
@@ -147,21 +146,22 @@ def run_menu() -> None:
                 disk=Prompt.ask("Disk", choices=["ssd", "nvme", "hdd", "nfs"], default="ssd"))
         elif choice == "2":
             strat = Prompt.ask("Strategy", choices=list(STRATEGIES), default="single")
+            spec = get_strategy(strat)
             config = _pick("Config", _list_configs(), default="configs/train.yaml")
             kw = {"model": _pick_model("Model", allow_from_config=True),
                       "epochs": _opt_int("Epochs (blank = from config)"),
-                      "trace": Prompt.ask("Trace", choices=["off", "simple", "deep"], default="simple")}
-            if strat in ("ddp", "heterogeneous"):
+                      "trace": Prompt.ask("Trace", choices=list(spec.trace_choices), default="simple")}
+            if spec.torchrun and spec.nproc is None:
                 kw["n_gpus"] = IntPrompt.ask("GPUs per node", default=2)
             if Confirm.ask("Advanced options (precision, layers, fn, multi-node)?", default=False):
-                if strat == "single":
+                if "precision" not in spec.unsupported:
                     kw["precision"] = Prompt.ask("Precision",
                                                  choices=["fp32", "amp", "tf32", "bf16"], default="fp32")
                 kw["seed"] = _opt_int("Seed (blank = from config)")
                 kw["data_root"] = _opt("Dataset root (blank = from config)") or None
                 kw["layers"] = _csv(_opt("Layers (comma: plot,confusion,batch-monitor,hooks)"))
                 kw["fn"] = _csv(_opt("Fn decorators (comma: timing,energy)"))
-                if strat in ("ddp", "heterogeneous"):
+                if spec.torchrun:
                     nnodes = IntPrompt.ask("Number of nodes", default=1)
                     kw["nnodes"] = nnodes
                     if nnodes > 1:

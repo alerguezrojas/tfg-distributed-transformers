@@ -14,7 +14,8 @@ class Benchmarker:
     N_MEASURE = 8
 
     def __init__(self, model: nn.Module, device: torch.device, precision: str = "fp32",
-                 num_classes: int = 19, in_chans: int = 3, task=None):
+                 num_classes: int = 19, in_chans: int = 3, task=None,
+                 grad_accum_steps: int = 1):
         from src import precision as precision_mod
         from src.models.vit import input_size
         self._model = model.to(device)
@@ -23,6 +24,10 @@ class Benchmarker:
         self._num_classes = num_classes
         self._in_chans = in_chans
         self._task = task
+        # Acumulación de gradientes: un paso de optimizador cada k micro-lotes. ``batch_size``
+        # sigue siendo el del micro-lote (la memoria pico y las img/s son por micro-lote).
+        self._accum = max(1, grad_accum_steps)
+        self._micro = 0
         # Synthetic batches only measure speed: the loss cost is negligible next to
         # the forward/backward, but use the task's loss so the graph is the real one.
         self._criterion = task.build_criterion() if task is not None else nn.BCEWithLogitsLoss()
@@ -88,6 +93,7 @@ class Benchmarker:
             torch.cuda.reset_peak_memory_stats(self._device)
 
         self._model.train()
+        self._micro = 0
         for images, labels in batches[:self.N_WARMUP]:
             self._train_step(images, labels)
 
@@ -139,12 +145,15 @@ class Benchmarker:
 
     def _train_step(self, images, labels):
         images, labels = images.to(self._device), labels.to(self._device)
-        self._optimizer.zero_grad()
+        if self._micro % self._accum == 0:
+            self._optimizer.zero_grad()
+        self._micro += 1
         with self._autocast():
             loss = self._criterion(self._model(images), labels)
-        self._scaler.scale(loss).backward()
-        self._scaler.step(self._optimizer)
-        self._scaler.update()
+        self._scaler.scale(loss / self._accum if self._accum > 1 else loss).backward()
+        if self._micro % self._accum == 0:
+            self._scaler.step(self._optimizer)
+            self._scaler.update()
 
     def _eval_step(self, images, _labels):
         with torch.no_grad(), self._autocast():

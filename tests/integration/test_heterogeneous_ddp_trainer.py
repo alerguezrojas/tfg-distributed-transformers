@@ -355,3 +355,26 @@ def test_builder_passes_pos_weight_to_heterogeneous(tmp_path, monkeypatch):
         assert _built_hetero_criterion_sum(tmp_path, {}).pos_weight is None
     finally:
         _destroy_gloo()
+
+
+def test_heterogeneous_rejects_a_loss_it_would_not_train(monkeypatch):
+    """With focal (or any non-BCE loss) configured it would silently train BCE: refuse."""
+    from types import SimpleNamespace
+
+    import pytest
+    import torch
+
+    import src.training.ddp_trainer as ddp_mod
+    from src.training.heterogeneous_ddp_trainer import HeterogeneousDDPTrainer
+    from src.training.trainer import Trainer
+
+    def fake_base_init(self, model, optimizer, scheduler, device, *a, **kw):
+        self.model, self.device = model, device
+        self.task = SimpleNamespace(sigmoid_outputs=True)
+        self.criterion = torch.nn.MSELoss()
+
+    monkeypatch.setattr(Trainer, "__init__", fake_base_init)
+    monkeypatch.setattr(ddp_mod, "DDP", lambda model, **kw: model)
+    with pytest.raises(NotImplementedError, match="BCE"):
+        HeterogeneousDDPTrainer(torch.nn.Linear(2, 2), None, None, torch.device("cpu"),
+                                rank=0, world_size=2, local_batch_size=4)

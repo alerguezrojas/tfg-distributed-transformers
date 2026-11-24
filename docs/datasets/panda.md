@@ -403,6 +403,241 @@ Los logs están en `logs/local/panda/single/vit_small_patch16_224/`: los cinco p
 `train_21112026_{110930,112826,115012}`. La web los distingue por la etiqueta
 `splits splits_fold<k>` o `splits splits_clean`.
 
+## Criba de modelos (22/11/2026)
+
+**Pregunta:** con la receta de la base fija (`configs/train_panda.yaml`: 512 px, 15 épocas, lr
+0,0001, LLRD 0,75, batch 16, AMP, `select_by: qwk`), ¿hay otra arquitectura que sume más que la
+resolución o la limpieza de etiquetas? Desde el PR #234 el LLRD funciona con cualquier modelo de
+timm (reparto normalizado a 12 bloques), así que todos se entrenan igual; solo cambia `--model`.
+Primero una semilla (42) por modelo en la RTX 3060 Ti local; los que destacan pasan a tres. La
+comparación es con `paravit compare-preds` sobre los `test_preds.npz` (*bootstrap* emparejado de
+2.000 remuestreos).
+
+| Modelo (timm) | Pesos | Parám. | Min/run | Mejor val | QWK test | Exact. | Karolinska | Radboud | QWK − base [IC 95 %] |
+|---|---|---|---|---|---|---|---|---|---|
+| ViT-S/16 (base) | in21k → in1k | 22,0 M | 24 | 0,814 | 0,781 | 0,609 | 0,745 | 0,760 | — |
+| `swin_tiny_patch4_window7_224` | in1k | 27,5 M | 38 | 0,826 | **0,830** | 0,701 | 0,762 | 0,837 | **+0,048 [+0,021; +0,076]** |
+| `convnext_tiny.fb_in22k` | in22k | 27,8 M | 26 | 0,794 | 0,798 | 0,628 | 0,772 | 0,770 | +0,017 [−0,010; +0,045] |
+| `eva02_small_patch14_224.mim_in22k` | MIM in22k | 21,6 M | 39 | 0,826 | 0,787 | 0,654 | 0,758 | 0,757 | +0,006 [−0,022; +0,035] |
+| `deit3_small_patch16_224.fb_in22k_ft_in1k` | in22k → in1k | 21,7 M | 20 | 0,790 | 0,787 | 0,614 | 0,755 | 0,765 | +0,005 [−0,019; +0,032] |
+| `tf_efficientnetv2_s` | in21k → in1k | 20,2 M | 30 | 0,776 | 0,783 | 0,641 | 0,758 | 0,752 | +0,002 [−0,030; +0,032] |
+| `efficientnet_b0` | in1k | 4,0 M | 17 | 0,778 | 0,781 | 0,625 | 0,762 | 0,746 | +0,000 [−0,027; +0,028] |
+| `resnet50` | in1k | 23,5 M | 24 | 0,745 | 0,706 | 0,589 | 0,663 | 0,674 | −0,075 [−0,109; −0,042] |
+
+Semilla 42; la diferencia es frente a la base con la misma semilla. Con una semilla el intervalo no
+recoge la variación entre semillas (± 0,012 en la base), así que solo Swin-T y ResNet-50 se salen
+claramente.
+
+- **Swin-T** es el único que mejora de forma clara, y no por unos pesos mejores: es el único
+  *transformer* de la criba preentrenado solo en ImageNet-1k. La ganancia viene casi toda de
+  Radboud (0,760 → 0,837), el hospital con los grados altos.
+- **EVA-02-S** iguala a Swin-T en validación (0,826) pero no en test (0,787): el criterio de parada
+  se ajustó a la validación. Lo mismo, en menor medida, en la base (0,814 → 0,781).
+- **Las CNN** no ganan al ViT-S. EfficientNet-B0 iguala a la base con 5 veces menos parámetros y
+  en 17 minutos; ResNet-50 se queda claramente por debajo (con la receta de los ViT; en el TFG se
+  entrenaba sin LLRD).
+
+Los dos mejores, con tres semillas (42, 43 y 44):
+
+| 512 px, tres semillas | QWK test | Exact. | ±1 grado | AUC ISUP ≥ 1 | Karolinska | Radboud | Conjunto de las 3 (QWK) |
+|---|---|---|---|---|---|---|---|
+| Base (ViT-S) | 0,794 ± 0,012 | 0,636 ± 0,025 | 0,884 ± 0,008 | 0,941 ± 0,003 | 0,743 ± 0,005 | 0,783 ± 0,020 | 0,819 |
+| **Swin-T** | **0,821 ± 0,011** | 0,694 ± 0,006 | 0,903 ± 0,004 | 0,958 ± 0,001 | 0,769 ± 0,016 | 0,817 ± 0,018 | 0,829 |
+| ConvNeXt-T | 0,796 ± 0,009 | 0,648 ± 0,017 | 0,881 ± 0,010 | 0,950 ± 0,003 | 0,767 ± 0,007 | 0,773 ± 0,019 | 0,805 |
+
+QWK de test por semilla: Swin-T 0,830, 0,808 y 0,825; ConvNeXt-T 0,798, 0,787 y 0,804.
+
+*Bootstrap* emparejado, Swin-T − base:
+
+- media de las tres semillas: **QWK +0,027 [+0,008; +0,046]**, exactitud +0,058
+  [+0,039; +0,077], ±1 grado +0,019 [+0,007; +0,031] y AUC de ISUP ≥ 1 +0,017 [+0,010; +0,024];
+  todo significativo;
+- conjunto de tres: QWK +0,010 [−0,014; +0,034], no significativo; exactitud +0,031
+  [+0,008; +0,055] y AUC +0,011 [+0,004; +0,018], sí.
+
+ConvNeXt-T − base: QWK +0,002 [−0,017; +0,020] de media y −0,014 [−0,038; +0,010] en conjunto;
+**no mejora** (la semilla 42 tuvo suerte).
+
+**Conclusión:** **Swin-T es la primera mejora significativa del QWK** de PANDA en este proyecto: un
+solo modelo (0,821) rinde como el conjunto de tres ViT-S (0,819), con un 60 % más de tiempo por
+run. La resolución (+0,010 a 1.024 px, no significativo, 4,5 veces más cara) y las etiquetas
+ruidosas (OUSM, limpieza fuera de pliegue) no lo consiguieron. Hipótesis sin comprobar: la
+atención por ventanas locales y la jerarquía de escalas de Swin encajan mejor con un mosaico de
+16 *tiles* de 128 px que la atención global de un ViT con parches de 16 px. Swin-T pasa a ser el
+modelo de referencia a 512 px para las siguientes pruebas. Los modelos que no caben en 8 GB a 512 px se
+entrenaron en Kaggle (siguiente apartado).
+
+Logs: `logs/local/panda/single/<modelo>/train_22112026_*` (Swin-T: `160932`, `182151` y
+`190007`; ConvNeXt-T: `152254`, `193826` y `200621`).
+
+### Modelos grandes en Kaggle y variantes de Swin-T (22-23/11/2026)
+
+Los modelos que no caben en la GPU local a 512 px con batch 16 se entrenaron en Kaggle (2 × T4 con
+DDP, 8 por GPU: el mismo batch global de 16 y la misma receta; el control a 512 px dio 0,801 en
+Kaggle frente a 0,794 ± 0,012 en local). Semilla 42, frente a la base con la misma semilla:
+
+| Modelo (timm) | Pesos | Parám. | Min/run (2 × T4) | Mejor val | QWK test | Exact. | Karolinska | Radboud | QWK − base [IC 95 %] |
+|---|---|---|---|---|---|---|---|---|---|
+| `swinv2_tiny_window8_256` | in1k | 27,6 M | 56 | 0,831 | **0,835** | 0,703 | 0,779 | 0,838 | **+0,054 [+0,027; +0,082]** |
+| `vit_base_patch16_224.augreg2_in21k_ft_in1k` | in21k → in1k | 86,4 M | 53 | 0,810 | 0,823 | 0,669 | 0,800 | 0,803 | +0,042 [+0,015; +0,069] |
+| `convnext_small.fb_in22k` | in22k | 49,5 M | 56 | 0,826 | 0,811 | 0,665 | 0,815 | 0,768 | +0,029 [+0,001; +0,057] |
+| `maxvit_tiny_tf_512.in1k` | in1k | 30,5 M | 57 | 0,796 | 0,806 | 0,651 | 0,801 | 0,763 | +0,025 [−0,004; +0,055] |
+| `efficientnet_b3` | in1k | 10,7 M | 45 | 0,775 | 0,775 | 0,613 | 0,714 | 0,767 | −0,007 [−0,035; +0,023] |
+
+Frente a Swin-T con la misma semilla (0,830), ninguno es mejor de forma significativa: SwinV2-T
++0,006 [−0,016; +0,028], ViT-B −0,006 [−0,033; +0,021]. Los modelos mayores (ViT-B con 4 veces
+los parámetros de ViT-S, ConvNeXt-S) mejoran a su versión pequeña, pero no a Swin-T.
+
+Dos variantes de Swin-T en local (semilla 42), por si el modelo tenía margen (su mejor época fue
+la 14 de 15 en dos de las tres semillas):
+
+| Variante | Mejor val | QWK test | Exact. | QWK − Swin-T [IC 95 %] |
+|---|---|---|---|---|
+| Pesos ImageNet-22k (`.ms_in22k_ft_in1k`) | 0,830 | 0,814 | 0,684 | −0,016 [−0,038; +0,006] |
+| 25 épocas en lugar de 15 | 0,841 | 0,829 | 0,708 | −0,000 [−0,017; +0,017] |
+
+Ni más épocas ni pesos con más datos mejoran el test; las 25 épocas suben la validación, que es
+justo la partición con la que se elige el checkpoint.
+
+### Conjuntos de arquitecturas distintas (23/11/2026)
+
+Promediar las probabilidades de tres semillas del mismo modelo sube el QWK (base 0,794 → 0,819;
+Swin-T 0,821 → 0,829). Se prueba si **mezclar arquitecturas** sube más. Para no elegir los
+miembros mirando el test, se guardaron las predicciones de **validación** de los 21 runs
+(`paravit eval --split val --save-predictions`) y la elección se hace solo con ellas; el test se
+mira una vez, al final.
+
+Regla simple: el mejor run de cada arquitectura según la validación, y los *k* mejores; *k* se
+elige también en validación, sobre las 13 arquitecturas (el máximo está en *k* = 8). *Bootstrap*
+emparejado frente al conjunto de las tres semillas de Swin-T (QWK de test 0,829):
+
+| *k* | Arquitectura que se añade | QWK val | QWK test | − Swin-T × 3 [IC 95 %] |
+|---|---|---|---|---|
+| 1 | Swin-T (25 épocas) | 0,841 | 0,829 | +0,000 [−0,018; +0,019] |
+| 2 | SwinV2-T | 0,845 | 0,852 | +0,023 [+0,007; +0,039] |
+| 3 | EVA-02-S | 0,853 | 0,845 | +0,016 [−0,003; +0,034] |
+| 4 | ConvNeXt-S | 0,857 | 0,856 | +0,027 [+0,009; +0,046] |
+| 5 | ViT-S | 0,858 | 0,851 | +0,022 [+0,004; +0,041] |
+| 6 | ViT-B | 0,857 | 0,852 | +0,023 [+0,004; +0,042] |
+| 7 | ConvNeXt-T | 0,859 | 0,856 | +0,027 [+0,010; +0,046] |
+| **8** | **MaxViT-T** | **0,859** | **0,858** | **+0,029 [+0,013; +0,047]** |
+| 9 | DeiT-III-S | 0,855 | 0,857 | +0,028 [+0,011; +0,046] |
+| 10-13 | EfficientNet-B0, V2-S, B3, ResNet-50 | 0,850-0,854 | 0,847-0,852 | +0,018 a +0,023 |
+
+- **El conjunto elegido en validación (*k* = 8) da 0,858 en test**, frente a 0,829 del conjunto
+  de tres Swin-T y 0,819 del de tres ViT-S: es el mejor resultado de PANDA en el proyecto. La
+  validación es casi plana entre *k* = 4 y 8 (0,857-0,859), y en ese tramo el test da
+  0,851-0,858: la conclusión no depende de afinar *k*.
+- **La ganancia viene de la diversidad, no del número de miembros:** dos arquitecturas (Swin-T y
+  SwinV2-T) ya dan 0,852, más que tres semillas de Swin-T. Añadir los modelos flojos (las
+  EfficientNet y ResNet-50) baja tanto la validación como el test.
+- La selección voraz de Caruana et al. (2004) sobre la validación (añadir en cada paso el run que
+  más sube el QWK de validación del conjunto) elige Swin-T de 25 épocas, ViT-S, Swin-T in22k y
+  EVA-02-S: 0,844 en test (+0,015 [−0,003; +0,033] frente a Swin-T × 3). Ajusta más a la
+  validación (0,866) y generaliza algo peor que la regla simple.
+- Un conjunto elegido mirando el test (Swin-T, SwinV2-T y ViT-B, los tres mejores de test con la
+  semilla 42) daba 0,851; con la elección en validación se evita ese sesgo, y la cifra no baja.
+- Coste: el conjunto de *k* = 8 son unas 6 horas de entrenamiento (en local o en Kaggle) y ocho
+  pasadas en inferencia; el de *k* = 2 (0,852), algo más de 1,5 horas.
+
+Pendiente (en curso en Kaggle, lote `seeds_512`): semillas 43 y 44 de SwinV2-T y ViT-B, para
+confirmarlos y repetir el conjunto con runs que no intervinieron en la elección, y Swin-T con DDP
+en 2 × T4 para comparar estrategias con el mismo modelo.
+
+Logs: `logs/kaggle/panda/ddp/<modelo>/train_22112026_*` y, de las variantes de Swin-T,
+`logs/local/panda/single/swin_tiny_patch4_window7_224{,.ms_in22k_ft_in1k}/train_22112026_{212201,204325}`.
+
+### Confirmación con más semillas (23/11/2026)
+
+Semillas 43 y 44 de los modelos que entran en el conjunto, para confirmarlos y para repetir el
+conjunto de arquitecturas con runs que **no** intervinieron en su elección. SwinV2-T y ViT-B en
+Kaggle (2 × T4, DDP), EVA-02-S y Swin-T con pérdida ordinal en local; las predicciones de
+validación de los runs de Kaggle se calcularon en local con `paravit eval --split val` (el
+checkpoint ya guarda el modelo, PR #240).
+
+| Modelo (QWK de test) | Semilla 42 | Semilla 43 | Semilla 44 | Media ± desv. | Conjunto de las 3 |
+|---|---|---|---|---|---|
+| ViT-S/16 (base) | 0,781 | 0,804 | 0,797 | 0,794 ± 0,012 | 0,819 |
+| ViT-B/16 | 0,823 | 0,819 | 0,825 | 0,822 ± 0,003 | **0,835** |
+| Swin-T | 0,830 | 0,808 | 0,825 | 0,821 ± 0,011 | 0,829 |
+| Swin-T, pérdida ordinal (`ce_emd`) | 0,839 | 0,812 | 0,830 | **0,827 ± 0,014** | 0,834 |
+| SwinV2-T | 0,835 | 0,824 | 0,802 | 0,820 ± 0,017 | 0,828 |
+| ConvNeXt-T | 0,798 | 0,787 | 0,804 | 0,796 ± 0,009 | 0,805 |
+| EVA-02-S | 0,787 | 0,779 | 0,805 | 0,790 ± 0,013 | 0,818 |
+
+- **ViT-B, Swin-T y SwinV2-T** quedan igual de bien (0,820-0,822 de media) y por encima de la base
+  (+0,026-0,028). ViT-B es el más estable entre semillas (± 0,003) y su conjunto de tres es el mejor
+  de una sola arquitectura (0,835).
+- **La pérdida ordinal con Swin-T**: +0,006 [−0,003; +0,014] frente a la entropía cruzada (media de
+  las tres semillas), no significativo; el 0,839 de la semilla 42 fue en parte suerte. Es la misma
+  señal pequeña que con ViT-S (+0,008, sección de mejoras): coherente, pero no demostrada.
+- **EVA-02-S** es el que más se ajusta a la validación: 0,826-0,827 en validación frente a
+  0,779-0,805 en test en las tres semillas.
+
+**El conjunto de arquitecturas, repetido con runs independientes.** Los miembros se fijan antes
+(las arquitecturas que eligió la validación con la semilla 42 y que tienen más semillas: Swin-T,
+SwinV2-T, EVA-02-S, ViT-S, ViT-B y ConvNeXt-T) y se toma **un run de otra semilla de cada uno**,
+que no intervino en la elección:
+
+| Conjunto de 6 arquitecturas | QWK test | − Swin-T × 3 (0,829) [IC 95 %] |
+|---|---|---|
+| Runs de la semilla 43 | 0,852 | +0,023 [+0,005; +0,040] |
+| Runs de la semilla 44 | 0,846 | +0,017 [−0,001; +0,035] |
+
+El 0,858 del conjunto elegido con la semilla 42 era algo optimista, pero **la ganancia de mezclar
+arquitecturas se mantiene con runs independientes: +0,017 a +0,023 sobre el mejor conjunto de una
+sola arquitectura de las mismas características** (y +0,027-0,033 sobre el de la base). Es la mejora
+más sólida del proyecto en PANDA.
+
+**Swin-T con DDP en Kaggle** (2 × T4, 8 imágenes por GPU, semilla 42): QWK de test 0,820 en 47 min,
+frente a 0,830 en 38 min en una RTX 3060 Ti. La diferencia de QWK está dentro de lo que varían las
+semillas; la de tiempo mezcla dos GPU distintas, así que la comparación de estrategias se hace en el
+mismo hardware (lote `strategies_512` del kernel: una T4 frente a dos).
+
+Logs: `logs/kaggle/panda/ddp/{vit_base_patch16_224.augreg2_in21k_ft_in1k,swinv2_tiny_window8_256,swin_tiny_patch4_window7_224}/train_23112026_*`
+y `logs/local/panda/single/{eva02_small_patch14_224.mim_in22k,swin_tiny_patch4_window7_224}/train_23112026_*`
+(Swin-T ordinal: `121320`, `145713` y `153627`).
+
+### Una T4 frente a dos en la misma máquina (23-24/11/2026)
+
+Lote `strategies_512` del kernel de Kaggle: la misma receta (512 px, AMP, lote global 16, semilla
+42) con **una** T4 (`single`) y con **dos** (`ddp`, 8 imágenes por GPU), en la misma máquina, más
+la medida del ancho de banda de all-reduce entre las dos GPU (`scripts/measure_allreduce.py`).
+Tiempo: mediana de `epoch_time_s` sin la primera época (incluye la validación). Uso de GPU y CPU:
+mediana de las muestras de sistema de los eventos.
+
+| Modelo | Estrategia | Procesos de carga | s/época | QWK test | GPU | CPU | Reloj GPU |
+|---|---|---|---|---|---|---|---|
+| ViT-S | 1 × T4 | 4 | 195 | 0,782 | 98 % | 72 % | 795 MHz |
+| ViT-S | 2 × T4 (20/11) | 4 por GPU | 144 | 0,801 | 69-73 % | **100 %** | 1.275 MHz |
+| ViT-S | 2 × T4 | 2 por GPU | 164 | 0,789 | 62-91 % | **100 %** | 1.000-1.100 MHz |
+| Swin-T | 1 × T4 | 4 | 300 | 0,830 | 100 % | 52 % | 765 MHz |
+| Swin-T | 2 × T4 (23/11) | 4 por GPU | 175 | 0,820 | — | — | — |
+
+- **Aceleración con la segunda T4: ×1,35 en ViT-S y ×1,71 en Swin-T.** El QWK no cambia más de lo
+  que varían las semillas (±0,01-0,02).
+- **Con una T4 manda la GPU** (98-100 % de uso), que trabaja con el reloj a 765-795 MHz por el
+  límite de 70 W (1.590 MHz nominales).
+- **Con dos T4 manda la CPU:** las 4 vCPU de Kaggle están al 100 % decodificando los mosaicos JPEG
+  de los dos procesos, y las GPU esperan (69-73 % de uso). Por eso ViT-S, que pide poco a la GPU,
+  apenas acelera, y Swin-T, que pide más, acelera más.
+- **La hipótesis de contención queda descartada:** con menos procesos de carga (2 por GPU en lugar
+  de 4) la época es **más lenta** (164 s frente a 144 s), no más rápida. El límite es cuánto puede
+  decodificar la CPU, no que los procesos se estorben. El run de 4 procesos llevaba además
+  `--monitor`, que añade trabajo, y aun así fue más rápido.
+- **All-reduce entre las dos T4: 4,05 GB/s** de ancho de banda de bus (mensajes de 64-512 MB; 3,3
+  GB/s con 1 MB), cuatro veces menos que los 16 GB/s de PCIe que supone el predictor. Datos en
+  [`research/datos/allreduce_t4_kaggle.csv`](../research/datos/allreduce_t4_kaggle.csv). Para
+  ViT-S (22 M de parámetros, 88 MB de gradientes) son ~22 ms por paso.
+
+Para el predictor: el tiempo de DDP en Kaggle a 512 px lo marca la decodificación en CPU (unas
+40-56 imágenes por segundo con 4 vCPU), que el término de disco (`DISK_RIO`, calibrado con
+BigEarthNet) no recoge; se puede pasar una medida con `rio_measured`. Es la línea "modelo de I/O
+separado" de la fase 5 del roadmap.
+
+Logs: `logs/kaggle/panda/single/{vit_small_patch16_224,swin_tiny_patch4_window7_224}/train_23112026_{201600,210702}`
+y `logs/kaggle/panda/ddp/vit_small_patch16_224/train_23112026_222556` (2 procesos de carga).
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen

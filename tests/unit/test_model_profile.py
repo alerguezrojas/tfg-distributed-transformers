@@ -93,9 +93,11 @@ def test_table_models_resolve_to_table_entry(name):
 
 # Pinned from develop's predictor (src/performance_model.py before model profiling), at
 # dataset_size=5000, batch=96, epochs=15: (model, gpu, strategy, n_gpus, precision) →
-# (time/epoch s, VRAM/GPU GB, energy/epoch Wh). The table path must not move.
+# (time/epoch s, VRAM/GPU GB, energy/epoch Wh). The table path must not move. Deliberate
+# changes since: the DDP sync term became the ring all-reduce with the measured T4 bandwidth
+# on 24/11/2026 (was 40.7352 s and 2.0761 Wh with 8P at the 16 GB/s PCIe nominal).
 _PINNED = [
-    (("vit_base_patch16_224", "Tesla T4", "ddp", 2, "amp"), (40.7352, 4.8228, 2.0761)),
+    (("vit_base_patch16_224", "Tesla T4", "ddp", 2, "amp"), (42.9528, 4.8228, 2.1549)),
     (("resnet50", "Tesla V100", "single", 1, "fp32"), (38.4615, 10.6096, 1.6055)),
     (("vit_large_patch16_224", "Tesla T4", "model_parallel", 2, "fp32"), (673.0313, 30.408, 22.8917)),
     (("vit_tiny_patch16_224", "RTX 3060 Ti", "single", 1, "fp32"), (38.4615, 2.9952, 2.8058)),
@@ -151,7 +153,7 @@ def test_num_classes_alone_keeps_the_table_entry():
 
 def test_uncalibrated_note_mentions_mfu():
     p = predict("single", _UNKNOWN_MODEL, "Tesla T4", model=resolve_model_spec(_UNKNOWN_MODEL))
-    assert any("MFU" in n and "not on this architecture" in n for n in p.notes)
+    assert any("MFU" in n and "calibrated on vit_base" in n for n in p.notes)
 
 
 def test_quality_confidence_forced_low_for_uncalibrated():
@@ -223,3 +225,81 @@ def test_cli_estimate_any_timm_model():
     res = CliRunner().invoke(app, ["estimate", "--model", "definitely_not_a_timm_model"],
                              env={"COLUMNS": "240"})
     assert "Unknown model" in res.output
+
+
+def test_saved_activation_gb_grows_with_resolution_and_matches_vit_scale():
+    """Autograd's saved bytes: ~4× from 112 to 224 px for a conv net; a tiny ViT at 224
+    saves tens of MB per image, not GBs."""
+    from src.model_profile import saved_activation_gb
+    small = saved_activation_gb("resnet18", 3, 10, 112)
+    big = saved_activation_gb("resnet18", 3, 10, 224)
+    assert 3.0 < big / small < 5.0
+    vit = saved_activation_gb("vit_tiny_patch16_224", 3, 10, 224)
+    assert 0.01 < vit < 0.2
+
+
+def test_saved_activation_gb_unknown_model():
+    import pytest
+    from src.model_profile import saved_activation_gb
+    with pytest.raises(ValueError):
+        saved_activation_gb("no_such_model_xyz")
+
+
+def test_count_saved_bytes_excludes_parameters_and_dedups_views():
+    """A hand-made net: Linear saves its input (not its weight); ReLU saves its output;
+    a view of an already-saved tensor is not counted twice."""
+    import torch
+    from src.model_profile import _count_saved_bytes
+
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = torch.nn.Linear(3 * 4 * 4, 8, bias=False)     # weight: 384 floats
+
+        def forward(self, x):
+            h = x.flatten(1)                    # view of the input
+            y = torch.relu(self.fc(h))          # saves h (view of x) and relu's output
+            return y * y.view(1, 8)             # mul saves y twice (same storage)
+
+    total = _count_saved_bytes(Net(), in_chans=3, img_size=4)
+    assert total == (48 + 8) * 4                # input (48 floats) + relu output (8), fp32
+
+
+def test_count_saved_bytes_frees_the_graph_it_builds():
+    """Regression: the pack hook used to return the tensor itself, which makes a tensor ↔
+    grad_fn cycle autograd never frees, so every profiled model leaked its activations
+    (~0.5-1 GB per model at 512 px; the architecture study peaked above 9 GB)."""
+    import weakref
+
+    import torch
+    from src.model_profile import _count_saved_bytes
+
+    outputs = []
+
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.w = torch.nn.Parameter(torch.ones(1))
+
+        def forward(self, x):
+            y = torch.sigmoid(x * self.w)       # mul saves x; sigmoid saves its own output
+            outputs.append(weakref.ref(y))
+            return y * 2
+
+    assert _count_saved_bytes(Net(), in_chans=3, img_size=4) == (48 + 48) * 4
+    assert outputs and outputs[0]() is None     # the saved tensor was released
+
+
+def test_saved_activations_above_512_px_are_measured_at_512_and_scaled(monkeypatch):
+    """Profiling keeps every activation in RAM, so above 512 px it is measured at 512 and
+    scaled by the pixel count (vit_large at 1024 px would hold ~6.5 GB in the web process)."""
+    calls = []
+
+    def fake(name, in_chans, num_classes, img_size):
+        calls.append(img_size)
+        return 1.0
+
+    monkeypatch.setattr(model_profile, "saved_activation_gb", fake)
+    assert model_profile._saved_gb_at("m", 3, 6, 384) == 1.0 and calls == [384]
+    assert model_profile._saved_gb_at("m", 3, 6, 1024) == pytest.approx(4.0)
+    assert calls[-1] == model_profile.SAVED_MEASURE_MAX_PX

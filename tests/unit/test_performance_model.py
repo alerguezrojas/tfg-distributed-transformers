@@ -285,3 +285,76 @@ def test_model_parallel_powers_both_gpus_with_idle_factor():
     mp = predict("model_parallel", "vit_base_patch16_224", "Tesla T4", n_gpus=2, batch=96)
     assert mp.power_total_w == pytest.approx(
         2 * single.avg_power_w * MODEL_PARALLEL_POWER_FRACTION, rel=1e-6)
+
+
+# ── gpu_spec: exact match after normalizing, never by substring ──────────────────
+
+@pytest.mark.parametrize("name,expected", [
+    ("Tesla T4", "Tesla T4"),
+    ("NVIDIA Tesla T4", "Tesla T4"),
+    ("Tesla V100", "Tesla V100"),
+    ("Tesla V100-PCIE-32GB", "Tesla V100"),
+    ("Tesla V100-SXM2-32GB", "Tesla V100"),
+    ("V100-PCIE", "V100-PCIE"),
+    ("NVIDIA GeForce RTX 3060 Ti", "RTX 3060 Ti"),
+    ("rtx 3060 ti", "RTX 3060 Ti"),
+    ("NVIDIA GeForce RTX 3090", "RTX 3090"),
+    ("NVIDIA GeForce RTX 4090", "RTX 4090"),
+    ("A100 40GB", "A100 40GB"),
+    ("NVIDIA A100 80GB PCIe", "A100 80GB"),
+    ("Tesla P100-PCIE-16GB", "P100"),
+    ("NVIDIA H100 80GB HBM3", "H100"),
+])
+def test_gpu_spec_real_names_resolve_as_before(name, expected):
+    assert gpu_spec(name).name == expected
+
+
+@pytest.mark.parametrize("name", [
+    "NVIDIA GeForce RTX 3060",      # 12 GB card: not the 3060 Ti (8 GB)
+    "RTX 3060",
+    "RTX 3090 Ti",                  # not the 3090
+    "NVIDIA A100",                  # 40 or 80 GB: ambiguous
+    "Tesla T4G",
+    "",
+    None,
+])
+def test_gpu_spec_similar_but_different_gpu_is_unknown(name):
+    assert gpu_spec(name) is None
+
+
+# ── Ring all-reduce with the measured bandwidth (24/11/2026) ─────────────────────
+
+def test_allreduce_time_is_the_ring_formula():
+    from src.performance_model import allreduce_time
+    assert allreduce_time(22.0, 1, 4.05e9, 100) == 0.0
+    one_step = 4 * 22e6 / 4.05e9                    # n = 2: 2(n-1)/n = 1, fp32 gradients
+    assert allreduce_time(22.0, 2, 4.05e9, 1) == pytest.approx(one_step)
+    assert allreduce_time(22.0, 4, 4.05e9, 1) == pytest.approx(1.5 * one_step)
+
+
+def test_measured_allreduce_bandwidth_wins_over_the_derated_nominal():
+    from src.performance_model import INTERCONNECT_BW, NOMINAL_ALLREDUCE_DERATE, allreduce_bandwidth
+    assert allreduce_bandwidth(gpu_spec("Tesla T4")) == (pytest.approx(4.05e9), True)
+    assert allreduce_bandwidth(gpu_spec("RTX 3090")) == (
+        INTERCONNECT_BW["pcie"] * NOMINAL_ALLREDUCE_DERATE, False)
+    assert allreduce_bandwidth(gpu_spec("A100 80GB"))[0] == pytest.approx(
+        INTERCONNECT_BW["nvlink"] * NOMINAL_ALLREDUCE_DERATE)
+
+
+def test_unmeasured_gpu_keeps_its_previous_sync_and_says_so():
+    """The ring at the derated nominal equals the former 8P/β for 2 GPUs."""
+    p = predict("ddp", "vit_base_patch16_224", "RTX 3090", n_gpus=2, dataset_size=5000,
+                batch=96, precision="fp32", epochs=15)
+    steps = -(-5000 // 96)
+    assert p.t_sync_s == pytest.approx(steps * 8 * 85.8e6 / 16e9, rel=1e-6)
+    assert any("nominal interconnect bandwidth" in n for n in p.notes)
+    t4 = predict("ddp", "vit_base_patch16_224", "Tesla T4", n_gpus=2, dataset_size=5000,
+                 batch=96, precision="fp32", epochs=15)
+    assert not any("nominal interconnect bandwidth" in n for n in t4.notes)
+
+
+def test_ddp_sync_term_uses_the_measured_t4_bandwidth():
+    p = predict("ddp", "vit_base_patch16_224", "Tesla T4", n_gpus=2, dataset_size=5000,
+                batch=96, precision="fp32", epochs=15)
+    steps = -(-5000 // 96)                          # 48 per GPU × 2 GPUs per step
+    assert p.t_sync_s == pytest.approx(steps * 4 * 85.8e6 / 4.05e9, rel=1e-6)

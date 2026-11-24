@@ -49,7 +49,7 @@ from src.training.decorators import (
     AccuracyReporter,
     PrecisionRecallReporter,
 )
-from src.models.vit import build_model, build_llrd_optimizer
+from src.models.vit import build_model, build_llrd_optimizer, warn_if_below_lr_min
 from src.data.registry import DEFAULT_DATASET, dataset_spec_from_config
 from src.data.spec import DatasetSpec
 
@@ -214,6 +214,9 @@ class TrainingSessionBuilder:
                 pooling=cfg["model"].get("pooling"),
                 freeze_backbone=freeze_backbone,
             )
+            if cfg["training"].get("grad_checkpointing", False):
+                # Activation checkpointing (el validador lo rechaza con paralelismo de modelo)
+                model.set_grad_checkpointing(True)
 
         # ── Optimizer ────────────────────────────────────────────────────────
         # For model parallelism the LLRD layer structure lives on the wrapped
@@ -231,11 +234,12 @@ class TrainingSessionBuilder:
                 [p for p in model.parameters() if p.requires_grad],
                 lr=lr_base, weight_decay=weight_decay
             )
-        elif llrd_decay > 0.0 and opt_model.is_vit:
+        elif llrd_decay > 0.0 and opt_model.supports_llrd:
             optimizer = build_llrd_optimizer(opt_model, lr_base, weight_decay, llrd_decay)
+            warn_if_below_lr_min(optimizer, cfg["training"].get("lr_min", 1e-6))
         else:
-            if llrd_decay > 0.0 and not opt_model.is_vit:
-                print(f"  [aviso] LLRD no disponible para '{model_name}' (CNN). Usando AdamW estándar.")
+            if llrd_decay > 0.0 and not opt_model.supports_llrd:
+                print(f"  [aviso] LLRD no disponible para '{model_name}'. Usando AdamW estándar.")
             optimizer = torch.optim.AdamW(
                 model.parameters(), lr=lr_base, weight_decay=weight_decay
             )
@@ -271,6 +275,7 @@ class TrainingSessionBuilder:
 
         # ── Base Trainer ──────────────────────────────────────────────────────
         grad_clip = cfg["training"].get("grad_clip", None)
+        grad_accum_steps = cfg["training"].get("grad_accum_steps", 1)
         label_smoothing = cfg["training"].get("label_smoothing", 0.0)
         mixup_alpha = cfg["training"].get("mixup_alpha", 0.0)
         precision = cfg["training"].get("precision", "fp32")
@@ -292,8 +297,10 @@ class TrainingSessionBuilder:
                 device=model.output_device,   # logits/labels/loss live on the last stage
                 checkpoint_dir=checkpoint_dir,
                 checkpoint_keep=checkpoint_keep,
+                model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
+                grad_accum_steps=grad_accum_steps,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
@@ -308,8 +315,10 @@ class TrainingSessionBuilder:
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
                 checkpoint_keep=checkpoint_keep,
+                model_name=model_name,
                 criterion=criterion,      # its pos_weight carries into the summed loss
                 grad_clip=grad_clip,
+                grad_accum_steps=grad_accum_steps,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
@@ -327,8 +336,10 @@ class TrainingSessionBuilder:
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
                 checkpoint_keep=checkpoint_keep,
+                model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
+                grad_accum_steps=grad_accum_steps,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
@@ -344,8 +355,10 @@ class TrainingSessionBuilder:
                 device=self._device,
                 checkpoint_dir=checkpoint_dir,
                 checkpoint_keep=checkpoint_keep,
+                model_name=model_name,
                 criterion=criterion,
                 grad_clip=grad_clip,
+                grad_accum_steps=grad_accum_steps,
                 label_smoothing=label_smoothing,
                 mixup_alpha=mixup_alpha,
                 precision=precision,
@@ -460,7 +473,8 @@ class TrainingSessionBuilder:
                     "mode": mode,
                     "world_size": self._world_size,
                     "select_metric": select_metric,
-                    "config": cfg,
+                    # configuración efectiva: con --model, el de la YAML ya no manda
+                    "config": {**cfg, "model": {**cfg["model"], "name": model_name}},
                     "env": environment_fingerprint(),
                 },
                 log_every=self._batch_log_every or cfg["training"].get("log_batch_every", 1),

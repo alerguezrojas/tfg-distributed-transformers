@@ -1,0 +1,10 @@
+# PC del autor: Ubuntu, RTX 3060 Ti. Las rutas son las que ya usaban las configs *_local y train*.
+env: local
+hosts: ["pc-ubuntu"]
+data_roots:
+  bigearthnet:
+    root: /media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2
+    metadata_dir: /media/alejandro/SSD/datasets/bigearthnet   # conserva metadata.parquet / metadata_demo.parquet
+  panda: /media/alejandro/SSD/datasets/panda
+  medmnist: /media/alejandro/SSD/datasets/medmnist            # vale para todos los medmnist_*
+checkpoint_dir: checkpoints/local

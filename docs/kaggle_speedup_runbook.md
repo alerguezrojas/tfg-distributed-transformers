@@ -18,12 +18,11 @@ Se contrasta con la predicción del `DDPOptimizer` del feasibility (que corre en
 ## 0. Preparar el subset (en local, una vez)
 
 ```bash
-uv run python scripts/export_kaggle_subset.py \
-  --metadata /media/alejandro/SSD/datasets/bigearthnet/metadata.parquet \
-  --root /media/alejandro/SSD/datasets/bigearthnet/BigEarthNet-S2 \
-  --out ~/kaggle_bigearthnet_demo --n-train 5000 --n-val 1500
+# Rutas del perfil de la máquina (data_roots.bigearthnet); la salida queda en
+# <metadata_dir>/kaggle_subset_5000_1500/
+uv run python scripts/export_kaggle_subset.py --n-train 5000 --n-val 1500
 
-cd ~ && zip -r -q kaggle_bigearthnet_demo.zip kaggle_bigearthnet_demo
+cd /media/alejandro/SSD/datasets/bigearthnet && zip -r -q kaggle_subset_5000_1500.zip kaggle_subset_5000_1500
 ```
 
 Sube `kaggle_bigearthnet_demo.zip` como **Kaggle Dataset** (kaggle.com → Datasets

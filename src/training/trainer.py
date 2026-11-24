@@ -62,6 +62,8 @@ class Trainer(BaseTrainer):
         precision: str = "fp32",
         task: Task | None = None,
         checkpoint_keep: str = DEFAULT_KEEP,
+        model_name: str | None = None,
+        grad_accum_steps: int = 1,
     ):
         self.task: Task = task if task is not None else MultiLabelTask()
         self.model = self._place_model(model, device)
@@ -71,12 +73,17 @@ class Trainer(BaseTrainer):
         self.checkpoint_dir = Path(checkpoint_dir)
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
         self.checkpoint_keep = checkpoint_keep   # 'best_last' | 'all' (checkpoint.keep)
+        # Modelo efectivo del run (puede venir de --model): va en el checkpoint para que
+        # scripts/eval.py construya la arquitectura correcta sin depender de la config.
+        self.model_name = model_name
         # Épocas ya hechas por el run del que se reanuda: el 'epoch' del checkpoint es global
         # (el bucle cuenta desde 1 en cada run) para que reanudaciones sucesivas encadenen.
         self._epoch_offset: int = 0
         self.resume_state: dict | None = None   # mejor métrica y paciencia del checkpoint
         self.criterion = criterion if criterion is not None else self.task.build_criterion()
         self.grad_clip = grad_clip
+        # Acumulación de gradientes: el optimizador da un paso cada k lotes (training.grad_accum_steps).
+        self.grad_accum_steps = grad_accum_steps
         self.label_smoothing = label_smoothing
         self.mixup_alpha = mixup_alpha
         self._current_epoch: int = 0
@@ -107,6 +114,34 @@ class Trainer(BaseTrainer):
         if self._use_amp:
             return torch.autocast(device_type="cuda", dtype=self._amp_dtype)
         return contextlib.nullcontext()
+
+    def _accum_group(self, batch_idx: int, n_batches: int) -> tuple[int, bool]:
+        """``(tamaño, cierra)`` del grupo de acumulación al que pertenece el lote ``batch_idx``
+        (desde 1). El último grupo de la época puede ser más corto que ``grad_accum_steps``:
+        divide por su tamaño real y también da su paso."""
+        k = self.grad_accum_steps
+        first = (batch_idx - 1) // k * k
+        size = min(k, n_batches - first)
+        return size, batch_idx == first + size
+
+    def _no_sync_unless(self, closes_group: bool):
+        """Contexto del micro-lote: en DDP, ``no_sync()`` si no cierra el grupo (el all-reduce
+        de gradientes se hace solo en el último); en el resto de estrategias, nada."""
+        if not closes_group and hasattr(self.model, "no_sync"):
+            return self.model.no_sync()
+        return contextlib.nullcontext()
+
+    def _optimizer_step(self):
+        """Recorte (sobre el gradiente ya acumulado), paso y actualización de la escala AMP.
+        Devuelve la norma previa al recorte (``None`` sin ``grad_clip``)."""
+        pre_clip = None
+        if self.grad_clip is not None:
+            self._scaler.unscale_(self.optimizer)
+            # Returns the norm before clipping: kept for `grad_norm_total` (alerts).
+            pre_clip = torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.grad_clip)
+        self._scaler.step(self.optimizer)
+        self._scaler.update()
+        return pre_clip
 
     def register_batch_hook(self, fn) -> None:
         """Register a callable called after every training batch."""
@@ -142,19 +177,17 @@ class Trainer(BaseTrainer):
             if self.label_smoothing > 0.0:
                 train_labels = self.task.smooth_targets(train_labels, self.label_smoothing)
 
-            self.optimizer.zero_grad()
-            with self._autocast():
-                logits = self.model(train_images)
-                loss = self.criterion(logits, train_labels)
-            self._scaler.scale(loss).backward()
-            pre_clip = None
-            if self.grad_clip is not None:
-                self._scaler.unscale_(self.optimizer)
-                # Returns the norm before clipping: kept for `grad_norm_total` (alerts).
-                pre_clip = torch.nn.utils.clip_grad_norm_(self.model.parameters(),
-                                                          self.grad_clip)
-            self._scaler.step(self.optimizer)
-            self._scaler.update()
+            group_size, closes_group = self._accum_group(batch_idx, n_batches)
+            if (batch_idx - 1) % self.grad_accum_steps == 0:
+                self.optimizer.zero_grad()
+            with self._no_sync_unless(closes_group):
+                with self._autocast():
+                    logits = self.model(train_images)
+                    loss = self.criterion(logits, train_labels)
+                # La pérdida del micro-lote se divide entre el tamaño del grupo: el gradiente
+                # acumulado es la media del lote efectivo.
+                self._scaler.scale(loss / group_size if group_size > 1 else loss).backward()
+            pre_clip = self._optimizer_step() if closes_group else None
 
             total_loss += loss.item()
             with torch.no_grad():
@@ -172,7 +205,9 @@ class Trainer(BaseTrainer):
 
             if self._batch_hooks:
                 # Out of `batch_metrics` (its keys are a contract): read by the alerts.
-                self.last_grad_norm = m.grad_norm_value(self.model, pre_clip)
+                # Con acumulación, solo al cerrar el grupo (antes el gradiente es parcial).
+                if closes_group:
+                    self.last_grad_norm = m.grad_norm_value(self.model, pre_clip)
                 batch_metrics = {
                     "running_loss": total_loss / batch_idx,
                     "batch_loss": loss.item(),
@@ -272,6 +307,8 @@ class Trainer(BaseTrainer):
             "optimizer_state_dict": self.optimizer.state_dict(),
             "metrics": {k: v for k, v in metrics.items() if not k.startswith("_")},
         }
+        if self.model_name is not None:
+            state["model_name"] = self.model_name
         if self.scheduler is not None:
             state["scheduler_state_dict"] = self.scheduler.state_dict()
         if self._scaler.is_enabled():   # AMP fp16: la escala de pérdida forma parte del estado

@@ -101,7 +101,7 @@ def test_train_unknown_strategy_raises():
 
 
 def test_strategies_constant():
-    assert set(STRATEGIES) == {"single", "ddp", "model-parallel", "heterogeneous"}
+    assert set(STRATEGIES) == {"single", "ddp", "model_parallel", "heterogeneous"}
 
 
 # ── benchmark ──────────────────────────────────────────────────────────────────
@@ -179,15 +179,44 @@ def test_run_row_reads_best_val_and_test_f1(tmp_path):
     (d / "train_01062026_120000.log").write_text("x\n")
     (d / "epoch_metrics_01062026_120000.csv").write_text(
         "epoch,val_f1\n1,0.40\n2,0.55\n3,0.50\n")
-    (d / "test_demo.csv").write_text(
+    (d / "test_01062026_120000.csv").write_text(
         "class_idx,class_name,f1,precision,recall\n0,A,0.6,0.6,0.6\n\n"
         "# aggregate,loss=0.1,f1_t05=0.50,f1_opt=0.58,threshold=0.35,"
         "accuracy=0.9,precision=0.6,recall=0.6\n")
     found = discover_runs(tmp_path)
     row = _run_row(found[0])
-    assert row["best_val_f1"] == 0.55      # max over epochs
-    assert row["test_f1"] == 0.58          # optimal-threshold F1 from the aggregate line
+    assert row["metric"] == "F1"
+    assert row["best_val"] == 0.55         # max over epochs
+    assert row["test"] == 0.58             # optimal-threshold F1 from the aggregate line
     assert row["epochs"] == 3
+
+
+def test_run_row_panda_uses_qwk(tmp_path):
+    # A PANDA run is judged by QWK: neither "Best Val F1" nor the F1 of the test CSV.
+    d = tmp_path / "logs" / "kaggle" / "panda" / "ddp" / "vit_small_patch16_224"
+    d.mkdir(parents=True)
+    (d / "train_20112026_163243.log").write_text("x\n")
+    (d / "epoch_metrics_20112026_163243.csv").write_text(
+        "epoch,val_f1,val_qwk\n1,0.30,0.50\n2,0.35,0.71\n3,0.33,0.69\n")
+    (d / "test_20112026_163243.csv").write_text(
+        "class_idx,class_name,f1,precision,recall\n0,A,0.6,0.6,0.6\n\n"
+        "# aggregate,loss=0.1,f1_t05=0.30,accuracy=0.5,precision=0.6,recall=0.6,auc=0.8,qwk=0.66\n")
+    row = _run_row(discover_runs(tmp_path)[0])
+    assert row["metric"] == "QWK"
+    assert row["best_val"] == 0.71 and row["test"] == 0.66
+
+
+def test_run_row_ignores_test_csv_of_another_run(tmp_path):
+    d = tmp_path / "logs" / "local" / "single" / "vit_tiny_patch16_224"
+    d.mkdir(parents=True)
+    (d / "train_01062026_120000.log").write_text("x\n")
+    (d / "train_01062026_130000.log").write_text("x\n")
+    (d / "test_01062026_130000.csv").write_text(
+        "class_idx,class_name,f1,precision,recall\n0,A,0.6,0.6,0.6\n\n"
+        "# aggregate,loss=0.1,f1_t05=0.50,f1_opt=0.58\n")
+    rows = {r.timestamp: _run_row(r) for r in discover_runs(tmp_path)}
+    assert rows["01062026_120000"]["test"] is None
+    assert rows["01062026_130000"]["test"] == 0.58
 
 
 def test_resolve_dataset_n_full_subset_custom():
@@ -202,7 +231,7 @@ def test_run_row_no_csv_is_dashes(tmp_path):
     d.mkdir(parents=True)
     (d / "train_02062026_120000.log").write_text("x\n")
     row = _run_row(discover_runs(tmp_path)[0])
-    assert row["best_val_f1"] is None and row["test_f1"] is None
+    assert row["best_val"] is None and row["test"] is None
 
 
 def test_eval_save_predictions_auto_has_no_path():
@@ -232,3 +261,41 @@ def test_train_dry_run_passes_seed_and_data_root():
     assert r.exit_code == 0
     out = r.output.replace("\n", " ")
     assert "--seed 42" in out and "--data-root /d" in out
+
+
+def test_benchmark_cmd_passes_split_sizes():
+    s = _join(build_benchmark_cmd(None, None, 15, None, train_size=7433, val_size=1593))
+    assert "--train-size 7433" in s and "--val-size 1593" in s
+    assert "--train-size" not in _join(build_benchmark_cmd(None, None, 15, None))
+
+
+# ── --machine / --set (perfiles de máquina) ─────────────────────────────────────
+
+def test_train_forwards_machine_and_set():
+    cmd = build_train_cmd("single", "c.yaml", machine="verode",
+                          overrides=["training.lr=1e-4", "data.num_workers=2"])
+    assert cmd[cmd.index("--machine") + 1] == "verode"
+    assert [cmd[j + 1] for j, a in enumerate(cmd) if a == "--set"] == [
+        "training.lr=1e-4", "data.num_workers=2"]
+
+
+def test_train_without_machine_adds_nothing():
+    cmd = build_train_cmd("ddp", "c.yaml")
+    assert "--machine" not in cmd and "--set" not in cmd
+
+
+def test_eval_benchmark_predict_forward_machine():
+    from src.cli import build_predict_cmd
+    assert build_eval_cmd("a.pt", "c.yaml", machine="local")[-2:] == ["--machine", "local"]
+    assert build_benchmark_cmd(None, None, 1, None, overrides=["a.b=1"])[-2:] == ["--set", "a.b=1"]
+    cmd = build_predict_cmd("a.pt", "c.yaml", ["img.png"], machine="kaggle", overrides=["x=1"])
+    assert "--machine" in cmd and cmd[-1].endswith("img.png")
+
+
+def test_cli_train_dry_run_shows_machine_and_set():
+    from typer.testing import CliRunner
+    from src.cli import app
+    res = CliRunner().invoke(app, ["train", "--machine", "local", "--set", "training.lr=1e-4",
+                                   "--dry-run"])
+    assert res.exit_code == 0
+    assert "--machine" in res.output and "training.lr=1e-4" in res.output

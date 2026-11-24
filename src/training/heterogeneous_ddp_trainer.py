@@ -68,6 +68,10 @@ class HeterogeneousDDPTrainer(DDPTrainer):
     """
 
     def __init__(self, *args, local_batch_size: int, **kwargs):
+        if kwargs.get("grad_accum_steps", 1) > 1:
+            raise NotImplementedError(
+                "heterogeneous DDP normalizes the gradient by hand with the global batch of "
+                "each step; training.grad_accum_steps > 1 is not supported on this strategy")
         super().__init__(*args, **kwargs)
         self.local_batch_size = local_batch_size
         if not self.task.sigmoid_outputs:
@@ -78,6 +82,11 @@ class HeterogeneousDDPTrainer(DDPTrainer):
         # Hereda el pos_weight del criterion configurado (self.criterion) para que la
         # pérdida de entrenamiento use los mismos pesos de clase que la de validación
         # (antes se forzaba BCE sin pesos, descartando silenciosamente pos_weight).
+        # Solo BCE: con otra pérdida configurada (focal…) se entrenaría con BCE sin avisar.
+        if not isinstance(self.criterion, nn.BCEWithLogitsLoss):
+            raise NotImplementedError(
+                f"heterogeneous DDP trains with BCE (+pos_weight) only; the configured loss "
+                f"{type(self.criterion).__name__} is not supported on this strategy")
         pos_weight = getattr(self.criterion, "pos_weight", None)
         self._criterion_sum = nn.BCEWithLogitsLoss(reduction="sum", pos_weight=pos_weight)
 

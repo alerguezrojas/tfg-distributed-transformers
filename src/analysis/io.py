@@ -219,8 +219,11 @@ def run_stamp_for(run_dir, checkpoint_mtime: float | None = None) -> tuple[str |
 
 
 def default_predictions_path(checkpoint, now: datetime | None = None, checkpoint_dir=None,
-                             env: str | None = None, warn=None) -> Path:
+                             env: str | None = None, warn=None, prefix: str = "test_preds",
+                             suffix: str = ".npz") -> Path:
     """Where ``eval --save-predictions`` (no path) writes: ``<run log folder>/test_preds_<ts>.npz``.
+    With ``prefix="test", suffix=".csv"`` it gives the run's ``test_<ts>.csv`` (``eval --output``
+    without a path), the name the web pairs with the run by its stamp.
 
     Folder and stamp come from :func:`run_location` (stamp folder of the checkpoint) or, for the
     old shared folder, from :func:`run_stamp_for`. If either cannot be deduced the file goes to
@@ -241,7 +244,7 @@ def default_predictions_path(checkpoint, now: datetime | None = None, checkpoint
         warn("could not deduce the run of the checkpoint: using the evaluation's stamp"
              + ("" if run_dir else " in logs/"))
     return (run_dir or Path("logs")) / (
-        f"test_preds_{stamp or (now or datetime.now()).strftime(TS_FORMAT)}.npz")
+        f"{prefix}_{stamp or (now or datetime.now()).strftime(TS_FORMAT)}{suffix}")
 
 
 def list_test_predictions(root) -> list[tuple[str, Path]]:

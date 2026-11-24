@@ -54,6 +54,25 @@ module add slurm/client/20.11.04   # o añadir al ~/.bashrc
 - El login node (`verode00`) no soporta instrucciones AVX2 → "Illegal instruction" al ejecutar Python con numpy/torch. Usar siempre nodo de cómputo (`srun`) para ejecutar código
 - `srun` es el único mecanismo que funciona; ver sección de comandos
 
+## Una máquina, un perfil
+
+El proyecto se usa en cuatro sitios: el PC del autor (RTX 3060 Ti), Kaggle (2 × T4), VERODE (V100,
+Slurm) y el equipo de quien se incorpora. Lo que cambia entre ellos (rutas de los datasets, carpeta
+de checkpoints, `output.env`; `num_workers` solo si falta en la config) está en `configs/machines/<nombre>.yaml`, no en cada
+config de experimento.
+
+| Máquina | Perfil | Cómo se activa |
+|---|---|---|
+| PC del autor | `local.yaml` | automático por el host (`pc-ubuntu`) |
+| VERODE | `verode.yaml` | automático por el host (`verode*`); si no, `export PARAVIT_MACHINE=verode` |
+| Kaggle | `kaggle.yaml` | `--machine kaggle` o `PARAVIT_MACHINE=kaggle` (el host no es estable); solo fija `env`: el kernel de entrenamiento construye su propia config y no usa perfil |
+| Equipo nuevo | copia de `example.yaml` | `PARAVIT_MACHINE=<nombre>` (los `*.local.yaml` no se commitean) |
+
+Orden de selección: `--machine` > `PARAVIT_MACHINE` > `hosts` > ninguno (la config tal cual). El
+primer comando en una máquina es `uv run paravit.py doctor [--config ...]`: comprueba Python,
+torch/CUDA, GPUs (y si el predictor las conoce), AVX2 (el nodo de login de VERODE no lo tiene),
+rutas y espacio para checkpoints. Detalle en la [guía de uso](guia_de_uso.md).
+
 ## Gestión de dependencias
 
 ### Local (uv)
@@ -89,6 +108,9 @@ torchrun --nproc_per_node=1 scripts/train_ddp.py \
 
 **En Verode — GPU real (NCCL, cuando haya 2 nodos operativos):**
 Usar el sistema de colas (Slurm) como recomienda el cotutor. Sin `--gres` si la especificación gres falla.
+`--launcher slurm` calcula el rendezvous `c10d` (primer nodo de `SLURM_JOB_NODELIST`) y deja el
+mismo comando en todos los nodos, sin `--node_rank` ni `--master_addr` a mano
+([`cluster/README.md`](../cluster/README.md)):
 ```bash
 # Desde login node en tmux:
 /opt/soft/slurm/20.11.04/bin/srun --partition=batch \
@@ -96,13 +118,15 @@ Usar el sistema de colas (Slurm) como recomienda el cotutor. Sin `--gres` si la 
   --ntasks-per-node=1 --cpus-per-task=8 --time=72:00:00 \
   bash -c '
     cd ~/tfg-distributed-transformers
-    .venv/bin/torchrun --nnodes=2 --nproc_per_node=1 \
-      --node_rank=$SLURM_NODEID \
-      --master_addr=verode16 --master_port=29500 \
-      scripts/train_ddp.py \
+    .venv/bin/python paravit.py train --strategy ddp --launcher slurm --n-gpus 1 \
       --config configs/train_ddp_verode.yaml --trace simple
   '
+# Equivalente con la plantilla: srun ... env NO_SRUN=1 bash cluster/slurm/ddp_multinode.sbatch
 ```
+Antes de `--launcher slurm` se lanzaba a mano `torchrun --nnodes=2 --node_rank=$SLURM_NODEID
+--master_addr=verode16 ...` en cada nodo; sigue valiendo (`--launcher local`, por defecto) para los
+nodos accesibles solo por SSH como en los tests CPU de abajo. La imagen Apptainer con torch cu118
+(`cluster/apptainer/paravit.def`) evita reinstalar cu118 sobre el `.venv`.
 
 **En Verode — test funcional CPU (gloo, nodos down en Slurm):**
 verode16 y verode18 aparecen como `down*` en Slurm y no son asignables por el sistema de colas,
@@ -110,7 +134,7 @@ pero sí son accesibles via SSH directo. Para el test CPU se usa SSH en dos term
 ```bash
 # Terminal 1 — SSH a verode16 (nodo 0, master):
 ssh verode16
-cd ~/tfg-distributed-transformers && git pull origin main
+cd ~/tfg-distributed-transformers && git pull origin develop   # o la rama que se esté probando
 .venv/bin/torchrun --nnodes=2 --nproc_per_node=1 --node_rank=0 \
   --master_addr=verode16 --master_port=29500 \
   scripts/train_ddp.py --config configs/train_ddp_cpu_test.yaml --trace simple
@@ -128,9 +152,9 @@ multi-nodo y la sincronización de gradientes funcionan antes de tener hardware 
 ### DDP heterogéneo — verode21 (GPU) + verode16 (CPU)
 
 ```bash
-# Primero hacer git pull en ambos nodos:
-# ssh verode21 && cd ~/tfg-distributed-transformers && git pull origin main
-# ssh verode16 && cd ~/tfg-distributed-transformers && git pull origin main
+# Primero hacer git pull en ambos nodos (rama develop o la que se esté probando):
+# ssh verode21 && cd ~/tfg-distributed-transformers && git pull origin develop
+# ssh verode16 && cd ~/tfg-distributed-transformers && git pull origin develop
 
 # Terminal 1 — verode21 (V100, rank 0):
 ssh verode21
@@ -204,11 +228,11 @@ uv run python scripts/train_single_gpu.py --config configs/train_v3.yaml --trace
 torchrun --nproc_per_node=1 scripts/train_ddp.py \
   --model vit_tiny_patch16_224 --epochs 1 --config configs/train.yaml --trace simple
 
-# Dashboard web (5 secciones)
+# Dashboard web (7 secciones)
 uv run streamlit run src/web/app.py
 
 # Ver log en tiempo real (ajusta la ruta al modelo concreto)
-tail -f logs/local/single/vit_base_patch16_224/train_*.log
+tail -f logs/local/single/vit_base_patch16_224/train_*.log   # logs/{env}/[{dataset}/]{mode}/{modelo}/
 ```
 
 ### Clúster VERODE
@@ -249,10 +273,11 @@ cd ~/tfg-distributed-transformers
   --fn energy
 
 # Ver log en tiempo real
-tail -f logs/verode/train_*.log
+tail -f logs/verode/single/vit_base_patch16_224/train_*.log
 
-# Al terminar: subir resultados (gitignore ya configurado, no necesita -f)
+# Al terminar: subir resultados desde una rama que salga de develop (nunca directo a main)
+git switch -c chore/runs-verode
 git add logs/verode/
-git commit -m "feat: add Verode training results"
-git push origin main
+git commit -m "chore: resultados de entrenamiento en Verode"
+git push -u origin chore/runs-verode   # y PR a develop
 ```

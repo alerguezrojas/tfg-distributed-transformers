@@ -1,0 +1,65 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — BigEarthNet ViT  (v3)
+  23/11/2026 10:26:49
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               vit_base_patch16_224.augreg2_in21k_ft_in1k
+  Parámetros totales:   86,439,174 (86.4M)
+  FLOPs/imagen:         689.8 MFLOPs
+  Memoria estática:     1.35 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 8.2 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: amp (Tensor cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 3735 MHz
+  RAM: 16.7 GB total / 11.0 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+  Patches encontrados: ~3
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch         VRAM     Fuente      Estado
+     16       6.95 GB     medido          OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     16  off              33.9       111.9   6.95 GB
+     16  simple           33.8       111.0   6.95 GB
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  15 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     16  off         1h 57m   0h 18m    2h 15m   33h 49m
+     16  simple      1h 57m   0h 18m    2h 15m   33h 53m
+
+────────────────────────────────────────────────────────────────────────  ANÁLISIS DDP — DISTRIBUCIÓN DE RECURSOS
+  GPUs  Batch/GPU  Global batch  Workers  Speedup   Efic.    Cuello
+     1         16            16        8    1.00×  100.0%   compute
+     2         16            32        8    1.83×   91.6%   compute
+     4         16            64        4    3.66×   91.6%   compute
+     8         16           128        2    7.33×   91.6%   compute
+
+  Configuración recomendada: 8 GPU(s) con batch=16/GPU
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Modelo: vit_base_patch16_224.augreg2_in21k_ft_in1k
+  Val F1 esperado:    ~0.680  (epoch ≈ 7)
+  Early stop aprox.:  epoch ≈ 15  (patience=10)
+  Confianza:          high
+  Nota: Empirical prior anchored to documented vit_base runs on BigEarthNet-S2; confidence high. | Dataset =
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  Batch size óptimo: 16 (33.9 imgs/s)
+  → --trace off      15 epochs: ~33h 49m
+  → --trace simple   15 epochs: ~33h 53m
+
+  Nota: En Verode (NFS), usa --nfs-factor 1.3 para estimaciones más precisas
+

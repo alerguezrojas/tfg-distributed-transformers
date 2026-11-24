@@ -151,5 +151,105 @@ def resolve_model_spec(name: str, in_chans: int = 3, num_classes: int = 19,
                              img_size=img_size)
     except (ValueError, ImportError):
         return None
+    try:        # feature of the three-term throughput model; optional (falls back to MFU)
+        saved = round(_saved_gb_at(_base_name(name), in_chans, num_classes, img_size), 4)
+    except (ValueError, ImportError):
+        saved = None
     return spec_from_profile(prof.name, round(prof.params_m, 2), round(prof.gflops_fwd, 3),
-                             convolutional=prof.convolutional)
+                             convolutional=prof.convolutional, saved_gb_per_img=saved)
+
+
+# Above this resolution the saved activations are measured at it and scaled by the pixel
+# count: profiling is a real CPU forward that keeps every activation (vit_large at 1024 px
+# would hold ~6.5 GB inside the web process). The scaling is near exact for the architectures
+# measured here (224 → 512 px: ×5.2 against (512/224)² = 5.22 for every MODEL_TABLE model),
+# since flash attention keeps no N×N matrix and convolution maps grow with the pixels.
+SAVED_MEASURE_MAX_PX: int = 512
+
+
+def _saved_gb_at(name: str, in_chans: int, num_classes: int, img_size: int) -> float:
+    """``saved_activation_gb`` at ``img_size``, measured at ``SAVED_MEASURE_MAX_PX`` and scaled
+    by the pixel ratio when the requested size is larger."""
+    if img_size <= SAVED_MEASURE_MAX_PX:
+        return saved_activation_gb(name, in_chans, num_classes, img_size)
+    base = saved_activation_gb(name, in_chans, num_classes, SAVED_MEASURE_MAX_PX)
+    return base * (img_size / SAVED_MEASURE_MAX_PX) ** 2
+
+
+# ── Activation memory saved for the backward pass ────────────────────────────────
+# FLOPs alone do not set the training time of every architecture: hierarchical
+# transformers (Swin), CNNs and above all depthwise CNNs (EfficientNet) move far more
+# memory per FLOP than a ViT. The bytes autograd keeps for the backward pass are a
+# direct, GPU-free measure of that traffic. Measured on CPU (meta tensors have no
+# storage to count) with one image, fp32. Under AMP part of it is stored in half
+# precision (LayerNorm and softmax stay fp32), so "about half" is an ASSUMPTION, not a
+# measurement. Attention runs through the flash SDPA kernel, which does not keep the
+# N×N attention matrix, like the fused kernels used on the GPU (the "math" kernel
+# would keep it and double a ViT's figure at 512 px).
+# See docs/performance_model.md, "Arquitecturas distintas de ViT".
+
+
+def _count_saved_bytes(model, in_chans: int, img_size: int) -> int:
+    import torch
+
+    # Parameters are excluded: they are read once per BATCH, not once per image.
+    params = {p.untyped_storage().data_ptr() for p in model.parameters()}
+    seen: set[tuple[int, int]] = set()
+    # The saved tensors stay alive here until the forward ends (so no address is reused and
+    # the dedup by address holds), but the graph keeps only None: returning ``t`` itself
+    # from the pack hook makes a tensor ↔ grad_fn cycle that autograd never frees, and
+    # every model profiled leaked all its activations (~0.5-1 GB each at 512 px).
+    keep: list = []
+    total = 0
+
+    def pack(t):
+        nonlocal total
+        storage = t.untyped_storage()
+        key = (storage.data_ptr(), storage.nbytes())
+        if key not in seen and key[0] not in params:   # views of one tensor: stored once
+            seen.add(key)
+            total += storage.nbytes()
+        keep.append(t)
+
+    def unpack(_):          # never called: the graph is not backpropagated
+        raise RuntimeError("_count_saved_bytes graphs are not meant for backward")
+
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+
+    x = torch.zeros(1, in_chans, img_size, img_size)
+    try:
+        with sdpa_kernel(SDPBackend.FLASH_ATTENTION), \
+                torch.autograd.graph.saved_tensors_hooks(pack, unpack):
+            model(x).sum()
+    except RuntimeError:            # e.g. an attention mask the flash kernel rejects
+        seen.clear()
+        keep.clear()
+        total = 0
+        with torch.autograd.graph.saved_tensors_hooks(pack, unpack):
+            model(x).sum()
+    keep.clear()
+    return total
+
+
+@lru_cache(maxsize=64)
+def saved_activation_gb(name: str, in_chans: int = 3, num_classes: int = 1000,
+                        img_size: int = 224) -> float:
+    """GB that autograd saves for the backward pass of ONE ``img_size``² image (fp32).
+
+    Everything the graph keeps per image (activations, attention maps, masks), without the
+    parameters it saves by reference (those are read once per batch, not per image).
+    Raises ``ValueError`` if timm does not know the model or it cannot run on CPU."""
+    import timm
+
+    if not timm.is_model(name):
+        raise ValueError(f"unknown timm model: {name}")
+    model = _build(name, "cpu", in_chans, num_classes, None).train()
+    try:
+        return _count_saved_bytes(model, in_chans, img_size) / 1e9
+    except (AssertionError, RuntimeError, ValueError) as first:
+        # Fixed-resolution models (ViT/Swin at 224) reject other sizes: rebuild them.
+        try:
+            model = _build(name, "cpu", in_chans, num_classes, img_size).train()
+            return _count_saved_bytes(model, in_chans, img_size) / 1e9
+        except Exception as exc:  # timm raises TypeError for models without img_size
+            raise ValueError(f"could not measure {name} at {img_size} px: {first} | {exc}") from exc

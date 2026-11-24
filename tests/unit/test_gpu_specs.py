@@ -103,12 +103,3 @@ def test_benchmark_parser_reads_gpu_block(tmp_path):
     assert gpu["cuda_cores"] == 5120        # int, not str
     assert gpu["tensor_cores"] == 640
     assert gpu["sm_count"] == 80
-
-
-def test_gpu_info_dataclass_has_spec_fields():
-    """system_monitor.GpuInfo must carry the derived spec fields."""
-    import dataclasses
-    from src.web.system_monitor import GpuInfo
-    fields = {f.name for f in dataclasses.fields(GpuInfo)}
-    for f in ("cuda_cores", "tensor_cores", "sm_count", "architecture", "compute_capability"):
-        assert f in fields
