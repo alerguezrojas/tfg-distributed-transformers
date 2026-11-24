@@ -563,6 +563,22 @@ métrica principal de ese dataset, sin mezclar datasets. El indicador *GPU time*
 tiempo de reloj por las GPU del run (manifiesto o línea `Configuración:`) y avisa de los runs que
 no lo registran, que cuenta con una.
 
+**Estimación frente a medida.** En *Estimate/Benchmark → Estimate vs Benchmark vs Run*, el
+predictor analítico recibe de cada run su propia configuración, leída de su manifiesto (o de la
+línea `Configuración:`): modelo, resolución, canales, clases, tamaños de train y val, lote,
+precisión, estrategia, número de GPU y nombre de la GPU. Así PANDA a 512 px se estima con los
+FLOPs de 512 y no con los de 224. La tabla *Analytic estimate vs measured epoch time* compara el
+tiempo por época predicho (train + val) con el medido (mediana sin la primera época) y muestra el
+error, el origen del throughput (tres términos con AMP, solo FLOPs en fp32) y las notas del
+predictor. La GPU es la que dejó el run en su manifiesto (`env.devices`); si no la registra, se
+usa el nombre del informe de benchmark del mismo modelo (y la nota lo dice) y, si tampoco hay, no
+se estima y la tabla lo avisa: la web no supone una GPU. La comparación de calidad (prior de F1)
+solo existe para BigEarthNet; en los demás datasets la web dice que no hay prior. El benchmark
+(medido a 224 px) no se compara con runs a otra resolución, y la pestaña funciona sin informes de
+benchmark. En *Estimate* la resolución también se elige con los modelos de la tabla (se perfila
+al vuelo), y la precisión del predictor por hardware y régimen está en
+[`performance_model.md`](performance_model.md) (§4 y §8).
+
 **Rutas de los datos.** La web no lleva rutas fijas: busca BigEarthNet en los perfiles de
 `configs/machines/` (el activo por `PARAVIT_MACHINE` o por el host, y luego los demás). Si no
 encuentra el dataset en esta máquina, lo dice y muestra cifras incluidas en el código. Las clases
