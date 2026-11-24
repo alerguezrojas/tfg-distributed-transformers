@@ -1,0 +1,46 @@
+════════════════════════════════════════════════════════════════════════
+  ANÁLISIS DE VIABILIDAD — panda (efficientnet_b0)
+  24/11/2026 10:21:46
+════════════════════════════════════════════════════════════════════════
+
+────────────────────────────────────────────────────────────────────────  MODELO
+  Nombre:               efficientnet_b0
+  Parámetros totales:   4,015,234 (4.0M)
+  FLOPs/imagen:         2006.4 MFLOPs
+  Memoria estática:     0.06 GB
+
+────────────────────────────────────────────────────────────────────────  GPU
+  NVIDIA GeForce RTX 3060 Ti  |  VRAM: 8.2 GB total / 0.9 GB libre
+  Compute Capability: 8.6  (Ampere)
+  38 SMs  |  4,864 CUDA cores  |  152 Tensor cores
+  Precisión del benchmark: fp32 (CUDA cores)
+
+────────────────────────────────────────────────────────────────────────  CPU / SISTEMA
+  Núcleos: 16 lógicos / 8 físicos
+  Frecuencia: 4700 MHz
+  RAM: 16.7 GB total / 9.3 GB libre
+
+────────────────────────────────────────────────────────────────────────  DISCO / DATASET I/O
+  Tipo: SSD  |  NFS: no
+
+────────────────────────────────────────────────────────────────────────  MEMORIA POR BATCH SIZE
+  Batch         VRAM     Fuente      Estado
+     16       4.46 GB   estimado          OK
+
+────────────────────────────────────────────────────────────────────────  BENCHMARK  (8 batches sintéticos)
+  Batch  Modo      imgs/s(train)  imgs/s(eval)     VRAM
+     16  off                 OOM
+     16  simple              OOM
+
+────────────────────────────────────────────────────────────────────────  ESTIMACIONES DE TIEMPO
+
+  30 epochs:
+  Batch  Modo      Train/ep  Eval/ep  Total/ep     TOTAL
+     16  off       OOM
+     16  simple    OOM
+
+────────────────────────────────────────────────────────────────────────  PREDICCIÓN DE RENDIMIENTO (empírica)
+  Sin prior calibrado para el dataset 'panda' (otra métrica que el F1 de BigEarthNet); la predicción empírica de calidad solo existe para BigEarthNet.
+
+────────────────────────────────────────────────────────────────────────  RECOMENDACIONES
+  Ningún batch size viable
