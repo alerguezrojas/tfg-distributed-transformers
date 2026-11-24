@@ -20,9 +20,14 @@ real de cada run usando su manifiesto (resolución, GPU, lote; PR #272, punto C2
 coste fijo por paso medido con un barrido de lotes en Kaggle (20 ms; el ajuste anterior predijo
 esas medidas con un 13 % de error, y frente a los entrenamientos reales en 2 × T4 el error queda
 en el 15 %; PR #273); y los literales repetidos de SonarCloud están resueltos (PR #274).
-Siguiente: pipeline con micro-lotes (fase 5, validado en Kaggle con 2 × T4), un término de
-decodificación en CPU para el I/O del predictor (lo que limita DDP en Kaggle) y la vista de
-conjuntos en la web. Pendiente del autor: la VPN de VERODE.
+Estrategia **`pipeline` (GPipe)** con micro-lotes (PR #276): el ViT partido en dos GPU como en
+`model_parallel`, pero con las dos etapas trabajando a la vez; mismo gradiente que el lote entero,
+término en el predictor (burbuja `(m+p−1)/(m·p)`) y memoria repartida entre etapas también para
+`model_parallel`. En curso: su medida en Kaggle (lote `pipeline_512`: ViT-B en una T4, paralelismo
+de modelo y pipeline con 2, 4 y 8 micro-lotes), que dirá si el solapamiento compensa la copia
+entre las T4 (sin P2P). Siguiente: analizarla, un término de decodificación en CPU para el I/O
+del predictor (lo que limita DDP en Kaggle), FSDP2/ZeRO-1 y la vista de conjuntos en la web.
+Pendiente del autor: la VPN de VERODE.
 
 **Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
 (Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
@@ -537,5 +542,5 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Dataset de medidas y herramienta publicados con DOI.
 
 ### Ideas aparcadas
-FSDP/ZeRO · pipeline con micro-batches (GPipe/1F1B) · gradient checkpointing · GPUs heterogéneas en
+FSDP/ZeRO · pipeline 1F1B (GPipe ya está, PR #276) · GPUs heterogéneas en
 el predictor · formato de lectura rápida (LMDB/WebDataset) · focal loss a escala en VERODE.
