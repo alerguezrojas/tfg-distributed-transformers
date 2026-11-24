@@ -23,7 +23,7 @@ runs instantly. If a real measured throughput is available it can be passed in t
 | `r_c`  | pure compute throughput (img/s, 1 GPU) | **estimated from specs** |
 | `r_io` | disk read throughput (img/s) | `DISK_RIO` table or a real probe |
 | `π`    | precision / Tensor-core speedup | `GPU_TABLE` (fp32 → 1) |
-| `β`    | all-reduce bus bandwidth (B/s) | measured per GPU (`allreduce_busbw_gbs`: T4 on Kaggle 4.05 GB/s), else NVLink / PCIe nominal |
+| `β`    | all-reduce bus bandwidth (B/s) | measured per GPU (`allreduce_busbw_gbs`: T4 on Kaggle 4.05 GB/s), else NVLink / PCIe nominal × 0.5 |
 | `φ`    | NFS penalty | 1.3 on the cluster, 1.0 local |
 
 ### Estimating `r_c` without a benchmark (the key piece)
@@ -67,6 +67,12 @@ T(N, n) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (2(n−1)/n · 4P/β)·⌈N
   moves `2(n−1)/n` of the `4P` bytes of fp32 gradients through each link per batch, and `β` is
   the bus bandwidth that the links sustain (nccl-tests convention, `scripts/measure_allreduce.py`).
   Its overlap with the backward pass (DDP buckets) is not modelled, so the term is an upper bound.
+  `β` is measured only for the T4 pair on Kaggle (4.05 GB/s with large messages, 4.01 GB/s with
+  16 MB, close to DDP's 25 MB buckets; 2 GPUs only, n > 2 is an extrapolation). Every other GPU
+  uses its nominal interconnect derated by half (`NOMINAL_ALLREDUCE_DERATE`), which keeps its
+  prediction where it was, and the prediction carries a note: the measured T4 pair sustained a
+  quarter of its nominal. With gradient accumulation (`grad_accum_steps = k`) DDP only syncs once
+  per group, so the term overestimates by about k (not modelled yet).
   *(Until 24/11/2026 the term was `8P/β` with the PCIe nominal 16 GB/s; the measured T4 pair on
   Kaggle sustains 4.05 GB/s and the ring formula halves the bytes for n = 2. The model-parallel and
   heterogeneous strategies keep the old coarse `8P/β` term, with which they were calibrated.)*

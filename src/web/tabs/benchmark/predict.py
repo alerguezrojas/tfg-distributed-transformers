@@ -11,7 +11,7 @@ import streamlit as st
 
 from src.performance_model import (
     GPU_TABLE, MODEL_TABLE, ModelSpec, predict, predict_quality, gpu_spec,
-    MFU, THROUGHPUT_MEASURED, THROUGHPUT_THREE_TERM, estimate_rio, precision_factor,
+    MFU, SYNC_FORMULA, THROUGHPUT_MEASURED, THROUGHPUT_THREE_TERM, estimate_rio, precision_factor,
     BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, N_FULL_TRAIN, N_SUBSET_TRAIN,
     EVAL_POWER_FRACTION,
 )
@@ -137,7 +137,7 @@ def _analytic_predictor() -> None:
     time_tbl = pd.DataFrame([
         {"Term": "Compute", "Value": f"{p.t_compute_s:.0f} s", "Formula": "N / (r_c(precision) · n_gpus)"},
         {"Term": "Data I/O", "Value": f"{p.t_io_s:.0f} s", "Formula": "N / r_io  (fixed, shared disk)"},
-        {"Term": "Grad sync", "Value": f"{p.t_sync_s:.1f} s", "Formula": "(8·P / β) · n_batches"},
+        {"Term": "Grad sync", "Value": f"{p.t_sync_s:.1f} s", "Formula": SYNC_FORMULA.get(strategy, "")},
         {"Term": "Time / epoch", "Value": _fmt_secs(p.time_per_epoch_train_s),
          "Formula": f"max({p.t_compute_s:.0f}, {p.t_io_s:.0f}) + {p.t_sync_s:.1f} → {p.bottleneck}-bound"},
     ])

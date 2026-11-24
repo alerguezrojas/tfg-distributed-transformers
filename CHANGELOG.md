@@ -96,7 +96,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 - Predictor: la sincronización de DDP es ahora un all-reduce en anillo (`2(n−1)/n · 4P/β` por
   paso, `allreduce_time`) con el ancho de banda medido cuando lo hay (`GpuSpec.allreduce_busbw_gbs`:
   T4 de Kaggle, 4,05 GB/s; `scripts/measure_allreduce.py`) y, si no, el nominal de
-  `INTERCONNECT_BW`. Antes era `8P/β` con los 16 GB/s de PCIe. El speedup de DDP en 2 × T4
+  `INTERCONNECT_BW` reducido a la mitad (lo que deja igual la predicción de las GPU sin medida,
+  con una nota que lo dice). Antes era `8P/β` con los 16 GB/s de PCIe. El speedup de DDP en 2 × T4
   (BigEarthNet, vit_base fp32) pasa de 1,95× a 1,91× (real 1,96×); el paralelismo de modelo y el
   heterogéneo conservan su término anterior.
 

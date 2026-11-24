@@ -332,11 +332,25 @@ def test_allreduce_time_is_the_ring_formula():
     assert allreduce_time(22.0, 4, 4.05e9, 1) == pytest.approx(1.5 * one_step)
 
 
-def test_measured_allreduce_bandwidth_wins_over_the_nominal():
-    from src.performance_model import INTERCONNECT_BW, allreduce_bandwidth
-    assert allreduce_bandwidth(gpu_spec("Tesla T4")) == pytest.approx(4.05e9)   # Kaggle, measured
-    assert allreduce_bandwidth(gpu_spec("RTX 3090")) == INTERCONNECT_BW["pcie"]
-    assert allreduce_bandwidth(gpu_spec("A100 80GB")) == INTERCONNECT_BW["nvlink"]
+def test_measured_allreduce_bandwidth_wins_over_the_derated_nominal():
+    from src.performance_model import INTERCONNECT_BW, NOMINAL_ALLREDUCE_DERATE, allreduce_bandwidth
+    assert allreduce_bandwidth(gpu_spec("Tesla T4")) == (pytest.approx(4.05e9), True)
+    assert allreduce_bandwidth(gpu_spec("RTX 3090")) == (
+        INTERCONNECT_BW["pcie"] * NOMINAL_ALLREDUCE_DERATE, False)
+    assert allreduce_bandwidth(gpu_spec("A100 80GB"))[0] == pytest.approx(
+        INTERCONNECT_BW["nvlink"] * NOMINAL_ALLREDUCE_DERATE)
+
+
+def test_unmeasured_gpu_keeps_its_previous_sync_and_says_so():
+    """The ring at the derated nominal equals the former 8P/β for 2 GPUs."""
+    p = predict("ddp", "vit_base_patch16_224", "RTX 3090", n_gpus=2, dataset_size=5000,
+                batch=96, precision="fp32", epochs=15)
+    steps = -(-5000 // 96)
+    assert p.t_sync_s == pytest.approx(steps * 8 * 85.8e6 / 16e9, rel=1e-6)
+    assert any("nominal interconnect bandwidth" in n for n in p.notes)
+    t4 = predict("ddp", "vit_base_patch16_224", "Tesla T4", n_gpus=2, dataset_size=5000,
+                 batch=96, precision="fp32", epochs=15)
+    assert not any("nominal interconnect bandwidth" in n for n in t4.notes)
 
 
 def test_ddp_sync_term_uses_the_measured_t4_bandwidth():
