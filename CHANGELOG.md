@@ -4,6 +4,8 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-24
+
 ### Añadido
 
 - Predictor: el throughput de entrenamiento con AMP (`amp`) sale del modelo
@@ -713,7 +715,8 @@ Versión entregada como Trabajo de Fin de Grado (ULL, julio de 2026). Entre otra
 El detalle completo está en [`docs/historial_tfg.md`](docs/historial_tfg.md) y los resultados
 en [`docs/resultados_tfg.md`](docs/resultados_tfg.md).
 
-[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/alerguezrojas/tfg-distributed-transformers/compare/v1.1.0...v1.2.0
