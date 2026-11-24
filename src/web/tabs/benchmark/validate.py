@@ -336,10 +336,9 @@ def render_validate(_ctx) -> object:
 
     feas_csvs = _get_benchmark_csvs()
     if not feas_csvs:
-        st.info("No benchmark reports yet. Generate one from the terminal "
-                "(`paravit benchmark`).")
-        st.divider()
-        return st.container()
+        st.info("No benchmark reports yet (generate one in the terminal with "
+                "`paravit benchmark`): the benchmark columns stay empty, the analytic estimate "
+                "does not need them.")
 
     parsed = []
     for p in feas_csvs:
