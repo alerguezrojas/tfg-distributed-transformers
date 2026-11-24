@@ -212,3 +212,19 @@ def test_overview_lists_test_results_by_dataset(labels):
     by_ds = {row["Dataset"]: row for _, row in table.iterrows()}
     assert by_ds["bigearthnet"]["Metric"] == "F1" and by_ds["bigearthnet"]["Test"] == 0.31
     assert by_ds["medmnist_chest"]["Metric"] == "AUC" and by_ds["medmnist_chest"]["Test"] == 0.91
+
+
+def test_estimate_tab_lets_you_pick_the_resolution_of_a_table_model(labels):
+    at = _run_app("benchmark", labels["bigearthnet"])
+    assert not at.exception
+    at.number_input(key="predict_table_img_size").set_value(512).run()
+    assert not at.exception, [e.value for e in at.exception]
+    assert any("Profiled at 512 px" in c.value for c in at.caption)
+
+
+def test_validate_tab_lists_the_estimate_of_each_run_without_benchmarks(labels):
+    at = _run_app("benchmark", labels["medmnist"])
+    assert not at.exception, [e.value for e in at.exception]
+    assert any(md.value == "#### Analytic estimate vs measured epoch time" for md in at.markdown)
+    table = next(d.value for d in at.dataframe if "Predicted (s/epoch)" in d.value.columns)
+    assert "Notes" in table.columns                  # says why a run has no estimate

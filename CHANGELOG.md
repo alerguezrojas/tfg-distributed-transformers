@@ -8,6 +8,20 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- Web (C2, estimación multi-dataset): *Estimate vs Benchmark vs Run* alimenta el predictor con el
+  manifiesto del run (`run_<ts>.json`, y la línea `Configuración:` para lo que falte): modelo,
+  resolución, canales, clases, tamaños de train y val, lote, precisión, estrategia, GPU y nombre
+  de la GPU (`src/web/run_estimate.py`, puro, con tests). Ficha del modelo con
+  `resolve_model_spec` (con AMP, modelo de tres términos). Nueva tabla con el tiempo por época
+  predicho (train + val) frente al medido (mediana sin la primera época), el error, el origen del
+  throughput y las notas del predictor. Si el run no registra la GPU (u otro dato) no se
+  supone: no hay estimación y la tabla dice qué falta. La comparación de calidad (prior de F1)
+  solo existe para BigEarthNet; el benchmark (a 224 px) no se compara con runs a otra resolución.
+  La pestaña funciona sin informes de benchmark. *Estimate* permite elegir la resolución también
+  con los modelos de la tabla y sustituye los porcentajes de error fijos por una remisión a
+  `docs/performance_model.md` (§4 y §8). Corrige el caso de PANDA a 512 px, que se estimaba con
+  los FLOPs de 224.
+
 - Predictor: el throughput de entrenamiento con AMP (`amp`) sale del modelo
   de tres términos (`t = a·F + b·A + d/B`: cómputo, tráfico de memoria medido en CPU y coste fijo
   por paso) en lugar de solo los FLOPs. Coeficientes medidos en la RTX 3060 Ti y la T4

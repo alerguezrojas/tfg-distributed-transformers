@@ -95,6 +95,7 @@ def build_comparison(
     ddp_speedup: float | None = None,
     run_n_train: int | None = None,
     run_n_val: int | None = None,
+    model_spec=None,
 ) -> BenchmarkComparison | None:
     """Build a BenchmarkComparison from parsed benchmark data and actual metrics.
 
@@ -120,6 +121,8 @@ def build_comparison(
         the benchmark per-epoch estimates are computed for THIS size (the benchmark's
         per-batch throughput is dataset-size-independent, so a run and a benchmark report
         of different sizes stay comparable). Defaults to the benchmark report's #sizes.
+    model_spec:  ModelSpec of the run's own input (resolution, channels); the analytic column
+        uses it instead of the curated 224 px entry of the model name.
     """
     if feas_df.empty or actual_df.empty or "batch_size" not in feas_df.columns:
         return None
@@ -151,7 +154,8 @@ def build_comparison(
                             if strategy in ("ddp", "heterogeneous") else batch_size)
             pred = predict(strategy, model_name, gpu_name, n_gpus=max(1, n_gpus),
                            dataset_size=n_train, batch=global_batch, precision=precision,
-                           epochs=1, nfs=(nfs_factor > 1.05), val_size=n_val)
+                           epochs=1, nfs=(nfs_factor > 1.05), val_size=n_val,
+                           model=model_spec)
             pred_f1 = expected_best_f1(model_name, n_train)[0]
         except Exception:
             pred = None

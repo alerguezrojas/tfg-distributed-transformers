@@ -15,6 +15,7 @@ from src.performance_model import (
     BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, N_FULL_TRAIN, N_SUBSET_TRAIN,
     EVAL_POWER_FRACTION,
 )
+from src.web.run_estimate import DEFAULT_IMG_SIZE
 from src.web.ui.charts import COLORS, _show, _base_layout, _dl_csv
 
 
@@ -44,9 +45,9 @@ def _analytic_predictor() -> None:
     st.caption(
         "Pick the parameters and get the full estimate — **with the formulas behind "
         "it** — from analytic models calibrated on real data, **without running "
-        "anything**. Same engine as `paravit estimate`. Errors vs real runs: DDP speedup <1%, "
-        "FP32→AMP +3%; epoch time of PANDA trainings in mixed precision 8% (RTX 3060 Ti) "
-        "and 17% (2×T4)."
+        "anything**. Same engine as `paravit estimate`. How far it can be trusted — what is "
+        "calibrated and what is validated against runs it has not seen, per hardware and "
+        "regime — is documented in `docs/performance_model.md` (§4 and §8)."
     )
 
     c1, c2, c3 = st.columns(3)
@@ -85,6 +86,18 @@ def _analytic_predictor() -> None:
     nfs = disk_type == "nfs"
 
     ms = MODEL_TABLE[model_name] if model_name in MODEL_TABLE else None
+    if ms is not None:
+        # The table is calibrated at 3 × 224²; another resolution is profiled (FLOPs, memory).
+        t_img = st.number_input("Image size (px)", 32, 1024, DEFAULT_IMG_SIZE, step=16,
+                                key="predict_table_img_size",
+                                help=f"The curated table is at {DEFAULT_IMG_SIZE} px; another "
+                                     "size is profiled automatically (3 channels).")
+        if int(t_img) != DEFAULT_IMG_SIZE:
+            ms = _profiled_spec(model_name, 3, 19, int(t_img)) or ms
+            if not ms.calibrated:
+                st.caption(f"Profiled at {int(t_img)} px: {ms.params_m:.1f}M params, "
+                           f"{ms.gflops_fwd:.2f} GFLOPs/image. Activation memory is estimated by "
+                           "rule, so VRAM is rough.")
     if model_name == _OTHER_MODEL:
         o1, o2, o3, o4 = st.columns([3, 1, 1, 1])
         model_name = o1.text_input("timm model name", "convnext_tiny").strip()
