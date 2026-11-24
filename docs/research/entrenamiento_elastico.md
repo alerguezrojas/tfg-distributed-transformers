@@ -169,7 +169,7 @@ Detalles que dan los autores y conviene conservar:
 ### 4.2 Lo que faltaría
 
 1. **Reanudar a mitad de época.** Solo se guarda al final de cada época, de modo que un fallo
-   pierde hasta una época (en PANDA a 1.024 px, ~2,9 h por run, es mucho). Habría que guardar cada
+   pierde hasta una época entera de trabajo. Habría que guardar cada
    *k* pasos con el índice de lote consumido y saltar esos lotes con el mismo barajado.
 2. **Cambiar el número de procesos al reanudar.** Con otro `world_size` el reparto del sampler
    cambia (`HeterogeneousDistributedSampler` también), y con el mismo lote por GPU cambia el lote
