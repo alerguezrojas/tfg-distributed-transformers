@@ -1,0 +1,17 @@
+#meta,model_name,total_params_M,flops_mflops,hardware_name,total_vram_gb,free_vram_gb
+#meta,swin_tiny_patch4_window7_224,27.52,283.7,NVIDIA GeForce RTX 3060 Ti,8.2,0.91
+#gpu,compute_capability,architecture,sm_count,cuda_cores,tensor_cores
+#gpu,8.6,Ampere,38,4864,152
+#precision,mode
+#precision,fp32
+#sizes,n_train,n_val,nfs_factor
+#sizes,7433,1593,1.0
+#model_mem,weight_mb,gradient_mb,optimizer_mb,activation_mb_per_image,total_static_mb
+#model_mem,110.1,110.1,220.2,759.0,440.4
+#cpu,logical_cores,physical_cores,freq_mhz,ram_total_gb,ram_free_gb
+#cpu,16,8,3971.0,16.7,9.5
+#disk,type,is_nfs,read_mb_per_s,files_per_second
+#disk,SSD,no,0.0,0.0
+batch_size,trace_mode,s_per_batch_train,imgs_per_s_train,s_per_batch_eval,imgs_per_s_eval,peak_vram_gb,avg_power_w,oom,est_train_min_per_epoch,est_eval_min_per_epoch,est_total_min_per_epoch,est_total_h_30ep,est_energy_train_wh_per_epoch,est_energy_eval_wh_per_epoch,est_energy_total_wh,flops_train_gflops_per_epoch,flops_eval_gflops_per_epoch,optimizer_steps_per_epoch
+16,off,,,,,,,yes,,,,,,,,,,
+16,simple,,,,,,,yes,,,,,,,,,,

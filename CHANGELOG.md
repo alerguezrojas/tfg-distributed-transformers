@@ -201,6 +201,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Experimentos
 
+- Throughput en fp32 en la RTX 3060 Ti (24/11/2026, `docs/research/datos/throughput_fp32_3060ti.csv`):
+  lo que acelera AMP frente a fp32 depende de la arquitectura, el lote y la resolución (×1,0 a
+  ×3,4), no es un π fijo por GPU. A 512 px en fp32, 8 de 10 modelos no caben en 8 GB.
+
 - PANDA, una T4 frente a dos en la misma máquina de Kaggle (24/11/2026): con la segunda T4, ViT-S
   acelera ×1,35 y Swin-T ×1,71, sin cambio de QWK (0,782-0,801 y 0,820-0,830). Con dos GPU manda la
   decodificación en CPU (4 vCPU al 100 %); el control con 2 procesos de carga por GPU es más lento
