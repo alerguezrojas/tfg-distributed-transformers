@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 23/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 24/11/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Versión 1.4.0 (24/11/2026), en `main`.** Recoge las fases 0-4 del plan de profesionalización
@@ -23,11 +23,17 @@ en el 15 %; PR #273); y los literales repetidos de SonarCloud están resueltos (
 Estrategia **`pipeline` (GPipe)** con micro-lotes (PR #276): el ViT partido en dos GPU como en
 `model_parallel`, pero con las dos etapas trabajando a la vez; mismo gradiente que el lote entero,
 término en el predictor (burbuja `(m+p−1)/(m·p)`) y memoria repartida entre etapas también para
-`model_parallel`. En curso: su medida en Kaggle (lote `pipeline_512`: ViT-B en una T4, paralelismo
-de modelo y pipeline con 2, 4 y 8 micro-lotes), que dirá si el solapamiento compensa la copia
-entre las T4 (sin P2P). Siguiente: analizarla, un término de decodificación en CPU para el I/O
-del predictor (lo que limita DDP en Kaggle), FSDP2/ZeRO-1 y la vista de conjuntos en la web.
-Pendiente del autor: la VPN de VERODE.
+`model_parallel`. Medido en Kaggle (PR #279; ViT-B a 512 px en 2 × T4): ×1,38, ×1,56 y ×1,64
+frente a una T4 con 2, 4 y 8 micro-lotes, mismo QWK; el predictor acierta el tiempo con +6 a +11 %
+y la potencia con −3 a −5 %. En curso: el lote `pipeline_micro1` (micro-lotes de una imagen), que
+decide si el coste fijo por paso se cobra por micro-lote o por paso; después, calibrar la potencia
+del pipeline y cambiar el predictor en un PR con revisión. **Reunión del 24/11:** el tutor propone
+el entrenamiento elástico; estudio en
+[`research/entrenamiento_elastico.md`](research/entrenamiento_elastico.md) (PR #280), con tres
+pasos: reanudar a mitad de época con `--max-restarts`, predecir el coste de los reinicios y
+elegir cuántas GPU usar, y elasticidad real con lote global fijo. Siguiente: lo anterior, un
+término de decodificación en CPU para el I/O del predictor, FSDP2/ZeRO-1 y la vista de conjuntos
+en la web. Pendiente del autor: la VPN de VERODE.
 
 **Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
 (Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
