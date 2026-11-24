@@ -22,6 +22,7 @@
 | [research/panda.md](research/panda.md) | Dataset PANDA (biopsias de próstata, ISUP 0-5): formato, licencia, métrica QWK, soluciones ganadoras, ViT, sesgo de centro y cómo encajarlo en el proyecto |
 | [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md) | Cómo se gradúa el cáncer de próstata (Gleason, ISUP, variabilidad entre patólogos), cómo se miden los modelos de IA (QWK, AUC, sensibilidad/especificidad, validación externa) y qué pedir a un dataset clínico nuevo |
 | [research/jepa_y_modelos_base.md](research/jepa_y_modelos_base.md) | JEPA (I-JEPA, V-JEPA, V-JEPA 2) frente a MAE/DINO, pesos y licencias, modelos de base de patología en PANDA y qué hace falta para usar backbones que no son de timm |
+| [research/entrenamiento_elastico.md](research/entrenamiento_elastico.md) | Entrenamiento elástico (torchrun, Horovod, DeepSpeed, TorchFT), trabajos que modelan rendimiento para asignar GPU (Optimus, Pollux, AFS, Sia), encaje en ParaViT-Lab y tres pasos propuestos |
 | [resultados_tfg.md](resultados_tfg.md) | Resultados experimentales hasta la entrega (histórico) |
 | [historial_tfg.md](historial_tfg.md) | Bitácora del desarrollo hasta `v1.0-tfg` (congelada) |
 | [class_diagram.svg](class_diagram.svg) | Diagrama de clases (fuente: `class_diagram.puml`) |
