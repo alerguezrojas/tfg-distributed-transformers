@@ -28,7 +28,8 @@ def test_every_experiment_config_is_valid(exp):
     validate_config(cfg)
     assert cfg["data"]["image_size"] == cfg["model"]["img_size"]
     gpus = 2 if strategy == "ddp" else 1                       # split strategies: one process
-    assert cfg["training"]["batch_size"] * gpus == 16         # global batch of the local runs
+    # Global batch of the local runs (16); the "_b8_" pipeline run halves it on purpose.
+    assert cfg["training"]["batch_size"] * gpus == (8 if "_b8_" in name else 16)
     assert cfg["checkpoint"]["dir"].endswith(name)            # one folder per experiment
 
 

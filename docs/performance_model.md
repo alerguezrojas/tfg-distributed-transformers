@@ -109,11 +109,19 @@ Gustafson on the predicted curve.
   Each GPU idles `(p−1)/(m+p−1)` of the step (the *bubble*):
   `T ≈ N/r_c(b/m) · (m+p−1)/(m·p) + transfer`, so `S ≈ m·p/(m+p−1)` (1.6× with 2 GPUs and 4
   micro-batches) when the stages are balanced and `r_c` does not drop much at the micro-batch
-  size (the three-term model's `d/B` term says how much it drops). **Neither the time nor the
-  power is measured yet** (power is interpolated between naive model parallelism, 0.83×, and a
-  busy GPU); the 2 × T4 measurement is prepared in the Kaggle kernel (`pipeline_512`). The
-  implementation has 2 stages; `--layers hooks` synchronizes CPU and GPU on every layer and
-  cancels the overlap.
+  size (the three-term model's `d/B` term says how much it drops). Power is interpolated between
+  naive model parallelism (0.83×) and a busy GPU. **Measured on 2 × T4 (24/11/2026, Kaggle,
+  ViT-B, 512 px, batch 16;
+  [panda.md](datasets/panda.md#pipeline-gpipe-en-las-dos-t4-24112026)):** speedups ×1.38, ×1.56
+  and ×1.64 with 2, 4 and 8 micro-batches (ideal ×1.33, ×1.60, ×1.78), despite the host-staged
+  copy between the T4s; the predictor's epoch time is +7, +7 and +11 % off and its power 3-5 %
+  low. The error grows with `m` because `d` is charged per micro-batch; charging it once per
+  step gives +5, +1 and −2 %, and the `pipeline_micro1` batch (1-image micro-batches, where the
+  two readings differ by ~30 %) decides before the predictor changes. Naive model parallelism
+  ran 7 % *faster* than one T4: the 70 W cap throttles a fully busy T4 to 720 MHz, while each
+  half-busy T4 stays under it. The stages are unbalanced (GPU 0 at 88 % vs GPU 1 at 74 % with
+  m = 8). The implementation has 2 stages; `--layers hooks` synchronizes CPU and GPU on every
+  layer and cancels the overlap.
 * **VRAM of the split strategies**: each GPU holds `1/p` of the weights, optimizer state and
   activations (GPipe keeps those of every micro-batch until the backward), plus its own CUDA
   overhead. Before 24/11/2026 the predictor put the whole model on one GPU and flagged OOM in the
