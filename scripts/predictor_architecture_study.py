@@ -44,6 +44,8 @@ from src.analysis.throughput_model import (  # noqa: E402
 )
 
 DATA = ROOT / "docs" / "research" / "datos" / "throughput_arquitecturas_amp.csv"
+# Column headers shared by the tables of the study.
+_IPS, _FLOPS_ONLY, _TWO_TERMS = "img/s", "Solo FLOPs", "2 términos"
 
 
 def _mem_bw() -> dict[str, float]:
@@ -136,7 +138,7 @@ def resolution_section(data, feats_at, cal_gpu: str, cal_size: int, md: bool) ->
         e3 = relative_errors(predict_ips(a3, b3, Ft, At, d3, BATCH), Rt)
         rows = [[m, f"{Rt[i]:.1f}", _pct(e1[i]), _pct(e2[i]), _pct(e3[i])] for i, m in enumerate(ms)]
         print(f"{size} px:\n")
-        print(_table(["Modelo", "img/s", "Solo FLOPs", "2 términos", "2 términos + d/B"], rows, md))
+        print(_table(["Modelo", _IPS, _FLOPS_ONLY, _TWO_TERMS, f"{_TWO_TERMS} + d/B"], rows, md))
         print(f"\n|error| medio: solo FLOPs {mean(e1)}, 2 términos {mean(e2)}, con coste fijo "
               f"{mean(e3)} (máx {100 * np.max(np.abs(e3)):.0f} %)\n")
 
@@ -188,8 +190,8 @@ def main(argv=None) -> None:
           f"a = {a:.3e} s/GFLOP, b = {b:.3e} s/GB (solo FLOPs: a = {a1:.3e})\n")
     rows = [[m, f"{F[i]:.1f}", f"{A[i]:.3f}", f"{F[i] / A[i]:.0f}", f"{R[i]:.1f}",
              _pct(e1[i]), _pct(l1[i]), _pct(e2[i]), _pct(l2[i])] for i, m in enumerate(names)]
-    print(_table(["Modelo", "GFLOPs", "Activ. GB", "GFLOPs/GB", "img/s", "Solo FLOPs",
-                  "Solo FLOPs (LOO)", "2 términos", "2 términos (LOO)"], rows, md))
+    print(_table(["Modelo", "GFLOPs", "Activ. GB", "GFLOPs/GB", _IPS, _FLOPS_ONLY,
+                  f"{_FLOPS_ONLY} (LOO)", _TWO_TERMS, f"{_TWO_TERMS} (LOO)"], rows, md))
     mean = lambda e: f"{100 * np.mean(np.abs(e)):.0f} %"
     print(f"\n|error| medio: solo FLOPs {mean(e1)} (LOO {mean(l1)}); "
           f"2 términos {mean(e2)} (LOO {mean(l2)}, máx {100 * np.max(np.abs(l2)):.0f} %)\n")
@@ -216,8 +218,8 @@ def main(argv=None) -> None:
               f"ancho de banda):\n")
         rows = [[m, f"{Rt[i]:.1f}", _pct(t1[i]), _pct(s1[i]), _pct(t2[i]), _pct(s2[i]),
                  "sí" if m in cal else "no"] for i, m in enumerate(ms)]
-        print(_table(["Modelo", "img/s", "Solo FLOPs", "Solo FLOPs, forma", "2 términos",
-                      "2 términos, forma", "En la calibración"], rows, md))
+        print(_table(["Modelo", _IPS, _FLOPS_ONLY, f"{_FLOPS_ONLY}, forma", _TWO_TERMS,
+                      f"{_TWO_TERMS}, forma", "En la calibración"], rows, md))
         ad, bd = fit_two_term(Ft, At, Rt)        # direct fit on this GPU, for diagnosis only
         print(f"\nAjuste directo en {gpu} (solo diagnóstico): a ×{ad / at:.2f} y b ×{bd / bt:.2f} "
               f"respecto a lo transferido por hoja técnica.")
@@ -304,7 +306,7 @@ def trainings_section(md: bool) -> None:
                          f"{new.time_per_epoch_total_s:.0f} s", _pct(en)])
         print(f"Entrenamientos reales de PANDA: {strategy} en {n_gpus} × {gpu}, lote global "
               f"{batch}, AMP, 512 px (tiempo por época con validación):\n")
-        print(_table(["Modelo", "Runs", "Real", "Solo FLOPs", "Error", "3 términos", "Error"],
+        print(_table(["Modelo", "Runs", "Real", _FLOPS_ONLY, "Error", "3 términos", "Error"],
                      rows, md))
         print(f"\n|error| medio: solo FLOPs {100 * np.mean(np.abs(e_old)):.0f} %, 3 términos "
               f"{100 * np.mean(np.abs(e_new)):.0f} % (máx. {100 * np.max(np.abs(e_new)):.0f} %)\n")

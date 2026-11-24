@@ -47,6 +47,8 @@ app = typer.Typer(
     help="ParaViT-Lab — distributed Vision Transformers. Train, estimate, benchmark, evaluate and visualise.",
 )
 
+_DEFAULT_CONFIG = "configs/train.yaml"
+
 # Canonical names of the strategy registry (src/training/strategies.py); aliases such as
 # "model-parallel" are also accepted wherever a strategy is given.
 STRATEGIES = tuple(available_strategies())
@@ -325,7 +327,7 @@ def _fmt_secs(s: float) -> str:
 @app.command()
 def train(
     strategy: str = typer.Option("single", help=f"One of {', '.join(STRATEGIES)} (aliases such as model-parallel also work)."),
-    config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model, batch…)."),
+    config: str = typer.Option(_DEFAULT_CONFIG, help="YAML config (paths, model, batch…)."),
     model: Optional[str] = typer.Option(None, help="Override the model (any timm ID)."),
     epochs: Optional[int] = typer.Option(None, help="Override the number of epochs."),
     seed: Optional[int] = typer.Option(None, help="Override training.seed (repetitions)."),
@@ -594,7 +596,7 @@ def eval(
     checkpoint: List[str] = typer.Option(
         ..., help="Path to the .pt checkpoint. Repeat it to evaluate an ensemble "
                   "(the probabilities of the checkpoints are averaged)."),
-    config: str = typer.Option("configs/train.yaml", help="YAML config (paths, model)."),
+    config: str = typer.Option(_DEFAULT_CONFIG, help="YAML config (paths, model)."),
     model: Optional[str] = typer.Option(None, help="Override the model."),
     split: str = typer.Option("test", help="test | val."),
     output: Optional[str] = typer.Option(None, help="CSV path for per-class results."),
@@ -627,7 +629,7 @@ def predict_images(
     checkpoint: List[str] = typer.Option(
         ..., help="Path to the .pt checkpoint or run folder. Repeat it for an ensemble "
                   "(the probabilities of the checkpoints are averaged)."),
-    config: str = typer.Option("configs/train.yaml", help="YAML config (dataset, model)."),
+    config: str = typer.Option(_DEFAULT_CONFIG, help="YAML config (dataset, model)."),
     model: Optional[str] = typer.Option(None, help="Override the model (default: the checkpoint's)."),
     out: Optional[str] = typer.Option(None, help="CSV path with the probability of every class."),
     batch_size: Optional[int] = typer.Option(None, help="Images per batch."),
