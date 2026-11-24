@@ -358,3 +358,39 @@ def test_ddp_sync_term_uses_the_measured_t4_bandwidth():
                 batch=96, precision="fp32", epochs=15)
     steps = -(-5000 // 96)                          # 48 per GPU × 2 GPUs per step
     assert p.t_sync_s == pytest.approx(steps * 4 * 85.8e6 / 4.05e9, rel=1e-6)
+
+
+# ── Pipeline (GPipe) and the VRAM of split strategies (24/11/2026) ──────────────
+
+def _vit_large_t4(strategy, micro=4, batch=48):
+    return predict(strategy, "vit_large_patch16_224", "Tesla T4", n_gpus=2, dataset_size=5000,
+                   batch=batch, precision="fp32", epochs=1, micro_batches=micro)
+
+
+def test_split_strategies_hold_half_the_model_per_gpu():
+    """vit_large, batch 48, fp32: OOM on one T4 (measured), fits split over two (the
+    logs/kaggle/model_parallel/vit_large_patch16_224/train_10062026_214332 run)."""
+    single = predict("single", "vit_large_patch16_224", "Tesla T4", dataset_size=5000, batch=48,
+                     precision="fp32", epochs=1)
+    assert not single.fits_in_memory
+    for strategy in ("model_parallel", "pipeline"):
+        p = _vit_large_t4(strategy)
+        assert p.fits_in_memory
+        assert p.vram_per_gpu_gb == pytest.approx(
+            (single.vram_per_gpu_gb - 0.6) / 2 + 0.6, rel=1e-6)
+
+
+def test_pipeline_speedup_follows_the_gpipe_bubble():
+    """fp32 (no batch-size term): speedup over one GPU = m·p / (m+p−1)."""
+    for m in (1, 2, 4, 8):
+        assert _vit_large_t4("pipeline", m).speedup == pytest.approx(2 * m / (m + 1), rel=0.02)
+    assert _vit_large_t4("model_parallel").speedup == pytest.approx(1.0, rel=0.02)
+
+
+def test_pipeline_power_lies_between_naive_and_busy():
+    from src.performance_model import MODEL_PARALLEL_POWER_FRACTION, split_power_fraction
+    assert split_power_fraction("model_parallel", 2) == MODEL_PARALLEL_POWER_FRACTION
+    assert split_power_fraction("pipeline", 2, 1) == pytest.approx(MODEL_PARALLEL_POWER_FRACTION)
+    assert MODEL_PARALLEL_POWER_FRACTION < split_power_fraction("pipeline", 2, 4) < 1.0
+    assert split_power_fraction("ddp", 2, 4) == 1.0
+    assert any("bubble" in n for n in _vit_large_t4("pipeline").notes)

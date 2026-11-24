@@ -26,6 +26,8 @@ from src.performance_model import (
 DEFAULT_IMG_SIZE = 224
 #: Strategies whose global batch is the per-GPU batch times the GPU count.
 _DATA_PARALLEL = ("ddp", "heterogeneous")
+#: Strategies that split the model across devices in ONE process.
+_SPLIT = ("model_parallel", "pipeline")
 _FROM_MANIFEST = "run manifest"
 
 _THROUGHPUT_LABEL = {
@@ -73,6 +75,7 @@ class RunEstimateInputs:
     gpu: str | None
     gpu_source: str = ""
     notes: tuple[str, ...] = ()
+    micro_batches: int | None = None   # GPipe micro-batches (pipeline runs)
 
     @property
     def missing(self) -> list[str]:
@@ -166,6 +169,10 @@ def inputs_from_run(*, model: str, dataset: str, mode: str, precision: str | Non
     batch = _int(tcfg.get("batch_size")) or _int(config_line.get("batch"))
     if strategy == "single":
         n_gpus: int | None = 1
+    elif strategy in _SPLIT:
+        # One process (world_size 1) on several GPUs: the stages are the cuda devices listed.
+        n_gpus = len({d for d in str(config_line.get("devices") or "").split("+")
+                      if d.startswith("cuda")}) or None
     else:
         n_gpus = _int(manifest.get("world_size")) or _ngpus_from_batch(config_line.get("batch"))
 
@@ -176,7 +183,7 @@ def inputs_from_run(*, model: str, dataset: str, mode: str, precision: str | Non
         model=model, dataset=dataset, strategy=strategy, precision=precision or "fp32",
         img_size=img_size, in_chans=in_chans, num_classes=num_classes, n_train=n_train,
         n_val=n_val, batch_per_gpu=batch, n_gpus=n_gpus, gpu=gpu, gpu_source=source,
-        notes=tuple(notes))
+        notes=tuple(notes), micro_batches=_int(config_line.get("micro_batches")))
 
 
 def estimate_run(inp: RunEstimateInputs, epoch_times_s: Sequence[float | None],
@@ -195,8 +202,10 @@ def estimate_run(inp: RunEstimateInputs, epoch_times_s: Sequence[float | None],
     if spec is None:
         return skip(f"model '{inp.model}' cannot be profiled")
     batch = inp.batch_per_gpu * (inp.n_gpus if inp.strategy in _DATA_PARALLEL else 1)
+    extra = {"micro_batches": inp.micro_batches} if inp.micro_batches else {}
     p = predict(inp.strategy, inp.model, inp.gpu, n_gpus=inp.n_gpus, dataset_size=inp.n_train,
-                batch=batch, precision=inp.precision, epochs=1, val_size=inp.n_val, model=spec)
+                batch=batch, precision=inp.precision, epochs=1, val_size=inp.n_val, model=spec,
+                **extra)
     if p is None:
         return skip("the predictor does not model this configuration")
     notes = (*inp.notes, *p.notes)

@@ -130,3 +130,12 @@ def test_measured_epoch_time(times, expected):
 def test_throughput_description():
     assert "three terms" in describe_throughput("three-term")
     assert "FLOPs only" in describe_throughput("mfu")
+
+
+def test_split_strategies_count_their_cuda_devices_not_world_size():
+    """model_parallel / pipeline run in ONE process (world_size 1) over the listed GPUs."""
+    cfg = {"devices": "cuda:0+cuda:1", "micro_batches": "4", "batch": "16 (global)"}
+    inp = _inputs(manifest={**_PANDA, "world_size": 1}, mode="pipeline", cfg=cfg)
+    assert inp.n_gpus == 2 and inp.micro_batches == 4
+    assert _inputs(manifest={**_PANDA, "world_size": 1}, mode="model_parallel",
+                   cfg={"devices": "cuda:0+cuda:0"}).n_gpus == 1

@@ -87,6 +87,8 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
             notes.append("synchronous + imbalanced hardware")
         elif r.mode == "model_parallel":
             notes.append("naive pipeline — ≈1× expected")
+        elif r.mode == "pipeline":
+            notes.append("GPipe micro-batches — between 1× and 2×")
         if r.trace_mode == "deep" and base_r.trace_mode != "deep":
             notes.append("deep trace ~20% overhead")
         rows.append({
@@ -167,7 +169,7 @@ def _speedup_section(sel: list[tuple[str, RunInfo]], df_by_label: dict[str, pd.D
     # Theoretical (data-parallel) scaling — distributed runs as points at 2
     # workers vs the perfect-scaling line from the baseline.
     dist_timed = [(lbl, r, t) for lbl, r, t in timed
-                  if r.mode in ("ddp", "ddp_hetero", "model_parallel")]
+                  if r.mode in ("ddp", "ddp_hetero", "model_parallel", "pipeline")]
     if base_r.mode == "single" and dist_timed:
         st.markdown("### Theoretical vs real scaling")
         world_sizes = [1, 2, 4, 8]

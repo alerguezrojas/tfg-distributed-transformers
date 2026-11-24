@@ -139,7 +139,8 @@ Opciones principales:
 
 | Opción | Valores | Efecto |
 |---|---|---|
-| `--strategy` | `single` · `ddp` · `model_parallel` · `heterogeneous` | Estrategia de distribución (también vale `model-parallel`); las distribuidas se lanzan solas con `torchrun` |
+| `--strategy` | `single` · `ddp` · `model_parallel` · `pipeline` · `heterogeneous` | Estrategia de distribución (también vale `model-parallel`); las distribuidas se lanzan solas con `torchrun` |
+| `--micro-batches` | entero (por defecto 4) | Solo `pipeline` (GPipe): en cuántos micro-lotes se parte cada lote para que las dos GPU trabajen a la vez |
 | `--config` | fichero YAML | Rutas, modelo, lote, épocas, regularización (sección 4) |
 | `--model` | id de timm | Sustituye el modelo del config (`vit_tiny_patch16_224`, `resnet50`…) |
 | `--epochs` | entero | Sustituye el número de épocas; si queda `epochs <= warmup_epochs`, baja `warmup_epochs` a `epochs - 1` (mínimo 0) y avisa |

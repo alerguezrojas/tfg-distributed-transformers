@@ -315,7 +315,7 @@ helpers de imagen de `src/web/`. Tests: `tests/unit/test_reporting.py`.
 ```bash
 uv run paravit.py --help
 uv run paravit.py estimate --model vit_base_patch16_224 --gpu "Tesla T4" --strategy ddp --n-gpus 2 --precision amp
-uv run paravit.py train --strategy {single|ddp|heterogeneous|model_parallel} --config ... [--dry-run]
+uv run paravit.py train --strategy {single|ddp|heterogeneous|model_parallel|pipeline} --config ... [--dry-run]
 uv run paravit.py benchmark --model vit_base_patch16_224 --batch-sizes 32,64 --epochs 30
 uv run paravit.py eval --checkpoint checkpoints/local/single/vit_base_patch16_224/19112026_101500/best.pt --split test
 uv run paravit.py dashboard

@@ -11,7 +11,7 @@ import streamlit as st
 
 from src.performance_model import (
     GPU_TABLE, MODEL_TABLE, ModelSpec, predict, predict_quality, gpu_spec,
-    MFU, SYNC_FORMULA, THROUGHPUT_MEASURED, THROUGHPUT_THREE_TERM, estimate_rio, precision_factor,
+    DEFAULT_MICRO_BATCHES, MFU, STRATEGIES, SYNC_FORMULA, THROUGHPUT_MEASURED, THROUGHPUT_THREE_TERM, estimate_rio, precision_factor,
     BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, N_FULL_TRAIN, N_SUBSET_TRAIN,
     EVAL_POWER_FRACTION,
 )
@@ -59,8 +59,10 @@ def _analytic_predictor() -> None:
         gpu_name = st.selectbox("GPU", list(GPU_TABLE.keys()),
                                 index=list(GPU_TABLE.keys()).index("Tesla T4"))
     with c2:
-        strategy = st.selectbox("Strategy", ["single", "ddp", "model_parallel", "heterogeneous"])
+        strategy = st.selectbox("Strategy", list(STRATEGIES))
         n_gpus = st.number_input("Number of GPUs", 1, 8, 2 if strategy != "single" else 1)
+        micro_batches = (st.number_input("Micro-batches (GPipe)", 1, 64, DEFAULT_MICRO_BATCHES)
+                         if strategy == "pipeline" else DEFAULT_MICRO_BATCHES)
     with c3:
         precision = st.selectbox("Precision", ["fp32", "amp", "tf32", "bf16"])
         disk_type = st.selectbox("Disk", ["ssd", "nvme", "hdd", "nfs"])
@@ -127,7 +129,7 @@ def _analytic_predictor() -> None:
     p = predict(strategy, model_name, gpu_name, n_gpus=int(n_gpus),
                 dataset_size=int(dataset_size), batch=int(batch), precision=precision,
                 epochs=int(epochs), disk_type=disk_type, nfs=nfs, rc_measured=rc_measured,
-                model=ms)
+                model=ms, micro_batches=int(micro_batches))
     if p is None:
         st.error("Unknown model or GPU spec.")
         return
@@ -212,6 +214,10 @@ def _analytic_predictor() -> None:
     elif strategy == "model_parallel" and int(n_gpus) > 1:
         _energy_note = (" Naive model parallelism keeps every GPU powered but idling between "
                         "pipeline stages (counted at ~0.83× each); it does not save energy.")
+    elif strategy == "pipeline" and int(n_gpus) > 1:
+        _energy_note = (" GPipe keeps every GPU busy except during the pipeline bubble; its power "
+                        "is interpolated between naive model parallelism and a busy GPU "
+                        "(not measured).")
     st.caption("Power is precision-independent (AMP saves energy through *time*, not watts) "
                "and calibrated per GPU from the project's measured `--fn energy` runs; "
                "unmeasured GPUs use a TDP fallback (flagged)." + _energy_note)
@@ -254,7 +260,7 @@ def _analytic_predictor() -> None:
         for n in ns:
             pn = predict(strategy, model_name, gpu_name, n_gpus=n, dataset_size=int(dataset_size),
                          batch=int(batch), precision=precision, epochs=1, disk_type=disk_type, nfs=nfs,
-                         model=ms)
+                         model=ms, micro_batches=int(micro_batches))
             sp_vals.append(pn.speedup if pn else 0.0)
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=ns, y=ns, name="Ideal (linear)",

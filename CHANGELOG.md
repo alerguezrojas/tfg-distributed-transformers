@@ -4,7 +4,27 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Añadido
+
+- Estrategia `pipeline` (GPipe): el ViT se parte en dos GPU como en `model_parallel`, pero cada
+  lote pasa en `--micro-batches m` micro-lotes (por defecto 4), de modo que la etapa 0 procesa el
+  micro-lote siguiente mientras la etapa 1 procesa el actual. La actualización es la misma que con
+  el lote entero; tests en CPU de logits y gradientes idénticos con 1 a 8 micro-lotes. Viene con
+  `scripts/train_pipeline.py`, `paravit train --strategy pipeline` y la línea `Configuración:` con
+  `micro_batches=`. Con 1 micro-lote, `model_parallel` no cambia (mismo test de caracterización).
+- Predictor: estrategia `pipeline` con la burbuja de GPipe (`(m+p−1)/(m·p)`, throughput al tamaño
+  del micro-lote), en la CLI y la web. **Sin medir todavía** ni el tiempo ni la potencia (que se
+  interpola): la medida en 2 × T4 está preparada en el kernel de Kaggle.
+
 ### Cambiado
+
+- Predictor: la memoria por GPU de las estrategias que parten el modelo (`model_parallel`,
+  `pipeline`) reparte pesos, optimizador y activaciones entre las etapas. Antes ponía el modelo
+  entero en una GPU y marcaba falta de memoria justo donde la estrategia hace falta: vit_large con
+  lote 48 en fp32 entrenó en 2 × T4 y el predictor decía 17,9 GB (no cabe); ahora, 9,3 GB y cabe.
+- Predictor: el cuello de botella (`compute`/`io`/`sync`) compara el tiempo de cálculo de reloj
+  tal cual; antes lo dividía otra vez por el número de GPU y marcaba `io` donde mandaba el cálculo
+  (con la nota de "I/O floor" incluida).
 
 - Predictor: el ajuste de la T4 (`THROUGHPUT_FITS`) pasa a ser conjunto con un barrido de lotes
   8-64 a 224 px medido en Kaggle (33 medidas): el coste fijo por paso deja de ser un supuesto
