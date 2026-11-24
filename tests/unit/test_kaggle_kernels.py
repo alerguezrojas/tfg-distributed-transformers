@@ -93,3 +93,12 @@ def test_allreduce_bus_bandwidth():
     assert mod.bus_bandwidth(10.0, 2) == pytest.approx(10.0)       # ring of 2: busbw = algbw
     assert mod.bus_bandwidth(10.0, 4) == pytest.approx(15.0)
     assert mod.bus_bandwidth(10.0, 1) == pytest.approx(10.0)
+
+
+def test_benchmark_campaigns_are_well_formed():
+    names = [c[0] for c in bench.CAMPAIGNS]
+    assert len(set(names)) == len(names)
+    for _name, img_size, precision, batches, models in bench.CAMPAIGNS:
+        assert img_size in (224, 384, 512) and precision in ("amp", "fp32")
+        assert batches and all(b.isdigit() for b in batches)
+        assert set(models) <= set(bench.MODELS)
