@@ -320,3 +320,27 @@ def test_gpu_spec_real_names_resolve_as_before(name, expected):
 ])
 def test_gpu_spec_similar_but_different_gpu_is_unknown(name):
     assert gpu_spec(name) is None
+
+
+# ── Ring all-reduce with the measured bandwidth (24/11/2026) ─────────────────────
+
+def test_allreduce_time_is_the_ring_formula():
+    from src.performance_model import allreduce_time
+    assert allreduce_time(22.0, 1, 4.05e9, 100) == 0.0
+    one_step = 4 * 22e6 / 4.05e9                    # n = 2: 2(n-1)/n = 1, fp32 gradients
+    assert allreduce_time(22.0, 2, 4.05e9, 1) == pytest.approx(one_step)
+    assert allreduce_time(22.0, 4, 4.05e9, 1) == pytest.approx(1.5 * one_step)
+
+
+def test_measured_allreduce_bandwidth_wins_over_the_nominal():
+    from src.performance_model import INTERCONNECT_BW, allreduce_bandwidth
+    assert allreduce_bandwidth(gpu_spec("Tesla T4")) == pytest.approx(4.05e9)   # Kaggle, measured
+    assert allreduce_bandwidth(gpu_spec("RTX 3090")) == INTERCONNECT_BW["pcie"]
+    assert allreduce_bandwidth(gpu_spec("A100 80GB")) == INTERCONNECT_BW["nvlink"]
+
+
+def test_ddp_sync_term_uses_the_measured_t4_bandwidth():
+    p = predict("ddp", "vit_base_patch16_224", "Tesla T4", n_gpus=2, dataset_size=5000,
+                batch=96, precision="fp32", epochs=15)
+    steps = -(-5000 // 96)                          # 48 per GPU × 2 GPUs per step
+    assert p.t_sync_s == pytest.approx(steps * 4 * 85.8e6 / 4.05e9, rel=1e-6)

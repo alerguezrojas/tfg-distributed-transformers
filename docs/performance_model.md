@@ -23,7 +23,7 @@ runs instantly. If a real measured throughput is available it can be passed in t
 | `r_c`  | pure compute throughput (img/s, 1 GPU) | **estimated from specs** |
 | `r_io` | disk read throughput (img/s) | `DISK_RIO` table or a real probe |
 | `π`    | precision / Tensor-core speedup | `GPU_TABLE` (fp32 → 1) |
-| `β`    | interconnect bandwidth (B/s) | NVLink / PCIe / Ethernet |
+| `β`    | all-reduce bus bandwidth (B/s) | measured per GPU (`allreduce_busbw_gbs`: T4 on Kaggle 4.05 GB/s), else NVLink / PCIe nominal |
 | `φ`    | NFS penalty | 1.3 on the cluster, 1.0 local |
 
 ### Estimating `r_c` without a benchmark (the key piece)
@@ -58,13 +58,18 @@ MFU form above, and a measured `r_c` always wins.
 ## 2. Master formula — DDP train epoch
 
 ```
-T(N, n) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (8P/β)·⌈N/(b·n)⌉ ]
-               \________ compute ∥ disk ________/   \____ gradient sync ____/
+T(N, n) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (2(n−1)/n · 4P/β)·⌈N/(b·n)⌉ ]
+               \________ compute ∥ disk ________/   \_______ gradient sync _______/
 ```
 
 * compute and disk run **at the same time** → the **slower** one counts (`max`);
-* the gradient all-reduce (`8P` bytes = 2·P fp32 grads, per batch) runs **after**
-  → it is **added**.
+* the gradient all-reduce runs **after** → it is **added**. A ring all-reduce over `n` GPUs
+  moves `2(n−1)/n` of the `4P` bytes of fp32 gradients through each link per batch, and `β` is
+  the bus bandwidth that the links sustain (nccl-tests convention, `scripts/measure_allreduce.py`).
+  Its overlap with the backward pass (DDP buckets) is not modelled, so the term is an upper bound.
+  *(Until 24/11/2026 the term was `8P/β` with the PCIe nominal 16 GB/s; the measured T4 pair on
+  Kaggle sustains 4.05 GB/s and the ring formula halves the bytes for n = 2. The model-parallel and
+  heterogeneous strategies keep the old coarse `8P/β` term, with which they were calibrated.)*
 
 ### Speedup and the three regimes
 
@@ -136,7 +141,7 @@ test the model.
 |----------|-----------|------|-------|------|
 | Single fp32, train/epoch | 192 s | 194 s | +1% | calibration (in-sample) |
 | vit_large @ batch 32, T4 | 13.8 GB, fits | 13.78 GB, fits | <1% | calibration (in-sample) |
-| **DDP 2×T4 speedup** | **1.95×** | **1.96×** | **<1%** | **validation (out-of-sample)** |
+| **DDP 2×T4 speedup** | **1.91×** | **1.96×** | **−3%** | **validation (out-of-sample)** ² |
 | **FP32 → AMP speedup** | **3.91×** | **3.80×** | **+3%** | **validation (out-of-sample)** ¹ |
 | **Model-parallel speedup** | **1.00×** | **1.02×** | **−2%** | **validation (out-of-sample)** |
 | **vit_tiny DDP regime** | I/O-bound, <1.4× | 1.27× | ✓ | **validation (out-of-sample)** |
@@ -152,6 +157,10 @@ All rows are reproduced by the unit tests in `tests/unit/test_performance_model.
 synthetic 512 px batches of 13 architectures, none of them this BigEarthNet run at 224 px).
 Before, AMP was the fp32 MFU estimate × π, and π for the T4 (3.8) had been measured from this
 very ratio, so the old 3.80× row was not a real test; the energy row moved from 0.90 to 0.87 Wh.
+
+² Since 24/11/2026 the DDP sync term is the ring all-reduce with the bandwidth measured between
+the two Kaggle T4s (4.05 GB/s, `docs/research/datos/allreduce_t4_kaggle.csv`) instead of `8P` at
+the 16 GB/s PCIe nominal; the speedup moved from 1.95× to 1.91×.
 
 ### Out-of-sample check: PANDA on 2×T4 (Kaggle, 20/11/2026)
 
