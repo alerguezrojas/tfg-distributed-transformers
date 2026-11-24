@@ -227,7 +227,8 @@ def main(argv=None) -> None:
               f"2 términos {mean(s2)} (calibrados {mean(s2[~new])}, no calibrados "
               f"{mean(s2[new]) if new.any() else '—'})\n")
     resolution_section(data, feats_at, args.calibration_gpu, args.img_size, md)
-    batch_section(args.calibration_gpu, md)
+    for gpu in (args.calibration_gpu, "Tesla T4"):
+        batch_section(gpu, md)
     trainings_section(md)
 
 

@@ -314,8 +314,10 @@ def precision_factor(gpu: GpuSpec, precision: str) -> float:
 #   * RTX 3060 Ti — 10 architectures at 224/384/512 px with batch 16 plus 5 of them at 224 px with
 #     batch 8/32/64 (45 points; logs/local/benchmark/benchmark_23112026_{10,16,223}*). The batch
 #     sweep pins d: the per-step intercepts measured per model are 12-20 ms, the fit gives 18 ms;
-#   * Tesla T4    — 13 architectures at 512 px, batch 16 only (logs/kaggle/benchmark/
-#     throughput_t4_23112026.csv), so its d is not separated from the per-image terms.
+#   * Tesla T4    — 13 architectures at 512 px with batch 16 plus 5 of them at 224 px with
+#     batch 8/16/32/64 (33 points; logs/kaggle/benchmark/throughput_t4_{23,24}112026.csv). Per-model
+#     intercepts 15-40 ms, the fit gives 20 ms. The former fit (512 px only, d = 24 ms) predicted
+#     the 20 new points with 13 % mean error before they were added (out-of-sample).
 # Only measured with AMP (fp16 autocast), so it is applied to amp only; fp32 keeps MFU and bf16
 # (not measured; the T4 and V100 have no native bf16) keeps MFU × π.
 MIXED_PRECISIONS: tuple[str, ...] = ("amp",)
@@ -330,7 +332,7 @@ class ThroughputFit:
 
 THROUGHPUT_FITS: dict[str, ThroughputFit] = {
     "RTX 3060 Ti": ThroughputFit(2.0453e-4, 1.2468e-2, 17.77e-3),
-    "Tesla T4":    ThroughputFit(3.3472e-4, 3.1043e-2, 23.97e-3),
+    "Tesla T4":    ThroughputFit(3.3620e-4, 3.1241e-2, 20.10e-3),
 }
 # GPUs without a fit get the reference fit scaled by the datasheets: a by TFLOPS·π, b by DRAM
 # bandwidth (d is host-side and kept). On the T4 this transfer was ×1.5 too optimistic (median

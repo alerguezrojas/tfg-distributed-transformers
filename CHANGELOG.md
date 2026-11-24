@@ -4,6 +4,15 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Cambiado
+
+- Predictor: el ajuste de la T4 (`THROUGHPUT_FITS`) pasa a ser conjunto con un barrido de lotes
+  8-64 a 224 px medido en Kaggle (33 medidas): el coste fijo por paso deja de ser un supuesto
+  (24 → 20 ms). El ajuste anterior predijo esas 20 medidas nuevas con un 13 % de error antes de
+  incorporarlas (validación fuera de muestra). Frente a los entrenamientos reales de PANDA en
+  2 × T4, el error medio queda en el 15 %. Datos en `logs/kaggle/benchmark/throughput_t4_24112026.csv`;
+  el estudio ajusta ya las dos GPU (`batch_section`).
+
 ## [1.4.0] - 2026-11-24
 
 ### Añadido
