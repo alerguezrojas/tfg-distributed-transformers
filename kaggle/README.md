@@ -8,7 +8,7 @@ imágenes. Cada carpeta de aquí es un *kernel* (script) de Kaggle:
 |---|---|---|---|
 | `panda_mosaicos/` | CPU | Mosaicos de las 10.616 biopsias (nivel 1, 16 trozos de 256 px) y `splits.csv`, con la misma receta que `scripts/prepare_panda.py` en local | `mosaics_l1_16x256/`, `splits.csv`, `train.csv` |
 | `panda_train/` | 2 × T4 | Mide el ancho de banda de all-reduce entre las dos T4 (`scripts/measure_allreduce.py`), entrena el lote `BATCH` de `BATCHES` en `run.py` (DDP en las dos T4 o, si el experimento lo indica, una sola T4) y evalúa cada uno en test con `--save-predictions` | `results/<nombre>/`, `logs/kaggle/` (solo lo que escribe el kernel), `timings.csv`, `allreduce.log` |
-| `benchmark_t4/` | 1 × T4 | `paravit benchmark` (lotes sintéticos, sin datos ni I/O) de las 13 arquitecturas de la criba de PANDA a 512 px con AMP: datos fuera de muestra para el predictor en una GPU distinta de la local | `throughput.csv`, `bench/<modelo>.log`, `gpu.txt` |
+| `benchmark_t4/` | 1 × T4 | `paravit benchmark` (lotes sintéticos, sin datos ni I/O) por campañas (`CAMPAIGNS`): resolución, precisión, lotes y modelos. El 23/11 fueron las 13 arquitecturas de la criba de PANDA a 512 px con AMP; el 24/11, barridos de lotes a 224 px (AMP y fp32) y fp32 a 512 px. Son datos para el predictor en una GPU distinta de la local | `throughput.csv`, `bench/<campaña>/<modelo>.log`, `gpu.txt` |
 
 `panda_train` usa como entrada la salida de `panda_mosaicos`, que solo hay que ejecutar una vez.
 El `md5` de `splits.csv` sale en el log y debe coincidir con el local
@@ -22,7 +22,7 @@ reglas de la competición PANDA en la web de Kaggle.
 ```bash
 scripts/kaggle_push.sh kaggle/panda_mosaicos     # una vez
 scripts/kaggle_push.sh kaggle/panda_train        # cada tanda de experimentos
-scripts/kaggle_push.sh kaggle/benchmark_t4       # throughput en T4 (~20 min, sin datos)
+scripts/kaggle_push.sh kaggle/benchmark_t4       # throughput en T4 (~20-60 min según las campañas, sin datos)
 uvx --with six kaggle kernels status <usuario>/paravit-panda-train
 uvx --with six kaggle kernels output <usuario>/paravit-panda-train -p <carpeta>
 ```
