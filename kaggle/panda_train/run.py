@@ -52,6 +52,14 @@ def model(name: str, seed: int = 42) -> dict:
     return {"model": {"name": name}, "training": {"seed": seed}}
 
 
+VIT_B = "vit_base_patch16_224.augreg2_in21k_ft_in1k"
+
+
+def short(overrides: dict, epochs: int = 3) -> dict:
+    """A timing run: a few epochs are enough for the time per epoch (not for the accuracy)."""
+    return deep_update(overrides, {"training": {"epochs": epochs}})
+
+
 def single(overrides: dict) -> dict:
     """The same experiment on ONE T4: the whole global batch (16) on that GPU."""
     return deep_update(overrides, {"training": {"batch_size": 2 * COMMON_BATCH_PER_GPU}})
@@ -116,8 +124,21 @@ BATCHES = {
         ("panda_ddp_vits_w2", "configs/train_panda.yaml",
          deep_update(model("vit_small_patch16_224"), {"data": {"num_workers": 2}})),
     ],
+    # Result (24/11/2026): with the 2nd T4, ViT-S x1.35 and Swin-T x1.71 (CPU decode bound on 2
+    # GPUs); 2 workers per GPU are slower (164 vs 144 s/epoch); all-reduce 4.05 GB/s.
+    # 24/11/2026: GPipe on the 2 T4 (PR #276). ViT-B at 512 px, global batch 16, 3 epochs (time
+    # per epoch, not accuracy): one T4, naive model parallelism (1 micro-batch) and pipeline with
+    # 2, 4 and 8 micro-batches. Checks the bubble (m+p-1)/(m*p) of the predictor and measures the
+    # power of the split strategies (both T4 sampled by --fn energy).
+    "pipeline_512": [
+        ("panda_single_vitb_3ep", "configs/train_panda.yaml", short(single(model(VIT_B))), "single"),
+        ("panda_mp_vitb_3ep", "configs/train_panda.yaml", short(single(model(VIT_B))), "model_parallel"),
+        ("panda_pipe2_vitb_3ep", "configs/train_panda.yaml", short(single(model(VIT_B))), "pipeline:2"),
+        ("panda_pipe4_vitb_3ep", "configs/train_panda.yaml", short(single(model(VIT_B))), "pipeline:4"),
+        ("panda_pipe8_vitb_3ep", "configs/train_panda.yaml", short(single(model(VIT_B))), "pipeline:8"),
+    ],
 }
-BATCH = "strategies_512"
+BATCH = "pipeline_512"
 EXPERIMENTS = BATCHES[BATCH]
 COMMON = {
     "data": {"num_workers": 4},
@@ -161,27 +182,36 @@ def write_config(name: str, base: str, overrides: dict) -> Path:
     return path
 
 
-STRATEGIES = ("ddp", "single")
+STRATEGIES = ("ddp", "single", "model_parallel", "pipeline")
 
 
 def experiment_parts(exp: tuple) -> tuple[str, str, dict, str]:
-    """``(name, base, overrides[, strategy])`` with the strategy defaulting to DDP on 2 GPUs."""
+    """``(name, base, overrides[, strategy])`` with the strategy defaulting to DDP on 2 GPUs;
+    ``pipeline:<m>`` gives the micro-batches of the pipeline strategy."""
     name, base, overrides, *rest = exp
     strategy = rest[0] if rest else "ddp"
-    if strategy not in STRATEGIES:
+    if strategy.split(":")[0] not in STRATEGIES:
         raise ValueError(f"{name}: unknown strategy {strategy!r} (one of {STRATEGIES})")
     return name, base, overrides, strategy
 
 
 def train_command(cfg: Path, strategy: str) -> tuple[list[str], dict | None]:
     """The training command and its extra environment (pure, tested): DDP on the 2 T4 with
-    torchrun, or one process on the first T4 only."""
-    common = ["--config", str(cfg), "--precision", "amp", "--monitor"]
-    if strategy == "single":
-        return ([sys.executable, "scripts/train_single_gpu.py", *common],
+    torchrun, one process on the first T4 only, or the model split across the 2 T4 in one
+    process (model_parallel, pipeline:<m>; no --monitor: its Grad-CAM needs one device)."""
+    common = ["--config", str(cfg), "--precision", "amp"]
+    name, _, micro = strategy.partition(":")
+    if name == "single":
+        return ([sys.executable, "scripts/train_single_gpu.py", *common, "--monitor"],
                 {"CUDA_VISIBLE_DEVICES": "0"})
+    if name == "model_parallel":
+        return ([sys.executable, "scripts/train_model_parallel.py", *common, "--fn", "energy"],
+                None)
+    if name == "pipeline":
+        return ([sys.executable, "scripts/train_pipeline.py", *common, "--fn", "energy",
+                 "--micro-batches", micro or "4"], None)
     return ([sys.executable, "-m", "torch.distributed.run", "--nproc_per_node=2",
-             "scripts/train_ddp.py", *common], None)
+             "scripts/train_ddp.py", *common, "--monitor"], None)
 
 
 def best_checkpoint(name: str) -> Path | None:
