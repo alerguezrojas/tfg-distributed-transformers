@@ -109,8 +109,11 @@ Gustafson on the predicted curve.
   Each GPU idles `(p−1)/(m+p−1)` of the step (the *bubble*):
   `T ≈ N/r_c(b/m) · (m+p−1)/(m·p) + transfer`, so `S ≈ m·p/(m+p−1)` (1.6× with 2 GPUs and 4
   micro-batches) when the stages are balanced and `r_c` does not drop much at the micro-batch
-  size (the three-term model's `d/B` term says how much it drops). Power is interpolated
-  between naive model parallelism (0.83×) and a busy GPU: not measured yet.
+  size (the three-term model's `d/B` term says how much it drops). **Neither the time nor the
+  power is measured yet** (power is interpolated between naive model parallelism, 0.83×, and a
+  busy GPU); the 2 × T4 measurement is prepared in the Kaggle kernel (`pipeline_512`). The
+  implementation has 2 stages; `--layers hooks` synchronizes CPU and GPU on every layer and
+  cancels the overlap.
 * **VRAM of the split strategies**: each GPU holds `1/p` of the weights, optimizer state and
   activations (GPipe keeps those of every micro-batch until the backward), plus its own CUDA
   overhead. Before 24/11/2026 the predictor put the whole model on one GPU and flagged OOM in the

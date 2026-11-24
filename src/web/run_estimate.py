@@ -26,6 +26,8 @@ from src.performance_model import (
 DEFAULT_IMG_SIZE = 224
 #: Strategies whose global batch is the per-GPU batch times the GPU count.
 _DATA_PARALLEL = ("ddp", "heterogeneous")
+#: Strategies that split the model across devices in ONE process.
+_SPLIT = ("model_parallel", "pipeline")
 _FROM_MANIFEST = "run manifest"
 
 _THROUGHPUT_LABEL = {
@@ -167,6 +169,10 @@ def inputs_from_run(*, model: str, dataset: str, mode: str, precision: str | Non
     batch = _int(tcfg.get("batch_size")) or _int(config_line.get("batch"))
     if strategy == "single":
         n_gpus: int | None = 1
+    elif strategy in _SPLIT:
+        # One process (world_size 1) on several GPUs: the stages are the cuda devices listed.
+        n_gpus = len({d for d in str(config_line.get("devices") or "").split("+")
+                      if d.startswith("cuda")}) or None
     else:
         n_gpus = _int(manifest.get("world_size")) or _ngpus_from_batch(config_line.get("batch"))
 

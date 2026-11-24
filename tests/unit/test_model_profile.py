@@ -97,7 +97,8 @@ def test_table_models_resolve_to_table_entry(name):
 # changes since: the DDP sync term became the ring all-reduce with the measured T4 bandwidth
 # on 24/11/2026 (was 40.7352 s and 2.0761 Wh with 8P at the 16 GB/s PCIe nominal); model
 # parallelism splits the VRAM across its stages since 24/11/2026 (was 30.408 GB, the whole model
-# on one GPU — the vit_large batch-48 run on 2 × T4 fitted, logs/kaggle/model_parallel/).
+# on one GPU; at this batch of 96 it still does not fit — the batch-48 run that did is in
+# tests/unit/test_performance_model.py).
 _PINNED = [
     (("vit_base_patch16_224", "Tesla T4", "ddp", 2, "amp"), (42.9528, 4.8228, 2.1549)),
     (("resnet50", "Tesla V100", "single", 1, "fp32"), (38.4615, 10.6096, 1.6055)),

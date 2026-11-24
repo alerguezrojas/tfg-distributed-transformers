@@ -652,10 +652,12 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
 
     speedup = t1 / t if t > 0 else 0.0
     eff = speedup / n_gpus if n_gpus else speedup
-    # Bottleneck of the parallel part.
-    if tsync >= max(tc / max(n_gpus, 1), tio) and strategy in ("ddp", "heterogeneous"):
+    # Bottleneck of the parallel part. tc is already wall-clock time in every branch (the
+    # data-parallel ones divide by n inside), so it is compared as it is (until 24/11/2026 it was
+    # divided by n again, which flagged I/O where compute set the pace).
+    if tsync >= max(tc, tio) and strategy in ("ddp", "heterogeneous"):
         bottleneck = "sync"
-    elif tio >= tc / max(n_gpus, 1):
+    elif tio >= tc:
         bottleneck = "io"
     else:
         bottleneck = "compute"
@@ -774,6 +776,9 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     if strategy == "model_parallel":
         notes.append("Model parallelism does not accelerate (≈1×); it exists to fit "
                      "models too big for one GPU.")
+    if strategy in SPLIT_STRATEGIES and n_gpus > 2:
+        notes.append(f"The implementation (ModelParallelViT) splits the model into 2 stages; "
+                     f"{n_gpus} stages is the formula only, not something it can run.")
     if strategy == "pipeline":
         notes.append(f"GPipe with {n_gpus} stages and {micro} micro-batches: each GPU idles "
                      f"{(n_gpus - 1) / (micro + n_gpus - 1):.0%} of the step (bubble). Balanced "

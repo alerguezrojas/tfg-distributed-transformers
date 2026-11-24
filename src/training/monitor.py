@@ -125,6 +125,11 @@ def grad_cam(model: nn.Module, core: nn.Module, images: torch.Tensor,
 
     modules = module if isinstance(module, list) else [module]
     handles = [m.register_forward_hook(keep) for m in modules]
+    # A pipelined model (GPipe) would fire the hooks once per micro-batch and keep only the
+    # last one's activations: the Grad-CAM forward runs on the whole batch.
+    micro = getattr(forward_module(model), "micro_batches", None)
+    if micro:
+        forward_module(model).micro_batches = 1
     try:
         with torch.enable_grad():
             logits = model(images)
@@ -138,6 +143,8 @@ def grad_cam(model: nn.Module, core: nn.Module, images: torch.Tensor,
     finally:
         for h in handles:
             h.remove()
+        if micro:
+            forward_module(model).micro_batches = micro
 
     act, grads = act.detach().float(), grads.float()
     if kind == "tokens":

@@ -122,7 +122,11 @@ class ModelParallelViT(nn.Module):
         # GPipe forward: stage 0 of micro-batch i+1 is launched before stage 1 of micro-batch i
         # finishes, so the two devices overlap; autograd keeps the graph of every micro-batch
         # and one backward over the concatenated logits accumulates all their gradients.
-        chunks = iter(x.chunk(n_micro))
+        # The whole batch is moved to dev0 ONCE, before splitting: a cross-device copy is
+        # ordered on the source device's stream, so copying each micro-batch from dev1 (where
+        # the Trainer puts the inputs) would queue it behind stage 1 of the previous one and
+        # serialize the stages again.
+        chunks = iter(x.to(self.dev0).chunk(n_micro))
         handed = self._stage0(next(chunks))
         outs = []
         for chunk in chunks:
