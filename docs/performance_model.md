@@ -193,7 +193,7 @@ images, `--monitor`. "Real" is the median train time per epoch of the run's `epo
 
 | Run | Predicted train/epoch | Real train/epoch | Error | Predicted regime | Measured |
 |---|---|---|---|---|---|
-| 512 px (`20112026_163243`) | 73 s | 122 s | −40 % | I/O-bound | GPU util. median 71 %, data wait 1.9 % |
+| 512 px (`20112026_163243`) | 73 s | 122 s | −40 % | I/O-bound ³ | GPU util. median 71 %, data wait 1.9 % |
 | 1024 px (`20112026_171003`) | 523 s | 620 s | −16 % | compute-bound | GPU util. 100 %, data wait 0.4 % |
 | VRAM per GPU, 1024 px | 4.9 GB | 7.0 GB median (nvidia-smi) | — | fits | fits (15.0 GB peak with the monitor's Grad-CAM) |
 
@@ -209,6 +209,11 @@ Both times are **under-estimated**, and the regime is only half right:
 * The memory model gives the PyTorch peak of the training step; nvidia-smi adds the CUDA context
   and the allocator's cache, so the two are not the same quantity. A peak from
   `torch.cuda.max_memory_allocated` is needed to settle it.
+
+³ *24/11/2026:* that "I/O-bound" label came from a bug in the bottleneck test (it divided the
+wall-clock compute time by the GPU count a second time). With the same numbers the compute term
+(85 s) exceeded the disk one (57 s), so the predictor actually said compute-bound; the regime
+discussion below is about the label, not the predicted times, which are unchanged.
 
 These rows are **validation, not calibration**: no constant was changed after seeing them. They
 point at two missing terms (sustained clock under a power cap, efficiency at small per-GPU
