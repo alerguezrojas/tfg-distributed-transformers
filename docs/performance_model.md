@@ -112,7 +112,7 @@ Gustafson on the predicted curve.
   paid once per step) plus `c = PIPELINE_MICRO_BATCH_COST_S = 3.4 ms` per extra micro-batch.
   So `S ≈ m·p/(m+p−1)` (1.6× with 2 GPUs and 4 micro-batches) when the stages are balanced and
   `c` is small next to the compute of a micro-batch. Power per GPU is linear in the busy
-  fraction, `train_power_w · (0.664 + 0.391 · m/(m+p−1))` (naive model parallelism is `m = 1`).
+  fraction, `train_power_w · (0.664 + 0.390 · m/(m+p−1))` (naive model parallelism is `m = 1`).
   **Calibrated and validated on 2 × T4 (24/11/2026, Kaggle, ViT-B, 512 px;
   [panda.md](datasets/panda.md#pipeline-gpipe-en-las-dos-t4-24112026)):**
   `c` and the power line are fitted to the batch-16 runs with `m` = 1/2/4/8 and checked out of
@@ -122,13 +122,17 @@ Gustafson on the predicted curve.
   |---|---|---|---|---|---|
   | model parallel (`m = 1`) | 430 s | 455 s | +6 % | 109.7 W | 110.0 W |
   | `m = 2` | 335 s | 351 s | +5 % | 118.8 W | 118.3 W |
-  | `m = 4` | 296 s | 301 s | +2 % | 125.0 W | 125.0 W |
-  | `m = 8` | 282 s | 278 s | −2 % | 129.2 W | 129.4 W |
+  | `m = 4` | 296 s | 301 s | +1 % | 125.0 W | 124.9 W |
+  | `m = 8` | 282 s | 278 s | −1 % | 129.2 W | 129.4 W |
   | `m = 16`, batch 16 (validation) | 287 s | 272 s | **−5 %** | 131.7 W | 132.0 W |
   | `m = 8`, batch 8 (validation) | 306 s | 296 s | **−3 %** | 132.0 W | 129.4 W |
 
   Before (fixed cost `d` charged to every micro-batch, interpolated power) the validation runs
-  erred +19 %; charging `d` once per step and nothing per micro-batch, −10 % and −8 %. The
+  erred +19 %; charging `d` once per step and nothing per micro-batch, −10 % and −8 %. Caveat:
+  the value of `c` is fitted without the validation runs, but the *form* (a cost per micro-batch)
+  was chosen after seeing them (16 micro-batches ran slower than 8). The predictor caps `m` at the
+  batch size, as `ModelParallelViT` does, and notes that power and `c` are extrapolated outside
+  the T4 with AMP. The
   measured speedups over one T4 are ×1.38, ×1.56 and ×1.64 with 2, 4 and 8 micro-batches (ideal
   ×1.33, ×1.60, ×1.78), despite the host-staged copy between the T4s. Naive model parallelism ran
   7 % *faster* than one T4: the 70 W cap throttles a fully busy T4 to 720 MHz, while each
@@ -288,7 +292,7 @@ Two measured facts shape it:
 2. **n_working_gpus**: `single`/`heterogeneous` = 1 (the heterogeneous second worker is
    a CPU, not a GPU), `ddp`/`model_parallel`/`pipeline` = n. The split strategies keep every
    GPU powered but idling part of the step, so each draws
-   `f_split = 0.664 + 0.391 · m/(m+p−1)` (0.86 for naive model parallelism on 2 GPUs; calibrated
+   `f_split = 0.664 + 0.390 · m/(m+p−1)` (0.86 for naive model parallelism on 2 GPUs; calibrated
    on 2 × T4 runs of 24/11/2026, see the pipeline bullet in §4; an older model-parallel run gave
    0.83).
 

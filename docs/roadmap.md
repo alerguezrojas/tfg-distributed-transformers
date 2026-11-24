@@ -25,9 +25,10 @@ Estrategia **`pipeline` (GPipe)** con micro-lotes (PR #276): el ViT partido en d
 término en el predictor (burbuja `(m+p−1)/(m·p)`) y memoria repartida entre etapas también para
 `model_parallel`. Medido en Kaggle (PR #279; ViT-B a 512 px en 2 × T4): ×1,38, ×1,56 y ×1,64
 frente a una T4 con 2, 4 y 8 micro-lotes, mismo QWK; el predictor acierta el tiempo con +6 a +11 %
-y la potencia con −3 a −5 %. En curso: el lote `pipeline_micro1` (micro-lotes de una imagen), que
-decide si el coste fijo por paso se cobra por micro-lote o por paso; después, calibrar la potencia
-del pipeline y cambiar el predictor en un PR con revisión. **Reunión del 24/11:** el tutor propone
+y la potencia con −3 a −5 %. Con el lote `pipeline_micro1` (micro-lotes de una imagen) el
+predictor quedó calibrado (PR #282, revisado): el coste fijo se cobra una vez por paso más 3,4 ms
+por micro-lote extra y la potencia crece con la fracción ocupada de cada GPU; en validación,
+tiempo −5 y −3 % (antes +19 %) y potencia +0,2 y −2 %. **Reunión del 24/11:** el tutor propone
 el entrenamiento elástico; estudio en
 [`research/entrenamiento_elastico.md`](research/entrenamiento_elastico.md) (PR #280), con tres
 pasos: reanudar a mitad de época con `--max-restarts`, predecir el coste de los reinicios y
@@ -375,7 +376,7 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 4. **Sincronización simplificada:** `8P/β` por batch, sin solapamiento con el backward, sin factor
    de ring all-reduce, sin latencia y sin multinodo.
 5. **Constantes ad hoc** calibradas con un solo run (heterogéneo `/50` y `×2.0`, MP `×0.25`,
-   NFS φ=1,3, potencia MP 0,83).
+   NFS φ=1,3; la potencia MP, 0,83 con un run, pasó el 24/11/2026 a un ajuste con 4 runs y 2 de validación).
 6. **Solo estimaciones puntuales**, sin intervalos de incertidumbre.
 7. **El prior de calidad (F1)** no se transfiere a otros datasets.
 

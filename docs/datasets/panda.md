@@ -683,7 +683,8 @@ decorador `--fn energy` durante el entrenamiento, sumando las dos GPU (el run de
   paso más 3,4 ms por cada micro-lote extra, y la potencia por GPU crece en línea recta con la
   fracción del paso en que la GPU trabaja. Ambas cosas se ajustan con los runs de lote 16 (m = 1,
   2, 4, 8) y se comprueban con los dos de esta tabla, que no se usaron para ajustar: tiempo −5 y
-  −3 % (antes +19 %), potencia +0,3 y −2 %. Detalle en
+  −3 % (antes +19 %), potencia +0,2 y −2 %. El valor del coste por micro-lote se ajusta sin
+  estos dos runs, pero la idea de que exista salió de verlos. Detalle en
   [performance_model.md](../performance_model.md), §4.
 
 Logs: `logs/kaggle/panda/{single,model_parallel,pipeline}/vit_base_patch16_224.augreg2_in21k_ft_in1k/`
