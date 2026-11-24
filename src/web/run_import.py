@@ -9,6 +9,7 @@ Pure functions (no Streamlit), so they are unit-testable without a GPU or a UI.
 from __future__ import annotations
 
 import io
+import os
 import re
 import zipfile
 from pathlib import Path
@@ -66,6 +67,22 @@ def import_run_archive(file_bytes: bytes, logs_root: Path) -> list[str]:
                 dest.write_bytes(src.read())
             imported.append(str(rel))
     return imported
+
+
+def allowed_import_roots() -> tuple[str, ...]:
+    """Folders the dashboard may import from: the user's home and the mounted drives (a path
+    typed in the web is never trusted blindly)."""
+    return tuple(os.path.realpath(r) for r in (str(Path.home()), "/media", "/mnt"))
+
+
+def safe_import_folder(user_path: str) -> Path | None:
+    """The folder a user typed, resolved (``~``, symlinks, ``..``) and only if it lies inside
+    :func:`allowed_import_roots`; ``None`` otherwise."""
+    real = os.path.realpath(os.path.expanduser(user_path))
+    for root in allowed_import_roots():
+        if real == root or real.startswith(root + os.sep):
+            return Path(real)
+    return None
 
 
 def import_run_folder(folder: Path, logs_root: Path) -> list[str]:

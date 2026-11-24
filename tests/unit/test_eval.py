@@ -4,6 +4,7 @@ The script was broken (it called build_model with an unsupported ``dropout``
 kwarg) and had never been run. These tests lock in the pure helpers so the
 test-set number that feeds the dashboard stays correct.
 """
+import math
 import sys
 from pathlib import Path
 
@@ -52,7 +53,7 @@ def test_evaluate_respects_max_batches():
     probs, labels, loss = eval_script.evaluate(_Tiny(), data, torch.device("cpu"), max_batches=2)
     assert probs.shape[0] == 8           # 2 batches × 4
     assert labels.shape[0] == 8
-    assert loss == loss                  # not NaN (divided by n_batches, not len)
+    assert not math.isnan(loss)          # divided by n_batches, not len
 
 
 class TestChooseThreshold:

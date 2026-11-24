@@ -129,6 +129,14 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Corregido
 
+- Calidad y seguridad (avisos de SonarCloud y CodeQL en `main`):
+  - la web solo importa carpetas bajo el home o los discos montados (`safe_import_folder`), para
+    cerrar el *path injection* de CodeQL;
+  - `scripts/export_kaggle_subset.py` toma las rutas del perfil de máquina y no de argumentos
+    (S8707), y escribe en `<metadata_dir>/kaggle_subset_<n_train>_<n_val>/`;
+  - un test comprobaba NaN con `loss == loss` (ahora `math.isnan`);
+  - otro tenía un `assert` dentro de un `try` que lo silenciaba.
+
 - Fuga de memoria al medir las activaciones de un modelo (`model_profile.saved_activation_gb`):
   el gancho de autograd devolvía el propio tensor, lo que crea un ciclo tensor ↔ `grad_fn` que
   nunca se libera, y cada modelo perfilado dejaba en memoria todas sus activaciones (0,5-1 GB a
