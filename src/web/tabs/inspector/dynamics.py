@@ -12,6 +12,8 @@ from src.web.tabs.inspector.predictions import epoch_table
 from src.web.ui import theme
 from src.web.ui.charts import _show
 
+_TO_WRONG, _TO_RIGHT = "right → wrong", "wrong → right"
+
 _REGION_COLORS = {"easy": theme.GOOD, "ambiguous": theme.WARN, "hard": theme.BAD}
 _MAX_REGION_IMAGES = 24
 
@@ -71,13 +73,13 @@ def render(c: InspectorCtx) -> None:
     rows = []
     for a, b, pa, pb in zip(eps[:-1], eps[1:], probs[:-1], probs[1:]):
         f = flips(pa, pb, targets, c.task, thr)
-        rows.append({"epoch": b, "right → wrong": len(f["to_wrong"]),
-                     "wrong → right": len(f["to_right"])})
+        rows.append({"epoch": b, _TO_WRONG: len(f["to_wrong"]),
+                     _TO_RIGHT: len(f["to_right"])})
     df = pd.DataFrame(rows)
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=df["epoch"], y=df["right → wrong"], name="right → wrong",
+    fig.add_trace(go.Bar(x=df["epoch"], y=df[_TO_WRONG], name=_TO_WRONG,
                          marker_color=theme.BAD))
-    fig.add_trace(go.Bar(x=df["epoch"], y=df["wrong → right"], name="wrong → right",
+    fig.add_trace(go.Bar(x=df["epoch"], y=df[_TO_RIGHT], name=_TO_RIGHT,
                          marker_color=theme.GOOD))
     fig.update_layout(height=300, barmode="group", title={"text": "Flips vs the previous epoch"},
                       xaxis_title="epoch", yaxis_title="samples")

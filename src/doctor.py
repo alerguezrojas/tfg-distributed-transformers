@@ -21,6 +21,7 @@ OK, WARN, FAIL = "OK", "WARN", "FAIL"
 MIN_PYTHON = (3, 12)                 # requires-python of pyproject.toml
 MIN_FREE_GB_WARN = 20.0              # a ViT-B run keeps best.pt + last.pt (~1 GB each) per run
 MIN_FREE_GB_FAIL = 2.0
+_AVX2 = "CPU AVX2"
 _PATH_KEYS = ("root", "metadata")    # data keys whose existence is checked
 
 
@@ -71,11 +72,11 @@ def evaluate(env: Environment, *, require_gpu: bool = False) -> list[Check]:
         py if env.python[:2] >= MIN_PYTHON else f"{py} (needs >= {'.'.join(map(str, MIN_PYTHON))})")
 
     if env.avx2 is None:
-        add("CPU AVX2", WARN, "could not be checked on this platform")
+        add(_AVX2, WARN, "could not be checked on this platform")
     elif env.avx2:
-        add("CPU AVX2", OK, "supported")
+        add(_AVX2, OK, "supported")
     else:
-        add("CPU AVX2", FAIL, "not supported: numpy/torch crash with 'Illegal instruction' "
+        add(_AVX2, FAIL, "not supported: numpy/torch crash with 'Illegal instruction' "
                               "(VERODE login node: run through srun on a compute node)")
 
     if env.torch_version is None:

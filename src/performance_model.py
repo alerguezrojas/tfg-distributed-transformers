@@ -69,6 +69,9 @@ POWER_TDP_FALLBACK_FRACTION: float = 0.65
 MODEL_PARALLEL_POWER_FRACTION: float = 0.83
 
 # GPU names shared by the TDP and spec tables below.
+_T4 = "Tesla T4"
+_V100 = "Tesla V100"
+_RTX_3060_TI = "RTX 3060 Ti"
 _RTX_3090 = "RTX 3090"
 _RTX_4090 = "RTX 4090"
 _A100_40GB = "A100 40GB"
@@ -114,11 +117,11 @@ GPU_TABLE: dict[str, GpuSpec] = {
     # T4 all-reduce: 2 × T4 on Kaggle, 4.05 GB/s with 64-512 MB messages and 4.01 GB/s with
     # 16 MB, close to DDP's 25 MB buckets (strategies_512 batch, 23/11/2026; docs/research/datos/
     # allreduce_t4_kaggle.csv) — a quarter of the PCIe nominal. Measured with 2 GPUs only.
-    "Tesla T4":      GpuSpec("Tesla T4", 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True, mem_bw_gbs=320.0,
+    _T4:             GpuSpec(_T4, 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True, mem_bw_gbs=320.0,
                              allreduce_busbw_gbs=4.05),    # Kaggle: 64 W fp32 ≈ 63 W amp
-    "Tesla V100":    GpuSpec("Tesla V100", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
+    _V100:           GpuSpec(_V100, 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
     "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),
-    "RTX 3060 Ti":   GpuSpec("RTX 3060 Ti", 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True, mem_bw_gbs=448.0),   # local: ~180 W (SSD, compute-bound)
+    _RTX_3060_TI:    GpuSpec(_RTX_3060_TI, 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True, mem_bw_gbs=448.0),   # local: ~180 W (SSD, compute-bound)
     _RTX_3090:      GpuSpec(_RTX_3090, 35.6, 3.5, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_3090), mem_bw_gbs=936.0),
     _RTX_4090:      GpuSpec(_RTX_4090, 82.6, 4.0, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_4090), mem_bw_gbs=1008.0),
     _A100_40GB:     GpuSpec(_A100_40GB, 19.5, 4.0, 40.0, "nvlink", train_power_w=_tdp_fallback_power(_A100_40GB), mem_bw_gbs=1555.0),
@@ -203,8 +206,8 @@ def _gpu_key(name: str) -> str:
 # explicit entry per real variant. Anything not listed or equal to a key is unknown, so
 # 'RTX 3060' (12 GB) is never taken for 'RTX 3060 Ti' (8 GB) nor 'A100' for a given A100.
 _GPU_ALIASES: dict[str, str] = {
-    "Tesla V100-PCIE-16GB": "Tesla V100", "Tesla V100-PCIE-32GB": "Tesla V100",
-    "Tesla V100-SXM2-16GB": "Tesla V100", "Tesla V100-SXM2-32GB": "Tesla V100",
+    "Tesla V100-PCIE-16GB": _V100, "Tesla V100-PCIE-32GB": _V100,
+    "Tesla V100-SXM2-16GB": _V100, "Tesla V100-SXM2-32GB": _V100,
     "Tesla P100": "P100", "Tesla P100-PCIE-16GB": "P100",
     "A100-SXM4-40GB": _A100_40GB, "A100-PCIE-40GB": _A100_40GB,
     "A100-SXM4-80GB": _A100_80GB, "A100-PCIE-80GB": _A100_80GB, "A100 80GB PCIe": _A100_80GB,
@@ -331,14 +334,14 @@ class ThroughputFit:
 
 
 THROUGHPUT_FITS: dict[str, ThroughputFit] = {
-    "RTX 3060 Ti": ThroughputFit(2.0453e-4, 1.2468e-2, 17.77e-3),
-    "Tesla T4":    ThroughputFit(3.3620e-4, 3.1241e-2, 20.08e-3),
+    _RTX_3060_TI: ThroughputFit(2.0453e-4, 1.2468e-2, 17.77e-3),
+    _T4:          ThroughputFit(3.3620e-4, 3.1241e-2, 20.08e-3),
 }
 # GPUs without a fit get the reference fit scaled by the datasheets: a by TFLOPS·π, b by DRAM
 # bandwidth (d is host-side and kept). On the T4 this transfer was ×1.5 too optimistic (median
 # ratio of the 13 models, 1.46), mostly in the memory term, while the relative cost of the
 # architectures held within 11 %; so transferred predictions are flagged as uncalibrated.
-THROUGHPUT_REFERENCE_GPU: str = "RTX 3060 Ti"
+THROUGHPUT_REFERENCE_GPU: str = _RTX_3060_TI
 
 
 def throughput_fit(gpu: GpuSpec) -> tuple[ThroughputFit, bool] | None:

@@ -40,6 +40,8 @@ from torchvision import transforms
 from src.data.registry import register_dataset
 from src.data.spec import DatasetSpec
 
+_MEDMNIST_LICENSE = "CC BY 4.0"
+
 ZENODO_FILES = "https://zenodo.org/records/10519652/files"
 SIZES = (28, 64, 128, 224)
 DEFAULT_SIZE = 28
@@ -75,7 +77,7 @@ SUBSETS: dict[str, Subset] = {
         task="binary", channels=1, labels=("malignant", "normal, benign"), positive_label=0,
         md5={28: "750601b1f35ba3300ea97c75c52ff8f6", 64: "742edef2a1fd1524b2efff4bd7ba9364",
              128: "363e4b3f8d712e9b5de15470a2aaadf1", 224: "b56378a6eefa9fed602bb16d192d4c8b"},
-        license="CC BY 4.0",
+        license=_MEDMNIST_LICENSE,
     ),
     "medmnist_derma": Subset(
         flag="dermamnist", description="DermaMNIST — dermatoscopic skin lesions (HAM10000)",
@@ -95,7 +97,7 @@ SUBSETS: dict[str, Subset] = {
                 "colorectal adenocarcinoma epithelium"),
         md5={28: "a8b06965200029087d5bd730944a56c1", 64: "55aa9c1e0525abe5a6b9d8343a507616",
              128: "ac42d08fb904d92c244187169d1fd1d9", 224: "2c51a510bcdc9cf8ddb2af93af1eadec"},
-        license="CC BY 4.0",
+        license=_MEDMNIST_LICENSE,
     ),
     "medmnist_chest": Subset(
         flag="chestmnist", description="ChestMNIST — chest X-ray, 14 findings (ChestX-ray14)",
@@ -105,7 +107,7 @@ SUBSETS: dict[str, Subset] = {
                 "fibrosis", "pleural", "hernia"),
         md5={28: "02c8a6516a18b556561a56cbdd36c4a8", 64: "9de6cd0b934ebb5b7426cfba5efbae16",
              128: "db107e5590b27930b62dbaf558aebee3", 224: "45bd33e6f06c3e8cdb481c74a89152aa"},
-        license="CC BY 4.0",
+        license=_MEDMNIST_LICENSE,
     ),
 }
 
