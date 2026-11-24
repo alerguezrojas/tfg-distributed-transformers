@@ -1,0 +1,8 @@
+gpu,n_gpus,size_mb,time_ms,algbw_gbs,busbw_gbs,source
+Tesla T4 (Kaggle),2,1,0.318,3.294,3.294,kaggle/panda_train lote strategies_512 del 23/11/2026 (scripts/measure_allreduce.py)
+Tesla T4 (Kaggle),2,4,1.081,3.88,3.88,kaggle/panda_train lote strategies_512 del 23/11/2026 (scripts/measure_allreduce.py)
+Tesla T4 (Kaggle),2,16,4.183,4.011,4.011,kaggle/panda_train lote strategies_512 del 23/11/2026 (scripts/measure_allreduce.py)
+Tesla T4 (Kaggle),2,64,16.555,4.054,4.054,kaggle/panda_train lote strategies_512 del 23/11/2026 (scripts/measure_allreduce.py)
+Tesla T4 (Kaggle),2,128,33.11,4.054,4.054,kaggle/panda_train lote strategies_512 del 23/11/2026 (scripts/measure_allreduce.py)
+Tesla T4 (Kaggle),2,256,66.181,4.056,4.056,kaggle/panda_train lote strategies_512 del 23/11/2026 (scripts/measure_allreduce.py)
+Tesla T4 (Kaggle),2,512,132.28,4.059,4.059,kaggle/panda_train lote strategies_512 del 23/11/2026 (scripts/measure_allreduce.py)

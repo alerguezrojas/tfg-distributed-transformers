@@ -199,6 +199,14 @@ frente a ~100 % en los modelos pesados. El experimento que la cierra: el mismo r
 `num_workers=2`, o con los mosaicos ya decodificados. En los modelos pesados (ViT-B, ConvNeXt-S,
 SwinV2-T, MaxViT-T: GPU al 94-100 %, reloj a 817-967 MHz) sí manda la GPU.
 
+**Resuelto (24/11/2026): manda la decodificación en CPU, no la contención.** El control con
+`num_workers=2` (lote `strategies_512`) hizo la época **más lenta** (164 s frente a 144 s con 4
+procesos por GPU), con la CPU al 100 %: el límite es cuántos mosaicos puede decodificar la CPU de
+Kaggle (4 vCPU), no que los procesos se estorben. Con una sola T4 la misma receta va al 98 % de GPU
+(195 s/época, reloj a 795 MHz por el límite de potencia). El ancho de banda de all-reduce medido
+entre las dos T4 es de 4,05 GB/s, no los 16 GB/s de PCIe de `INTERCONNECT_BW`. Detalle en
+[datasets/panda.md](datasets/panda.md#una-t4-frente-a-dos-en-la-misma-máquina-23-24112026).
+
 ---
 
 ## 5. Energy model
