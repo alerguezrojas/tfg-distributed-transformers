@@ -13,8 +13,13 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   `scripts/train_pipeline.py`, `paravit train --strategy pipeline` y la línea `Configuración:` con
   `micro_batches=`. Con 1 micro-lote, `model_parallel` no cambia (mismo test de caracterización).
 - Predictor: estrategia `pipeline` con la burbuja de GPipe (`(m+p−1)/(m·p)`, throughput al tamaño
-  del micro-lote), en la CLI y la web. **Sin medir todavía** ni el tiempo ni la potencia (que se
-  interpola): la medida en 2 × T4 está preparada en el kernel de Kaggle.
+  del micro-lote), en la CLI y la web. La potencia se interpola (sin calibrar).
+- Medida del pipeline en 2 × T4 (Kaggle, ViT-B a 512 px, lote 16): ×1,38, ×1,56 y ×1,64 frente a
+  una T4 con 2, 4 y 8 micro-lotes, con el mismo QWK; el modelo partido sin solapamiento, ×1,07 (el
+  límite de 70 W frena a una T4 sola). El predictor acierta el tiempo con un error de +6 a +11 %
+  y la potencia con −3 a −5 %. Logs en `logs/kaggle/panda/{single,model_parallel,pipeline}/` y
+  detalle en `docs/datasets/panda.md`. Lote siguiente en el kernel: `pipeline_micro1`
+  (micro-lotes de una imagen), para decidir cómo cobrar el coste fijo por paso.
 
 ### Cambiado
 

@@ -113,6 +113,12 @@ de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/pa
 generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset del médico (fuera
 del repo, en la carpeta de reuniones del autor).
 
+**Reunión con el tutor del 24/11/2026:** informe de seguimiento (conjunto de seis modelos con
+kappa 0,85, predictor de tres términos integrado, herramienta y clúster; fuera del repo, en la
+carpeta de reuniones del autor). Salió bien. El tutor propone estudiar el **entrenamiento
+elástico** (*elastic training*: seguir entrenando cuando cambian los recursos) como línea para el
+proyecto, y está gestionando el dataset del contacto médico y el acceso a más máquinas.
+
 **Hecho:**
 - **Versión 1.3.0 en `main` (21/11/2026):** OUSM, limpieza de etiquetas fuera de pliegue,
   conjunto de checkpoints en `eval` y 17 dependencias al día (numpy 2.5, pandas 3.1, plotly 7,
@@ -312,14 +318,16 @@ un aviso, no detiene el run). Pendientes de la fase 4: `paravit explain` con la 
 de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
-- Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
-  [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
+- Dataset del contacto médico del tutor (24/11: el tutor está en contacto): qué se puede pedir
+  y cuándo (lista en [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
 - Pedir la preparación y los resultados del TFG previo que usó PANDA (referencia para compararse).
 - Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
 - Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
-- Máquinas nuevas a las que dará acceso el tutor (aún sin concretar).
+- Máquinas nuevas a las que dará acceso el tutor (24/11: las está gestionando).
+- Entrenamiento elástico (propuesta del tutor, 24/11): decidir si entra como línea de trabajo
+  tras el estudio de `docs/research/entrenamiento_elastico.md`.
 - En cada clon nuevo, instalar el pre-commit una vez (ya instalado en el equipo local):
   `uvx pre-commit install --hook-type pre-commit --hook-type commit-msg`.
 

@@ -137,8 +137,20 @@ BATCHES = {
         ("panda_pipe4_vitb_3ep", "configs/train_panda.yaml", short(single(model(VIT_B))), "pipeline:4"),
         ("panda_pipe8_vitb_3ep", "configs/train_panda.yaml", short(single(model(VIT_B))), "pipeline:8"),
     ],
+    # Result (24/11/2026): s/epoch (train+val) 462 one T4, 430 model parallel, 334/296/282 with
+    # 2/4/8 micro-batches (x1.64 with m=8); 110-129 W for the 2 T4; same QWK (0.78-0.79).
+    # 24/11/2026: micro-batches of ONE image, where the two readings of the step's fixed cost
+    # diverge most: paid by every micro-batch (the predictor today) or once per step. Global
+    # batch 16 with 16 micro-batches and global batch 8 with 8.
+    "pipeline_micro1": [
+        ("panda_pipe16_vitb_3ep", "configs/train_panda.yaml", short(single(model(VIT_B))),
+         "pipeline:16"),
+        ("panda_pipe8_b8_vitb_3ep", "configs/train_panda.yaml",
+         short(deep_update(model(VIT_B), {"training": {"batch_size": COMMON_BATCH_PER_GPU}})),
+         "pipeline:8"),
+    ],
 }
-BATCH = "pipeline_512"
+BATCH = "pipeline_micro1"
 EXPERIMENTS = BATCHES[BATCH]
 COMMON = {
     "data": {"num_workers": 4},
