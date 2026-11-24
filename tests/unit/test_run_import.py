@@ -110,7 +110,7 @@ def test_safe_import_folder_accepts_home_and_mounted_drives(tmp_path, monkeypatc
     inside = tmp_path / "kaggle_logs"
     inside.mkdir()
     assert run_import.safe_import_folder(str(inside)) == inside
-    assert run_import.safe_import_folder(str(tmp_path)) == tmp_path
+    assert run_import.safe_import_folder(str(tmp_path)) is None      # the root itself: no
 
 
 def test_safe_import_folder_rejects_paths_outside_and_traversal(tmp_path, monkeypatch):

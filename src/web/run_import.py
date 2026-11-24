@@ -76,11 +76,11 @@ def allowed_import_roots() -> tuple[str, ...]:
 
 
 def safe_import_folder(user_path: str) -> Path | None:
-    """The folder a user typed, resolved (``~``, symlinks, ``..``) and only if it lies inside
-    :func:`allowed_import_roots`; ``None`` otherwise."""
+    """The folder a user typed, resolved (``~``, symlinks, ``..``) and only if it lies strictly
+    inside one of :func:`allowed_import_roots`; ``None`` otherwise."""
     real = os.path.realpath(os.path.expanduser(user_path))
     for root in allowed_import_roots():
-        if real == root or real.startswith(root + os.sep):
+        if real.startswith(root + os.sep):        # strictly inside: never the root itself
             return Path(real)
     return None
 
