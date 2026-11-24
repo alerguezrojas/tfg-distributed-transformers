@@ -598,6 +598,46 @@ Logs: `logs/kaggle/panda/ddp/{vit_base_patch16_224.augreg2_in21k_ft_in1k,swinv2_
 y `logs/local/panda/single/{eva02_small_patch14_224.mim_in22k,swin_tiny_patch4_window7_224}/train_23112026_*`
 (Swin-T ordinal: `121320`, `145713` y `153627`).
 
+### Una T4 frente a dos en la misma máquina (23-24/11/2026)
+
+Lote `strategies_512` del kernel de Kaggle: la misma receta (512 px, AMP, lote global 16, semilla
+42) con **una** T4 (`single`) y con **dos** (`ddp`, 8 imágenes por GPU), en la misma máquina, más
+la medida del ancho de banda de all-reduce entre las dos GPU (`scripts/measure_allreduce.py`).
+Tiempo: mediana de `epoch_time_s` sin la primera época (incluye la validación). Uso de GPU y CPU:
+mediana de las muestras de sistema de los eventos.
+
+| Modelo | Estrategia | Procesos de carga | s/época | QWK test | GPU | CPU | Reloj GPU |
+|---|---|---|---|---|---|---|---|
+| ViT-S | 1 × T4 | 4 | 195 | 0,782 | 98 % | 72 % | 795 MHz |
+| ViT-S | 2 × T4 (20/11) | 4 por GPU | 144 | 0,801 | 69-73 % | **100 %** | 1.275 MHz |
+| ViT-S | 2 × T4 | 2 por GPU | 164 | 0,789 | 62-91 % | **100 %** | 1.000-1.100 MHz |
+| Swin-T | 1 × T4 | 4 | 300 | 0,830 | 100 % | 52 % | 765 MHz |
+| Swin-T | 2 × T4 (23/11) | 4 por GPU | 175 | 0,820 | — | — | — |
+
+- **Aceleración con la segunda T4: ×1,35 en ViT-S y ×1,71 en Swin-T.** El QWK no cambia más de lo
+  que varían las semillas (±0,01-0,02).
+- **Con una T4 manda la GPU** (98-100 % de uso), que trabaja con el reloj a 765-795 MHz por el
+  límite de 70 W (1.590 MHz nominales).
+- **Con dos T4 manda la CPU:** las 4 vCPU de Kaggle están al 100 % decodificando los mosaicos JPEG
+  de los dos procesos, y las GPU esperan (69-73 % de uso). Por eso ViT-S, que pide poco a la GPU,
+  apenas acelera, y Swin-T, que pide más, acelera más.
+- **La hipótesis de contención queda descartada:** con menos procesos de carga (2 por GPU en lugar
+  de 4) la época es **más lenta** (164 s frente a 144 s), no más rápida. El límite es cuánto puede
+  decodificar la CPU, no que los procesos se estorben. El run de 4 procesos llevaba además
+  `--monitor`, que añade trabajo, y aun así fue más rápido.
+- **All-reduce entre las dos T4: 4,05 GB/s** de ancho de banda de bus (mensajes de 64-512 MB; 3,3
+  GB/s con 1 MB), cuatro veces menos que los 16 GB/s de PCIe que supone el predictor. Datos en
+  [`research/datos/allreduce_t4_kaggle.csv`](../research/datos/allreduce_t4_kaggle.csv). Para
+  ViT-S (22 M de parámetros, 88 MB de gradientes) son ~22 ms por paso.
+
+Para el predictor: el tiempo de DDP en Kaggle a 512 px lo marca la decodificación en CPU (unas
+40-56 imágenes por segundo con 4 vCPU), que el término de disco (`DISK_RIO`, calibrado con
+BigEarthNet) no recoge; se puede pasar una medida con `rio_measured`. Es la línea "modelo de I/O
+separado" de la fase 5 del roadmap.
+
+Logs: `logs/kaggle/panda/single/{vit_small_patch16_224,swin_tiny_patch4_window7_224}/train_23112026_{201600,210702}`
+y `logs/kaggle/panda/ddp/vit_small_patch16_224/train_23112026_222556` (2 procesos de carga).
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen

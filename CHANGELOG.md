@@ -201,6 +201,12 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Experimentos
 
+- PANDA, una T4 frente a dos en la misma máquina de Kaggle (24/11/2026): con la segunda T4, ViT-S
+  acelera ×1,35 y Swin-T ×1,71, sin cambio de QWK (0,782-0,801 y 0,820-0,830). Con dos GPU manda la
+  decodificación en CPU (4 vCPU al 100 %); el control con 2 procesos de carga por GPU es más lento
+  (164 frente a 144 s/época), lo que descarta la contención. All-reduce medido entre las dos T4:
+  4,05 GB/s (`docs/research/datos/allreduce_t4_kaggle.csv`). Logs en `logs/kaggle/panda/`.
+
 - Predictor, otras resoluciones (23/11/2026): el modelo de dos términos calibrado a 512 px predice
   384 px con un 10 % de error; a 224 px hace falta un coste fijo por paso (d ≈ 20-30 ms), con el
   que el error baja del 43 % al 15 % (`fit_with_overhead`; `performance_model.md`, sección 8).
