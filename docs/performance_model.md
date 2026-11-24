@@ -537,5 +537,23 @@ la familia Swin, por el mismo motivo que en el estudio (operaciones pequeñas qu
 ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−28 % y −20 %): son los dos runs en los que se
 sospecha que manda la CPU de Kaggle (sección 4, "Revisión"), algo que el predictor no modela.
 
+**Lo que gana AMP depende de la arquitectura (24/11/2026).** El predictor en fp32 multiplica por un
+π fijo por GPU (2,54 en la RTX 3060 Ti) para pasar a AMP; con AMP ya no lo usa (tres términos), pero
+fp32 y bf16 sí. Medido en la 3060 Ti (`docs/research/datos/throughput_fp32_3060ti.csv`, frente a
+las filas AMP del estudio), el cociente AMP/fp32 va de **×1,0 a ×3,4**:
+
+| Modelo | 224 px, lote 8 | 224 px, lote 16 | 224 px, lote 64 | 512 px, lote 16 |
+|---|---|---|---|---|
+| ViT-S | 1,81 | 2,05 | 2,56 | 3,44 |
+| ResNet-50 | 1,78 | 1,91 | 2,32 | — |
+| ConvNeXt-T | 2,17 | 2,61 | (lote 32: 2,55) | — |
+| Swin-T | 1,40 | 1,92 | (lote 32: 1,89) | — |
+| EfficientNet-B0 | 1,00 | 1,48 | 1,90 | — |
+
+Con lotes pequeños manda el coste fijo por paso, que AMP no acelera. EfficientNet, con mucho
+tráfico de memoria, gana poco; los ViT a 512 px, con mucho cálculo en matrices grandes, ganan más
+que el π de la tabla. Un modelo de tres términos propio de fp32 necesita medidas a 512 px, que en
+8 GB no caben (8 de 10 modelos se quedan sin memoria con lote 16); queda para una GPU mayor.
+
 **Pendiente.** Validar en una tercera GPU con medidas propias (V100 de VERODE), sin ajustarla, y
 entender el factor común de la T4 para no depender de una medida por GPU.
