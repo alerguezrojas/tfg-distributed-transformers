@@ -149,6 +149,8 @@ BATCHES = {
          short(deep_update(model(VIT_B), {"training": {"batch_size": COMMON_BATCH_PER_GPU}})),
          "pipeline:8"),
     ],
+    # Result (24/11/2026): 287 s/epoch with 16 micro-batches (slower than 282 s with 8) and 306 s
+    # with 8 at batch 8; ~132 W. Each micro-batch costs ~3.4 ms on top of the step's fixed cost.
 }
 BATCH = "pipeline_micro1"
 EXPERIMENTS = BATCHES[BATCH]

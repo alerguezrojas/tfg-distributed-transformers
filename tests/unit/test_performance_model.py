@@ -387,10 +387,39 @@ def test_pipeline_speedup_follows_the_gpipe_bubble():
     assert _vit_large_t4("model_parallel").speedup == pytest.approx(1.0, rel=0.02)
 
 
-def test_pipeline_power_lies_between_naive_and_busy():
+def test_pipeline_power_grows_with_the_busy_fraction():
     from src.performance_model import MODEL_PARALLEL_POWER_FRACTION, split_power_fraction
     assert split_power_fraction("model_parallel", 2) == MODEL_PARALLEL_POWER_FRACTION
     assert split_power_fraction("pipeline", 2, 1) == pytest.approx(MODEL_PARALLEL_POWER_FRACTION)
-    assert MODEL_PARALLEL_POWER_FRACTION < split_power_fraction("pipeline", 2, 4) < 1.0
+    fracs = [split_power_fraction("pipeline", 2, m) for m in (1, 2, 4, 8, 16)]
+    assert fracs == sorted(fracs)
     assert split_power_fraction("ddp", 2, 4) == 1.0
     assert any("bubble" in n for n in _vit_large_t4("pipeline").notes)
+
+
+@pytest.mark.parametrize("strategy, micro, watts, calibration", [
+    ("model_parallel", 1, 109.7, True), ("pipeline", 2, 118.8, True),
+    ("pipeline", 4, 125.0, True), ("pipeline", 8, 129.2, True),
+    ("pipeline", 16, 131.7, False),        # pipeline_micro1: out of sample
+])
+def test_split_power_matches_the_kaggle_runs(strategy, micro, watts, calibration):
+    """Power of the 2 T4 (train) in the 24/11/2026 Kaggle runs (ViT-B, 512 px), against the
+    calibrated T4 power (64 W per GPU) × the split fraction: ≤0.5 % in calibration, ≤1 % out."""
+    from src.performance_model import gpu_spec, split_power_fraction
+    predicted = 2 * gpu_spec("Tesla T4").train_power_w * split_power_fraction(strategy, 2, micro)
+    assert predicted == pytest.approx(watts, rel=0.005 if calibration else 0.01)
+
+
+def test_pipeline_charges_the_step_cost_once_plus_a_small_cost_per_micro_batch():
+    """With AMP (three-term throughput) the pipeline runs at the full batch's throughput plus
+    PIPELINE_MICRO_BATCH_COST_S per extra micro-batch, not at the micro-batch's throughput."""
+    from src.performance_model import (PIPELINE_MICRO_BATCH_COST_S, gpu_spec, model_spec,
+                                       train_throughput)
+    vit_b = model_spec("vit_base_patch16_224")
+    gpu = gpu_spec("Tesla T4")
+    full = train_throughput(vit_b, gpu, "amp", 16)[0]
+    p = predict("pipeline", "vit_base_patch16_224", "Tesla T4", n_gpus=2, dataset_size=1600,
+                batch=16, precision="amp", epochs=1, micro_batches=8)
+    expected = 1 / (1 / full + PIPELINE_MICRO_BATCH_COST_S * 7 / 16)
+    assert p.train_ips_per_gpu == pytest.approx(expected)
+    assert p.train_ips_per_gpu > train_throughput(vit_b, gpu, "amp", 2)[0]

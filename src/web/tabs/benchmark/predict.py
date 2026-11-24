@@ -213,11 +213,11 @@ def _analytic_predictor() -> None:
                         "while it waits — so this energy is a conservative (high) estimate.")
     elif strategy == "model_parallel" and int(n_gpus) > 1:
         _energy_note = (" Naive model parallelism keeps every GPU powered but idling between "
-                        "pipeline stages (counted at ~0.83× each); it does not save energy.")
+                        "pipeline stages (counted at ~0.86× each); it does not save energy.")
     elif strategy == "pipeline" and int(n_gpus) > 1:
         _energy_note = (" GPipe keeps every GPU busy except during the pipeline bubble; its power "
-                        "is interpolated between naive model parallelism and a busy GPU "
-                        "(not measured).")
+                        "grows with the fraction of the step each GPU works (calibrated on "
+                        "2 × T4).")
     st.caption("Power is precision-independent (AMP saves energy through *time*, not watts) "
                "and calibrated per GPU from the project's measured `--fn energy` runs; "
                "unmeasured GPUs use a TDP fallback (flagged)." + _energy_note)

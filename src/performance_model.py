@@ -63,10 +63,26 @@ EVAL_POWER_FRACTION: float = 0.9
 # Fraction of nameplate TDP used as the effective-power fallback for GPUs we never
 # measured here (datacenter cards on NFS run well below TDP; ~0.65 is a fair middle).
 POWER_TDP_FALLBACK_FRACTION: float = 0.65
-# Effective per-GPU power factor for naive model parallelism: the pipeline stages
-# serialize, so each GPU idles part of the time and draws less than a fully-loaded GPU.
-# Calibrated from the Kaggle 2×T4 model-parallel run (106 W for 2 GPUs ≈ 0.83 × 2×64 W).
-MODEL_PARALLEL_POWER_FRACTION: float = 0.83
+# Effective per-GPU power of the strategies that split the model, as a fraction of
+# train_power_w: linear in the fraction of the step each GPU is busy, busy = m/(m+p−1) (naive
+# model parallelism is m = 1). Least-squares fit to the 4 Kaggle 2×T4 runs of 24/11/2026 (ViT-B,
+# 512 px, batch 16: model parallel 109.7 W, pipeline m = 2/4/8 118.8/125.0/129.2 W for the 2 GPUs;
+# logs/kaggle/panda/{model_parallel,pipeline}/vit_base_patch16_224.augreg2_in21k_ft_in1k/), errors
+# ≤0.4 %. Validated out of sample on the pipeline_micro1 runs (m = 16 at batch 16: +0.3 %; m = 8 at
+# batch 8: −2.0 %). Above 1 when busy → 1: a half-loaded T4 stays under its 70 W cap and clocks
+# higher than the single-GPU reference (64 W). Calibrated on the T4 only.
+SPLIT_POWER_BASE: float = 0.664
+SPLIT_POWER_SLOPE: float = 0.391
+# Naive model parallelism on 2 GPUs (busy 1/2): 0.86 (an older 2×T4 run gave 0.83).
+MODEL_PARALLEL_POWER_FRACTION: float = SPLIT_POWER_BASE + SPLIT_POWER_SLOPE / 2
+# GPipe: cost of each extra micro-batch in a step (s), on top of the fixed cost per step d of
+# the three-term model (which is paid once per step: optimizer, zero_grad, scaler). Least-squares
+# fit to the epoch time (train + val) of the pipeline m = 2/4/8 runs above (+4.9/+1.5/−1.5 %);
+# validated out of sample on pipeline_micro1 (1-image micro-batches: m = 16 at batch 16, −5.2 %;
+# m = 8 at batch 8, −3.3 %), where charging d to every micro-batch erred +19 % and charging it
+# once per step −10/−8 %. logs/kaggle/panda/pipeline/vit_base_patch16_224.augreg2_in21k_ft_in1k/.
+# Calibrated on the T4.
+PIPELINE_MICRO_BATCH_COST_S: float = 3.4e-3
 
 # GPU names shared by the TDP and spec tables below.
 _T4 = "Tesla T4"
@@ -416,18 +432,14 @@ def estimate_power(gpu: GpuSpec, phase: str = "train") -> float:
 
 
 def split_power_fraction(strategy: str, n_work: int, micro_batches: int = 1) -> float:
-    """Average power per GPU, as a fraction of a busy GPU's, for the strategies that split the
-    model: naive model parallelism measured 0.83 (each GPU busy ~half the step); GPipe keeps
-    each GPU busy m/(m+p−1) of the step, interpolated linearly between that point (busy 1/2)
-    and a fully busy GPU (1.0) — not measured."""
+    """Average power per GPU, as a fraction of ``train_power_w``, for the strategies that split
+    the model: linear in the fraction of the step each GPU is busy, m/(m+p−1), with naive model
+    parallelism as m = 1 (calibrated on 2 × T4; see SPLIT_POWER_BASE)."""
     if strategy not in SPLIT_STRATEGIES or n_work <= 1:
         return 1.0
-    if strategy == "model_parallel":
-        return MODEL_PARALLEL_POWER_FRACTION
-    busy = micro_batches / (micro_batches + n_work - 1)
-    naive_busy = 1 / n_work
-    frac = (busy - naive_busy) / (1 - naive_busy)
-    return MODEL_PARALLEL_POWER_FRACTION + frac * (1 - MODEL_PARALLEL_POWER_FRACTION)
+    m = max(1, micro_batches) if strategy == "pipeline" else 1
+    busy = m / (m + n_work - 1)
+    return SPLIT_POWER_BASE + SPLIT_POWER_SLOPE * busy
 
 
 def power_working_gpus(strategy: str, n_gpus: int) -> int:
@@ -628,8 +640,8 @@ def predict_epoch(strategy: str, model: ModelSpec, gpu: GpuSpec, n_gpus: int,
     elif strategy == "pipeline":
         # GPipe with p = n_gpus balanced stages and m micro-batches: each GPU computes 1/p of
         # the model and idles a fraction (p−1)/(m+p−1) of the step (the bubble), so the
-        # compute time is the single-GPU one × (m+p−1)/(m·p). rc_p is already the throughput
-        # at the micro-batch size (predict()). Same coarse activation-transfer term as above.
+        # compute time is the single-GPU one × (m+p−1)/(m·p). rc_p already carries the cost
+        # of the extra micro-batches (predict()). Same coarse activation-transfer term as above.
         p_st = max(1, n_gpus)
         m = max(1, micro_batches)
         t_compute = n_train / rc_p * (m + p_st - 1) / (m * p_st)
@@ -735,13 +747,15 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
         return None
 
     batch_per_gpu = max(1, batch // n_gpus) if strategy in ("ddp", "heterogeneous") else batch
-    # GPipe runs the model on micro-batches: its throughput (and fixed cost per step) is that
-    # of the micro-batch size.
+    # GPipe runs the model on micro-batches: the throughput is that of the full batch (the fixed
+    # cost per step d is paid once per step) plus a small cost per extra micro-batch.
     micro = max(1, micro_batches) if strategy == "pipeline" else 1
-    rc_p, tp_model, tp_calibrated = train_throughput(model, gpu, precision,
-                                                     max(1, batch_per_gpu // micro), rc_measured)
-    rc_full = (train_throughput(model, gpu, precision, batch_per_gpu, rc_measured)[0]
-               if micro > 1 else None)
+    rc_p, tp_model, tp_calibrated = train_throughput(model, gpu, precision, batch_per_gpu,
+                                                     rc_measured)
+    rc_full = None
+    if micro > 1:
+        rc_full = rc_p
+        rc_p = 1 / (1 / rc_full + PIPELINE_MICRO_BATCH_COST_S * (micro - 1) / batch_per_gpu)
     ep = predict_epoch(strategy, model, gpu, n_gpus, dataset_size, batch_per_gpu,
                        precision, disk_type, nfs, rc_measured, rio_measured,
                        rc_at_precision=rc_p, micro_batches=micro, rc_single=rc_full)
@@ -755,7 +769,7 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
 
     # Energy = effective power × time. Power per GPU is calibrated (or a TDP fallback);
     # the working-GPU count scales it for distributed strategies. Naive model parallelism
-    # keeps every GPU powered but idling between stages, so each draws less (×0.83).
+    # keeps every GPU powered but idling between stages, so each draws less (split_power_fraction).
     n_work = power_working_gpus(strategy, n_gpus)
     mp = split_power_fraction(strategy, n_work, micro)
     p_train = estimate_power(gpu, "train") * mp
@@ -782,7 +796,7 @@ def predict(strategy: str, model_name: str, gpu_name: str, n_gpus: int = 1,
     if strategy == "pipeline":
         notes.append(f"GPipe with {n_gpus} stages and {micro} micro-batches: each GPU idles "
                      f"{(n_gpus - 1) / (micro + n_gpus - 1):.0%} of the step (bubble). Balanced "
-                     f"stages assumed and power not measured for this strategy (interpolated).")
+                     f"stages assumed; time and power calibrated on 2 × T4 only.")
     if strategy == "heterogeneous":
         notes.append("Synchronous DDP runs at the pace of the slowest worker (the CPU); "
                      "imbalanced hardware penalizes.")

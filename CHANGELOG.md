@@ -21,6 +21,16 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   detalle en `docs/datasets/panda.md`. Lote siguiente en el kernel: `pipeline_micro1`
   (micro-lotes de una imagen), para decidir cómo cobrar el coste fijo por paso.
 
+### Cambiado (predictor)
+
+- Pipeline calibrado en 2 × T4: el coste fijo por paso (`d`) se cobra una vez por paso más 3,4 ms
+  por cada micro-lote extra (`PIPELINE_MICRO_BATCH_COST_S`), en lugar de cobrar `d` a cada
+  micro-lote; y la potencia por GPU de las estrategias que parten el modelo crece en línea recta
+  con la fracción del paso en que trabaja cada GPU (`SPLIT_POWER_BASE`, `SPLIT_POWER_SLOPE`;
+  `MODEL_PARALLEL_POWER_FRACTION` pasa de 0,83 a 0,86). Ajuste con los runs de lote 16 (m = 1, 2,
+  4, 8) y validación con el lote `pipeline_micro1` (micro-lotes de una imagen), que no se usó
+  para ajustar: tiempo −5 y −3 % (antes +19 %), potencia +0,3 y −2 %.
+
 ### Cambiado
 
 - Predictor: la memoria por GPU de las estrategias que parten el modelo (`model_parallel`,
