@@ -57,3 +57,23 @@ RTX 3060 Ti,convnext_tiny.fb_in22k,224,64,396.5,1148.1,4.44,logs/local/benchmark
 RTX 3060 Ti,swin_tiny_patch4_window7_224,224,8,188.8,620.9,0.99,logs/local/benchmark/benchmark_23112026_223*.log
 RTX 3060 Ti,swin_tiny_patch4_window7_224,224,32,296.7,841.5,2.69,logs/local/benchmark/benchmark_23112026_223*.log
 RTX 3060 Ti,swin_tiny_patch4_window7_224,224,64,320.3,863.7,4.95,logs/local/benchmark/benchmark_23112026_223*.log
+Tesla T4,vit_small_patch16_224,224,8,189.4,868.9,0.63,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,vit_small_patch16_224,224,16,293.4,1069.6,0.91,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,vit_small_patch16_224,224,32,327.9,1073.6,1.47,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,vit_small_patch16_224,224,64,351.3,1071.4,2.59,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,resnet50,224,8,159.0,638.7,0.75,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,resnet50,224,16,215.2,686.4,1.1,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,resnet50,224,32,245.6,741.2,1.81,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,resnet50,224,64,257.9,763.3,3.28,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,efficientnet_b0,224,8,164.0,585.2,0.44,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,efficientnet_b0,224,16,274.4,1105.9,0.8,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,efficientnet_b0,224,32,351.2,1247.9,1.53,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,efficientnet_b0,224,64,371.0,1271.6,2.99,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,convnext_tiny.fb_in22k,224,8,122.3,590.7,0.95,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,convnext_tiny.fb_in22k,224,16,160.6,616.1,1.43,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,convnext_tiny.fb_in22k,224,32,169.5,625.6,2.43,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,convnext_tiny.fb_in22k,224,64,219.0,617.8,4.45,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,swin_tiny_patch4_window7_224,224,8,127.0,428.5,1.01,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,swin_tiny_patch4_window7_224,224,16,148.8,434.6,1.56,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,swin_tiny_patch4_window7_224,224,32,162.4,436.5,2.7,logs/kaggle/benchmark/throughput_t4_24112026.csv
+Tesla T4,swin_tiny_patch4_window7_224,224,64,165.2,436.7,4.97,logs/kaggle/benchmark/throughput_t4_24112026.csv

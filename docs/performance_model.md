@@ -515,17 +515,22 @@ medido y sigue con la MFU × π):
   - RTX 3060 Ti: ajuste conjunto con 45 medidas (10 arquitecturas a 224, 384 y 512 px con lote 16,
     y 5 de ellas a 224 px con lotes 8, 32 y 64). Da a = 2,05·10⁻⁴ s/GFLOP, b = 1,25·10⁻² s/GB y
     d = 18 ms por paso.
-  - T4: 13 arquitecturas, solo a 512 px y con lote 16 (3,35·10⁻⁴, 3,10·10⁻² y 24 ms).
+  - T4: ajuste conjunto con 33 medidas (13 arquitecturas a 512 px con lote 16, y 5 de ellas a
+    224 px con lotes 8, 16, 32 y 64; kernel `kaggle/benchmark_t4`, 24/11/2026): a = 3,36·10⁻⁴,
+    b = 3,12·10⁻² y d = 20 ms.
 
   Ambos son calibración: cada GPU reproduce sus propias medidas a 512 px con un error medio del
-  8,3 % (3060 Ti) y del 11,6 % (T4).
+  8,3 % (3060 Ti) y del 11,4 % (T4).
 - **El coste fijo por paso (d/B) está medido.** Sin variar el lote, d no se puede separar de los
   términos por imagen: el primer ajuste, solo a 512 px y lote 16, daba 30 ms y con lote 8 se
   quedaba un 30 % corto. El barrido de lotes de la 3060 Ti (`logs/local/benchmark/
   benchmark_23112026_223*`) da, para cada modelo, un tiempo por paso que crece en línea recta
   con el lote. La ordenada en el origen es de 12-20 ms según el modelo, y el ajuste conjunto
   da 18 ms. Error por lote: 13 % (8), 8 % (16), 9 % (32) y 8 % (64). Dejando fuera cada modelo
-  entero, el error es del 11 %. En la T4 no se ha variado el lote: su d (24 ms) es un supuesto.
+  entero, el error es del 11 %. En la T4 el mismo barrido da ordenadas de 15-40 ms por modelo y
+  el ajuste conjunto, 20 ms (13 % de error; 14 % dejando fuera cada modelo). **Validación fuera de
+  muestra:** el ajuste anterior de la T4, solo con 512 px y lote 16 (d = 24 ms), predijo las 20
+  medidas nuevas a 224 px con lotes 8-64 con un 13 % de error medio antes de incorporarlas.
 - **GPU sin medidas** (V100, A100…): los coeficientes de la 3060 Ti se escalan por TFLOPS·π y
   por el ancho de banda (`GpuSpec.mem_bw_gbs`, de las hojas de NVIDIA). La predicción lleva una
   nota: el coste relativo entre arquitecturas se sostiene (11 % en la T4 con los tres términos),
@@ -546,11 +551,12 @@ La última sección de `scripts/predictor_architecture_study.py` lo reproduce:
 | Entrenamientos | Modelos | Solo FLOPs | 3 términos | Peor caso (3 términos) |
 |---|---|---|---|---|
 | 1 × RTX 3060 Ti, lote 16 | 8 | 20 % | **8 %** | Swin-T −22 % |
-| 2 × T4 (Kaggle, DDP), 8 por GPU | 7 | 47 % | **17 %** | SwinV2-T −31 % |
+| 2 × T4 (Kaggle, DDP), 8 por GPU | 7 | 45 % | **15 %** | SwinV2-T −29 % |
 
-Con 2 × T4, MaxViT-T pasa de −69 % a +1 % y ConvNeXt-S de −42 % a −6 %. Siguen quedándose cortos
+Con 2 × T4, MaxViT-T pasa de −67 % a +3 % y ConvNeXt-S de −37 % a −1 % (cifras con el all-reduce
+medido y el ajuste conjunto de la T4, 24/11/2026). Siguen quedándose cortos
 la familia Swin, por el mismo motivo que en el estudio (operaciones pequeñas que no son ni FLOPs
-ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−28 % y −20 %): son los dos runs en los que se
+ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−26 % y −19 %): son los dos runs en los que se
 sospecha que manda la CPU de Kaggle (sección 4, "Revisión"), algo que el predictor no modela.
 
 **Lo que gana AMP depende de la arquitectura (24/11/2026).** El predictor en fp32 multiplica por un
@@ -569,7 +575,10 @@ las filas AMP del estudio), el cociente AMP/fp32 va de **×1,0 a ×3,4**:
 Con lotes pequeños manda el coste fijo por paso, que AMP no acelera. EfficientNet, con mucho
 tráfico de memoria, gana poco; los ViT a 512 px, con mucho cálculo en matrices grandes, ganan más
 que el π de la tabla. Un modelo de tres términos propio de fp32 necesita medidas a 512 px, que en
-8 GB no caben (8 de 10 modelos se quedan sin memoria con lote 16); queda para una GPU mayor.
+8 GB no caben (8 de 10 modelos se quedan sin memoria con lote 16); queda para una GPU mayor. En la T4
+de Kaggle (16 GB) caben 12 de 13 (`logs/kaggle/benchmark/throughput_t4_24112026.csv`, campaña
+`fp32_512`), pero las medidas en fp32 de la T4 son ruidosas (no crecen con el lote y dan
+ordenadas por paso negativas), probablemente por el límite de 70 W: no se usan para ajustar.
 
 **Pendiente.** Validar en una tercera GPU con medidas propias (V100 de VERODE), sin ajustarla, y
 entender el factor común de la T4 para no depender de una medida por GPU.
