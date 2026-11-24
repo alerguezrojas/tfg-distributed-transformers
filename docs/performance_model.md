@@ -70,7 +70,8 @@ T(N, n) = φ · [ max( N/(π·r_c·n) , N/r_io )  +  (2(n−1)/n · 4P/β)·⌈N
   `β` is measured only for the T4 pair on Kaggle (4.05 GB/s with large messages, 4.01 GB/s with
   16 MB, close to DDP's 25 MB buckets; 2 GPUs only, n > 2 is an extrapolation). Every other GPU
   uses its nominal interconnect derated by half (`NOMINAL_ALLREDUCE_DERATE`), which keeps its
-  prediction where it was, and the prediction carries a note: the measured T4 pair sustained a
+  prediction where it was with 2 GPUs (with 4 or 8 the term grows to 1.5-1.75× the former
+  `8P/β`), and the prediction carries a note: the measured T4 pair sustained a
   quarter of its nominal. With gradient accumulation (`grad_accum_steps = k`) DDP only syncs once
   per group, so the term overestimates by about k (not modelled yet).
   *(Until 24/11/2026 the term was `8P/β` with the PCIe nominal 16 GB/s; the measured T4 pair on
