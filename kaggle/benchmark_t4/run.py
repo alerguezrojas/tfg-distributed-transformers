@@ -77,33 +77,42 @@ def sh(*cmd: str, log: Path | None = None) -> int:
     return rc
 
 
+def run_campaigns(out: Path, campaigns=CAMPAIGNS, python: str = sys.executable,
+                  device: str = "0") -> list[dict]:
+    """Run ``scripts/benchmark.py`` for every model of every campaign (cwd = the repo) and write
+    ``out/throughput.csv`` after each model, so a cut run keeps what it measured. Also used by
+    ``cluster/benchmark/throughput_sweep.py`` on other machines."""
+    rows_out: list[dict] = []
+    for name, img_size, precision, batches, models in campaigns:
+        bench = out / "bench" / name
+        bench.mkdir(parents=True, exist_ok=True)
+        for model in models:
+            log = bench / f"{model}.log"
+            rc = sh(python, "scripts/benchmark.py", "--model", model,
+                    "--batch-sizes", *batches, "--precision", precision,
+                    "--config", "configs/train_panda.yaml", "--epochs", "15",
+                    "--trace-modes", "off", "--train-size", str(TRAIN_SIZE),
+                    "--val-size", str(VAL_SIZE), "--device", device,
+                    "--set", f"data.image_size={img_size}", "--set", f"model.img_size={img_size}",
+                    log=log)
+            rows = parse_rows(log.read_text()) or [{"batch": None, "train_ips": None,
+                                                    "eval_ips": None, "vram_gb": None}]
+            rows_out += [{"campaign": name, "img_size": img_size, "precision": precision,
+                          "model": model, "rc": rc, **r} for r in rows]
+            with open(out / "throughput.csv", "w", newline="") as f:
+                w = csv.DictWriter(f, fieldnames=list(rows_out[0]))
+                w.writeheader()
+                w.writerows(rows_out)
+    return rows_out
+
+
 def main() -> None:
     sh("git", "clone", "--depth", "1", "--branch", REF, REPO_URL, str(REPO))
     sh(sys.executable, "-m", "pip", "install", "-q", "timm", "nvidia-ml-py", "torchinfo")
     with open(OUT / "gpu.txt", "w") as f:
         subprocess.run(["nvidia-smi", "-q"], check=False, stdout=f)
     os.chdir(REPO)
-    out = []
-    for name, img_size, precision, batches, models in CAMPAIGNS:
-        bench = OUT / "bench" / name
-        bench.mkdir(parents=True, exist_ok=True)
-        for model in models:
-            log = bench / f"{model}.log"
-            rc = sh(sys.executable, "scripts/benchmark.py", "--model", model,
-                    "--batch-sizes", *batches, "--precision", precision,
-                    "--config", "configs/train_panda.yaml", "--epochs", "15",
-                    "--trace-modes", "off", "--train-size", str(TRAIN_SIZE),
-                    "--val-size", str(VAL_SIZE), "--device", "0",
-                    "--set", f"data.image_size={img_size}", "--set", f"model.img_size={img_size}",
-                    log=log)
-            rows = parse_rows(log.read_text()) or [{"batch": None, "train_ips": None,
-                                                    "eval_ips": None, "vram_gb": None}]
-            out += [{"campaign": name, "img_size": img_size, "precision": precision,
-                     "model": model, "rc": rc, **r} for r in rows]
-            with open(OUT / "throughput.csv", "w", newline="") as f:
-                w = csv.DictWriter(f, fieldnames=list(out[0]))
-                w.writeheader()
-                w.writerows(out)
+    run_campaigns(OUT)
     print(open(OUT / "throughput.csv").read(), flush=True)
 
 
