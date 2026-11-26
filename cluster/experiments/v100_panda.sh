@@ -4,7 +4,8 @@
 # verdad (misma receta que los runs locales de docs/datasets/panda.md, menos épocas: solo se
 # mide el tiempo). Se lanza en el nodo de cómputo, desde tmux en el nodo de login:
 #
-#   srun -p batch -w verode21 --gres=gpu:tesla:1 --cpus-per-task=8 -t 06:00:00 bash cluster/experiments/v100_panda.sh
+#   srun -p batch -w verode21 -n 1 --cpus-per-task=8 -t 06:00:00 bash cluster/experiments/v100_panda.sh
+#   (-n 1 hace falta: con solo --cpus-per-task=8, el Slurm de VERODE lanza 40/8 = 5 copias)
 #   MODELS="resnet50 efficientnet_b0" EPOCHS=3 srun ... bash cluster/experiments/v100_panda.sh
 #   PRECISION=fp32 MODELS="vit_small_patch16_224 resnet50" srun ... bash cluster/experiments/v100_panda.sh
 #

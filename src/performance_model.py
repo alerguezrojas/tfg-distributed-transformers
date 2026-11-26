@@ -337,7 +337,13 @@ def precision_factor(gpu: GpuSpec, precision: str) -> float:
 #   * Tesla T4    — 13 architectures at 512 px with batch 16 plus 5 of them at 224 px with
 #     batch 8/16/32/64 (33 points; logs/kaggle/benchmark/throughput_t4_{23,24}112026.csv). Per-model
 #     intercepts 15-40 ms, the fit gives 20 ms. The former fit (512 px only, d = 24 ms) predicted
-#     the 20 new points with 13 % mean error before they were added (out-of-sample).
+#     the 20 new points with 13 % mean error before they were added (out-of-sample);
+#   * Tesla V100  — the same 33-point design on the V100-PCIE-32GB of VERODE (verode21, 26/11/2026;
+#     logs/verode/benchmark/throughput_v100_26112026.csv): 13 % mean error in-sample, 15 % leaving
+#     each model out. d = 34 ms, almost twice the others: the host CPU of the node is older and d is
+#     host-side. Before this fit, the datasheet transfer of the 3060 Ti fit predicted these
+#     measurements with 19 % mean error at 512 px (median ×1.12 too optimistic; ×1.46 on the T4)
+#     and 36 % at 224 px with batch 8-64, where the 3060 Ti's d (18 ms) falls short.
 # Only measured with AMP (fp16 autocast), so it is applied to amp only; fp32 keeps MFU and bf16
 # (not measured; the T4 and V100 have no native bf16) keeps MFU × π.
 MIXED_PRECISIONS: tuple[str, ...] = ("amp",)
@@ -353,6 +359,7 @@ class ThroughputFit:
 THROUGHPUT_FITS: dict[str, ThroughputFit] = {
     _RTX_3060_TI: ThroughputFit(2.0453e-4, 1.2468e-2, 17.77e-3),
     _T4:          ThroughputFit(3.3620e-4, 3.1241e-2, 20.08e-3),
+    _V100:        ThroughputFit(1.2392e-4, 8.7489e-3, 33.98e-3),
 }
 # GPUs without a fit get the reference fit scaled by the datasheets: a by TFLOPS·π, b by DRAM
 # bandwidth (d is host-side and kept). On the T4 this transfer was ×1.5 too optimistic (median

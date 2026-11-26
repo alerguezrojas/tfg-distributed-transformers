@@ -229,7 +229,7 @@ def main(argv=None) -> None:
               f"2 términos {mean(s2)} (calibrados {mean(s2[~new])}, no calibrados "
               f"{mean(s2[new]) if new.any() else '—'})\n")
     resolution_section(data, feats_at, args.calibration_gpu, args.img_size, md)
-    for gpu in dict.fromkeys((args.calibration_gpu, "Tesla T4")):   # each GPU once
+    for gpu in dict.fromkeys((args.calibration_gpu, "Tesla T4", "Tesla V100")):   # each GPU once
         batch_section(gpu, md)
     trainings_section(md)
 

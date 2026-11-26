@@ -102,12 +102,17 @@ desde una sesión `tmux` del nodo de login, para que sigan aunque se corte la co
 export PATH=/opt/soft/slurm/20.11.04/bin:$PATH     # por SSH sin terminal no se lee ~/.bashrc
 cd ~/tfg-distributed-transformers
 # 1) Throughput con lotes sintéticos (sin datos), ~20 min
-srun -p batch -w verode21 --gres=gpu:tesla:1 -t 03:00:00 \
+srun -p batch -w verode21 -n 1 -t 03:00:00 \
      .venv/bin/python cluster/benchmark/throughput_sweep.py --out ~/paravit_runs/v100_sweep
 # 2) Entrenamientos reales de PANDA a 512 px (data_roots.panda del perfil verode)
-srun -p batch -w verode21 --gres=gpu:tesla:1 --cpus-per-task=8 -t 06:00:00 \
+srun -p batch -w verode21 -n 1 --cpus-per-task=8 -t 06:00:00 \
      bash cluster/experiments/v100_panda.sh
 ```
+
+Dos trampas del Slurm de VERODE (26/11/2026): `--gres=gpu:tesla:1` da *Invalid generic resource
+specification* (se pide el nodo con `-w verode21`), y `--cpus-per-task=8` sin `-n 1` lanza
+40/8 = 5 copias del mismo comando sobre la misma GPU. Comprueben con `squeue -s` y `ps` que hay un
+solo proceso de entrenamiento antes de fiarse de los tiempos.
 
 El barrido escribe `throughput.csv` (campaña, resolución, precisión, modelo, lote, img/s de
 entrenamiento y evaluación, VRAM) y `gpu.txt`; se copia al repositorio en `logs/verode/benchmark/`.
