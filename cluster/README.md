@@ -8,6 +8,8 @@ ejemplo son los del clúster VERODE (ULL); ver [`docs/infraestructura.md`](../do
 | `slurm/single.sbatch` | Una GPU en un nodo (`--strategy single`) |
 | `slurm/ddp_multinode.sbatch` | DDP en varios nodos con `--launcher slurm` |
 | `apptainer/paravit.def` | Imagen con PyTorch cu118 y el proyecto |
+| `benchmark/throughput_sweep.py` | Barrido de throughput del predictor en la GPU del nodo (las campañas de la T4) |
+| `experiments/v100_panda.sh` | Entrenamientos de PANDA en la V100 para validar el predictor |
 
 ## 1. El lanzador `--launcher slurm`
 
@@ -90,3 +92,24 @@ contenedor use `--set data.root=...` (o un perfil propio) con la ruta enlazada.
 desarrollo). El primer `build` debe comprobar con `%test` que `paravit --help` y `import torch`
 funcionan, y con `apptainer run --nv paravit.sif doctor --require-gpu` en un nodo con GPU que `--nv` ve el
 driver.
+
+## 4. Medidas del predictor en VERODE
+
+Las dos mediciones que validan el predictor en la V100 (`docs/performance_model.md`) se lanzan
+desde una sesión `tmux` del nodo de login, para que sigan aunque se corte la conexión:
+
+```bash
+export PATH=/opt/soft/slurm/20.11.04/bin:$PATH     # por SSH sin terminal no se lee ~/.bashrc
+cd ~/tfg-distributed-transformers
+# 1) Throughput con lotes sintéticos (sin datos), ~20 min
+srun -p batch -w verode21 --gres=gpu:tesla:1 -t 03:00:00 \
+     .venv/bin/python cluster/benchmark/throughput_sweep.py --out ~/paravit_runs/v100_sweep
+# 2) Entrenamientos reales de PANDA a 512 px (data_roots.panda del perfil verode)
+srun -p batch -w verode21 --gres=gpu:tesla:1 --cpus-per-task=8 -t 06:00:00 \
+     bash cluster/experiments/v100_panda.sh
+```
+
+El barrido escribe `throughput.csv` (campaña, resolución, precisión, modelo, lote, img/s de
+entrenamiento y evaluación, VRAM) y `gpu.txt`; se copia al repositorio en `logs/verode/benchmark/`.
+Los entrenamientos dejan sus artefactos en `logs/verode/panda/single/<modelo>/`.
+
