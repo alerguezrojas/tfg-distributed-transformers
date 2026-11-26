@@ -6,35 +6,29 @@
 
 ## Estado actual
 
-> Actualizado el 24/11/2026 (tarde). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 26/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
-**Versión 1.4.0 (24/11/2026), en `main`.** Recoge las fases 0-4 del plan de profesionalización
-(errores, `paravit doctor` y perfiles de máquina, lanzador único, web, Slurm y Apptainer), la
-acumulación de gradientes y el *activation checkpointing*, el predictor de tres términos con AMP y
-el all-reduce en anillo con el ancho de banda medido, los resultados de Kaggle (una T4 frente a
-dos) y la limpieza de los avisos de SonarCloud y CodeQL (triple A en `main`).
+**Versión 1.5.0 (26/11/2026), en `main`.** Recoge lo hecho después de la 1.4.0: la web compara la
+estimación con el tiempo real de cada run usando su manifiesto (PR #272, punto C2); el coste fijo
+por paso de la T4 medido con un barrido de lotes en Kaggle (20 ms; error del 15 % frente a los
+entrenamientos reales en 2 × T4; PR #273); los literales repetidos de SonarCloud (PR #274); la
+estrategia **`pipeline` (GPipe)** con micro-lotes (PR #276), medida en Kaggle (PR #279: ×1,38,
+×1,56 y ×1,64 frente a una T4 con 2, 4 y 8 micro-lotes, mismo QWK) y calibrada en el predictor
+(PR #282: coste fijo una vez por paso más 3,4 ms por micro-lote extra y potencia que crece con la
+fracción ocupada de cada GPU; en validación, tiempo −5 y −3 %, potencia +0,2 y −2 %); y el estudio
+del entrenamiento elástico (PR #280).
 
-**Después de la 1.4.0 (24/11/2026, en `develop`):** la web compara la estimación con el tiempo
-real de cada run usando su manifiesto (resolución, GPU, lote; PR #272, punto C2); la T4 tiene su
-coste fijo por paso medido con un barrido de lotes en Kaggle (20 ms; el ajuste anterior predijo
-esas medidas con un 13 % de error, y frente a los entrenamientos reales en 2 × T4 el error queda
-en el 15 %; PR #273); y los literales repetidos de SonarCloud están resueltos (PR #274).
-Estrategia **`pipeline` (GPipe)** con micro-lotes (PR #276): el ViT partido en dos GPU como en
-`model_parallel`, pero con las dos etapas trabajando a la vez; mismo gradiente que el lote entero,
-término en el predictor (burbuja `(m+p−1)/(m·p)`) y memoria repartida entre etapas también para
-`model_parallel`. Medido en Kaggle (PR #279; ViT-B a 512 px en 2 × T4): ×1,38, ×1,56 y ×1,64
-frente a una T4 con 2, 4 y 8 micro-lotes, mismo QWK; el predictor acierta el tiempo con +6 a +11 %
-y la potencia con −3 a −5 %. Con el lote `pipeline_micro1` (micro-lotes de una imagen) el
-predictor quedó calibrado (PR #282, revisado): el coste fijo se cobra una vez por paso más 3,4 ms
-por micro-lote extra y la potencia crece con la fracción ocupada de cada GPU; en validación,
-tiempo −5 y −3 % (antes +19 %) y potencia +0,2 y −2 %. **Reunión del 24/11:** el tutor propone
-el entrenamiento elástico; estudio en
-[`research/entrenamiento_elastico.md`](research/entrenamiento_elastico.md) (PR #280), con tres
-pasos: reanudar a mitad de época con `--max-restarts`, predecir el coste de los reinicios y
-elegir cuántas GPU usar, y elasticidad real con lote global fijo. Siguiente: lo anterior, un
-término de decodificación en CPU para el I/O del predictor, FSDP2/ZeRO-1 y la vista de conjuntos
-en la web. Pendiente del autor: la VPN de VERODE.
+**Reunión del 24/11:** el tutor propone mirar el entrenamiento elástico y se ocupa de lo del
+dataset y de conseguir más máquinas. El estudio
+([`research/entrenamiento_elastico.md`](research/entrenamiento_elastico.md)) propone tres pasos:
+reanudar a mitad de época con `--max-restarts`, predecir el coste de los reinicios y elegir cuántas
+GPU usar, y elasticidad real con lote global fijo.
+
+**Siguiente:** el paso 1 del entrenamiento elástico (reanudar a mitad de época, útil también para
+el límite de 12 h de Kaggle), un término de decodificación en CPU para el I/O del predictor,
+FSDP2/ZeRO-1 y la vista de conjuntos en la web. Pendiente del autor o del tutor: si el entrenamiento
+elástico pasa a ser una línea de trabajo, el dataset nuevo, las máquinas y la VPN de VERODE.
 
 **Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
 (Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
