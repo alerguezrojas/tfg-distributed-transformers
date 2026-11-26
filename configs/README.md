@@ -75,6 +75,7 @@ config propia. Cuándo usarlas y cuánto cuestan: [guía de uso](../docs/guia_de
 |---|---|---|
 | `medmnist_*_local.yaml` | MedMNIST (breast, chest, derma, path) | Baselines de MedMNIST con vit_tiny en local ([ficha](../docs/datasets/medmnist.md)). |
 | `train_panda.yaml` | PANDA (ISUP 0-5) | Biopsias de próstata como mosaicos de 1024 px reescalados a 512 ([ficha](../docs/datasets/panda.md)). Requiere preparar los mosaicos con `scripts/prepare_panda.py`. |
+| `train_panda_36.yaml` | PANDA | Swin-T con mosaicos de 36 tiles (`mosaics_l1_36x256`, 1536 px) reescalados a 768: el mismo tamaño por tile que la base y más tejido. `prepare_panda.py --n-tiles 36`. |
 | `train_panda_ordinal.yaml` | PANDA | Igual que `train_panda.yaml` con la pérdida ordinal `ce_emd` (entropía cruzada + EMD²). |
 | `train_panda_ousm.yaml` | PANDA | Igual que `train_panda.yaml` con OUSM (`training.ousm_k: 2`): cada lote ignora sus 2 muestras de mayor pérdida, contra las etiquetas ruidosas. |
 | `train_panda_ordinal_color.yaml` | PANDA | Pérdida ordinal y aumentos de color a la vez. |

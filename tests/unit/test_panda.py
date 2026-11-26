@@ -318,3 +318,11 @@ class TestProviders:
             assert cfg == base
         color = yaml.safe_load((root / "train_panda_color.yaml").read_text())
         assert color["data"].pop("color_jitter") == 0.2 and color == base
+
+
+def test_mosaic_folder_relative_to_root_absolute_or_default(tmp_path):
+    root = tmp_path / "panda"
+    assert panda.mosaic_dir(root) == root / panda.DEFAULT_MOSAIC_DIR
+    assert panda.mosaic_dir(root, "mosaics_l1_36x256") == root / "mosaics_l1_36x256"
+    other = tmp_path / "elsewhere" / "m36"
+    assert panda.mosaic_dir(root, str(other)) == other

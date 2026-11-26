@@ -50,7 +50,12 @@ def _spec(name: str) -> ModelSpec:
     return ModelSpec(name, 20.0, f, 0.1, calibrated=False, saved_gb_per_img=a)
 
 
-@pytest.mark.parametrize("gpu", list(THROUGHPUT_FITS))
+# Mean in-sample error at 512 px, batch 16, of each GPU's fit (8.3 %, 11.4 % and 12.3 % on
+# 26/11/2026), with a small margin: a refit that gets worse shows up here.
+_IN_SAMPLE_LIMIT = {"RTX 3060 Ti": 0.09, "Tesla T4": 0.12, "Tesla V100": 0.13}
+
+
+@pytest.mark.parametrize("gpu", list(_IN_SAMPLE_LIMIT))
 def test_fit_reproduces_its_own_measurements(gpu):
     """Calibration (in-sample): each GPU's fit against the throughputs it was fitted on."""
     errs = []
@@ -58,8 +63,38 @@ def test_fit_reproduces_its_own_measurements(gpu):
         ips, calibrated = three_term_ips(_spec(name), gpu_spec(gpu), BATCH)
         assert calibrated
         errs.append(abs(ips / real - 1))
-    assert sum(errs) / len(errs) < 0.12
+    assert sum(errs) / len(errs) < _IN_SAMPLE_LIMIT[gpu]
     assert max(errs) < 0.40          # the Swin family is the known worst case
+
+
+def test_every_fit_is_checked_in_sample():
+    """Every distinct fit (aliases share one) has its in-sample check above."""
+    assert {id(f) for f in THROUGHPUT_FITS.values()} == \
+        {id(THROUGHPUT_FITS[g]) for g in _IN_SAMPLE_LIMIT}
+
+
+def test_v100_fit_under_both_table_names():
+    """The web offers "V100-PCIE": the same card measured on VERODE, not a datasheet transfer."""
+    m = _spec("vit_small_patch16_224")
+    ips, calibrated = three_term_ips(m, gpu_spec("V100-PCIE"), BATCH)
+    assert calibrated
+    assert ips == pytest.approx(three_term_ips(m, gpu_spec("Tesla V100"), BATCH)[0])
+
+
+def test_transfer_to_the_v100_was_close_before_measuring_it():
+    """Validation (out-of-sample): the 3060 Ti fit moved to the V100 by the datasheets only,
+    before the V100 had a fit (26/11/2026): ×1.09 optimistic, 14 % relative-cost error."""
+    ref = THROUGHPUT_FITS.pop("Tesla V100")
+    try:
+        assert not throughput_fit(gpu_spec("Tesla V100"))[1]
+        ratios = [three_term_ips(_spec(n), gpu_spec("Tesla V100"), BATCH)[0] / real
+                  for n, real in _measured("Tesla V100").items()]
+    finally:
+        THROUGHPUT_FITS["Tesla V100"] = ref
+    common = sorted(ratios)[len(ratios) // 2]
+    shape = [abs(r / common - 1) for r in ratios]
+    assert 1.0 < common < 1.2
+    assert sum(shape) / len(shape) < 0.16
 
 
 def test_flops_only_is_far_worse_on_the_same_data():
@@ -89,10 +124,11 @@ def test_transfer_keeps_the_relative_cost_on_the_t4():
 
 
 def test_gpu_without_fit_uses_the_transferred_one():
-    fit, calibrated = throughput_fit(gpu_spec("Tesla V100"))
+    a100 = gpu_spec("A100 40GB")                     # no measurements of its own
+    fit, calibrated = throughput_fit(a100)
     ref = THROUGHPUT_FITS[THROUGHPUT_REFERENCE_GPU]
     assert not calibrated
-    assert fit.b_s_per_gb == pytest.approx(ref.b_s_per_gb * 448.0 / 900.0)
+    assert fit.b_s_per_gb == pytest.approx(ref.b_s_per_gb * 448.0 / a100.mem_bw_gbs)
     assert fit.d_s_per_step == ref.d_s_per_step
 
 
@@ -134,8 +170,10 @@ def test_prediction_reports_the_throughput_and_its_source():
     assert p.throughput_model == THROUGHPUT_THREE_TERM
     assert p.train_ips_per_gpu > 0
     assert p.t_compute_s == pytest.approx(5000 / p.train_ips_per_gpu)
-    v = predict("single", "vit_base_patch16_224", "Tesla V100", batch=32, precision="amp")
+    v = predict("single", "vit_base_patch16_224", "A100 40GB", batch=32, precision="amp")
     assert any("datasheet" in n for n in v.notes)
+    v100 = predict("single", "vit_base_patch16_224", "Tesla V100", batch=32, precision="amp")
+    assert not any("datasheet" in n for n in v100.notes)    # measured on VERODE (26/11/2026)
 
 
 def test_vit_base_amp_on_t4_matches_the_measured_speedup():

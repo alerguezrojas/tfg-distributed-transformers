@@ -56,9 +56,9 @@ USABLE_VRAM_FRACTION: float = 0.92
 #   2. Eval draws slightly less power than train: see EVAL_POWER_FRACTION.
 # Effective power lives on GpuSpec.train_power_w (W per GPU); GpuSpec.power_calibrated
 # flags whether it comes from a real measurement (True) or a TDP fallback (False).
-# The measured eval/train power ratio VARIES by GPU (T4 ≈ 0.98, V100 ≈ 0.7–1.0,
-# RTX 3060 Ti ≈ 0.67); 0.9 is a single conservative approximation. Eval is short
-# (forward-only over the small val split), so it is a few % of per-epoch energy.
+# The measured eval/train power ratio VARIES by GPU (T4 ≈ 0.98, V100 0.65, RTX 3060 Ti
+# ≈ 0.67); 0.9 is the default for GPUs without their own GpuSpec.eval_power_fraction. Eval
+# is short (forward-only over the small val split), so it is a few % of per-epoch energy.
 EVAL_POWER_FRACTION: float = 0.9
 # Fraction of nameplate TDP used as the effective-power fallback for GPUs we never
 # measured here (datacenter cards on NFS run well below TDP; ~0.65 is a fair middle).
@@ -122,6 +122,8 @@ class GpuSpec:
     # MEASURED all-reduce bus bandwidth between the GPUs of one machine (GB/s, nccl-tests
     # convention, scripts/measure_allreduce.py); 0 = not measured: INTERCONNECT_BW is used.
     allreduce_busbw_gbs: float = 0.0
+    # MEASURED eval/train power ratio of this GPU; 0 = not measured: EVAL_POWER_FRACTION is used.
+    eval_power_fraction: float = 0.0
 
 
 # fp32 TFLOPS, the measured/typical Tensor-core speedup π, and the effective average
@@ -136,8 +138,12 @@ GPU_TABLE: dict[str, GpuSpec] = {
     # allreduce_t4_kaggle.csv) — a quarter of the PCIe nominal. Measured with 2 GPUs only.
     _T4:             GpuSpec(_T4, 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True, mem_bw_gbs=320.0,
                              allreduce_busbw_gbs=4.05),    # Kaggle: 64 W fp32 ≈ 63 W amp
-    _V100:           GpuSpec(_V100, 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
-    "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),
+    # V100 power: median of the train-phase `potencia media` of 8 PANDA trainings at 512 px with AMP
+    # on verode21 (26/11/2026, logs/verode/panda/single/*/train_26112026_*; 142-218 W by model,
+    # eval/train 0.65, median of the same runs). The former 103 W came from sparse eval-phase
+    # readings (May 2026) and put the energy of every V100 prediction ~45 % low.
+    _V100:           GpuSpec(_V100, 14.0, 3.5, 32.0, "nvlink", train_power_w=181.0, power_calibrated=True, mem_bw_gbs=900.0, eval_power_fraction=0.65),
+    "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=181.0, power_calibrated=True, mem_bw_gbs=900.0, eval_power_fraction=0.65),
     _RTX_3060_TI:    GpuSpec(_RTX_3060_TI, 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True, mem_bw_gbs=448.0),   # local: ~180 W (SSD, compute-bound)
     _RTX_3090:      GpuSpec(_RTX_3090, 35.6, 3.5, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_3090), mem_bw_gbs=936.0),
     _RTX_4090:      GpuSpec(_RTX_4090, 82.6, 4.0, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_4090), mem_bw_gbs=1008.0),
@@ -337,7 +343,13 @@ def precision_factor(gpu: GpuSpec, precision: str) -> float:
 #   * Tesla T4    — 13 architectures at 512 px with batch 16 plus 5 of them at 224 px with
 #     batch 8/16/32/64 (33 points; logs/kaggle/benchmark/throughput_t4_{23,24}112026.csv). Per-model
 #     intercepts 15-40 ms, the fit gives 20 ms. The former fit (512 px only, d = 24 ms) predicted
-#     the 20 new points with 13 % mean error before they were added (out-of-sample).
+#     the 20 new points with 13 % mean error before they were added (out-of-sample);
+#   * Tesla V100  — the same 33-point design on the V100-PCIE-32GB of VERODE (verode21, 26/11/2026;
+#     logs/verode/benchmark/throughput_v100_26112026.csv): 13 % mean error in-sample, 15 % leaving
+#     each model out. d = 34 ms, almost twice the others (hypothesis, not measured: d is host-side and
+#     the node's CPU is older). Before this fit, the datasheet transfer of the 3060 Ti fit predicted these
+#     measurements with 19 % mean error at 512 px (median ×1.09 too optimistic at batch 16; ×1.46 on the T4)
+#     and 36 % at 224 px with batch 8-64, where the 3060 Ti's d (18 ms) falls short.
 # Only measured with AMP (fp16 autocast), so it is applied to amp only; fp32 keeps MFU and bf16
 # (not measured; the T4 and V100 have no native bf16) keeps MFU × π.
 MIXED_PRECISIONS: tuple[str, ...] = ("amp",)
@@ -353,7 +365,9 @@ class ThroughputFit:
 THROUGHPUT_FITS: dict[str, ThroughputFit] = {
     _RTX_3060_TI: ThroughputFit(2.0453e-4, 1.2468e-2, 17.77e-3),
     _T4:          ThroughputFit(3.3620e-4, 3.1241e-2, 20.08e-3),
+    _V100:        ThroughputFit(1.2392e-4, 8.7489e-3, 33.98e-3),
 }
+THROUGHPUT_FITS["V100-PCIE"] = THROUGHPUT_FITS[_V100]      # the same card, by its other table name
 # GPUs without a fit get the reference fit scaled by the datasheets: a by TFLOPS·π, b by DRAM
 # bandwidth (d is host-side and kept). On the T4 this transfer was ×1.5 too optimistic (median
 # ratio of the 13 models, 1.46), mostly in the memory term, while the relative cost of the
@@ -426,10 +440,15 @@ def estimate_power(gpu: GpuSpec, phase: str = "train") -> float:
     """Effective average power (W) for ONE GPU in the given phase ("train"|"eval").
 
     Calibrated from the project's logged `potencia media` (GpuSpec.train_power_w);
-    eval draws ≈EVAL_POWER_FRACTION of train. Power is precision-independent (the
+    eval draws :func:`eval_power_fraction` of train. Power is precision-independent (the
     AMP saving is in TIME, not watts), so precision is not a parameter here."""
     base = gpu.train_power_w if gpu.train_power_w and gpu.train_power_w > 0 else 0.0
-    return base * (EVAL_POWER_FRACTION if phase == "eval" else 1.0)
+    return base * (eval_power_fraction(gpu) if phase == "eval" else 1.0)
+
+
+def eval_power_fraction(gpu: GpuSpec) -> float:
+    """Eval/train power ratio of a GPU: its measured one, or EVAL_POWER_FRACTION."""
+    return gpu.eval_power_fraction if gpu.eval_power_fraction > 0 else EVAL_POWER_FRACTION
 
 
 def split_power_fraction(strategy: str, n_work: int, micro_batches: int = 1) -> float:

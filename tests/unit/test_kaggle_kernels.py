@@ -112,3 +112,12 @@ def test_benchmark_campaigns_are_well_formed():
         assert img_size in (224, 384, 512) and precision in ("amp", "fp32")
         assert batches and all(b.isdigit() for b in batches)
         assert set(models) <= set(bench.MODELS)
+
+
+def test_cluster_sweep_reuses_the_t4_campaigns():
+    sweep = _load("cluster/benchmark/throughput_sweep.py")
+    camps = sweep.campaigns(bench)
+    names = [c[0] for c in camps]
+    assert names[0] == "amp_512" and names[1:] == [c[0] for c in bench.CAMPAIGNS]
+    assert len(set(names)) == len(names)
+    assert camps[0][1:4] == (512, "amp", ["8", "16"]) and camps[0][4] == bench.MODELS

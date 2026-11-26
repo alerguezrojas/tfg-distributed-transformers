@@ -78,6 +78,18 @@ TRAININGS = (
         "maxvit_tiny_tf_512.in1k": ("22112026_234538",),
         "efficientnet_b3": ("22112026_225945",),
     }),
+    # V100 of VERODE, 4 epochs each (cluster/experiments/v100_panda.sh, 26/11/2026). The mosaics
+    # are read from NFS: the first epoch (cold cache) is left out like everywhere else.
+    ("single", "Tesla V100", 1, 16, "logs/verode/panda/single", {
+        "vit_small_patch16_224": ("26112026_190751",),
+        "deit3_small_patch16_224.fb_in22k_ft_in1k": ("26112026_191756",),
+        "swin_tiny_patch4_window7_224": ("26112026_192701",),
+        "convnext_tiny.fb_in22k": ("26112026_193847",),
+        "resnet50": ("26112026_194909",),
+        "efficientnet_b0": ("26112026_195730",),
+        "tf_efficientnetv2_s": ("26112026_200221",),
+        "vit_base_patch16_224.augreg2_in21k_ft_in1k": ("26112026_201101",),
+    }),
 )
 PANDA_TRAIN, PANDA_VAL = 7433, 1593
 
@@ -229,7 +241,7 @@ def main(argv=None) -> None:
               f"2 términos {mean(s2)} (calibrados {mean(s2[~new])}, no calibrados "
               f"{mean(s2[new]) if new.any() else '—'})\n")
     resolution_section(data, feats_at, args.calibration_gpu, args.img_size, md)
-    for gpu in dict.fromkeys((args.calibration_gpu, "Tesla T4")):   # each GPU once
+    for gpu in dict.fromkeys((args.calibration_gpu, "Tesla T4", "Tesla V100")):   # each GPU once
         batch_section(gpu, md)
     trainings_section(md)
 

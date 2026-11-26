@@ -4,6 +4,30 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+### Añadido
+
+- Medidas en la V100 de VERODE (26/11/2026): barrido de throughput con las campañas de la T4
+  (`cluster/benchmark/throughput_sweep.py`, que reutiliza `run_campaigns` del kernel; 79 medidas)
+  y ocho entrenamientos reales de PANDA a 512 px (`cluster/experiments/v100_panda.sh`). Logs en
+  `logs/verode/benchmark/throughput_v100_26112026.csv` y `logs/verode/panda/single/`.
+- PANDA: mosaicos de 36 tiles (`configs/train_panda_36.yaml`, Swin-T a 768 px) y
+  `scripts/panda_tissue_coverage.py`, que mide el tejido que deja fuera un mosaico pequeño: con
+  16 tiles queda fuera el 38 % del que cabe en 36 (el 91 % de las biopsias tiene más de 16 tiles
+  con tejido). Experimento en la V100: `cluster/experiments/v100_panda36.sh`.
+- `data.mosaics` relativo se toma dentro de `data.root` (antes, del directorio de trabajo), para
+  que la config no dependa de la máquina.
+
+### Cambiado
+
+- Predictor: ajuste de tres términos propio de la V100 (`THROUGHPUT_FITS`, d = 34 ms por paso).
+  Sin calibrar, el traslado por hoja técnica dio un 19 % de error en el barrido a 512 px; con
+  entrenamientos reales, el 13 % tanto calibrado como sin calibrar (frente al 30 % de solo
+  FLOPs). Detalle en `docs/performance_model.md` §8.
+- Predictor: potencia de entrenamiento de la V100 de 103 W a 181 W (mediana de los ocho
+  entrenamientos; la energía de las predicciones en V100 salía un 45 % baja).
+- `cluster/README.md`: medidas del predictor en VERODE y dos trampas de su Slurm (`--gres` no
+  vale; `--cpus-per-task` sin `-n 1` lanza varias copias del mismo comando).
+
 ## [1.5.0] - 2026-11-26
 
 ### Añadido
