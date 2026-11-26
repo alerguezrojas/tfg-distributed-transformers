@@ -216,7 +216,8 @@ def test_heterogeneous_energy_not_double_counted():
 
 
 def test_v100_power_matches_documented():
-    assert gpu_spec("Tesla V100").train_power_w == pytest.approx(103, abs=1)
+    # 8 PANDA trainings on verode21 (26/11/2026); it was 103 W from sparse eval-phase readings.
+    assert gpu_spec("Tesla V100").train_power_w == pytest.approx(181, abs=1)
 
 
 def test_tdp_fallback_derives_from_fraction():

@@ -136,8 +136,12 @@ GPU_TABLE: dict[str, GpuSpec] = {
     # allreduce_t4_kaggle.csv) — a quarter of the PCIe nominal. Measured with 2 GPUs only.
     _T4:             GpuSpec(_T4, 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True, mem_bw_gbs=320.0,
                              allreduce_busbw_gbs=4.05),    # Kaggle: 64 W fp32 ≈ 63 W amp
-    _V100:           GpuSpec(_V100, 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),  # Verode: ~103 W avg (eval-phase readings; train pynvml sparse)
-    "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=103.0, power_calibrated=True, mem_bw_gbs=900.0),
+    # V100 power: median of the train-phase `potencia media` of 8 PANDA trainings at 512 px with AMP
+    # on verode21 (26/11/2026, logs/verode/panda/single/*/train_26112026_*; 142-218 W by model,
+    # eval/train 0.65). The former 103 W came from sparse eval-phase readings (May 2026) and put
+    # the energy of every V100 prediction ~45 % low.
+    _V100:           GpuSpec(_V100, 14.0, 3.5, 32.0, "nvlink", train_power_w=181.0, power_calibrated=True, mem_bw_gbs=900.0),
+    "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=181.0, power_calibrated=True, mem_bw_gbs=900.0),
     _RTX_3060_TI:    GpuSpec(_RTX_3060_TI, 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True, mem_bw_gbs=448.0),   # local: ~180 W (SSD, compute-bound)
     _RTX_3090:      GpuSpec(_RTX_3090, 35.6, 3.5, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_3090), mem_bw_gbs=936.0),
     _RTX_4090:      GpuSpec(_RTX_4090, 82.6, 4.0, 24.0, "pcie", train_power_w=_tdp_fallback_power(_RTX_4090), mem_bw_gbs=1008.0),

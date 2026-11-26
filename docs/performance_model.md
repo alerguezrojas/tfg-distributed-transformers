@@ -296,7 +296,8 @@ Two measured facts shape it:
    on 2 × T4 runs of 24/11/2026, see the pipeline bullet in §4; an older model-parallel run gave
    0.83).
 
-Calibrated per GPU: **T4 64 W, V100 103 W, RTX 3060 Ti 180 W** (measured); the rest fall
+Calibrated per GPU: **T4 64 W, V100 181 W (103 W until 26/11/2026, see §8), RTX 3060 Ti 180 W**
+(measured); the rest fall
 back to `0.65 × nameplate TDP` and are flagged `power_calibrated=False`.
 
 **Consequence for DDP:** the total energy is **conserved across GPUs only when
@@ -628,5 +629,58 @@ de Kaggle (16 GB) caben 12 de 13 (`logs/kaggle/benchmark/throughput_t4_24112026.
 `fp32_512`), pero las medidas en fp32 de la T4 son ruidosas (no crecen con el lote y dan
 ordenadas por paso negativas), probablemente por el límite de 70 W: no se usan para ajustar.
 
-**Pendiente.** Validar en una tercera GPU con medidas propias (V100 de VERODE), sin ajustarla, y
-entender el factor común de la T4 para no depender de una medida por GPU.
+### Tercera GPU: la V100 de VERODE (26/11/2026)
+
+Medidas en la V100-PCIE-32GB de `verode21` (límite de 250 W), en dos pasos y en este orden:
+
+1. **Barrido sintético** (`cluster/benchmark/throughput_sweep.py`, las campañas de la T4 más la de
+   AMP a 512 px: 79 medidas, ninguna sin memoria; `logs/verode/benchmark/throughput_v100_26112026.csv`).
+2. **Ocho entrenamientos reales de PANDA** (512 px, AMP, lote 16, 4 épocas; `cluster/experiments/v100_panda.sh`;
+   `logs/verode/panda/single/`), que no intervienen en ningún ajuste.
+
+**Sin calibrar (validación fuera de muestra del traslado por hoja técnica).** Con el ajuste de la
+3060 Ti escalado por TFLOPS·π y ancho de banda, el predictor acertó las medidas sintéticas con un
+19 % de error medio a 512 px (mediana ×1,12 optimista; en la T4 fue ×1,46) y un 36 % a 224 px con
+lotes de 8 a 64, donde se queda corto: el coste fijo por paso de la V100 es casi el doble que el de
+la 3060 Ti. En fp32, donde el predictor aún usa solo FLOPs (MFU), el error es de 114 % a 224 px y
+54 % a 512 px, en las dos direcciones (−40 % en ViT y ResNet, +200 % o más en EfficientNet).
+
+**Calibración (dentro de muestra).** El mismo diseño de 33 medidas que la T4 (13 modelos a 512 px
+con lote 16 y 5 a 224 px con lotes 8-64) da `a = 1,24e-4 s/GFLOP`, `b = 8,75e-3 s/GB` y
+**`d = 34 ms` por paso** (`THROUGHPUT_FITS`): 13 % de error medio, 15 % dejando fuera cada modelo.
+`d` duplica el de las otras dos GPU (18-20 ms) porque es trabajo del procesador del nodo (un Xeon
+Gold 6230N a 2,3 GHz), no de la GPU.
+
+**Validación con entrenamientos reales** (tiempo por época con validación, mediana sin la primera
+época; `scripts/predictor_architecture_study.py`):
+
+| Modelo | Real | Sin calibrar | Calibrado | Solo FLOPs |
+|---|---|---|---|---|
+| ViT-S | 77 s | −2 % | +1 % | +26 % |
+| DeiT-III-S | 80 s | −3 % | +0 % | +22 % |
+| Swin-T | 105 s | −23 % | −14 % | −23 % |
+| ConvNeXt-T | 80 s | −4 % | +8 % | −7 % |
+| ResNet-50 | 65 s | +6 % | +18 % | +6 % |
+| EfficientNet-B0 | 49 s | +42 % | +42 % | +42 % |
+| EfficientNetV2-S | 81 s | −5 % | +16 % | −14 % |
+| ViT-B | 157 s | +18 % | +6 % | +95 % |
+| **\|error\| medio** | | **13 %** | **13 %** | **30 %** |
+
+- **Los tres términos funcionan en una tercera GPU** (13 % frente al 30 % de solo FLOPs), pero la
+  calibración con lotes sintéticos **no mejora** el error medio con entrenamientos reales: acerca
+  los *transformers* (ViT-B +18 → +6 %, Swin-T −23 → −14 %) y aleja las CNN (ResNet-50 +6 → +18 %,
+  EfficientNetV2-S −5 → +16 %). Con datos reales y procesos de carga en paralelo, parte del coste
+  fijo por paso que mide el barrido sintético se solapa.
+- **EfficientNet-B0 (+42 %) no es un fallo del cómputo:** el predictor la da por limitada por el
+  disco (el suelo `DISK_RIO` de SSD, 69 s por época), pero los mosaicos estaban en la caché de RAM
+  del nodo (270 GB) y la época dura 49 s. El término de I/O no conoce la caché.
+- **La primera época es lenta por el disco de red:** el ViT-S tardó 143 s en la primera (lectura en
+  frío desde NFS, con la CPU decodificando a ~62 img/s con 8 procesos) y 77 s en las demás.
+- **Potencia:** entrenando, la V100 gasta **181 W** de mediana (142-218 W según el modelo; evaluando,
+  0,65 de eso). La tabla decía 103 W, sacados de lecturas escasas de la fase de evaluación de mayo,
+  y la energía de toda predicción en V100 salía un 45 % baja: `train_power_w` pasa a 181 W
+  (calibración con estos mismos runs; la validación de la potencia la darán los runs de 36 tiles).
+
+**Pendiente.** Un modelo de tres términos propio de fp32 (la V100 tiene ya las medidas a 512 px que
+en 8 GB no cabían), un término de I/O que distinga disco, caché y decodificación en CPU, y entender
+por qué el coste por paso del barrido sintético no se ve entero en los entrenamientos.

@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 26/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 26/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Versión 1.5.0 (26/11/2026), en `main`.** Recoge lo hecho después de la 1.4.0: la web compara la
@@ -25,10 +25,21 @@ dataset y de conseguir más máquinas. El estudio
 reanudar a mitad de época con `--max-restarts`, predecir el coste de los reinicios y elegir cuántas
 GPU usar, y elasticidad real con lote global fijo.
 
-**Siguiente:** el paso 1 del entrenamiento elástico (reanudar a mitad de época, útil también para
-el límite de 12 h de Kaggle), un término de decodificación en CPU para el I/O del predictor,
-FSDP2/ZeRO-1 y la vista de conjuntos en la web. Pendiente del autor o del tutor: si el entrenamiento
-elástico pasa a ser una línea de trabajo, el dataset nuevo, las máquinas y la VPN de VERODE.
+**VERODE operativo de nuevo (26/11/2026, tarde; rama `exp/v100-throughput`).** Con la VPN, la
+V100 de `verode21` (el único nodo vivo) sirve para dos cosas:
+- **Predictor en una tercera GPU:** barrido sintético (79 medidas) y ocho entrenamientos reales de
+  PANDA. Sin calibrar, 19 % de error en el barrido a 512 px; con entrenamientos reales, 13 %
+  calibrado o no (30 % con solo FLOPs). La potencia de la V100 pasa de 103 a 181 W (medida).
+- **PANDA con más tejido:** con 16 tiles el mosaico deja fuera el 37 % del tejido (el 91 % de las
+  biopsias tiene más de 16 tiles con tejido), lo que explica que 1024 px no subiera el QWK. Swin-T
+  con 36 tiles a 768 px, tres semillas y un control de 16 tiles, en marcha en la V100 (trabajo
+  13305). Los mosaicos de 64 × 192 px están hechos en el SSD local para el paso siguiente.
+
+**Siguiente:** resultados de 36 tiles (si mejoran: 64 tiles y 1536 px sin reducir); modelo de tres
+términos para fp32 con las medidas de la V100; término de I/O con caché y decodificación en CPU;
+el paso 1 del entrenamiento elástico; FSDP2/ZeRO-1 y la vista de conjuntos en la web. Pendiente
+del autor o del tutor: si el entrenamiento elástico pasa a ser una línea de trabajo, el dataset
+nuevo y las máquinas.
 
 **Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
 (Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
