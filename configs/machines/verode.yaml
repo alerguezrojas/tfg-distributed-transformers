@@ -5,4 +5,5 @@ data_roots:
   bigearthnet:
     root: /home/bejeque/alu0101317038/datasets/bigearthnet/BigEarthNet-S2
     metadata_dir: /home/bejeque/alu0101317038/datasets/bigearthnet
+  panda: /home/bejeque/alu0101317038/datasets/panda   # mosaicos copiados del PC (26/11/2026)
 checkpoint_dir: checkpoints/verode
