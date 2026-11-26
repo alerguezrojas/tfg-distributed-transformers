@@ -135,12 +135,14 @@ def gpu_count(run) -> int | None:
 
     Order: the manifest's ``world_size``; the ``Configuración:`` line (``N GPUs`` of DDP, the
     ``devices=a+b`` of model parallel); ``single`` runs use one. A heterogeneous run uses
-    ONE GPU (its other rank is a CPU worker), whatever its ``world_size``."""
+    ONE GPU (its other rank is a CPU worker), whatever its ``world_size``; the strategies that
+    split the model run ONE process (``world_size`` 1) over the cuda devices they list."""
     if run.mode == "heterogeneous":
         return 1
+    split = run.mode in ("model_parallel", "pipeline")
     manifest = read_manifest(getattr(run, "manifest_path", None)) or {}
     world = manifest.get("world_size")
-    if isinstance(world, int) and not isinstance(world, bool) and world > 0:
+    if not split and isinstance(world, int) and not isinstance(world, bool) and world > 0:
         return world
     cfg = read_config_line(run.log_path)
     m = _GPUS_RE.search(cfg.get("batch", ""))

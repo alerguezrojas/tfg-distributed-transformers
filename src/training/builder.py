@@ -93,7 +93,7 @@ class TrainingSessionBuilder:
         self._inspect: set[str] | None = None        # None → not active
         self._batch_log_every: int | None = None     # None → use cfg or default
         self._hetero_local_batch_size: int | None = None  # None → standard DDPTrainer
-        self._model_parallel: tuple | None = None     # None → not model-parallel; else (devices, split_block)
+        self._model_parallel: tuple | None = None     # None → not model-parallel; else (devices, split_block, micro_batches)
         self._output_mode: str | None = None         # None → "ddp"/"single" por defecto
         self._monitor: bool = False                   # --monitor (or monitor.enabled)
 
@@ -153,14 +153,16 @@ class TrainingSessionBuilder:
         self._hetero_local_batch_size = max(1, local_batch_size)
         return self
 
-    def with_model_parallel(self, devices, split_block: int | None = None) -> "TrainingSessionBuilder":
+    def with_model_parallel(self, devices, split_block: int | None = None,
+                            micro_batches: int = 1) -> "TrainingSessionBuilder":
         """Split the model across ``devices`` (pipeline model parallelism).
 
         Builds a ModelParallelViT and a ModelParallelTrainer (single process) so the
         whole decorator stack applies — the model-parallel run gets the same metrics
-        as single/DDP. ``devices`` is a list like ``["cuda:0", "cuda:1"]``.
+        as single/DDP. ``devices`` is a list like ``["cuda:0", "cuda:1"]``;
+        ``micro_batches > 1`` pipelines each batch GPipe-style (the ``pipeline`` strategy).
         """
-        self._model_parallel = (list(devices), split_block)
+        self._model_parallel = (list(devices), split_block, int(micro_batches))
         return self
 
     def with_output_mode(self, mode: str) -> "TrainingSessionBuilder":
@@ -192,7 +194,7 @@ class TrainingSessionBuilder:
         freeze_backbone = bool(cfg["model"].get("freeze_backbone", False))
         if self._model_parallel is not None:
             from src.models.model_parallel import build_model_parallel_vit
-            mp_devices, mp_split = self._model_parallel
+            mp_devices, mp_split, mp_micro = self._model_parallel
             model = build_model_parallel_vit(
                 model_name=model_name,
                 num_classes=spec.num_classes,
@@ -202,6 +204,7 @@ class TrainingSessionBuilder:
                 in_chans=spec.in_channels,
                 dropout=dropout,
                 img_size=cfg["model"].get("img_size"),
+                micro_batches=mp_micro,
             )
         else:
             model = build_model(

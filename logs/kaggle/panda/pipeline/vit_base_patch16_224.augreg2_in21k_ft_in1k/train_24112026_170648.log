@@ -1,0 +1,42 @@
+2026-11-24 17:06:55 [INFO ] Configuración: modelo=vit_base_patch16_224.augreg2_in21k_ft_in1k | paralelismo=pipeline(GPipe) | micro_batches=8 | devices=cuda:0+cuda:1 | split_block=auto | batch=16 (global) | epochs=3 | lr=0.0001 | precision=amp | loss=ce | train=7433 | val=1593 | dataset=panda | seed=42 | freeze_backbone=false | backbone=timm
+2026-11-24 17:06:55 [INFO ] Iniciando entrenamiento — 3 epochs
+2026-11-24 17:06:55 [INFO ] 
+── Epoch 001/003 ────────────────────────────
+2026-11-24 17:11:13 [INFO ] [energy] Trainer.train_epoch: 30106.9 J  (8.36304 Wh)  potencia media 128.6 W
+2026-11-24 17:11:37 [INFO ] [energy] Trainer.eval_epoch: 2408.6 J  (0.66905 Wh)  potencia media 119.8 W
+2026-11-24 17:11:37 [INFO ]   loss           train=1.4039  val=1.2032
+2026-11-24 17:11:37 [INFO ]   f1             train=0.3627  val=0.4548
+2026-11-24 17:11:37 [INFO ]   accuracy       train=0.4325  val=0.5292
+2026-11-24 17:11:37 [INFO ]   precision      val=0.4914
+2026-11-24 17:11:37 [INFO ]   recall         val=0.4638
+2026-11-24 17:11:37 [INFO ]   qwk            val=0.6871
+2026-11-24 17:11:37 [INFO ]   auc            val=0.8280
+2026-11-24 17:11:37 [INFO ] [Epoch 001] Checkpoint guardado
+2026-11-24 17:11:38 [INFO ]   ETA: 0h 09m  (258s/epoch, best_qwk=0.6871)
+2026-11-24 17:11:38 [INFO ] 
+── Epoch 002/003 ────────────────────────────
+2026-11-24 17:15:57 [INFO ] [energy] Trainer.train_epoch: 30384.9 J  (8.44025 Wh)  potencia media 129.3 W
+2026-11-24 17:16:20 [INFO ] [energy] Trainer.eval_epoch: 2327.6 J  (0.64655 Wh)  potencia media 119.4 W
+2026-11-24 17:16:20 [INFO ]   loss           train=1.2570  val=1.2201
+2026-11-24 17:16:20 [INFO ]   f1             train=0.4315  val=0.4428
+2026-11-24 17:16:20 [INFO ]   accuracy       train=0.5028  val=0.5217
+2026-11-24 17:16:20 [INFO ]   precision      val=0.4858
+2026-11-24 17:16:20 [INFO ]   recall         val=0.4722
+2026-11-24 17:16:20 [INFO ]   qwk            val=0.7212
+2026-11-24 17:16:20 [INFO ]   auc            val=0.8294
+2026-11-24 17:16:21 [INFO ] [Epoch 002] Checkpoint guardado
+2026-11-24 17:16:26 [INFO ]   ETA: 0h 04m  (259s/epoch, best_qwk=0.7212)
+2026-11-24 17:16:26 [INFO ] 
+── Epoch 003/003 ────────────────────────────
+2026-11-24 17:20:45 [INFO ] [energy] Trainer.train_epoch: 30408.6 J  (8.44684 Wh)  potencia media 129.6 W
+2026-11-24 17:21:08 [INFO ] [energy] Trainer.eval_epoch: 2350.1 J  (0.65282 Wh)  potencia media 119.3 W
+2026-11-24 17:21:08 [INFO ]   loss           train=1.0019  val=1.0214
+2026-11-24 17:21:08 [INFO ]   f1             train=0.5443  val=0.5379
+2026-11-24 17:21:08 [INFO ]   accuracy       train=0.6089  val=0.6014
+2026-11-24 17:21:08 [INFO ]   precision      val=0.5516
+2026-11-24 17:21:08 [INFO ]   recall         val=0.5425
+2026-11-24 17:21:08 [INFO ]   qwk            val=0.7775
+2026-11-24 17:21:08 [INFO ]   auc            val=0.8790
+2026-11-24 17:21:09 [INFO ] [Epoch 003] Checkpoint guardado
+2026-11-24 17:21:12 [INFO ]   ETA: 0h 00m  (259s/epoch, best_qwk=0.7775)
+2026-11-24 17:21:12 [INFO ] Entrenamiento completado — mejor Val QWK: 0.7775

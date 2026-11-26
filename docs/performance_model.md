@@ -104,6 +104,47 @@ Gustafson on the predicted curve.
 * **model-parallel** (naive pipeline): stages serialize → `T ≈ N/r_c + transfer ≥
   T_single` → `S ≈ 1`. It does not accelerate; it exists to **fit models too big
   for one GPU** (vit_large OOMs on one T4, trains split across two).
+* **pipeline** (GPipe, since 24/11/2026): the same split into `p = n` stages, but each batch
+  goes through in `m` micro-batches, so while stage 1 runs micro-batch `i`, stage 0 runs `i+1`.
+  Each GPU idles `(p−1)/(m+p−1)` of the step (the *bubble*):
+  `T ≈ N/r_c' · (m+p−1)/(m·p) + transfer`, with `1/r_c' = 1/r_c(b) + c·(m−1)/b`: the
+  throughput of the **full** batch `b` (the fixed cost per step `d` of the three-term model is
+  paid once per step) plus `c = PIPELINE_MICRO_BATCH_COST_S = 3.4 ms` per extra micro-batch.
+  So `S ≈ m·p/(m+p−1)` (1.6× with 2 GPUs and 4 micro-batches) when the stages are balanced and
+  `c` is small next to the compute of a micro-batch. Power per GPU is linear in the busy
+  fraction, `train_power_w · (0.664 + 0.390 · m/(m+p−1))` (naive model parallelism is `m = 1`).
+  **Calibrated and validated on 2 × T4 (24/11/2026, Kaggle, ViT-B, 512 px;
+  [panda.md](datasets/panda.md#pipeline-gpipe-en-las-dos-t4-24112026)):**
+  `c` and the power line are fitted to the batch-16 runs with `m` = 1/2/4/8 and checked out of
+  sample on two runs with 1-image micro-batches (`m = 16` at batch 16, `m = 8` at batch 8):
+
+  | Run | Epoch time, measured | Predicted | Error | Power (2 GPU), measured | Predicted |
+  |---|---|---|---|---|---|
+  | model parallel (`m = 1`) | 430 s | 455 s | +6 % | 109.7 W | 110.0 W |
+  | `m = 2` | 335 s | 351 s | +5 % | 118.8 W | 118.3 W |
+  | `m = 4` | 296 s | 301 s | +1 % | 125.0 W | 124.9 W |
+  | `m = 8` | 282 s | 278 s | −1 % | 129.2 W | 129.4 W |
+  | `m = 16`, batch 16 (validation) | 287 s | 272 s | **−5 %** | 131.7 W | 132.0 W |
+  | `m = 8`, batch 8 (validation) | 306 s | 296 s | **−3 %** | 132.0 W | 129.4 W |
+
+  Before (fixed cost `d` charged to every micro-batch, interpolated power) the validation runs
+  erred +19 %; charging `d` once per step and nothing per micro-batch, −10 % and −8 %. Caveat:
+  the value of `c` is fitted without the validation runs, but the *form* (a cost per micro-batch)
+  was chosen after seeing them (16 micro-batches ran slower than 8). The predictor caps `m` at the
+  batch size, as `ModelParallelViT` does, and notes that power and `c` are extrapolated outside
+  the T4 with AMP. The
+  measured speedups over one T4 are ×1.38, ×1.56 and ×1.64 with 2, 4 and 8 micro-batches (ideal
+  ×1.33, ×1.60, ×1.78), despite the host-staged copy between the T4s. Naive model parallelism ran
+  7 % *faster* than one T4: the 70 W cap throttles a fully busy T4 to 720 MHz, while each
+  half-busy T4 stays under it (and that is why the power fraction exceeds 1 near `busy = 1`:
+  the reference 64 W is a capped single T4). The stages are unbalanced (GPU 0 at 88 % vs GPU 1 at
+  74 % with m = 8). Both constants come from the T4 only. The implementation has 2 stages;
+  `--layers hooks` synchronizes CPU and GPU on every layer and cancels the overlap.
+* **VRAM of the split strategies**: each GPU holds `1/p` of the weights, optimizer state and
+  activations (GPipe keeps those of every micro-batch until the backward), plus its own CUDA
+  overhead. Before 24/11/2026 the predictor put the whole model on one GPU and flagged OOM in the
+  very case the strategy exists for (vit_large, batch 48, fp32 trained split over 2 × T4:
+  `logs/kaggle/model_parallel/vit_large_patch16_224/train_10062026_214332`).
 * **heterogeneous** (GPU + CPU, synchronous DDP): the slowest rank sets the pace.
   Ceiling `S ≤ 1 + r_CPU/r_GPU ≈ 1.02×`; in practice 0.12× from the synchronous
   barrier + gloo/Ethernet overhead. Imbalanced hardware penalizes.
@@ -178,7 +219,7 @@ images, `--monitor`. "Real" is the median train time per epoch of the run's `epo
 
 | Run | Predicted train/epoch | Real train/epoch | Error | Predicted regime | Measured |
 |---|---|---|---|---|---|
-| 512 px (`20112026_163243`) | 73 s | 122 s | −40 % | I/O-bound | GPU util. median 71 %, data wait 1.9 % |
+| 512 px (`20112026_163243`) | 73 s | 122 s | −40 % | I/O-bound ³ | GPU util. median 71 %, data wait 1.9 % |
 | 1024 px (`20112026_171003`) | 523 s | 620 s | −16 % | compute-bound | GPU util. 100 %, data wait 0.4 % |
 | VRAM per GPU, 1024 px | 4.9 GB | 7.0 GB median (nvidia-smi) | — | fits | fits (15.0 GB peak with the monitor's Grad-CAM) |
 
@@ -194,6 +235,11 @@ Both times are **under-estimated**, and the regime is only half right:
 * The memory model gives the PyTorch peak of the training step; nvidia-smi adds the CUDA context
   and the allocator's cache, so the two are not the same quantity. A peak from
   `torch.cuda.max_memory_allocated` is needed to settle it.
+
+³ *24/11/2026:* that "I/O-bound" label came from a bug in the bottleneck test (it divided the
+wall-clock compute time by the GPU count a second time). With the same numbers the compute term
+(85 s) exceeded the disk one (57 s), so the predictor actually said compute-bound; the regime
+discussion below is about the label, not the predicted times, which are unchanged.
 
 These rows are **validation, not calibration**: no constant was changed after seeing them. They
 point at two missing terms (sustained clock under a power cap, efficiency at small per-GPU
@@ -234,7 +280,7 @@ the project's own `--fn energy` logs (the `potencia media XX W` lines):
 
 ```
 energy_train_wh = power_total · time_train_s / 3600
-power_total     = train_power_w(gpu) · n_working_gpus            (× 0.83 for model-parallel)
+power_total     = train_power_w(gpu) · n_working_gpus · f_split   (f_split = 1 unless split)
 energy_eval_wh  = 0.9 · train_power_w · n · time_eval_s / 3600   (eval ≈ 0.9× train power)
 ```
 
@@ -244,9 +290,11 @@ Two measured facts shape it:
    energy by finishing ~4× faster — through **time** — not by drawing less power. So
    precision is not a parameter of the power, only of the time.
 2. **n_working_gpus**: `single`/`heterogeneous` = 1 (the heterogeneous second worker is
-   a CPU, not a GPU), `ddp`/`model_parallel` = n. Naive model-parallel keeps both GPUs
-   powered but idling between stages, so each draws ~0.83× (calibrated from the 2×T4 MP
-   run: 106 W ≈ 0.83 × 2 × 64 W).
+   a CPU, not a GPU), `ddp`/`model_parallel`/`pipeline` = n. The split strategies keep every
+   GPU powered but idling part of the step, so each draws
+   `f_split = 0.664 + 0.390 · m/(m+p−1)` (0.86 for naive model parallelism on 2 GPUs; calibrated
+   on 2 × T4 runs of 24/11/2026, see the pipeline bullet in §4; an older model-parallel run gave
+   0.83).
 
 Calibrated per GPU: **T4 64 W, V100 103 W, RTX 3060 Ti 180 W** (measured); the rest fall
 back to `0.65 × nameplate TDP` and are flagged `power_calibrated=False`.
@@ -515,17 +563,22 @@ medido y sigue con la MFU × π):
   - RTX 3060 Ti: ajuste conjunto con 45 medidas (10 arquitecturas a 224, 384 y 512 px con lote 16,
     y 5 de ellas a 224 px con lotes 8, 32 y 64). Da a = 2,05·10⁻⁴ s/GFLOP, b = 1,25·10⁻² s/GB y
     d = 18 ms por paso.
-  - T4: 13 arquitecturas, solo a 512 px y con lote 16 (3,35·10⁻⁴, 3,10·10⁻² y 24 ms).
+  - T4: ajuste conjunto con 33 medidas (13 arquitecturas a 512 px con lote 16, y 5 de ellas a
+    224 px con lotes 8, 16, 32 y 64; kernel `kaggle/benchmark_t4`, 24/11/2026): a = 3,36·10⁻⁴,
+    b = 3,12·10⁻² y d = 20 ms.
 
   Ambos son calibración: cada GPU reproduce sus propias medidas a 512 px con un error medio del
-  8,3 % (3060 Ti) y del 11,6 % (T4).
+  8,3 % (3060 Ti) y del 11,4 % (T4).
 - **El coste fijo por paso (d/B) está medido.** Sin variar el lote, d no se puede separar de los
   términos por imagen: el primer ajuste, solo a 512 px y lote 16, daba 30 ms y con lote 8 se
   quedaba un 30 % corto. El barrido de lotes de la 3060 Ti (`logs/local/benchmark/
   benchmark_23112026_223*`) da, para cada modelo, un tiempo por paso que crece en línea recta
   con el lote. La ordenada en el origen es de 12-20 ms según el modelo, y el ajuste conjunto
   da 18 ms. Error por lote: 13 % (8), 8 % (16), 9 % (32) y 8 % (64). Dejando fuera cada modelo
-  entero, el error es del 11 %. En la T4 no se ha variado el lote: su d (24 ms) es un supuesto.
+  entero, el error es del 11 %. En la T4 el mismo barrido da ordenadas de 15-40 ms por modelo y
+  el ajuste conjunto, 20 ms (13 % de error; 14 % dejando fuera cada modelo). **Validación fuera de
+  muestra:** el ajuste anterior de la T4, solo con 512 px y lote 16 (d = 24 ms), predijo las 20
+  medidas nuevas a 224 px con lotes 8-64 con un 13 % de error medio antes de incorporarlas.
 - **GPU sin medidas** (V100, A100…): los coeficientes de la 3060 Ti se escalan por TFLOPS·π y
   por el ancho de banda (`GpuSpec.mem_bw_gbs`, de las hojas de NVIDIA). La predicción lleva una
   nota: el coste relativo entre arquitecturas se sostiene (11 % en la T4 con los tres términos),
@@ -546,11 +599,12 @@ La última sección de `scripts/predictor_architecture_study.py` lo reproduce:
 | Entrenamientos | Modelos | Solo FLOPs | 3 términos | Peor caso (3 términos) |
 |---|---|---|---|---|
 | 1 × RTX 3060 Ti, lote 16 | 8 | 20 % | **8 %** | Swin-T −22 % |
-| 2 × T4 (Kaggle, DDP), 8 por GPU | 7 | 47 % | **17 %** | SwinV2-T −31 % |
+| 2 × T4 (Kaggle, DDP), 8 por GPU | 7 | 45 % | **15 %** | SwinV2-T −29 % |
 
-Con 2 × T4, MaxViT-T pasa de −69 % a +1 % y ConvNeXt-S de −42 % a −6 %. Siguen quedándose cortos
+Con 2 × T4, MaxViT-T pasa de −67 % a +3 % y ConvNeXt-S de −37 % a −1 % (cifras con el all-reduce
+medido y el ajuste conjunto de la T4, 24/11/2026). Siguen quedándose cortos
 la familia Swin, por el mismo motivo que en el estudio (operaciones pequeñas que no son ni FLOPs
-ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−28 % y −20 %): son los dos runs en los que se
+ni bytes), y ViT-S y EfficientNet-B3 en Kaggle (−26 % y −19 %): son los dos runs en los que se
 sospecha que manda la CPU de Kaggle (sección 4, "Revisión"), algo que el predictor no modela.
 
 **Lo que gana AMP depende de la arquitectura (24/11/2026).** El predictor en fp32 multiplica por un
@@ -569,7 +623,10 @@ las filas AMP del estudio), el cociente AMP/fp32 va de **×1,0 a ×3,4**:
 Con lotes pequeños manda el coste fijo por paso, que AMP no acelera. EfficientNet, con mucho
 tráfico de memoria, gana poco; los ViT a 512 px, con mucho cálculo en matrices grandes, ganan más
 que el π de la tabla. Un modelo de tres términos propio de fp32 necesita medidas a 512 px, que en
-8 GB no caben (8 de 10 modelos se quedan sin memoria con lote 16); queda para una GPU mayor.
+8 GB no caben (8 de 10 modelos se quedan sin memoria con lote 16); queda para una GPU mayor. En la T4
+de Kaggle (16 GB) caben 12 de 13 (`logs/kaggle/benchmark/throughput_t4_24112026.csv`, campaña
+`fp32_512`), pero las medidas en fp32 de la T4 son ruidosas (no crecen con el lote y dan
+ordenadas por paso negativas), probablemente por el límite de 70 W: no se usan para ajustar.
 
 **Pendiente.** Validar en una tercera GPU con medidas propias (V100 de VERODE), sin ajustarla, y
 entender el factor común de la T4 para no depender de una medida por GPU.

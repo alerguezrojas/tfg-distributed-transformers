@@ -108,3 +108,42 @@ def test_builder_helper():
     mp = build_model_parallel_vit(MODEL, pretrained=False, devices=["cpu", "cpu"], split_block=4)
     assert isinstance(mp, ModelParallelViT)
     assert mp.split_block == 4
+
+
+# ── GPipe: micro-batches (24/11/2026) ─────────────────────────────────────────
+
+@pytest.mark.parametrize("micro", [2, 3, 4, 8])
+def test_micro_batches_give_the_same_logits(base_model, micro):
+    """Pipelining only changes WHEN each micro-batch runs, not the math (eval mode: no dropout;
+    LayerNorm is per sample, so splitting the batch does not change any output)."""
+    x = torch.randn(6, 3, 224, 224)
+    whole = ModelParallelViT(base_model, devices=["cpu", "cpu"])
+    with torch.no_grad():
+        ref = whole(x)
+        piped = ModelParallelViT(base_model, devices=["cpu", "cpu"], micro_batches=micro)(x)
+    assert torch.allclose(piped, ref, atol=1e-5)
+
+
+def test_micro_batches_accumulate_the_same_gradients(base_model):
+    """One backward over the concatenated logits = the gradient of the whole batch."""
+    x = torch.randn(4, 3, 224, 224)
+    grads = []
+    for micro in (1, 4):
+        model = ModelParallelViT(base_model, devices=["cpu", "cpu"], micro_batches=micro)
+        model.zero_grad()
+        model(x).sum().backward()
+        grads.append({n: p.grad.clone() for n, p in model.named_parameters() if p.grad is not None})
+    assert grads[0].keys() == grads[1].keys()
+    for name in grads[0]:
+        assert torch.allclose(grads[0][name], grads[1][name], atol=1e-4), name
+
+
+def test_more_micro_batches_than_images_is_fine(base_model):
+    model = ModelParallelViT(base_model, devices=["cpu", "cpu"], micro_batches=8)
+    with torch.no_grad():
+        assert model(torch.randn(2, 3, 224, 224)).shape[0] == 2
+
+
+def test_invalid_micro_batches_raises(base_model):
+    with pytest.raises(ValueError):
+        ModelParallelViT(base_model, devices=["cpu", "cpu"], micro_batches=0)

@@ -6,16 +6,29 @@
 
 ## Estado actual
 
-> Actualizado el 23/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 26/11/2026. Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
-**Versión 1.4.0 (24/11/2026), en `main`.** Recoge las fases 0-4 del plan de profesionalización
-(errores, `paravit doctor` y perfiles de máquina, lanzador único, web, Slurm y Apptainer), la
-acumulación de gradientes y el *activation checkpointing*, el predictor de tres términos con AMP y
-el all-reduce en anillo con el ancho de banda medido, los resultados de Kaggle (una T4 frente a
-dos) y la limpieza de los avisos de SonarCloud y CodeQL. En curso: medidas de la T4 en Kaggle
-(barrido de lotes y fp32, kernel `benchmark_t4`) y el punto C2 de la web (estimación frente a
-medida con el manifiesto del run).
+**Versión 1.5.0 (26/11/2026), en `main`.** Recoge lo hecho después de la 1.4.0: la web compara la
+estimación con el tiempo real de cada run usando su manifiesto (PR #272, punto C2); el coste fijo
+por paso de la T4 medido con un barrido de lotes en Kaggle (20 ms; error del 15 % frente a los
+entrenamientos reales en 2 × T4; PR #273); los literales repetidos de SonarCloud (PR #274); la
+estrategia **`pipeline` (GPipe)** con micro-lotes (PR #276), medida en Kaggle (PR #279: ×1,38,
+×1,56 y ×1,64 frente a una T4 con 2, 4 y 8 micro-lotes, mismo QWK) y calibrada en el predictor
+(PR #282: coste fijo una vez por paso más 3,4 ms por micro-lote extra y potencia que crece con la
+fracción ocupada de cada GPU; en validación, tiempo −5 y −3 %, potencia +0,2 y −2 %); y el estudio
+del entrenamiento elástico (PR #280).
+
+**Reunión del 24/11:** el tutor propone mirar el entrenamiento elástico y se ocupa de lo del
+dataset y de conseguir más máquinas. El estudio
+([`research/entrenamiento_elastico.md`](research/entrenamiento_elastico.md)) propone tres pasos:
+reanudar a mitad de época con `--max-restarts`, predecir el coste de los reinicios y elegir cuántas
+GPU usar, y elasticidad real con lote global fijo.
+
+**Siguiente:** el paso 1 del entrenamiento elástico (reanudar a mitad de época, útil también para
+el límite de 12 h de Kaggle), un término de decodificación en CPU para el I/O del predictor,
+FSDP2/ZeRO-1 y la vista de conjuntos en la web. Pendiente del autor o del tutor: si el entrenamiento
+elástico pasa a ser una línea de trabajo, el dataset nuevo, las máquinas y la VPN de VERODE.
 
 **Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
 (Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,
@@ -100,6 +113,12 @@ de etiquetas ruidosas, más adelante. Detalle en [research/panda.md](research/pa
 **Reunión con el tutor del 20/11/2026:** informe con las mejoras de PANDA, medidas clínicas,
 generalización entre hospitales, Grad-CAM y lista de lo que pedir del dataset del médico (fuera
 del repo, en la carpeta de reuniones del autor).
+
+**Reunión con el tutor del 24/11/2026:** informe de seguimiento (conjunto de seis modelos con
+kappa 0,85, predictor de tres términos integrado, herramienta y clúster; fuera del repo, en la
+carpeta de reuniones del autor). Salió bien. El tutor propone estudiar el **entrenamiento
+elástico** (*elastic training*: seguir entrenando cuando cambian los recursos) como línea para el
+proyecto, y está gestionando el dataset del contacto médico y el acceso a más máquinas.
 
 **Hecho:**
 - **Versión 1.3.0 en `main` (21/11/2026):** OUSM, limpieza de etiquetas fuera de pliegue,
@@ -300,14 +319,16 @@ un aviso, no detiene el run). Pendientes de la fase 4: `paravit explain` con la 
 de cordura de Grad-CAM.
 
 **Decisiones pendientes del autor o del tutor:**
-- Dataset del contacto médico del tutor: qué se puede pedir y cuándo (lista en
-  [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
+- Dataset del contacto médico del tutor (24/11: el tutor está en contacto): qué se puede pedir
+  y cuándo (lista en [research/medicion_clinica_prostata.md](research/medicion_clinica_prostata.md)).
 - Pedir la preparación y los resultados del TFG previo que usó PANDA (referencia para compararse).
 - Si se acepta `pytorch-grad-cam` (MIT) como dependencia para los mapas de explicación.
 - Elegir el enfoque de la contribución entre los tres de
   [`docs/research/estado_del_arte_prediccion.md`](research/estado_del_arte_prediccion.md).
 - Reevaluar el checkpoint v4 del TFG en Verode con el umbral de validación (fue 0,40).
-- Máquinas nuevas a las que dará acceso el tutor (aún sin concretar).
+- Máquinas nuevas a las que dará acceso el tutor (24/11: las está gestionando).
+- Entrenamiento elástico (propuesta del tutor, 24/11): decidir si entra como línea de trabajo
+  tras el estudio de `docs/research/entrenamiento_elastico.md`.
 - En cada clon nuevo, instalar el pre-commit una vez (ya instalado en el equipo local):
   `uvx pre-commit install --hook-type pre-commit --hook-type commit-msg`.
 
@@ -349,7 +370,7 @@ formato, decodificación), y el I/O es justo donde el predictor falla más (+130
 4. **Sincronización simplificada:** `8P/β` por batch, sin solapamiento con el backward, sin factor
    de ring all-reduce, sin latencia y sin multinodo.
 5. **Constantes ad hoc** calibradas con un solo run (heterogéneo `/50` y `×2.0`, MP `×0.25`,
-   NFS φ=1,3, potencia MP 0,83).
+   NFS φ=1,3; la potencia MP, 0,83 con un run, pasó el 24/11/2026 a un ajuste con 4 runs y 2 de validación).
 6. **Solo estimaciones puntuales**, sin intervalos de incertidumbre.
 7. **El prior de calidad (F1)** no se transfiere a otros datasets.
 
@@ -530,5 +551,5 @@ que funcione con cualquier dataset, incluido el que envíe el tutor.
 - [ ] Dataset de medidas y herramienta publicados con DOI.
 
 ### Ideas aparcadas
-FSDP/ZeRO · pipeline con micro-batches (GPipe/1F1B) · gradient checkpointing · GPUs heterogéneas en
+FSDP/ZeRO · pipeline 1F1B (GPipe ya está, PR #276) · GPUs heterogéneas en
 el predictor · formato de lectura rápida (LMDB/WebDataset) · focal loss a escala en VERODE.

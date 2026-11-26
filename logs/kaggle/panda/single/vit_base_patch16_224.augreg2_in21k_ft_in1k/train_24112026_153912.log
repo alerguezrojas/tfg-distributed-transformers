@@ -1,0 +1,36 @@
+2026-11-24 15:39:36 [INFO ] Configuración: modelo=vit_base_patch16_224.augreg2_in21k_ft_in1k | batch=16/GPU (global=16) | epochs=3 | lr=0.0001 | precision=amp | loss=ce | train=7433 | val=1593 | dataset=panda | seed=42 | freeze_backbone=false | backbone=timm
+2026-11-24 15:39:36 [INFO ] Iniciando entrenamiento — 3 epochs
+2026-11-24 15:39:52 [INFO ] 
+── Epoch 001/003 ────────────────────────────
+2026-11-24 15:47:49 [INFO ]   loss           train=1.4061  val=1.2047
+2026-11-24 15:47:49 [INFO ]   f1             train=0.3690  val=0.4532
+2026-11-24 15:47:49 [INFO ]   accuracy       train=0.4372  val=0.5298
+2026-11-24 15:47:49 [INFO ]   precision      val=0.4958
+2026-11-24 15:47:49 [INFO ]   recall         val=0.4610
+2026-11-24 15:47:49 [INFO ]   qwk            val=0.6881
+2026-11-24 15:47:49 [INFO ]   auc            val=0.8278
+2026-11-24 15:47:49 [INFO ] [Epoch 001] Checkpoint guardado
+2026-11-24 15:47:50 [INFO ]   ETA: 0h 15m  (438s/epoch, best_qwk=0.6881)
+2026-11-24 15:48:04 [INFO ] 
+── Epoch 002/003 ────────────────────────────
+2026-11-24 15:55:46 [INFO ]   loss           train=1.2581  val=1.1870
+2026-11-24 15:55:46 [INFO ]   f1             train=0.4296  val=0.4651
+2026-11-24 15:55:46 [INFO ]   accuracy       train=0.4983  val=0.5436
+2026-11-24 15:55:46 [INFO ]   precision      val=0.5050
+2026-11-24 15:55:46 [INFO ]   recall         val=0.4894
+2026-11-24 15:55:46 [INFO ]   qwk            val=0.7288
+2026-11-24 15:55:46 [INFO ]   auc            val=0.8363
+2026-11-24 15:55:47 [INFO ] [Epoch 002] Checkpoint guardado
+2026-11-24 15:55:55 [INFO ]   ETA: 0h 07m  (435s/epoch, best_qwk=0.7288)
+2026-11-24 15:56:07 [INFO ] 
+── Epoch 003/003 ────────────────────────────
+2026-11-24 16:03:49 [INFO ]   loss           train=1.0018  val=1.0171
+2026-11-24 16:03:49 [INFO ]   f1             train=0.5477  val=0.5474
+2026-11-24 16:03:49 [INFO ]   accuracy       train=0.6123  val=0.6070
+2026-11-24 16:03:49 [INFO ]   precision      val=0.5591
+2026-11-24 16:03:49 [INFO ]   recall         val=0.5538
+2026-11-24 16:03:49 [INFO ]   qwk            val=0.7823
+2026-11-24 16:03:49 [INFO ]   auc            val=0.8808
+2026-11-24 16:03:50 [INFO ] [Epoch 003] Checkpoint guardado
+2026-11-24 16:03:50 [INFO ]   ETA: 0h 00m  (434s/epoch, best_qwk=0.7823)
+2026-11-24 16:04:03 [INFO ] Entrenamiento completado — mejor Val QWK: 0.7823

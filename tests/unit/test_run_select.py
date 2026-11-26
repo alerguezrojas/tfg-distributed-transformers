@@ -156,3 +156,11 @@ def test_bigearthnet_paths_missing_data_gives_none(tmp_path):
     paths = bigearthnet_paths(environ={}, machines_dir=machines)
     assert paths.root is None and paths.metadata is None
     assert bigearthnet_paths(environ={"PARAVIT_MACHINE": "ghost"}, machines_dir=machines).root is None
+
+
+def test_gpu_count_of_split_strategies_ignores_world_size(tmp_path):
+    p = tmp_path / "train_p.log"
+    p.write_text("Configuración: modelo=x | paralelismo=pipeline(GPipe) | devices=cuda:0+cuda:1\n")
+    run = RunInfo(timestamp="p", log_path=p, trace_mode="simple", mode="pipeline")
+    run.manifest_path = write_manifest(tmp_path / "run_p.json", build_manifest({"world_size": 1}))
+    assert gpu_count(run) == 2          # one process, two GPUs

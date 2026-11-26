@@ -334,3 +334,15 @@ def test_monitor_with_trace_off_warns(tmp_path, monkeypatch, toy):
     cfg = _cfg(tmp_path, spec, monitor={"enabled": True})
     with pytest.warns(RuntimeWarning, match="trace off"):
         TrainingSessionBuilder(cfg, torch.device("cpu"), timestamp="t").with_trace("off").build()
+
+
+def test_gradcam_of_a_pipelined_model_covers_every_image():
+    """GPipe fires the hooks once per micro-batch: Grad-CAM must still give one map per image
+    (it runs its forward on the whole batch) and leave the micro-batches as they were."""
+    from src.models.model_parallel import ModelParallelViT
+    from src.models.vit import build_model
+    base = build_model("vit_tiny_patch16_224", num_classes=3, pretrained=False).eval()
+    piped = ModelParallelViT(base, devices=["cpu", "cpu"], micro_batches=4)
+    maps = grad_cam(piped, base, torch.randn(8, 3, 224, 224), torch.zeros(8, dtype=torch.long))
+    assert maps.shape == (8, 14, 14)
+    assert piped.micro_batches == 4

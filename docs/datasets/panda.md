@@ -638,6 +638,59 @@ separado" de la fase 5 del roadmap.
 Logs: `logs/kaggle/panda/single/{vit_small_patch16_224,swin_tiny_patch4_window7_224}/train_23112026_{201600,210702}`
 y `logs/kaggle/panda/ddp/vit_small_patch16_224/train_23112026_222556` (2 procesos de carga).
 
+### Pipeline (GPipe) en las dos T4 (24/11/2026)
+
+Lote `pipeline_512` del kernel de Kaggle: ViT-B (`augreg2_in21k_ft_in1k`) a 512 px, AMP, lote
+global 16, 3 épocas, semilla 42, en una sola máquina con dos T4. Se compara una T4 (`single`), el
+modelo partido sin solapamiento (`model_parallel`) y el pipeline con 2, 4 y 8 micro-lotes. Tiempo:
+mediana de `epoch_time_s` sin la primera época (incluye la validación). Potencia: la del
+decorador `--fn energy` durante el entrenamiento, sumando las dos GPU (el run de una T4 llevaba
+`--monitor` y no la midió). Uso y reloj: mediana de las muestras de sistema de los eventos.
+
+| Estrategia | s/época | Aceleración | Ideal `m·p/(m+p−1)` | Potencia (2 GPU) | Uso GPU 0 / 1 | Reloj GPU 0 / 1 | QWK test |
+|---|---|---|---|---|---|---|---|
+| 1 × T4 | 462 | ×1,00 | — | — | 100 % | 720 MHz | 0,793 |
+| Modelo partido | 430 | ×1,07 | ×1,00 | 110 W | 62 / 34 % | 975 / 1.268 MHz | 0,791 |
+| Pipeline, m = 2 | 335 | ×1,38 | ×1,33 | 119 W | 74 / 52 % | 735 / 990 MHz | 0,780 |
+| Pipeline, m = 4 | 296 | ×1,56 | ×1,60 | 125 W | 84 / 66 % | 780 / 990 MHz | 0,790 |
+| Pipeline, m = 8 | 282 | ×1,64 | ×1,78 | 129 W | 88 / 74 % | 870 / 1.080 MHz | 0,787 |
+
+- **El pipeline acelera: ×1,64 con 8 micro-lotes**, aunque la copia de activaciones entre las T4
+  pase por la memoria del host (no hay P2P). El QWK no cambia más de lo que varían las semillas:
+  el gradiente es el mismo que con el lote entero.
+- **El modelo partido sin solapamiento ya gana un 7 % a una T4**, cuando la fórmula dice ×1. Con
+  una T4 la GPU va al 100 % y el límite de 70 W le baja el reloj a 720 MHz; partida, cada GPU
+  trabaja la mitad del tiempo, se queda por debajo del límite (43-53 W) y sube el reloj. Es un
+  efecto del límite de potencia de la T4, no de la estrategia.
+- **Las etapas no están equilibradas:** la GPU 0 va siempre más cargada que la 1 (88 % frente a
+  74 % con m = 8), y eso explica parte de la distancia al ideal (×1,64 frente a ×1,78). La
+  partición (`split_block=auto`, la mitad de los bloques en cada GPU) deja además en la GPU 0 la
+  entrada del lote y el *patch embedding*; mover un bloque a la GPU 1 (`--split-block`) es una
+  prueba pendiente, no medida.
+- **Predictor.** Antes de estos runs se equivocaba en el tiempo por época un +6 a +11 % (más
+  cuantos más micro-lotes) y en la potencia un −3 a −5 %: cobraba el coste fijo por paso (`d`,
+  20 ms en la T4) a **cada micro-lote** e interpolaba la potencia sin medidas. Para separar las
+  dos explicaciones posibles se lanzó el lote `pipeline_micro1`, con micro-lotes de **una
+  imagen**:
+
+  | Run | s/época | Potencia (2 GPU) | QWK test |
+  |---|---|---|---|
+  | Pipeline, m = 16, lote 16 | 287 | 132 W | 0,789 |
+  | Pipeline, m = 8, lote 8 | 306 | 132 W | 0,793 |
+
+  Con 16 micro-lotes la época es **más lenta** que con 8 (287 frente a 282 s): cada micro-lote
+  tiene un coste propio, pero mucho menor que `d`. El predictor pasa a cobrar `d` una vez por
+  paso más 3,4 ms por cada micro-lote extra, y la potencia por GPU crece en línea recta con la
+  fracción del paso en que la GPU trabaja. Ambas cosas se ajustan con los runs de lote 16 (m = 1,
+  2, 4, 8) y se comprueban con los dos de esta tabla, que no se usaron para ajustar: tiempo −5 y
+  −3 % (antes +19 %), potencia +0,2 y −2 %. El valor del coste por micro-lote se ajusta sin
+  estos dos runs, pero la idea de que exista salió de verlos. Detalle en
+  [performance_model.md](../performance_model.md), §4.
+
+Logs: `logs/kaggle/panda/{single,model_parallel,pipeline}/vit_base_patch16_224.augreg2_in21k_ft_in1k/`
+(`train_24112026_153912`, `160621`, y `163008`, `164927`, `170648` para m = 2, 4, 8; `173602` y
+`175336` para m = 16 con lote 16 y m = 8 con lote 8).
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen

@@ -27,8 +27,9 @@ def test_every_experiment_config_is_valid(exp):
     cfg = train.build_config(REPO, name, base, overrides)
     validate_config(cfg)
     assert cfg["data"]["image_size"] == cfg["model"]["img_size"]
-    gpus = 2 if strategy == "ddp" else 1
-    assert cfg["training"]["batch_size"] * gpus == 16         # global batch of the local runs
+    gpus = 2 if strategy == "ddp" else 1                       # split strategies: one process
+    # Global batch of the local runs (16); the "_b8_" pipeline run halves it on purpose.
+    assert cfg["training"]["batch_size"] * gpus == (8 if "_b8_" in name else 16)
     assert cfg["checkpoint"]["dir"].endswith(name)            # one folder per experiment
 
 
@@ -43,6 +44,15 @@ def test_train_command_per_strategy(tmp_path):
     with pytest.raises(ValueError, match="unknown strategy"):
         train.experiment_parts(("x", "configs/train_panda.yaml", {}, "fsdp"))
     assert train.experiment_parts(("x", "b", {}))[3] == "ddp"
+
+
+def test_train_command_for_the_split_strategies(tmp_path):
+    cfg = tmp_path / "c.yaml"
+    cmd, env = train.train_command(cfg, "model_parallel")
+    assert "scripts/train_model_parallel.py" in cmd and env is None and "--monitor" not in cmd
+    cmd, _ = train.train_command(cfg, "pipeline:8")
+    assert "scripts/train_pipeline.py" in cmd and cmd[-2:] == ["--micro-batches", "8"]
+    assert train.experiment_parts(("x", "b", {}, "pipeline:2"))[3] == "pipeline:2"
 
 
 def test_overrides_are_not_shared_between_experiments():

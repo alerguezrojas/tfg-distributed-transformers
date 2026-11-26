@@ -3,13 +3,17 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from functools import lru_cache
 
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
 from src.web.benchmark_comparison import build_comparison
+from src.run_manifest import read_manifest
 from src.web.benchmark_parser import (parse_ddp_scenarios, parse_benchmark_csv)
+from src.web.run_estimate import (DEFAULT_IMG_SIZE, RunEstimate, describe_throughput, estimate_run,
+                                  inputs_from_run, measured_epoch_time_s, resolve_spec)
 from src.web.ui import theme
 from src.web.ui.charts import (COLORS, _base_layout, _dl_csv, _show)
 from src.web.ui.helpers import (_get_benchmark_csvs, _get_runs, _load_df, _run_config,
@@ -17,6 +21,15 @@ from src.web.ui.helpers import (_get_benchmark_csvs, _get_runs, _load_df, _run_c
 
 
 _VAL_F1 = "Val F1"
+# The empirical F1 prior (performance_model.expected_best_f1) is anchored to BigEarthNet runs.
+_PRIOR_DATASET = "bigearthnet"
+_NO_PRIOR = "no quality prior outside BigEarthNet"
+
+
+@lru_cache(maxsize=64)
+def _resolve_cached(name: str, in_chans: int, num_classes: int, img_size: int):
+    """Model card for the run's input, profiled once per (model, input) per process."""
+    return resolve_spec(name, in_chans, num_classes, img_size)
 
 
 def _short(lbl: str) -> str:
@@ -57,22 +70,24 @@ def _predicted_speedup(meta, n_gpus) -> float | None:
     return None
 
 
-def _real_min_per_epoch(r) -> float | None:
+def _epoch_times(r) -> list:
     df = _load_df(str(r.log_path), str(r.epoch_csv_path) if r.epoch_csv_path else None)
-    if "epoch_time" in df.columns and df["epoch_time"].notna().any():
-        return float(df["epoch_time"].mean()) / 60.0
-    return None
+    return df["epoch_time"].tolist() if "epoch_time" in df.columns else []
 
 
-# Default GPU per environment, used for the analytic prediction when the run has no
-# matching benchmark report to read hardware_name from.
-_ENV_GPU = {"kaggle": "Tesla T4", "verode": "Tesla V100", "local": "RTX 3060 Ti"}
+def _real_min_per_epoch(r) -> float | None:
+    """Median epoch time in minutes without the first (warm-up) epoch."""
+    t = measured_epoch_time_s(_epoch_times(r))
+    return t / 60.0 if t is not None else None
 
 
-def _run_gpu(r, meta) -> str | None:
+def _run_gpu(r, meta) -> tuple[str, str] | None:
+    """``(GPU name, where it comes from)``: the manifest's own device is read by the estimate;
+    here only the fallback — the hardware name of the benchmark report of the same model.
+    The environment is not used to guess a GPU."""
     if meta and meta.get("hardware_name"):
-        return str(meta.get("hardware_name"))
-    return _ENV_GPU.get(r.env)
+        return str(meta["hardware_name"]), "benchmark report of the same model"
+    return None
 
 
 def _perf_strategy(mode: str) -> str:
@@ -159,11 +174,23 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
     bs = _run_batch(r)
     run_prec = (r.precision or "fp32")
     strat = _perf_strategy(r.mode)        # 'ddp_hetero' → 'heterogeneous' for the engine
+    n_train, n_val = _run_sizes(r, m)
+    # What the predictor needs comes from the run itself (manifest, then the config line).
+    est_in = inputs_from_run(
+        model=r.model, dataset=getattr(r, "dataset", _PRIOR_DATASET), mode=r.mode,
+        precision=run_prec, manifest=read_manifest(getattr(r, "manifest_path", None)),
+        config_line=_run_config(str(r.log_path)), fallback_sizes=(n_train, n_val),
+        fallback_gpu=_run_gpu(r, m))
+    est = estimate_run(est_in, _epoch_times(r), resolve=_resolve_cached)
+    if est_in.n_train:
+        n_train = est_in.n_train
+        n_val = est_in.n_val or round(n_train * 0.51)
     # All multi-GPU strategies draw power on n GPUs (model-parallel powers both even though
     # the stages serialize); only 'single' is one GPU.
-    ng = _run_ngpus(r) if strat in ("ddp", "heterogeneous", "model_parallel") else 1
-    gpu = _run_gpu(r, m)
-    n_train, n_val = _run_sizes(r, m)
+    ng = (est_in.n_gpus or _run_ngpus(r)) if strat in ("ddp", "heterogeneous", "model_parallel", "pipeline") else 1
+    gpu = est_in.gpu
+    spec = (_resolve_cached(r.model, est_in.in_chans, est_in.num_classes, est_in.img_size)
+            if est_in.in_chans and est_in.num_classes else None)
 
     tensor_core = run_prec in ("amp", "fp16", "tf32", "bf16")
     _pc = (m.get("precision_cmp") or {}) if m else {}
@@ -195,7 +222,7 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
             meta=m, feas_df=fdf, actual_df=run_df, batch_size=bs, trace_mode="simple",
             nfs_factor=nfs, strategy=strat, gpu_name=gpu, n_gpus=ng, precision=run_prec,
             precision_speedup=(prec_sp if precision_ok else None), ddp_speedup=ddp_sp,
-            run_n_train=n_train, run_n_val=n_val)
+            run_n_train=n_train, run_n_val=n_val, model_spec=spec)
     if cmp is not None:
         a_t, b_t = _cmp_metric(cmp, "Total time / epoch")
         a_e, b_e = _cmp_metric(cmp, "Energy total / epoch")
@@ -204,32 +231,44 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
             note_bits.append(f"bench ÷ {ddp_sp:.2f}× ({ng} GPU)")
         if tensor_core and prec_sp and precision_ok:
             note_bits.append(f"bench ÷ {prec_sp:.1f}× ({run_prec})")
-    elif gpu and n_train is not None:
+    elif est.predicted_s is not None:
         # Pure-analytic fallback when no benchmark covers this batch/model (e.g. vit_large
         # MP @24, or a model with no report). Benchmark stays empty; analytic still applies.
-        try:
-            from src.performance_model import predict, expected_best_f1
-            _gb = (bs or 96) * ng if strat in ("ddp", "heterogeneous") else (bs or 96)
-            p = predict(strat, r.model, gpu, ng, dataset_size=n_train, batch=_gb,
-                        precision=run_prec, epochs=1, val_size=n_val)
-            if p:
-                a_t = p.time_per_epoch_total_s / 60.0
-                a_e = p.energy_per_epoch_wh
+        note_bits.append("analytic only (batch not benchmarked)")
+
+    # The analytic time and energy are the estimate fed with the run's own setup.
+    if est.predicted_s is not None:
+        a_t, a_e = est.predicted_s / 60.0, est.energy_wh
+    elif n_train is not None:
+        note_bits.append(f"no analytic estimate — {est.skipped}")
+
+    # The F1 prior is anchored to BigEarthNet runs: for another dataset there is no prior to
+    # compare with (and its F1 is not the metric the run is judged by).
+    if est_in.dataset == _PRIOR_DATASET:
+        if a_f is None and n_train is not None:
+            from src.performance_model import expected_best_f1
             a_f = expected_best_f1(r.model, n_train)[0]
-            note_bits.append("analytic only (batch not benchmarked)")
-        except Exception:
-            pass
+    else:
+        a_f = b_f = real_f1 = None
+        note_bits.append(_NO_PRIOR)
+
+    # The benchmark measures the model at the resolution of its report (224 px): not
+    # comparable with a run at another resolution.
+    bench_other_res = est_in.img_size != DEFAULT_IMG_SIZE
 
     # The empirical benchmark only models single-GPU and data-parallel (DDP). It measures
     # one GPU doing synthetic compute, so it cannot represent model-parallel (1-GPU energy,
     # not the 2-GPU run) or heterogeneous (it has no notion of the GPU waiting on a slow CPU
     # — it would read ~30× too fast). Drop its time/energy bars for those strategies; the
     # analytic column is the estimate for them. (F1 is strategy-independent, so it stays.)
-    if strat in ("model_parallel", "heterogeneous"):
+    if strat in ("model_parallel", "pipeline", "heterogeneous"):
         b_t = b_e = None
         note_bits.append(f"benchmark does not model {r.mode} (single-GPU only) — analytic is the estimate")
 
     # A precision the report never benchmarked → benchmark time/energy not comparable.
+    if bench_other_res:
+        b_t = b_e = None
+        note_bits.append(f"benchmark measured at {DEFAULT_IMG_SIZE} px, run at {est_in.img_size} px")
     if not precision_ok:
         b_t = b_e = None
         note_bits.append(f"≠ precision ({run_prec}, not benchmarked)")
@@ -240,6 +279,7 @@ def _run_record(r, m, fdf) -> tuple[dict, object]:
         "e": {"a": a_e, "b": b_e, "r": real_e},
         "f": {"a": a_f, "b": b_f, "r": real_f1},
         "note": " · ".join(note_bits),
+        "est": est,
     }
     return record, cmp
 
@@ -296,10 +336,9 @@ def render_validate(_ctx) -> object:
 
     feas_csvs = _get_benchmark_csvs()
     if not feas_csvs:
-        st.info("No benchmark reports yet. Generate one from the terminal "
-                "(`paravit benchmark`).")
-        st.divider()
-        return st.container()
+        st.info("No benchmark reports yet (generate one in the terminal with "
+                "`paravit benchmark`): the benchmark columns stay empty, the analytic estimate "
+                "does not need them.")
 
     parsed = []
     for p in feas_csvs:
@@ -365,6 +404,29 @@ def render_validate(_ctx) -> object:
                "only when DDP is compute-bound). Analytic and benchmark F1 are the same "
                "empirical prior — only **R** is a real measurement.")
 
+    # ── Analytic epoch time, fed with the run's own setup ───────────────────────
+    st.markdown("#### Analytic estimate vs measured epoch time")
+    est_rows = []
+    for d in records:
+        e: RunEstimate = d["est"]
+        err = e.error_pct
+        est_rows.append({
+            "Run": d["run"], "GPU": e.gpu or "not recorded",
+            "Predicted (s/epoch)": _rnd(e.predicted_s, 1), "Measured (s/epoch)": _rnd(e.measured_s, 1),
+            "Error": f"{err:+.0f}%" if err is not None else "—",
+            "Throughput from": describe_throughput(e.throughput_model) if e.predicted_s else "—",
+            "Notes": " · ".join([e.skipped, *e.notes] if e.skipped else e.notes),
+        })
+    st.dataframe(pd.DataFrame(est_rows).set_index("Run"), width="stretch",
+                 column_config={"Notes": st.column_config.TextColumn("Notes", width="large")})
+    st.caption("The predictor gets each run's own model, resolution, input channels, classes, "
+               "split sizes, batch, precision, strategy, GPU count and GPU name, read from its "
+               "manifest (or the log's config line). If the run did not record something it needs "
+               "— the GPU above all — the estimate is left out and the Notes say what is missing. "
+               "Measured = median epoch time (train + val) without the first epoch. How accurate "
+               "this predictor is, per hardware and regime, is in `docs/performance_model.md` "
+               "(§4 and §8).")
+
     # ── Accuracy scorecard ──────────────────────────────────────────────────────
     def _mean_abs_err(key, src):
         errs = []
@@ -392,7 +454,8 @@ def render_validate(_ctx) -> object:
                help="Mean |predicted − real| / real of the per-epoch energy.")
     _f1e = _mean_f1_abs("a")
     sc3.metric("Best Val F1 error", f"±{_f1e:.3f}" if _f1e is not None else "—",
-               help="Mean |prior − real| best Val F1 (analytic and benchmark share the prior).")
+               help="Mean |prior − real| best Val F1 (analytic and benchmark share the prior). "
+                    "BigEarthNet runs only: other datasets have no prior.")
 
     # ── Three grouped-bar charts: time, energy, F1 (analytic / benchmark / real) ─
     st.markdown("#### Per-metric comparison — analytic vs benchmark vs real")
@@ -410,6 +473,9 @@ def render_validate(_ctx) -> object:
                "before the 24/06 multi-GPU energy fix measured only one GPU, so their **Real** "
                "bar reads ~½ — Analytic/Benchmark (all GPUs) will look ~2× those.")
     _metric_block(records, "f", "Best Val F1", "F1 (macro)", "validate_f1_bars", decimals=3)
+    if not any(d["f"]["a"] is not None for d in records):
+        st.caption("The F1 prior exists only for BigEarthNet; none of the selected runs has one, "
+                   "so there is no quality comparison. Their measured quality is in Run results.")
     st.caption("Analytic and benchmark F1 are the SAME empirical prior (so they coincide "
                "for reports that record their dataset size; older reports may differ slightly); "
                "the real bar is the run's measured best Val F1.")

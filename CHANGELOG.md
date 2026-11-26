@@ -4,6 +4,67 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-26
+
+### Añadido
+
+- Web (C2, estimación multi-dataset): *Estimate vs Benchmark vs Run* alimenta el predictor con el
+  manifiesto del run (`run_<ts>.json`, y la línea `Configuración:` para lo que falte): modelo,
+  resolución, canales, clases, tamaños de train y val, lote, precisión, estrategia, GPU y nombre
+  de la GPU (`src/web/run_estimate.py`, puro, con tests). Ficha del modelo con
+  `resolve_model_spec` (con AMP, modelo de tres términos). Nueva tabla con el tiempo por época
+  predicho (train + val) frente al medido (mediana sin la primera época), el error, el origen del
+  throughput y las notas del predictor. Si el run no registra la GPU (u otro dato) no se
+  supone: no hay estimación y la tabla dice qué falta. La comparación de calidad (prior de F1)
+  solo existe para BigEarthNet; el benchmark (a 224 px) no se compara con runs a otra resolución.
+  La pestaña funciona sin informes de benchmark. *Estimate* permite elegir la resolución también
+  con los modelos de la tabla y sustituye los porcentajes de error fijos por una remisión a
+  `docs/performance_model.md` (§4 y §8). Corrige el caso de PANDA a 512 px, que se estimaba con
+  los FLOPs de 224.
+- Estrategia `pipeline` (GPipe): el ViT se parte en dos GPU como en `model_parallel`, pero cada
+  lote pasa en `--micro-batches m` micro-lotes (por defecto 4), de modo que la etapa 0 procesa el
+  micro-lote siguiente mientras la etapa 1 procesa el actual. La actualización es la misma que con
+  el lote entero; tests en CPU de logits y gradientes idénticos con 1 a 8 micro-lotes. Viene con
+  `scripts/train_pipeline.py`, `paravit train --strategy pipeline` y la línea `Configuración:` con
+  `micro_batches=`. Con 1 micro-lote, `model_parallel` no cambia (mismo test de caracterización).
+- Predictor: estrategia `pipeline` con la burbuja de GPipe (`(m+p−1)/(m·p)`, throughput al tamaño
+  del micro-lote), en la CLI y la web (calibrado después en 2 × T4: ver *Cambiado*).
+- Medida del pipeline en 2 × T4 (Kaggle, ViT-B a 512 px, lote 16): ×1,38, ×1,56 y ×1,64 frente a
+  una T4 con 2, 4 y 8 micro-lotes, con el mismo QWK; el modelo partido sin solapamiento, ×1,07 (el
+  límite de 70 W frena a una T4 sola). Antes de calibrarlo, el predictor acertaba el tiempo con
+  +6 a +11 % y la potencia con −3 a −5 %. Logs en `logs/kaggle/panda/{single,model_parallel,pipeline}/` y
+  detalle en `docs/datasets/panda.md`. El lote `pipeline_micro1` (micro-lotes de una
+  imagen) sirvió después para validar la calibración.
+- Estudio del entrenamiento elástico, propuesto por el tutor en la reunión del 24/11
+  (`docs/research/entrenamiento_elastico.md`): estado del arte, qué permite ya `torchrun` y tres
+  pasos para el proyecto.
+
+### Cambiado
+
+- Pipeline calibrado en 2 × T4: el coste fijo por paso (`d`) se cobra una vez por paso más 3,4 ms
+  por cada micro-lote extra (`PIPELINE_MICRO_BATCH_COST_S`), en lugar de cobrar `d` a cada
+  micro-lote; y la potencia por GPU de las estrategias que parten el modelo crece en línea recta
+  con la fracción del paso en que trabaja cada GPU (`SPLIT_POWER_BASE`, `SPLIT_POWER_SLOPE`;
+  `MODEL_PARALLEL_POWER_FRACTION` pasa de 0,83 a 0,86). Ajuste con los runs de lote 16 (m = 1, 2,
+  4, 8) y validación con el lote `pipeline_micro1` (micro-lotes de una imagen), que no se usó
+  para ajustar: tiempo −5 y −3 % (antes +19 %), potencia +0,2 y −2 %. El predictor limita m al
+  tamaño del lote, como la implementación.
+- Predictor: la memoria por GPU de las estrategias que parten el modelo (`model_parallel`,
+  `pipeline`) reparte pesos, optimizador y activaciones entre las etapas. Antes ponía el modelo
+  entero en una GPU y marcaba falta de memoria justo donde la estrategia hace falta: vit_large con
+  lote 48 en fp32 entrenó en 2 × T4 y el predictor decía 17,9 GB (no cabe); ahora, 9,3 GB y cabe.
+- Predictor: el cuello de botella (`compute`/`io`/`sync`) compara el tiempo de cálculo de reloj
+  tal cual; antes lo dividía otra vez por el número de GPU y marcaba `io` donde mandaba el cálculo
+  (con la nota de "I/O floor" incluida).
+- Predictor: el ajuste de la T4 (`THROUGHPUT_FITS`) pasa a ser conjunto con un barrido de lotes
+  8-64 a 224 px medido en Kaggle (33 medidas): el coste fijo por paso deja de ser un supuesto
+  (24 → 20 ms). El ajuste anterior predijo esas 20 medidas nuevas con un 13 % de error antes de
+  incorporarlas (validación fuera de muestra). Frente a los entrenamientos reales de PANDA en
+  2 × T4, el error medio queda en el 15 %. Datos en `logs/kaggle/benchmark/throughput_t4_24112026.csv`;
+  el estudio ajusta ya las dos GPU (`batch_section`).
+- Calidad (SonarCloud): constantes para los literales repetidos en `src/cli.py`, `src/doctor.py`,
+  `src/data/medmnist.py`, `src/performance_model.py`, la web y el estudio del predictor.
+
 ## [1.4.0] - 2026-11-24
 
 ### Añadido
