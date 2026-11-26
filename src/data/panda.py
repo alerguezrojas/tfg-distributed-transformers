@@ -7,7 +7,8 @@ fixed ``splits.csv``; this module only reads those mosaics. Multiclass task with
 ordered classes (``ordinal=True``: the ISUP grade), so the QWK metric is computed.
 
 Config keys: ``data.root`` (folder with ``train.csv``; required) and optional
-``data.mosaics`` (default ``<root>/mosaics_l1_16x256``), ``data.splits`` (default
+``data.mosaics`` (default ``<root>/mosaics_l1_16x256``; a relative path is taken under
+``data.root``, e.g. ``mosaics_l1_36x256``), ``data.splits`` (default
 ``<root>/splits.csv``) and ``data.image_size`` (default 512: the mosaic is resized
 inside the Dataset, since the transform factory only receives the split),
 ``data.color_jitter`` (float >= 0, default 0 = off: train-only brightness/contrast/
@@ -95,7 +96,7 @@ class PandaDataset(Dataset):
         if split not in SPLITS:
             raise ValueError(f"split must be one of {SPLITS}, got {split!r}")
         root = Path(root).expanduser()
-        self.mosaic_dir = Path(mosaics).expanduser() if mosaics else root / DEFAULT_MOSAIC_DIR
+        self.mosaic_dir = mosaic_dir(root, mosaics)
         meta = _read_meta(root, splits)
         meta = meta[meta["split"] == split]
         if providers is not None:
@@ -168,6 +169,17 @@ def get_transforms(split: str, color_jitter: float = 0.0) -> transforms.Compose:
                                                 hue=min(s / 4, 0.5)))
         return transforms.Compose([*steps, normalize])
     return transforms.Compose([transforms.ToTensor(), normalize])
+
+
+def mosaic_dir(root: str | Path, mosaics: str | Path | None = None) -> Path:
+    """Folder of the mosaics: ``data.mosaics`` if absolute, under ``root`` if relative (a bare
+    folder name such as ``mosaics_l1_36x256``, so the config does not depend on the machine),
+    and ``<root>/mosaics_l1_16x256`` by default."""
+    root = Path(root).expanduser()
+    if not mosaics:
+        return root / DEFAULT_MOSAIC_DIR
+    path = Path(mosaics).expanduser()
+    return path if path.is_absolute() else root / path
 
 
 def _read_meta(root: Path, splits: str | Path | None) -> pd.DataFrame:
