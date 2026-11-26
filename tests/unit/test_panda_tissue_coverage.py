@@ -23,5 +23,7 @@ def test_tile_fractions_in_row_major_order():
 def test_coverage_counts_tiles_and_kept_share():
     fr = np.array([1.0, 0.5, 0.5, 0.0])
     assert cov.coverage(fr, keep=1) == (3, pytest.approx(0.5))
+    # mosaic order, not re-sorted: the smaller mosaic keeps the first tiles as they are
+    assert cov.coverage(np.array([0.0, 1.0]), keep=1) == (1, pytest.approx(0.0))
     assert cov.coverage(fr, keep=4) == (3, pytest.approx(1.0))
     assert cov.coverage(np.zeros(4), keep=2) == (0, 1.0)     # no tissue: nothing is lost

@@ -420,7 +420,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     from src.performance_model import (
         predict as _predict, predict_quality, gpu_spec,
         estimate_rio, SYNC_FORMULA,
-        BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, EVAL_POWER_FRACTION)
+        BYTES_PER_PARAM_GRAD_OPT, CUDA_OVERHEAD_GB, eval_power_fraction)
     nfs = disk == "nfs"
     try:
         strat = get_strategy(strategy).name
@@ -500,7 +500,7 @@ def _show_prediction(model: str, gpu: str, strategy: str, n_gpus: int, batch: in
     et.add_row("Energy train", f"{p.energy_train_wh:.2f} Wh",
                f"{p.power_total_w:.0f} W × {p.time_per_epoch_train_s:.0f} s / 3600")
     et.add_row("Energy eval", f"{p.energy_eval_wh:.2f} Wh",
-               f"{EVAL_POWER_FRACTION:g} × {p.power_total_w:.0f} W × {p.time_per_epoch_eval_s:.0f} s / 3600")
+               f"{eval_power_fraction(gs):g} × {p.power_total_w:.0f} W × {p.time_per_epoch_eval_s:.0f} s / 3600")
     et.add_row("Energy/epoch", f"{p.energy_per_epoch_wh:.2f} Wh", "train + eval")
     et.add_row(f"Energy total ({epochs} ep)", f"{p.energy_total_wh:.1f} Wh", "energy/epoch × epochs")
     console.print(et)

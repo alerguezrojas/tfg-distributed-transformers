@@ -1,9 +1,10 @@
 """PANDA: how much tissue a mosaic of N tiles leaves out (does a bigger mosaic see more biopsy?).
 
-Reads the mosaics of ``scripts/prepare_panda.py`` with many tiles (e.g. 36, ``mosaics_l1_36x256``),
-whose tiles are already sorted by tissue (most tissue first), and for every biopsy counts the tiles
-with tissue and the share of the mosaic's tissue that the first ``--keep`` tiles hold (what a
-mosaic of ``--keep`` tiles would see). Summary overall, by centre and by ISUP grade.
+Reads the mosaics of ``scripts/prepare_panda.py`` with many tiles (e.g. 36, ``mosaics_l1_36x256``).
+Their tiles are pasted row by row in the order ``src/data/wsi.select_tiles`` chose them (darkest
+first), so the first ``--keep`` tiles are exactly the mosaic of ``--keep`` tiles of the same level
+and tile size. For every biopsy it counts the tiles with tissue and the share of the mosaic's
+tissue those first ``--keep`` tiles hold. Summary overall, by centre and by ISUP grade.
 
     uv run python scripts/panda_tissue_coverage.py --root /media/alejandro/SSD/datasets/panda \\
         --mosaics mosaics_l1_36x256 --keep 16
@@ -40,9 +41,10 @@ def tile_tissue_fractions(gray: np.ndarray, n_tiles: int, threshold: int = 210) 
 
 
 def coverage(fractions: np.ndarray, keep: int, min_fraction: float = 0.25) -> tuple[int, float]:
-    """``(tiles with tissue, share of the tissue held by the ``keep`` richest tiles)``. Pure."""
+    """``(tiles with tissue, share of the tissue held by the first ``keep`` tiles)``, with the
+    tiles in mosaic order (the order the smaller mosaic keeps them). Pure."""
     total = float(fractions.sum())
-    kept = float(np.sort(fractions)[::-1][:keep].sum())
+    kept = float(fractions[:keep].sum())
     return int((fractions >= min_fraction).sum()), (kept / total if total > 0 else 1.0)
 
 
@@ -73,9 +75,10 @@ def main(argv=None) -> None:
     n = np.array([r[1] for r in rows])
     lost = 1 - np.array([r[2] for r in rows])
     print(f"{len(rows)} biopsias, mosaicos de {n_tiles} tiles ({folder.name}); "
-          f"comparación con los {args.keep} tiles con más tejido\n")
+          f"comparación con sus {args.keep} primeros tiles (el mosaico de {args.keep})\n")
     print(f"Tiles con tejido: mediana {np.median(n):.0f} (p25 {np.percentile(n, 25):.0f}, "
           f"p75 {np.percentile(n, 75):.0f}); más de {args.keep}: {100 * np.mean(n > args.keep):.1f} %")
+    print(f"Al menos 30 tiles con tejido: {100 * np.mean(n >= 30):.1f} %")
     print(f"Tejido que dejan fuera {args.keep} tiles: media {100 * lost.mean():.1f} %, "
           f"mediana {100 * np.median(lost):.1f} %\n")
     groups = [(c, "data_provider", c) for c in ("karolinska", "radboud")]

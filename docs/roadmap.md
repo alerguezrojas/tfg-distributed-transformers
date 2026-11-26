@@ -30,8 +30,8 @@ V100 de `verode21` (el único nodo vivo) sirve para dos cosas:
 - **Predictor en una tercera GPU:** barrido sintético (79 medidas) y ocho entrenamientos reales de
   PANDA. Sin calibrar, 19 % de error en el barrido a 512 px; con entrenamientos reales, 13 %
   calibrado o no (30 % con solo FLOPs). La potencia de la V100 pasa de 103 a 181 W (medida).
-- **PANDA con más tejido:** con 16 tiles el mosaico deja fuera el 37 % del tejido (el 91 % de las
-  biopsias tiene más de 16 tiles con tejido), lo que explica que 1024 px no subiera el QWK. Swin-T
+- **PANDA con más tejido:** con 16 tiles el mosaico deja fuera el 38 % del tejido (el 91 % de las
+  biopsias tiene más de 16 tiles con tejido), lo que podría explicar que 1024 px no subiera el QWK. Swin-T
   con 36 tiles a 768 px, tres semillas y un control de 16 tiles, en marcha en la V100 (trabajo
   13305). Los mosaicos de 64 × 192 px están hechos en el SSD local para el paso siguiente.
 

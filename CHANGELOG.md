@@ -12,7 +12,7 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
   `logs/verode/benchmark/throughput_v100_26112026.csv` y `logs/verode/panda/single/`.
 - PANDA: mosaicos de 36 tiles (`configs/train_panda_36.yaml`, Swin-T a 768 px) y
   `scripts/panda_tissue_coverage.py`, que mide el tejido que deja fuera un mosaico pequeño: con
-  16 tiles queda fuera el 37 % del que cabe en 36 (el 91 % de las biopsias tiene más de 16 tiles
+  16 tiles queda fuera el 38 % del que cabe en 36 (el 91 % de las biopsias tiene más de 16 tiles
   con tejido). Experimento en la V100: `cluster/experiments/v100_panda36.sh`.
 - `data.mosaics` relativo se toma dentro de `data.root` (antes, del directorio de trabajo), para
   que la config no dependa de la máquina.

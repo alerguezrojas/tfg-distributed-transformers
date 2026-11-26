@@ -1,6 +1,6 @@
 # PANDA con mosaicos de 36 tiles (6×6 de 256 px del nivel 1 = 1536 px) reescalados a 768 px: cada tile
 # queda a 128 px, como en la base (16 tiles de 1024 px a 512), así que solo cambia cuánto tejido ve
-# el modelo. Con 16 tiles queda fuera el 37 % del tejido que cabe en 36 (26/11/2026, docs/datasets/panda.md).
+# el modelo. Con 16 tiles queda fuera el 38 % del tejido que cabe en 36 (26/11/2026, docs/datasets/panda.md).
 # Modelo de referencia: Swin-T. Antes hay que generar los mosaicos (una vez):
 #   uv run python scripts/prepare_panda.py --root /media/alejandro/SSD/datasets/panda --n-tiles 36 --workers 6
 # La ruta relativa de data.mosaics se toma dentro de data.root (que pone el perfil de máquina).

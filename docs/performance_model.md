@@ -580,7 +580,7 @@ medido y sigue con la MFU × π):
   el ajuste conjunto, 20 ms (13 % de error; 14 % dejando fuera cada modelo). **Validación fuera de
   muestra:** el ajuste anterior de la T4, solo con 512 px y lote 16 (d = 24 ms), predijo las 20
   medidas nuevas a 224 px con lotes 8-64 con un 13 % de error medio antes de incorporarlas.
-- **GPU sin medidas** (V100, A100…): los coeficientes de la 3060 Ti se escalan por TFLOPS·π y
+- **GPU sin medidas** (A100, H100…; la V100 tiene las suyas desde el 26/11/2026): los coeficientes de la 3060 Ti se escalan por TFLOPS·π y
   por el ancho de banda (`GpuSpec.mem_bw_gbs`, de las hojas de NVIDIA). La predicción lleva una
   nota: el coste relativo entre arquitecturas se sostiene (11 % en la T4 con los tres términos),
   pero el absoluto puede ser optimista (×1,5 en la T4, mediana de los 13 modelos).
@@ -636,11 +636,13 @@ Medidas en la V100-PCIE-32GB de `verode21` (límite de 250 W), en dos pasos y en
 1. **Barrido sintético** (`cluster/benchmark/throughput_sweep.py`, las campañas de la T4 más la de
    AMP a 512 px: 79 medidas, ninguna sin memoria; `logs/verode/benchmark/throughput_v100_26112026.csv`).
 2. **Ocho entrenamientos reales de PANDA** (512 px, AMP, lote 16, 4 épocas; `cluster/experiments/v100_panda.sh`;
-   `logs/verode/panda/single/`), que no intervienen en ningún ajuste.
+   `logs/verode/panda/single/`), que no intervienen en ningún ajuste del throughput (de ellos
+   sale, en cambio, la potencia: ver el final de la sección).
 
 **Sin calibrar (validación fuera de muestra del traslado por hoja técnica).** Con el ajuste de la
 3060 Ti escalado por TFLOPS·π y ancho de banda, el predictor acertó las medidas sintéticas con un
-19 % de error medio a 512 px (mediana ×1,12 optimista; en la T4 fue ×1,46) y un 36 % a 224 px con
+19 % de error medio a 512 px (mediana ×1,09 optimista con lote 16, ×1,12 con lotes 8 y 16; en la
+T4 fue ×1,46) y un 36 % a 224 px con
 lotes de 8 a 64, donde se queda corto: el coste fijo por paso de la V100 es casi el doble que el de
 la 3060 Ti. En fp32, donde el predictor aún usa solo FLOPs (MFU), el error es de 114 % a 224 px y
 54 % a 512 px, en las dos direcciones (−40 % en ViT y ResNet, +200 % o más en EfficientNet).
@@ -648,8 +650,8 @@ la 3060 Ti. En fp32, donde el predictor aún usa solo FLOPs (MFU), el error es d
 **Calibración (dentro de muestra).** El mismo diseño de 33 medidas que la T4 (13 modelos a 512 px
 con lote 16 y 5 a 224 px con lotes 8-64) da `a = 1,24e-4 s/GFLOP`, `b = 8,75e-3 s/GB` y
 **`d = 34 ms` por paso** (`THROUGHPUT_FITS`): 13 % de error medio, 15 % dejando fuera cada modelo.
-`d` duplica el de las otras dos GPU (18-20 ms) porque es trabajo del procesador del nodo (un Xeon
-Gold 6230N a 2,3 GHz), no de la GPU.
+`d` duplica el de las otras dos GPU (18-20 ms). Hipótesis sin medir: es trabajo del procesador del
+nodo (un Xeon Gold 6230N a 2,3 GHz), no de la GPU.
 
 **Validación con entrenamientos reales** (tiempo por época con validación, mediana sin la primera
 época; `scripts/predictor_architecture_study.py`):
@@ -675,7 +677,10 @@ Gold 6230N a 2,3 GHz), no de la GPU.
   disco (el suelo `DISK_RIO` de SSD, 69 s por época), pero los mosaicos estaban en la caché de RAM
   del nodo (270 GB) y la época dura 49 s. El término de I/O no conoce la caché.
 - **La primera época es lenta por el disco de red:** el ViT-S tardó 143 s en la primera (lectura en
-  frío desde NFS, con la CPU decodificando a ~62 img/s con 8 procesos) y 77 s en las demás.
+  frío desde NFS: ~62 img/s con 8 procesos de carga) y 77 s en las demás, cuando los mosaicos ya
+  están en la caché de RAM y ViT-S entrena a ~113 img/s, como en sintético. Además, guardar
+  `best.pt` y `last.pt` en el NFS alarga el tiempo de reloj de cada época (~42 s con ViT-S, ~164 s
+  con ViT-B); `epoch_time_s`, que es lo que se compara, no lo incluye.
 - **Potencia:** entrenando, la V100 gasta **181 W** de mediana (142-218 W según el modelo; evaluando,
   0,65 de eso). La tabla decía 103 W, sacados de lecturas escasas de la fase de evaluación de mayo,
   y la energía de toda predicción en V100 salía un 45 % baja: `train_power_w` pasa a 181 W

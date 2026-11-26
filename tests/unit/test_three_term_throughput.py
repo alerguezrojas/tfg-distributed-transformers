@@ -50,7 +50,12 @@ def _spec(name: str) -> ModelSpec:
     return ModelSpec(name, 20.0, f, 0.1, calibrated=False, saved_gb_per_img=a)
 
 
-@pytest.mark.parametrize("gpu", list(THROUGHPUT_FITS))
+# Mean in-sample error at 512 px, batch 16, of each GPU's fit (8.3 %, 11.4 % and 12.3 % on
+# 26/11/2026), with a small margin: a refit that gets worse shows up here.
+_IN_SAMPLE_LIMIT = {"RTX 3060 Ti": 0.09, "Tesla T4": 0.12, "Tesla V100": 0.13}
+
+
+@pytest.mark.parametrize("gpu", list(_IN_SAMPLE_LIMIT))
 def test_fit_reproduces_its_own_measurements(gpu):
     """Calibration (in-sample): each GPU's fit against the throughputs it was fitted on."""
     errs = []
@@ -58,10 +63,38 @@ def test_fit_reproduces_its_own_measurements(gpu):
         ips, calibrated = three_term_ips(_spec(name), gpu_spec(gpu), BATCH)
         assert calibrated
         errs.append(abs(ips / real - 1))
-    # 3060 Ti and T4 below 12 %; the V100 (26/11/2026) 12.3 %, with the Swin family and
-    # EfficientNet-B0 as its worst cases.
-    assert sum(errs) / len(errs) < 0.13
+    assert sum(errs) / len(errs) < _IN_SAMPLE_LIMIT[gpu]
     assert max(errs) < 0.40          # the Swin family is the known worst case
+
+
+def test_every_fit_is_checked_in_sample():
+    """Every distinct fit (aliases share one) has its in-sample check above."""
+    assert {id(f) for f in THROUGHPUT_FITS.values()} == \
+        {id(THROUGHPUT_FITS[g]) for g in _IN_SAMPLE_LIMIT}
+
+
+def test_v100_fit_under_both_table_names():
+    """The web offers "V100-PCIE": the same card measured on VERODE, not a datasheet transfer."""
+    m = _spec("vit_small_patch16_224")
+    ips, calibrated = three_term_ips(m, gpu_spec("V100-PCIE"), BATCH)
+    assert calibrated
+    assert ips == pytest.approx(three_term_ips(m, gpu_spec("Tesla V100"), BATCH)[0])
+
+
+def test_transfer_to_the_v100_was_close_before_measuring_it():
+    """Validation (out-of-sample): the 3060 Ti fit moved to the V100 by the datasheets only,
+    before the V100 had a fit (26/11/2026): ×1.09 optimistic, 14 % relative-cost error."""
+    ref = THROUGHPUT_FITS.pop("Tesla V100")
+    try:
+        assert not throughput_fit(gpu_spec("Tesla V100"))[1]
+        ratios = [three_term_ips(_spec(n), gpu_spec("Tesla V100"), BATCH)[0] / real
+                  for n, real in _measured("Tesla V100").items()]
+    finally:
+        THROUGHPUT_FITS["Tesla V100"] = ref
+    common = sorted(ratios)[len(ratios) // 2]
+    shape = [abs(r / common - 1) for r in ratios]
+    assert 1.0 < common < 1.2
+    assert sum(shape) / len(shape) < 0.16
 
 
 def test_flops_only_is_far_worse_on_the_same_data():

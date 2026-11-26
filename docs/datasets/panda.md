@@ -702,16 +702,17 @@ mosaico de 36 son los del mosaico de 16):
 
 | | Tiles con tejido (mediana) | Tejido que dejan fuera 16 tiles |
 |---|---|---|
-| Todas (10 616) | 36 (p25 28) | **37 %** de media |
+| Todas (10 616) | 36 (p25 28) | **38 %** de media |
 | Karolinska | 36 | 41 % |
 | Radboud | 33 | 34 % |
-| Por grado ISUP (0-5) | 35-36 | 35-39 % |
+| Por grado ISUP (0-5) | 35-36 | 36-40 % |
 
 - **El 91 % de las biopsias tiene más de 16 tiles con tejido** y la mediana llena los 36: el
   mosaico base no ve más de un tercio del tejido, sea cual sea el grado o el hospital.
-- Explica por qué 1024 px no subió el QWK (sección "Resolución 1024 px"): con los mismos 16 tiles
-  se veía con más detalle el mismo tejido; la parte que falta no se miró.
-- El 69 % de las biopsias tiene 30 o más tiles con tejido: con 36 aún puede quedar tejido fuera
+- Podría explicar por qué 1024 px no subió el QWK (sección "Resolución 1024 px"): con los mismos 16 tiles
+  se veía con más detalle el mismo tejido; la parte que falta no se miró. Es una hipótesis: la
+  comprueban los entrenamientos de abajo.
+- El 72 % de las biopsias tiene 30 o más tiles con tejido: con 36 aún puede quedar tejido fuera
   (64 tiles de 192 px, la receta del 1.er puesto, ocupan la misma superficie con más grano).
 
 **Dónde entrenarlo.** A 512 px y con AMP la V100 de VERODE rinde 2,2-3,1 veces lo que una T4
@@ -720,13 +721,15 @@ Kaggle solo daban 1,35-1,7 veces una T4 porque sus 4 vCPU no daban abasto decodi
 (sección "Una T4 frente a dos"). Un mosaico de 36 tiles tiene 2,25 veces más píxeles: en Kaggle
 mandaría todavía más la CPU, mientras que el nodo de VERODE tiene 40 núcleos, 270 GB de RAM,
 32 GB de GPU y no corta a las 12 horas. **Se entrena en VERODE.** En la V100, con 8 procesos de
-carga, la CPU ya limita a unas 62 img/s con los mosaicos de 16 tiles (ViT-S: la GPU da 111 img/s
-en sintético); con 36 tiles se usan 24 procesos.
+carga, solo la primera época (mosaicos leídos en frío del disco de red) va a ~62 img/s; con los
+mosaicos ya en la caché de RAM, ViT-S entrena a ~113 img/s, lo mismo que en sintético. Con 36
+tiles hay 2,25 veces más píxeles que decodificar y se usan 24 procesos.
 
 **Experimento** (`configs/train_panda_36.yaml`, `cluster/experiments/v100_panda36.sh`): Swin-T,
 el modelo de referencia, con 36 tiles reescalados a 768 px, para que cada tile quede a 128 px como
 en la base y solo cambie cuánto tejido se ve. Tres semillas, más un control con 16 tiles a 512 px
-en la misma V100. Resultados: pendientes.
+en la misma V100; la comparación usa también las tres semillas locales de Swin-T con 16 tiles
+(0,821 ± 0,011), porque el control de la V100 es una sola semilla. Resultados: pendientes.
 
 ## Riesgos
 

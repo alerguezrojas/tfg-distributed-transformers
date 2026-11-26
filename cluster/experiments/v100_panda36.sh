@@ -7,8 +7,10 @@
 #   srun -p batch -w verode21 -n 1 --cpus-per-task=32 -t 24:00:00 bash cluster/experiments/v100_panda36.sh
 #   RUNS="swin36_s43 swin36_s44" srun ... bash cluster/experiments/v100_panda36.sh
 #
-# Con 36 tiles la CPU decodifica 2,25 veces más píxeles por imagen: 8 procesos de carga dan
-# ~62 img/s con los mosaicos de 16 (26/11/2026), así que aquí se usan 24 (WORKERS).
+# Con 36 tiles la CPU decodifica 2,25 veces más píxeles por imagen: se usan 24 procesos de carga
+# (WORKERS) en lugar de 8. La primera época lee los mosaicos en frío del disco de red (NFS); las
+# siguientes salen de la caché de RAM del nodo. Los checkpoints van al NFS ($HOME): guardarlos
+# alarga el tiempo de reloj de cada época, no epoch_time_s.
 set -uo pipefail
 cd "${PARAVIT_DIR:-$HOME/tfg-distributed-transformers}"
 WORKERS="${WORKERS:-24}"
@@ -25,7 +27,9 @@ declare -A EXP=(
 read -r -a RUNS <<< "${RUNS:-swin36_s42 swin16_s42 swin36_s43 swin36_s44}"
 
 for name in "${RUNS[@]}"; do
-    read -r cfg seed <<< "${EXP[$name]}"
+    spec="${EXP[$name]:-}"
+    [ -n "$spec" ] || { echo "FALLO nombre de run desconocido: $name"; continue; }
+    read -r cfg seed <<< "$spec"
     dest="$OUT/$name"; ckpt="$dest/ckpt"; mkdir -p "$dest"
     echo "=== $name ($cfg, semilla $seed) $(date '+%d/%m %H:%M')"
     .venv/bin/python scripts/train_single_gpu.py --config "$cfg" --model "$SWIN" --seed "$seed" \
