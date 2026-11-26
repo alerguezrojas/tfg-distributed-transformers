@@ -1,6 +1,6 @@
 # Estado de VERODE
 
-**Diagnóstico: EN_MARCHA** — actualizado el 26/11/2026 a las 21:51 (hora de Canarias).
+**Diagnóstico: EN_MARCHA** — actualizado el 26/11/2026 a las 21:52 (hora de Canarias).
 
 Se actualiza cada 20 minutos. Si esta hora tiene más de una hora, el vigilante o el
 nodo de login de VERODE han caído. Diagnósticos: EN_MARCHA, EN_MARCHA_CON_FALLOS (algún
@@ -9,7 +9,7 @@ run falló y la cola siguió), BLOQUEO (hay trabajo pero nada escribe desde hace
 
 ## Trabajos en Slurm
 ```
-13305 v100p36 RUNNING 1:18:05 verode21
+13305 v100p36 RUNNING 1:18:24 verode21
 ```
 ## v100_panda36_26112026.out
 ```
