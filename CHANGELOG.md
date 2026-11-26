@@ -6,6 +6,9 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- `eval --tta {1,2,4,8}`: aumento en test con volteos y giros de 90° (`src/training/tta.py`), para
+  imágenes sin orientación. En PANDA con Swin-T: QWK +0,006 (no significativo), AUC +0,004
+  (significativo) y menos variación entre semillas (`docs/datasets/panda.md`).
 - Medidas en la V100 de VERODE (26/11/2026): barrido de throughput con las campañas de la T4
   (`cluster/benchmark/throughput_sweep.py`, que reutiliza `run_campaigns` del kernel; 79 medidas)
   y ocho entrenamientos reales de PANDA a 512 px (`cluster/experiments/v100_panda.sh`). Logs en

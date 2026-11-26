@@ -47,6 +47,7 @@ from src.training import metrics as m
 from src.training.checkpoints import resolve_checkpoint, strip_wrapper_prefix
 from src.training.config_overrides import add_data_root_override, add_machine_options, prepare_config
 from src.training.tasks import MultiLabelTask, Task
+from src.training.tta import TTA_VIEWS, dihedral_views
 
 
 AUTO_PATH = "@auto"     # value of --save-predictions given without a path
@@ -84,6 +85,11 @@ def parse_args():
                              "threshold, classes, task and group variables (format in "
                              "docs/inspeccion.md). Without a path it goes to the run's log "
                              "folder as test_preds_<ts>.npz, which the web Inspector reads")
+    parser.add_argument("--tta", type=int, choices=TTA_VIEWS, default=1,
+                        help="Test-time augmentation: average the probabilities over N "
+                             "flips/90° rotations of each image (1 = off; 8 = every symmetry of "
+                             "the square). Only for images without orientation (histology, "
+                             "satellite)")
     parser.add_argument("--threshold-from", choices=["checkpoint", "val", "test"],
                         default="checkpoint",
                         help="Where the decision threshold is tuned: 'checkpoint' (the one "
@@ -95,8 +101,10 @@ def parse_args():
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, max_batches=None, task: Task | None = None):
-    """Run inference and return probabilities, targets and mean loss."""
+def evaluate(model, loader, device, max_batches=None, task: Task | None = None, tta: int = 1):
+    """Run inference and return probabilities, targets and mean loss. With ``tta`` > 1 the
+    probabilities are the mean over that many flips/rotations (src/training/tta.py); the loss
+    is always the one of the original images."""
     task = task or MultiLabelTask()
     model.eval()
     all_probs, all_labels = [], []
@@ -108,7 +116,12 @@ def evaluate(model, loader, device, max_batches=None, task: Task | None = None):
         images, labels = images.to(device), labels.to(device)
         logits = model(images)
         total_loss += criterion(logits, labels).item()
-        all_probs.append(task.probabilities(logits).cpu())
+        probs = task.probabilities(logits)
+        if tta > 1:                       # the identity view is the one just computed
+            for view in dihedral_views(images, tta)[1:]:
+                probs = probs + task.probabilities(model(view))
+            probs = probs / tta
+        all_probs.append(probs.cpu())
         all_labels.append(labels.cpu())
         n_batches += 1
         if max_batches and n_batches >= max_batches:
@@ -314,7 +327,7 @@ def load_member(path, cfg: dict, model_name: str, spec, device):
 
 
 def evaluate_members(paths, cfg: dict, model_name: str, spec, loader, device, task,
-                     max_batches=None, preloaded=None):
+                     max_batches=None, preloaded=None, tta: int = 1):
     """Probabilities, targets, mean loss and per-member checkpoint info of one checkpoint or
     of an ensemble (the average of the members' probabilities).
 
@@ -325,7 +338,8 @@ def evaluate_members(paths, cfg: dict, model_name: str, spec, loader, device, ta
         model, ckpt = preloaded if (i == 0 and preloaded) else load_member(
             path, cfg, model_name, spec, device)
         infos.append({"epoch": ckpt.get("epoch", "?"), "metrics": ckpt.get("metrics", {})})
-        probs, labels, loss = evaluate(model, loader, device, max_batches=max_batches, task=task)
+        probs, labels, loss = evaluate(model, loader, device, max_batches=max_batches, task=task,
+                                       tta=tta)
         all_probs.append(probs)
         all_labels.append(labels)
         losses.append(loss)
@@ -407,8 +421,10 @@ def main():
     # ── Evaluate ──────────────────────────────────────────────────────────────
     probs, labels, avg_loss, infos = evaluate_members(
         paths, cfg, model_name, spec, loader, device, task,
-        max_batches=args.max_batches, preloaded=first)
+        max_batches=args.max_batches, preloaded=first, tta=args.tta)
     del first
+    if args.tta > 1:
+        print(f"TTA        : {args.tta} vistas (giros y volteos), probabilidades promediadas")
     if is_ensemble:
         print("Epochs     : " + ", ".join(str(i["epoch"]) for i in infos))
     hard = task.hard_targets(labels)
@@ -423,7 +439,7 @@ def main():
             print("  (ajustando el umbral sobre el split de validación...)")
             val_probs, val_labels, _, _ = evaluate_members(
                 paths, cfg, model_name, spec, _loader("val")[1], device, task,
-                max_batches=args.max_batches)
+                max_batches=args.max_batches, tta=args.tta)
             return val_probs, val_labels
         best_t, source = choose_threshold(args.threshold_from, stored_threshold_metrics(infos),
                                           task, probs, labels, _val_outputs)
