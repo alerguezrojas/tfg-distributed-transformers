@@ -35,7 +35,23 @@ V100 de `verode21` (el único nodo vivo) sirve para dos cosas:
   con 36 tiles a 768 px, tres semillas y un control de 16 tiles, en marcha en la V100 (trabajo
   13305). Los mosaicos de 64 × 192 px están hechos en el SSD local para el paso siguiente.
 
-**Siguiente:** resultados de 36 tiles (si mejoran: 64 tiles y 1536 px sin reducir); modelo de tres
+**En marcha en VERODE (noche del 26 al 27/11/2026).** Corre solo, dentro de `tmux` en el nodo de
+login (no depende de la VPN ni del PC del autor). Todo está en `~/paravit_runs/` del clúster:
+1. `v100p36` (sesión `v100panda36`, `cluster/experiments/v100_panda36.sh`): Swin-T con 36 tiles a
+   768 px, semillas 42-44, y el control con 16 tiles a 512 px. Predicciones en
+   `~/paravit_runs/swin{36,16}_s*/{test,val}_preds.npz`; hacia la 01:00.
+2. `v100cola` (sesión `v100cola`, `~/paravit_runs/queue_next.sh`, código en el *worktree*
+   `~/paravit_wt` a 43eb687): TTA × 8 de esos cuatro runs; Swin-T con 36 tiles a 1024 px; y con
+   64 tiles de 192 px a 768 px (una semilla, exploración). Registro en
+   `~/paravit_runs/queue_next_26112026.out`; hacia las 05:00.
+
+Al volver: traer `logs/verode/panda/` y las predicciones, comparar con `paravit compare-preds` frente
+a los tres Swin-T locales de 16 tiles y escribir el resultado en `docs/datasets/panda.md`. El repo
+principal del clúster sigue en la rama `exp/v100-throughput` (ya mergeada): pasarlo a `develop`
+cuando no corra nada.
+
+**Siguiente:** resultados de 36 tiles (si mejoran: más semillas de la mejor variante y 1536 px
+sin reducir; evaluar siempre con `--tta 8`, PR #286); modelo de tres
 términos para fp32 con las medidas de la V100; término de I/O con caché y decodificación en CPU;
 el paso 1 del entrenamiento elástico; FSDP2/ZeRO-1 y la vista de conjuntos en la web. Pendiente
 del autor o del tutor: si el entrenamiento elástico pasa a ser una línea de trabajo, el dataset
