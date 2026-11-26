@@ -1,6 +1,6 @@
 # Estado de VERODE
 
-**Diagnóstico: EN_MARCHA** — actualizado el 26/11/2026 a las 22:52 (hora de Canarias).
+**Diagnóstico: EN_MARCHA** — actualizado el 26/11/2026 a las 23:12 (hora de Canarias).
 
 Se actualiza cada 20 minutos. Si esta hora tiene más de una hora, el vigilante o el
 nodo de login de VERODE han caído. Diagnósticos: EN_MARCHA, EN_MARCHA_CON_FALLOS (algún
@@ -9,7 +9,7 @@ run falló y la cola siguió), BLOQUEO (hay trabajo pero nada escribe desde hace
 
 ## Trabajos en Slurm
 ```
-13305 v100p36 RUNNING 2:18:32 verode21
+13305 v100p36 RUNNING 2:38:36 verode21
 ```
 ## v100_panda36_26112026.out
 ```
@@ -22,12 +22,12 @@ run falló y la cola siguió), BLOQUEO (hay trabajo pero nada escribe desde hace
 (aún no ha empezado)
 ```
 ## Último entrenamiento
-`/home/bejeque/alu0101317038/tfg-distributed-transformers/logs/verode/panda/single/swin_tiny_patch4_window7_224/epoch_metrics_26112026_222303.csv` (modificado: 26/11 22:49)
+`/home/bejeque/alu0101317038/tfg-distributed-transformers/logs/verode/panda/single/swin_tiny_patch4_window7_224/epoch_metrics_26112026_222303.csv` (modificado: 26/11 23:10)
 ```
 época, s/época, QWK val
-4, 211.86, 0.778859
-5, 211.36, 0.809073
-6, 211.75, 0.773539
+9, 210.36, 0.81132
+10, 211.24, 0.826252
+11, 212.13, 0.82103
 ```
 ## QWK de test por run (eval normal y TTA x8)
 ```
