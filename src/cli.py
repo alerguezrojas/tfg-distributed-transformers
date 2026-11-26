@@ -206,9 +206,9 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
                    save_predictions: str | None = None,
                    save_predictions_auto: bool = False,
                    data_root: str | None = None, machine: str | None = None,
-                   overrides: list[str] | None = None) -> list[str]:
+                   overrides: list[str] | None = None, tta: int = 1) -> list[str]:
     """Build the eval.py command (held-out evaluation). Several checkpoints = an ensemble
-    (eval.py averages their probabilities)."""
+    (eval.py averages their probabilities); ``tta`` > 1 averages flips/rotations too."""
     checkpoints = [checkpoint] if isinstance(checkpoint, str) else list(checkpoint)
     cmd = [sys.executable, "scripts/eval.py"]
     for ckpt in checkpoints:
@@ -230,6 +230,8 @@ def build_eval_cmd(checkpoint: str | list[str], config: str, *, model: str | Non
         cmd += ["--save-predictions", save_predictions]
     elif save_predictions_auto:
         cmd += ["--save-predictions"]       # no path: eval.py picks the run's log folder
+    if tta and tta > 1:
+        cmd += ["--tta", str(tta)]
     return cmd + _config_flags(machine, overrides)
 
 
@@ -621,6 +623,8 @@ def eval(
         False, "--save-predictions-auto",
         help="Save the predictions as test_preds_<ts>.npz in the run's log folder "
              "(the web Inspector reads them)."),
+    tta: int = typer.Option(1, "--tta", help="Test-time augmentation: 1 (off), 2, 4 or 8 "
+                            "flips/90° rotations averaged. Only for images without orientation."),
     machine: Optional[str] = typer.Option(None, "--machine", help=_MACHINE_HELP),
     set_: Optional[List[str]] = typer.Option(None, "--set", help=_SET_HELP),
     dry_run: bool = typer.Option(False, "--dry-run", help=_DRY_RUN_HELP),
@@ -630,7 +634,7 @@ def eval(
                          metadata=metadata, batch_size=batch_size, max_batches=max_batches,
                          data_root=data_root, save_predictions=save_predictions,
                          save_predictions_auto=save_predictions_auto,
-                         machine=machine, overrides=set_)
+                         machine=machine, overrides=set_, tta=tta)
     _run(cmd, dry_run)
 
 

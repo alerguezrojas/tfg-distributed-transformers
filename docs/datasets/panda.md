@@ -731,6 +731,25 @@ en la base y solo cambie cuánto tejido se ve. Tres semillas, más un control co
 en la misma V100; la comparación usa también las tres semillas locales de Swin-T con 16 tiles
 (0,821 ± 0,011), porque el control de la V100 es una sola semilla. Resultados: pendientes.
 
+### Aumento en test (TTA): giros y volteos (26/11/2026)
+
+`eval --tta 8` promedia las probabilidades de las 8 simetrías del cuadrado (volteos y giros de
+90°; `src/training/tta.py`). La histología no tiene orientación, así que el modelo debería dar lo
+mismo en todas; promediar reduce el ruido de la predicción sin reentrenar. Probado con los tres
+Swin-T de 16 tiles a 512 px (semillas 42-44), sobre el mismo test:
+
+| | QWK test | Exact. | AUC ISUP ≥ 1 | Conjunto de 3 (QWK) |
+|---|---|---|---|---|
+| Sin TTA | 0,821 ± 0,011 | 0,694 | 0,958 | 0,829 |
+| TTA × 8 | 0,827 ± 0,004 | 0,701 | 0,962 | 0,836 |
+
+*Bootstrap* emparejado (media de las tres semillas): **QWK +0,006 [−0,005; +0,017]**, no
+significativo; **AUC de ISUP ≥ 1 +0,004 [+0,002; +0,007]**, significativo, y en el conjunto,
++0,007 [−0,005; +0,020]. El signo es el mismo en las tres semillas salvo en QWK con la 42 (−0,001), y
+**las semillas varían menos** (± 0,004 frente a ± 0,011). Cuesta 8 pasadas de inferencia y nada de
+entrenamiento: se usa en las evaluaciones finales. No vale para imágenes con orientación
+(radiografías, fotos), por eso es una opción y no el comportamiento por defecto.
+
 ## Riesgos
 
 - **Sesgo de centro:** Karolinska concentra los grados bajos y Radboud los altos, y tiñen

@@ -216,6 +216,10 @@ Tras las métricas agregadas y por clase, `eval` añade (solo si procede):
   Sin ruta (`scripts/eval.py --save-predictions`; en `paravit.py`, `--save-predictions-auto`) lo
   guarda en la carpeta de logs del run como `test_preds_<ts>.npz`, con el sello del run, y el
   Inspector de la web lo ofrece como fuente «Test (eval)».
+- `--tta N` (1, 2, 4 u 8) promedia las probabilidades de la imagen volteada y girada 90°
+  (`src/training/tta.py`); solo para imágenes sin orientación (histología, satélite). En PANDA,
+  `--tta 8` sube algo el QWK y el AUC y reduce la variación entre semillas
+  ([datasets/panda.md](datasets/panda.md)).
 
 En tareas con umbral (multi-etiqueta y binaria), el F1 "con umbral" usa el umbral **elegido en
 validación** durante el entrenamiento, que va guardado en el checkpoint. Con checkpoints antiguos

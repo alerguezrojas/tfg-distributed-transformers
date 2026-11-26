@@ -299,3 +299,9 @@ def test_cli_train_dry_run_shows_machine_and_set():
                                    "--dry-run"])
     assert res.exit_code == 0
     assert "--machine" in res.output and "training.lr=1e-4" in res.output
+
+
+def test_eval_cmd_passes_tta_only_when_on():
+    assert "--tta" not in build_eval_cmd("ckpt.pt", "c.yaml")
+    cmd = build_eval_cmd("ckpt.pt", "c.yaml", tta=8)
+    assert cmd[cmd.index("--tta") + 1] == "8"
