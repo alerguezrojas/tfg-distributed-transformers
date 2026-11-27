@@ -34,18 +34,23 @@ V100 de `verode21` (el único nodo vivo) sirve para dos cosas:
   biopsias tiene más de 16 tiles con tejido). Mosaicos de 36 y 64 tiles generados en el SSD local
   y copiados a VERODE (`~/datasets/panda/`); resultados en el párrafo siguiente.
 
-**Resultados de la noche del 26 al 27/11 (VERODE, 15 runs sin fallos; `docs/datasets/panda.md`,
+**Resultados de la noche del 26 al 27/11 (VERODE, 12 entrenamientos sin fallos; `docs/datasets/panda.md`,
 "Mosaicos más grandes").** Ver más tejido (36 o 64 tiles) sube el AUC de cáncer sí o no en todas
 las variantes, pero el QWK solo cuando además cada tile se ve con más detalle: **Swin-T con 36
 tiles a 1024 px, 0,845 ± 0,007 con TTA, +0,018 [+0,002; +0,035]** frente a 16 tiles. La TTA × 8
 (`eval --tta 8`, PR #286) suma algo y estabiliza las semillas. **Un conjunto de dos modelos
 elegido en validación (ViT-B con 36 tiles a 768 px + Swin-T con 36 tiles a 1024 px, con TTA) da
-QWK 0,869 en test**, el mejor del proyecto (antes 0,857 con 8 modelos). Los mismos runs validan la
-potencia de la V100 (191 W frente a 181 W) y dan un 22 % de error de tiempo a 768-1024 px; la
-fracción de potencia de evaluación de la V100 pasa a 0,89.
+QWK 0,869 en test**, la cifra más alta del proyecto (antes 0,858 con 8 modelos; la diferencia de
+QWK no es significativa, la de exactitud y AUC sí, y ViT-B tiene una sola semilla). Los mismos runs
+validan la potencia de la V100 (191 W frente a 181 W) y dan un 22 % de error de tiempo a
+768-1024 px.
 
-**Siguiente:** confirmar el conjunto con runs independientes (semillas 43 y 44 de ViT-B con 36
-tiles, y ViT-B a 1024 px si cabe) en VERODE; modelo de tres términos para fp32 con las medidas de
+**En marcha en VERODE (desde el 27/11, 23:07; termina hacia el 28/11 por la tarde):** la cola de
+confirmación (`cluster/experiments/v100_panda36_confirmacion.sh`, sesión `v100conf`): semillas 43 y
+44 de ViT-B y SwinV2-T con 36 tiles a 768 px y ViT-B a 1024 px. Estado sin VPN en la rama
+`verode-estado` (`ESTADO.md`). Al volver: repetir el conjunto con las semillas 43 y 44.
+
+**Siguiente:** repetir el conjunto con los runs de la cola de confirmación; modelo de tres términos para fp32 con las medidas de
 la V100; término de I/O con caché y decodificación en CPU; el paso 1 del entrenamiento elástico;
 FSDP2/ZeRO-1 y la vista de conjuntos en la web. Pendiente del autor o del tutor: si el
 entrenamiento elástico pasa a ser una línea de trabajo, el dataset nuevo y las máquinas.

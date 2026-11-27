@@ -4,8 +4,9 @@
 # fichero: no dispara la CI, que solo corre en main y develop). Se ve sin VPN en
 # https://github.com/alerguezrojas/tfg-distributed-transformers/blob/verode-estado/ESTADO.md
 #
-#   bash vigia.sh           # bucle (en tmux); termina solo cuando la cola acaba
-#   bash vigia.sh --once    # una pasada, para probar
+#   bash vigia_verode.sh           # bucle (en tmux); termina solo cuando la cola acaba
+#   bash vigia_verode.sh --once    # una pasada, para probar
+# Las colas que vigila están en OUTS y FIN: se ajustan a cada cola (en el clúster se usa una copia).
 set -u
 export PATH=/opt/soft/slurm/20.11.04/bin:$PATH
 RUNS=$HOME/paravit_runs

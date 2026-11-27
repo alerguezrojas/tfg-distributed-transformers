@@ -686,8 +686,8 @@ nodo (un Xeon Gold 6230N a 2,3 GHz), no de la GPU.
   y la energía de toda predicción en V100 salía un 45 % baja: `train_power_w` pasa a 181 W
   (calibración con estos mismos runs).
 
-**Validación con runs largos (26-27/11/2026).** Doce entrenamientos de 15 épocas de PANDA en la
-misma V100, que no intervienen en ningún ajuste: Swin-T con 16 tiles a 512 px, 36 tiles a 768 y
+**Validación con runs largos (26-27/11/2026).** Doce entrenamientos de hasta 15 épocas (dos
+pararon antes por *early stopping*) de PANDA en la misma V100, que no intervienen en ningún ajuste: Swin-T con 16 tiles a 512 px, 36 tiles a 768 y
 1024 px y 64 tiles a 768 px, ViT-B y SwinV2-T con 36 tiles a 768 px (`docs/datasets/panda.md`,
 "Mosaicos más grandes"):
 
@@ -701,14 +701,16 @@ misma V100, que no intervienen en ningún ajuste: Swin-T con 16 tiles a 512 px, 
 
 - **Tiempo: 22 % de error medio, siempre por debajo**, y más cuanto mayor es la resolución en la
   familia Swin, el punto débil ya conocido del modelo de tres términos (ajustado a 224 y 512 px).
-- **Potencia: 191 W medidos frente a 181 W predichos (+5 %)**, la validación fuera de muestra de la
-  calibración anterior.
-- **Potencia de evaluación:** en estos runs la GPU es el cuello de botella también al evaluar (24
-  procesos de carga, mosaicos en caché) y gasta 0,89 de la de entrenamiento; en los runs de 512 px
-  de arriba, 0,65, porque la evaluación esperaba al disco. El predictor calcula el tiempo de
-  evaluación con la GPU al máximo, así que la V100 usa `eval_power_fraction = 0,89`; con la
-  evaluación limitada por el disco (ese 0,65, o el 0,57 del run de BigEarthNet de mayo) la energía
-  de evaluación sale alta. El predictor no modela ese régimen.
+- **Potencia: 191 W medidos frente a 181 W predichos (+5 %)**, fuera de muestra. Son todos runs de
+  la familia Swin y de ViT-B (Swin-T ya gastaba 182 W en la calibración): validan el paso a más
+  resolución, no la dispersión entre modelos (142-218 W).
+- **Potencia de evaluación:** depende del modelo, no del disco. En los ocho runs de 512 px los
+  ligeros evalúan a 0,58-0,69 de la potencia de entrenamiento (ViT-S, DeiT-S, ResNet-50,
+  EfficientNet-B0 y V2-S, ConvNeXt-T) y Swin-T y ViT-B a 0,86-0,93; el control de Swin-T con 24
+  procesos de carga da 0,87, lo mismo que con 8. Los doce runs largos, todos de modelos pesados,
+  dan 0,89. La V100 se queda con la mediana de los ocho (`eval_power_fraction = 0,65`); una
+  fracción por modelo queda pendiente. El tiempo de evaluación lo predice `max(cómputo, suelo de
+  I/O)`: con los mosaicos de PANDA en Swin-T sale el suelo de I/O (12 s).
 
 **Pendiente.** Un modelo de tres términos propio de fp32 (la V100 tiene ya las medidas a 512 px que
 en 8 GB no cabían), un término de I/O que distinga disco, caché y decodificación en CPU, y entender
