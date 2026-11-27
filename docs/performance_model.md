@@ -682,9 +682,33 @@ nodo (un Xeon Gold 6230N a 2,3 GHz), no de la GPU.
   `best.pt` y `last.pt` en el NFS alarga el tiempo de reloj de cada época (~42 s con ViT-S, ~164 s
   con ViT-B); `epoch_time_s`, que es lo que se compara, no lo incluye.
 - **Potencia:** entrenando, la V100 gasta **181 W** de mediana (142-218 W según el modelo; evaluando,
-  0,65 de eso). La tabla decía 103 W, sacados de lecturas escasas de la fase de evaluación de mayo,
+  0,65 de eso en estos runs, con la evaluación esperando al disco). La tabla decía 103 W, sacados de lecturas escasas de la fase de evaluación de mayo,
   y la energía de toda predicción en V100 salía un 45 % baja: `train_power_w` pasa a 181 W
-  (calibración con estos mismos runs; la validación de la potencia la darán los runs de 36 tiles).
+  (calibración con estos mismos runs).
+
+**Validación con runs largos (26-27/11/2026).** Doce entrenamientos de 15 épocas de PANDA en la
+misma V100, que no intervienen en ningún ajuste: Swin-T con 16 tiles a 512 px, 36 tiles a 768 y
+1024 px y 64 tiles a 768 px, ViT-B y SwinV2-T con 36 tiles a 768 px (`docs/datasets/panda.md`,
+"Mosaicos más grandes"):
+
+| Modelo y entrada | Runs | Real (s/época) | Predicho | Error |
+|---|---|---|---|---|
+| Swin-T, 512 px | 1 | 106 | 90 | −15 % |
+| Swin-T, 768 px (36 y 64 tiles) | 6 | 212 | 165 | −22 % |
+| Swin-T, 1024 px | 3 | 374 | 279 | −25 % |
+| SwinV2-T, 768 px | 1 | 252 | 184 | −27 % |
+| ViT-B, 768 px | 1 | 474 | 405 | −15 % |
+
+- **Tiempo: 22 % de error medio, siempre por debajo**, y más cuanto mayor es la resolución en la
+  familia Swin, el punto débil ya conocido del modelo de tres términos (ajustado a 224 y 512 px).
+- **Potencia: 191 W medidos frente a 181 W predichos (+5 %)**, la validación fuera de muestra de la
+  calibración anterior.
+- **Potencia de evaluación:** en estos runs la GPU es el cuello de botella también al evaluar (24
+  procesos de carga, mosaicos en caché) y gasta 0,89 de la de entrenamiento; en los runs de 512 px
+  de arriba, 0,65, porque la evaluación esperaba al disco. El predictor calcula el tiempo de
+  evaluación con la GPU al máximo, así que la V100 usa `eval_power_fraction = 0,89`; con la
+  evaluación limitada por el disco (ese 0,65, o el 0,57 del run de BigEarthNet de mayo) la energía
+  de evaluación sale alta. El predictor no modela ese régimen.
 
 **Pendiente.** Un modelo de tres términos propio de fp32 (la V100 tiene ya las medidas a 512 px que
 en 8 GB no cabían), un término de I/O que distinga disco, caché y decodificación en CPU, y entender

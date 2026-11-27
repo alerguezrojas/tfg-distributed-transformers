@@ -6,6 +6,11 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Añadido
 
+- PANDA en la V100 (26-27/11/2026, 15 runs): con más tejido sube el AUC de ISUP ≥ 1 en todas las
+  variantes, pero el QWK solo con 36 tiles a 1024 px (0,845 ± 0,007 con TTA, +0,018 [+0,002;
+  +0,035] frente a 16 tiles). Un conjunto de dos modelos elegido en validación (ViT-B con 36 tiles
+  a 768 px y Swin-T con 36 tiles a 1024 px, con TTA) da QWK 0,869 en test, el mejor del proyecto
+  (`docs/datasets/panda.md`). Logs en `logs/verode/panda/single/`.
 - `eval --tta {1,2,4,8}`: aumento en test con volteos y giros de 90° (`src/training/tta.py`), para
   imágenes sin orientación. En PANDA con Swin-T: QWK +0,006 (no significativo), AUC +0,004
   (significativo) y menos variación entre semillas (`docs/datasets/panda.md`).
@@ -22,6 +27,10 @@ Cambios notables del proyecto. Formato basado en [Keep a Changelog](https://keep
 
 ### Cambiado
 
+- Predictor: fracción de potencia de evaluación de la V100 de 0,65 a 0,89, medida en 12 runs largos
+  con la GPU como cuello de botella (el 0,65 venía de evaluaciones que esperaban al disco). Los
+  mismos runs validan la potencia de entrenamiento (191 W medidos frente a 181 W) y dan un 22 % de
+  error en el tiempo a 768-1024 px, siempre por debajo (`docs/performance_model.md` §8).
 - Predictor: ajuste de tres términos propio de la V100 (`THROUGHPUT_FITS`, d = 34 ms por paso).
   Sin calibrar, el traslado por hoja técnica dio un 19 % de error en el barrido a 512 px; con
   entrenamientos reales, el 13 % tanto calibrado como sin calibrar (frente al 30 % de solo

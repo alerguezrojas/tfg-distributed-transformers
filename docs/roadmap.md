@@ -6,7 +6,7 @@
 
 ## Estado actual
 
-> Actualizado el 26/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
+> Actualizado el 27/11/2026 (noche). Se reescribe al cerrar cada bloque de trabajo (ver
 > `CLAUDE.md`, "Continuidad entre sesiones"); el hook de inicio de sesión de Claude Code lo muestra.
 
 **Versión 1.5.0 (26/11/2026), en `main`.** Recoge lo hecho después de la 1.4.0: la web compara la
@@ -25,37 +25,30 @@ dataset y de conseguir más máquinas. El estudio
 reanudar a mitad de época con `--max-restarts`, predecir el coste de los reinicios y elegir cuántas
 GPU usar, y elasticidad real con lote global fijo.
 
-**VERODE operativo de nuevo (26/11/2026, tarde; rama `exp/v100-throughput`).** Con la VPN, la
+**VERODE operativo de nuevo (26/11/2026; PR #285).** Con la VPN, la
 V100 de `verode21` (el único nodo vivo) sirve para dos cosas:
 - **Predictor en una tercera GPU:** barrido sintético (79 medidas) y ocho entrenamientos reales de
   PANDA. Sin calibrar, 19 % de error en el barrido a 512 px; con entrenamientos reales, 13 %
   calibrado o no (30 % con solo FLOPs). La potencia de la V100 pasa de 103 a 181 W (medida).
 - **PANDA con más tejido:** con 16 tiles el mosaico deja fuera el 38 % del tejido (el 91 % de las
-  biopsias tiene más de 16 tiles con tejido), lo que podría explicar que 1024 px no subiera el QWK. Swin-T
-  con 36 tiles a 768 px, tres semillas y un control de 16 tiles, en marcha en la V100 (trabajo
-  13305). Los mosaicos de 64 × 192 px están hechos en el SSD local para el paso siguiente.
+  biopsias tiene más de 16 tiles con tejido). Mosaicos de 36 y 64 tiles generados en el SSD local
+  y copiados a VERODE (`~/datasets/panda/`); resultados en el párrafo siguiente.
 
-**En marcha en VERODE (noche del 26 al 27/11/2026).** Corre solo, dentro de `tmux` en el nodo de
-login (no depende de la VPN ni del PC del autor). Todo está en `~/paravit_runs/` del clúster:
-1. `v100p36` (sesión `v100panda36`, `cluster/experiments/v100_panda36.sh`): Swin-T con 36 tiles a
-   768 px, semillas 42-44, y el control con 16 tiles a 512 px. Predicciones en
-   `~/paravit_runs/swin{36,16}_s*/{test,val}_preds.npz`; hacia la 01:00.
-2. `v100cola` (sesión `v100cola`, `~/paravit_runs/queue_next.sh`, código en el *worktree*
-   `~/paravit_wt` a 43eb687): TTA × 8 de esos cuatro runs; Swin-T con 36 tiles a 1024 px; y con
-   64 tiles de 192 px a 768 px (una semilla, exploración). Registro en
-   `~/paravit_runs/queue_next_26112026.out`; hacia las 05:00.
+**Resultados de la noche del 26 al 27/11 (VERODE, 15 runs sin fallos; `docs/datasets/panda.md`,
+"Mosaicos más grandes").** Ver más tejido (36 o 64 tiles) sube el AUC de cáncer sí o no en todas
+las variantes, pero el QWK solo cuando además cada tile se ve con más detalle: **Swin-T con 36
+tiles a 1024 px, 0,845 ± 0,007 con TTA, +0,018 [+0,002; +0,035]** frente a 16 tiles. La TTA × 8
+(`eval --tta 8`, PR #286) suma algo y estabiliza las semillas. **Un conjunto de dos modelos
+elegido en validación (ViT-B con 36 tiles a 768 px + Swin-T con 36 tiles a 1024 px, con TTA) da
+QWK 0,869 en test**, el mejor del proyecto (antes 0,857 con 8 modelos). Los mismos runs validan la
+potencia de la V100 (191 W frente a 181 W) y dan un 22 % de error de tiempo a 768-1024 px; la
+fracción de potencia de evaluación de la V100 pasa a 0,89.
 
-Al volver: traer `logs/verode/panda/` y las predicciones, comparar con `paravit compare-preds` frente
-a los tres Swin-T locales de 16 tiles y escribir el resultado en `docs/datasets/panda.md`. El repo
-principal del clúster sigue en la rama `exp/v100-throughput` (ya mergeada): pasarlo a `develop`
-cuando no corra nada.
-
-**Siguiente:** resultados de 36 tiles (si mejoran: más semillas de la mejor variante y 1536 px
-sin reducir; evaluar siempre con `--tta 8`, PR #286); modelo de tres
-términos para fp32 con las medidas de la V100; término de I/O con caché y decodificación en CPU;
-el paso 1 del entrenamiento elástico; FSDP2/ZeRO-1 y la vista de conjuntos en la web. Pendiente
-del autor o del tutor: si el entrenamiento elástico pasa a ser una línea de trabajo, el dataset
-nuevo y las máquinas.
+**Siguiente:** confirmar el conjunto con runs independientes (semillas 43 y 44 de ViT-B con 36
+tiles, y ViT-B a 1024 px si cabe) en VERODE; modelo de tres términos para fp32 con las medidas de
+la V100; término de I/O con caché y decodificación en CPU; el paso 1 del entrenamiento elástico;
+FSDP2/ZeRO-1 y la vista de conjuntos en la web. Pendiente del autor o del tutor: si el
+entrenamiento elástico pasa a ser una línea de trabajo, el dataset nuevo y las máquinas.
 
 **Último bloque (23/11/2026, noche):** fase 3 de la web (primer bloque) y fase 4 de clúster
 (Slurm + Apptainer), el predictor de tres términos integrado y validado con entrenamientos reales,

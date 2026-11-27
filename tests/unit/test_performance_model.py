@@ -218,9 +218,9 @@ def test_heterogeneous_energy_not_double_counted():
 def test_v100_power_matches_documented():
     # 8 PANDA trainings on verode21 (26/11/2026); it was 103 W from sparse eval-phase readings.
     assert gpu_spec("Tesla V100").train_power_w == pytest.approx(181, abs=1)
-    # eval/train of the same runs (0.65); the BigEarthNet V100 run of May 2026 measured 103 W
-    # evaluating (0.57 × 181), where the default 0.9 would give 163 W.
-    assert estimate_power(gpu_spec("Tesla V100"), "eval") == pytest.approx(0.65 * 181, abs=1)
+    # eval/train when the GPU is the bottleneck (0.89, 12 PANDA runs at 768-1024 px, 27/11/2026);
+    # evals that wait on the disk draw less (0.57-0.65), which the predictor does not model.
+    assert estimate_power(gpu_spec("Tesla V100"), "eval") == pytest.approx(0.89 * 181, abs=1)
     assert estimate_power(gpu_spec("Tesla T4"), "eval") == pytest.approx(
         EVAL_POWER_FRACTION * gpu_spec("Tesla T4").train_power_w)     # no ratio of its own
 
