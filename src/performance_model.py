@@ -57,8 +57,10 @@ USABLE_VRAM_FRACTION: float = 0.92
 # Effective power lives on GpuSpec.train_power_w (W per GPU); GpuSpec.power_calibrated
 # flags whether it comes from a real measurement (True) or a TDP fallback (False).
 # The measured eval/train power ratio VARIES by GPU (T4 ≈ 0.98, V100 0.65, RTX 3060 Ti
-# ≈ 0.67); 0.9 is the default for GPUs without their own GpuSpec.eval_power_fraction. Eval
-# is short (forward-only over the small val split), so it is a few % of per-epoch energy.
+# ≈ 0.67) and by model (on the V100, 0.58-0.69 for light models, 0.86-0.93 for Swin-T and
+# ViT-B); 0.9 is the default for GPUs without their own GpuSpec.eval_power_fraction. Eval is
+# a few % of per-epoch energy when it is compute-bound, but up to ~30 % when the eval time
+# sits on the I/O floor (BigEarthNet on a V100).
 EVAL_POWER_FRACTION: float = 0.9
 # Fraction of nameplate TDP used as the effective-power fallback for GPUs we never
 # measured here (datacenter cards on NFS run well below TDP; ~0.65 is a fair middle).
@@ -139,9 +141,14 @@ GPU_TABLE: dict[str, GpuSpec] = {
     _T4:             GpuSpec(_T4, 8.1, 3.8, 16.0, "pcie", train_power_w=64.0, power_calibrated=True, mem_bw_gbs=320.0,
                              allreduce_busbw_gbs=4.05),    # Kaggle: 64 W fp32 ≈ 63 W amp
     # V100 power: median of the train-phase `potencia media` of 8 PANDA trainings at 512 px with AMP
-    # on verode21 (26/11/2026, logs/verode/panda/single/*/train_26112026_*; 142-218 W by model,
-    # eval/train 0.65, median of the same runs). The former 103 W came from sparse eval-phase
-    # readings (May 2026) and put the energy of every V100 prediction ~45 % low.
+    # on verode21 (26/11/2026, logs/verode/panda/single/*/train_26112026_*; 142-218 W by model).
+    # The former 103 W came from sparse eval-phase readings (May 2026) and put the energy of every
+    # V100 prediction ~45 % low. Checked out-of-sample on 12 runs of up to 15 epochs at 768-1024 px
+    # (26-27/11/2026): 191 W measured (+5 %); those are Swin-family and ViT-B runs only, so they
+    # validate the step to higher resolution, not the spread across models.
+    # Eval/train 0.65 is the median of the same 8 runs and depends on the model: 0.58-0.69 for the
+    # light ones (ViT-S, DeiT-S, ResNet-50, EfficientNets, ConvNeXt-T), 0.86-0.93 for Swin-T and
+    # ViT-B (0.89 in the 12 long runs). A per-model fraction is not modelled.
     _V100:           GpuSpec(_V100, 14.0, 3.5, 32.0, "nvlink", train_power_w=181.0, power_calibrated=True, mem_bw_gbs=900.0, eval_power_fraction=0.65),
     "V100-PCIE":     GpuSpec("V100-PCIE", 14.0, 3.5, 32.0, "nvlink", train_power_w=181.0, power_calibrated=True, mem_bw_gbs=900.0, eval_power_fraction=0.65),
     _RTX_3060_TI:    GpuSpec(_RTX_3060_TI, 16.2, 2.54, 8.0, "pcie", train_power_w=180.0, power_calibrated=True, mem_bw_gbs=448.0),   # local: ~180 W (SSD, compute-bound)

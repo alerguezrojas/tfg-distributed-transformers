@@ -710,8 +710,8 @@ mosaico de 36 son los del mosaico de 16):
 - **El 91 % de las biopsias tiene más de 16 tiles con tejido** y la mediana llena los 36: el
   mosaico base no ve más de un tercio del tejido, sea cual sea el grado o el hospital.
 - Podría explicar por qué 1024 px no subió el QWK (sección "Resolución 1024 px"): con los mismos 16 tiles
-  se veía con más detalle el mismo tejido; la parte que falta no se miró. Es una hipótesis: la
-  comprueban los entrenamientos de abajo.
+  se veía con más detalle el mismo tejido; la parte que falta no se miró. Los entrenamientos de
+  abajo no lo confirman del todo: más tejido solo sube el QWK si además se ve con más detalle.
 - El 72 % de las biopsias tiene 30 o más tiles con tejido: con 36 aún puede quedar tejido fuera
   (64 tiles de 192 px, la receta del 1.er puesto, ocupan la misma superficie con más grano).
 
@@ -729,7 +729,76 @@ tiles hay 2,25 veces más píxeles que decodificar y se usan 24 procesos.
 el modelo de referencia, con 36 tiles reescalados a 768 px, para que cada tile quede a 128 px como
 en la base y solo cambie cuánto tejido se ve. Tres semillas, más un control con 16 tiles a 512 px
 en la misma V100; la comparación usa también las tres semillas locales de Swin-T con 16 tiles
-(0,821 ± 0,011), porque el control de la V100 es una sola semilla. Resultados: pendientes.
+(0,821 ± 0,011), porque el control de la V100 es una sola semilla.
+
+**Resultados (26-27/11/2026).** Doce entrenamientos en la V100, todos con Swin-T salvo donde se dice,
+tres semillas (42-44), 15 épocas como máximo, el mismo test; *bootstrap* emparejado de 2.000 remuestreos frente a los tres
+Swin-T de 16 tiles (en la V100, el control de 16 tiles dio 0,821 con TTA × 8 0,831, frente a 0,830
+y 0,828 del mismo run en local: las dos máquinas son comparables). Diferencia de QWK, media de las
+tres semillas y con TTA × 8 en los dos grupos:
+
+| Entrada | Tejido por tile | QWK | QWK con TTA × 8 | − 16 tiles [IC 95 %] | Exact. (TTA) | AUC ISUP ≥ 1 (TTA) | s/época (V100) |
+|---|---|---|---|---|---|---|---|
+| 16 tiles, 512 px (referencia) | 128 px | 0,821 ± 0,011 | 0,827 ± 0,004 | — | 0,701 | 0,962 | 106 |
+| 36 tiles, 768 px | 128 px | 0,826 ± 0,024 | 0,833 ± 0,022 | +0,006 [−0,008; +0,022] | 0,696 | 0,971 | 212 |
+| 64 tiles de 192 px, 768 px | 96 px | 0,823 ± 0,008 | 0,827 ± 0,011 | +0,001 [−0,016; +0,017] | 0,706 | 0,973 | 212 |
+| **36 tiles, 1024 px** | **171 px** | **0,837 ± 0,011** | **0,845 ± 0,007** | **+0,018 [+0,002; +0,035]** | **0,726** | **0,977** | 374 |
+
+QWK de test por semilla (sin TTA): 36 tiles a 768 px 0,849, 0,829 y 0,800; 64 tiles 0,829, 0,826
+y 0,814; 36 tiles a 1024 px 0,844, 0,824 y 0,841.
+
+- **Ver más tejido mejora la detección de cáncer, no el grado.** Las tres variantes con más
+  tiles suben el AUC de ISUP ≥ 1 de forma significativa (+0,009 a +0,015), pero con el mismo
+  detalle por tile (768 px) el QWK no se mueve: 36 tiles a 768 px parecía mejorar con la semilla 42
+  (0,849) y las otras dos semillas lo deshacen (0,829 y 0,800).
+- **Más tejido y más detalle a la vez sí mejora el QWK:** 36 tiles a 1024 px (171 px por tile,
+  frente a 128) da **+0,018 [+0,002; +0,035]** con TTA y +0,016 [−0,003; +0,034] sin ella, con la
+  exactitud +0,025 y el AUC +0,015, todo frente a la misma referencia. Es la primera mejora de QWK
+  que viene de la entrada: 1024 px con 16 tiles (sección "Resolución 1024 px") daba +0,010 sin
+  significación, y 36 tiles sin más detalle, +0,006. Salvedad: de las seis comparaciones (tres
+  variantes, con y sin TTA) es la única cuyo intervalo excluye el 0, y por poco (+0,002); el
+  aumento de exactitud y AUC de la misma variante la respalda.
+- 64 tiles de 192 px ocupan la misma superficie que 36 de 256 con un 7 % más de tejido, pero cada
+  tile se ve a 96 px: no mejora a 36 tiles a 768 px.
+- **Coste:** 36 tiles a 1024 px cuestan 3,5 veces la época de la base en la misma V100 (374 s
+  frente a 106 s; ~1,6 h por run de 15 épocas). En Kaggle, con la CPU como límite, sería aún más.
+
+**Otras arquitecturas con 36 tiles a 768 px** (una semilla, la 42; sin TTA y con TTA): ViT-B 0,841
+y 0,851; SwinV2-T 0,848 y 0,849. Con una semilla no se pueden comparar con Swin-T (la semilla 42
+de Swin-T dio 0,849 y 0,852).
+
+**Conjuntos, elegidos solo con la validación** (`scripts/select_ensemble.py`; el test se mira una
+vez al final):
+
+| Conjunto | Miembros | QWK val | QWK test | Exact. | AUC ISUP ≥ 1 |
+|---|---|---|---|---|---|
+| Mejor anterior (8 arquitecturas, 16 tiles, 23/11) | 8 | 0,859 | 0,858 | 0,728 | 0,968 |
+| Por grupos, todos los runs (16, 36 y 64 tiles) | 14 | 0,868 | 0,863 | 0,755 | 0,976 |
+| **Por grupos, solo runs nuevos, TTA × 8** | **2** (ViT-B 36 tiles a 768 px + Swin-T 36 tiles a 1024 px, semilla 42) | 0,876 | **0,869** | **0,762** | **0,978** |
+
+- **El conjunto de dos modelos con TTA es el mejor resultado de PANDA en el proyecto: QWK 0,869.**
+  Frente a los tres Swin-T de 16 tiles con TTA (0,836): +0,033 [+0,009; +0,057]. Frente al mejor
+  conjunto anterior (8 modelos): **QWK +0,011 [−0,012; +0,032], no significativo**, pero exactitud
+  +0,034 [+0,016; +0,054] y AUC +0,010 [+0,004; +0,015], los dos significativos, con cuatro veces
+  menos modelos. Si se cambia el Swin-T de la semilla 42 por el de la 43 o la 44, el conjunto da
+  0,865 o 0,874: no depende de esa semilla.
+- El de 14 miembros (todos los runs, sin TTA) da 0,863: frente al anterior, QWK +0,005 [−0,005;
+  +0,013], exactitud +0,026 y AUC +0,007 (estos dos, significativos).
+- Salvedad: los dos miembros del conjunto pequeño son el mejor run de su grupo **en validación**, y
+  ViT-B con 36 tiles solo tiene una semilla. Igual que el 23/11, hay que repetir el conjunto con
+  runs de otras semillas que no intervinieron en la elección antes de dar el 0,869 por bueno (en
+  marcha en VERODE desde el 27/11: semillas 43 y 44 de ViT-B y SwinV2-T con 36 tiles,
+  `cluster/experiments/v100_panda36_confirmacion.sh`).
+
+**Conclusión.** Lo que más sube el resultado es combinar más tejido con más detalle por tile (36
+tiles a 1024 px), evaluar con TTA y mezclar arquitecturas distintas. Siguiente: semillas 43 y 44 de
+ViT-B con 36 tiles (y a 1024 px, si cabe en la V100) para repetir el conjunto con runs
+independientes.
+
+Datos: predicciones en `/media/alejandro/SSD/paravit-checkpoints/verode_runs/<run>/` (copia de
+`~/paravit_runs/` de VERODE, donde quedan los checkpoints); logs en
+`logs/verode/panda/single/{swin_tiny_patch4_window7_224,vit_base_patch16_224.augreg2_in21k_ft_in1k,swinv2_tiny_window8_256}/`
+(`train_26112026_{203408,214254,222303,232857}` y `train_27112026_*`).
 
 ### Aumento en test (TTA): giros y volteos (26/11/2026)
 

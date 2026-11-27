@@ -1,0 +1,180 @@
+2026-11-27 05:28:55 [INFO ] Configuración: modelo=swin_tiny_patch4_window7_224 | batch=16/GPU (global=16) | epochs=15 | lr=0.0001 | precision=amp | loss=ce | train=7433 | val=1593 | dataset=panda | seed=44 | freeze_backbone=false | backbone=timm
+2026-11-27 05:28:55 [INFO ] Iniciando entrenamiento — 15 epochs
+2026-11-27 05:28:55 [INFO ] 
+── Epoch 001/015 ────────────────────────────
+2026-11-27 05:32:11 [INFO ] [energy] Trainer.train_epoch: 35722.5 J  (9.92291 Wh)  potencia media 188.0 W
+2026-11-27 05:32:30 [INFO ] [energy] Trainer.eval_epoch: 2991.9 J  (0.83108 Wh)  potencia media 171.9 W
+2026-11-27 05:32:30 [INFO ]   loss           train=1.4977  val=1.3253
+2026-11-27 05:32:30 [INFO ]   f1             train=0.2985  val=0.3820
+2026-11-27 05:32:30 [INFO ]   accuracy       train=0.4012  val=0.4696
+2026-11-27 05:32:30 [INFO ]   precision      val=0.4321
+2026-11-27 05:32:30 [INFO ]   recall         val=0.3947
+2026-11-27 05:32:30 [INFO ]   qwk            val=0.5597
+2026-11-27 05:32:30 [INFO ]   auc            val=0.7952
+2026-11-27 05:32:55 [INFO ] [Epoch 001] Checkpoint guardado
+2026-11-27 05:33:21 [INFO ]   ETA: 0h 50m  (196s/epoch, best_qwk=0.5597)
+2026-11-27 05:33:22 [INFO ] 
+── Epoch 002/015 ────────────────────────────
+2026-11-27 05:36:36 [INFO ] [energy] Trainer.train_epoch: 35856.6 J  (9.96017 Wh)  potencia media 190.7 W
+2026-11-27 05:36:55 [INFO ] [energy] Trainer.eval_epoch: 3047.5 J  (0.84653 Wh)  potencia media 170.3 W
+2026-11-27 05:36:55 [INFO ]   loss           train=1.2307  val=1.1013
+2026-11-27 05:36:55 [INFO ]   f1             train=0.4585  val=0.4991
+2026-11-27 05:36:55 [INFO ]   accuracy       train=0.5282  val=0.5769
+2026-11-27 05:36:55 [INFO ]   precision      val=0.5303
+2026-11-27 05:36:55 [INFO ]   recall         val=0.5013
+2026-11-27 05:36:55 [INFO ]   qwk            val=0.7036
+2026-11-27 05:36:55 [INFO ]   auc            val=0.8638
+2026-11-27 05:37:20 [INFO ] [Epoch 002] Checkpoint guardado
+2026-11-27 05:37:46 [INFO ]   ETA: 0h 46m  (194s/epoch, best_qwk=0.7036)
+2026-11-27 05:37:46 [INFO ] 
+── Epoch 003/015 ────────────────────────────
+2026-11-27 05:40:59 [INFO ] [energy] Trainer.train_epoch: 35863.7 J  (9.96214 Wh)  potencia media 191.7 W
+2026-11-27 05:41:19 [INFO ] [energy] Trainer.eval_epoch: 3039.2 J  (0.84422 Wh)  potencia media 164.3 W
+2026-11-27 05:41:19 [INFO ]   loss           train=1.0410  val=0.9786
+2026-11-27 05:41:19 [INFO ]   f1             train=0.5307  val=0.5593
+2026-11-27 05:41:19 [INFO ]   accuracy       train=0.6016  val=0.6296
+2026-11-27 05:41:19 [INFO ]   precision      val=0.5816
+2026-11-27 05:41:19 [INFO ]   recall         val=0.5541
+2026-11-27 05:41:19 [INFO ]   qwk            val=0.7780
+2026-11-27 05:41:19 [INFO ]   auc            val=0.8841
+2026-11-27 05:41:44 [INFO ] [Epoch 003] Checkpoint guardado
+2026-11-27 05:42:09 [INFO ]   ETA: 0h 42m  (193s/epoch, best_qwk=0.7780)
+2026-11-27 05:42:10 [INFO ] 
+── Epoch 004/015 ────────────────────────────
+2026-11-27 05:45:23 [INFO ] [energy] Trainer.train_epoch: 35665.1 J  (9.90698 Wh)  potencia media 190.1 W
+2026-11-27 05:45:42 [INFO ] [energy] Trainer.eval_epoch: 3017.2 J  (0.83812 Wh)  potencia media 169.5 W
+2026-11-27 05:45:42 [INFO ]   loss           train=0.9645  val=0.9572
+2026-11-27 05:45:42 [INFO ]   f1             train=0.5594  val=0.5326
+2026-11-27 05:45:42 [INFO ]   accuracy       train=0.6268  val=0.6215
+2026-11-27 05:45:42 [INFO ]   precision      val=0.5651
+2026-11-27 05:45:42 [INFO ]   recall         val=0.5382
+2026-11-27 05:45:42 [INFO ]   qwk            val=0.7841
+2026-11-27 05:45:42 [INFO ]   auc            val=0.8935
+2026-11-27 05:46:08 [INFO ] [Epoch 004] Checkpoint guardado
+2026-11-27 05:46:34 [INFO ]   ETA: 0h 39m  (194s/epoch, best_qwk=0.7841)
+2026-11-27 05:46:34 [INFO ] 
+── Epoch 005/015 ────────────────────────────
+2026-11-27 05:49:47 [INFO ] [energy] Trainer.train_epoch: 35583.8 J  (9.88440 Wh)  potencia media 190.2 W
+2026-11-27 05:50:07 [INFO ] [energy] Trainer.eval_epoch: 3025.6 J  (0.84045 Wh)  potencia media 163.5 W
+2026-11-27 05:50:07 [INFO ]   loss           train=0.9072  val=0.9677
+2026-11-27 05:50:07 [INFO ]   f1             train=0.5882  val=0.5411
+2026-11-27 05:50:07 [INFO ]   accuracy       train=0.6502  val=0.6303
+2026-11-27 05:50:07 [INFO ]   precision      val=0.5759
+2026-11-27 05:50:07 [INFO ]   recall         val=0.5422
+2026-11-27 05:50:07 [INFO ]   qwk            val=0.7849
+2026-11-27 05:50:07 [INFO ]   auc            val=0.8935
+2026-11-27 05:50:33 [INFO ] [Epoch 005] Checkpoint guardado
+2026-11-27 05:50:58 [INFO ]   ETA: 0h 35m  (193s/epoch, best_qwk=0.7849)
+2026-11-27 05:50:58 [INFO ] 
+── Epoch 006/015 ────────────────────────────
+2026-11-27 05:54:11 [INFO ] [energy] Trainer.train_epoch: 35402.8 J  (9.83412 Wh)  potencia media 189.8 W
+2026-11-27 05:54:30 [INFO ] [energy] Trainer.eval_epoch: 3025.1 J  (0.84030 Wh)  potencia media 166.2 W
+2026-11-27 05:54:30 [INFO ]   loss           train=0.8538  val=0.9765
+2026-11-27 05:54:30 [INFO ]   f1             train=0.6247  val=0.5679
+2026-11-27 05:54:30 [INFO ]   accuracy       train=0.6801  val=0.6321
+2026-11-27 05:54:30 [INFO ]   precision      val=0.6230
+2026-11-27 05:54:30 [INFO ]   recall         val=0.5696
+2026-11-27 05:54:30 [INFO ]   qwk            val=0.8104
+2026-11-27 05:54:30 [INFO ]   auc            val=0.8981
+2026-11-27 05:54:56 [INFO ] [Epoch 006] Checkpoint guardado
+2026-11-27 05:55:21 [INFO ]   ETA: 0h 31m  (193s/epoch, best_qwk=0.8104)
+2026-11-27 05:55:22 [INFO ] 
+── Epoch 007/015 ────────────────────────────
+2026-11-27 05:58:36 [INFO ] [energy] Trainer.train_epoch: 35695.2 J  (9.91533 Wh)  potencia media 190.2 W
+2026-11-27 05:58:55 [INFO ] [energy] Trainer.eval_epoch: 3063.5 J  (0.85098 Wh)  potencia media 163.8 W
+2026-11-27 05:58:55 [INFO ]   loss           train=0.7995  val=0.9473
+2026-11-27 05:58:55 [INFO ]   f1             train=0.6376  val=0.5818
+2026-11-27 05:58:55 [INFO ]   accuracy       train=0.6916  val=0.6522
+2026-11-27 05:58:55 [INFO ]   precision      val=0.6108
+2026-11-27 05:58:55 [INFO ]   recall         val=0.5750
+2026-11-27 05:58:55 [INFO ]   qwk            val=0.7774
+2026-11-27 05:58:55 [INFO ]   auc            val=0.9003
+2026-11-27 05:59:22 [INFO ]   ETA: 0h 28m  (194s/epoch, best_qwk=0.8104)
+2026-11-27 05:59:22 [INFO ] 
+── Epoch 008/015 ────────────────────────────
+2026-11-27 06:02:35 [INFO ] [energy] Trainer.train_epoch: 35807.3 J  (9.94647 Wh)  potencia media 191.2 W
+2026-11-27 06:02:54 [INFO ] [energy] Trainer.eval_epoch: 3057.0 J  (0.84918 Wh)  potencia media 166.1 W
+2026-11-27 06:02:54 [INFO ]   loss           train=0.7333  val=0.9167
+2026-11-27 06:02:54 [INFO ]   f1             train=0.6715  val=0.5739
+2026-11-27 06:02:54 [INFO ]   accuracy       train=0.7215  val=0.6478
+2026-11-27 06:02:54 [INFO ]   precision      val=0.6253
+2026-11-27 06:02:54 [INFO ]   recall         val=0.5805
+2026-11-27 06:02:54 [INFO ]   qwk            val=0.8255
+2026-11-27 06:02:54 [INFO ]   auc            val=0.9078
+2026-11-27 06:03:20 [INFO ] [Epoch 008] Checkpoint guardado
+2026-11-27 06:03:46 [INFO ]   ETA: 0h 24m  (193s/epoch, best_qwk=0.8255)
+2026-11-27 06:03:46 [INFO ] 
+── Epoch 009/015 ────────────────────────────
+2026-11-27 06:07:00 [INFO ] [energy] Trainer.train_epoch: 35881.2 J  (9.96699 Wh)  potencia media 191.2 W
+2026-11-27 06:07:18 [INFO ] [energy] Trainer.eval_epoch: 3017.3 J  (0.83813 Wh)  potencia media 169.5 W
+2026-11-27 06:07:18 [INFO ]   loss           train=0.6899  val=0.8875
+2026-11-27 06:07:18 [INFO ]   f1             train=0.6942  val=0.6206
+2026-11-27 06:07:18 [INFO ]   accuracy       train=0.7393  val=0.6811
+2026-11-27 06:07:18 [INFO ]   precision      val=0.6366
+2026-11-27 06:07:18 [INFO ]   recall         val=0.6184
+2026-11-27 06:07:18 [INFO ]   qwk            val=0.8297
+2026-11-27 06:07:18 [INFO ]   auc            val=0.9109
+2026-11-27 06:07:44 [INFO ] [Epoch 009] Checkpoint guardado
+2026-11-27 06:08:10 [INFO ]   ETA: 0h 21m  (194s/epoch, best_qwk=0.8297)
+2026-11-27 06:08:10 [INFO ] 
+── Epoch 010/015 ────────────────────────────
+2026-11-27 06:11:23 [INFO ] [energy] Trainer.train_epoch: 35738.5 J  (9.92737 Wh)  potencia media 191.7 W
+2026-11-27 06:11:41 [INFO ] [energy] Trainer.eval_epoch: 3023.3 J  (0.83980 Wh)  potencia media 171.8 W
+2026-11-27 06:11:41 [INFO ]   loss           train=0.6251  val=0.9297
+2026-11-27 06:11:41 [INFO ]   f1             train=0.7248  val=0.5969
+2026-11-27 06:11:41 [INFO ]   accuracy       train=0.7673  val=0.6472
+2026-11-27 06:11:41 [INFO ]   precision      val=0.6028
+2026-11-27 06:11:41 [INFO ]   recall         val=0.6003
+2026-11-27 06:11:41 [INFO ]   qwk            val=0.8192
+2026-11-27 06:11:41 [INFO ]   auc            val=0.9100
+2026-11-27 06:12:06 [INFO ]   ETA: 0h 17m  (192s/epoch, best_qwk=0.8297)
+2026-11-27 06:12:06 [INFO ] 
+── Epoch 011/015 ────────────────────────────
+2026-11-27 06:15:20 [INFO ] [energy] Trainer.train_epoch: 35661.0 J  (9.90584 Wh)  potencia media 190.5 W
+2026-11-27 06:15:39 [INFO ] [energy] Trainer.eval_epoch: 3022.9 J  (0.83970 Wh)  potencia media 163.4 W
+2026-11-27 06:15:39 [INFO ]   loss           train=0.5716  val=0.9255
+2026-11-27 06:15:39 [INFO ]   f1             train=0.7503  val=0.6277
+2026-11-27 06:15:39 [INFO ]   accuracy       train=0.7866  val=0.6717
+2026-11-27 06:15:39 [INFO ]   precision      val=0.6326
+2026-11-27 06:15:39 [INFO ]   recall         val=0.6294
+2026-11-27 06:15:39 [INFO ]   qwk            val=0.8145
+2026-11-27 06:15:39 [INFO ]   auc            val=0.9120
+2026-11-27 06:16:05 [INFO ]   ETA: 0h 14m  (193s/epoch, best_qwk=0.8297)
+2026-11-27 06:16:05 [INFO ] 
+── Epoch 012/015 ────────────────────────────
+2026-11-27 06:19:18 [INFO ] [energy] Trainer.train_epoch: 35586.9 J  (9.88526 Wh)  potencia media 190.4 W
+2026-11-27 06:19:37 [INFO ] [energy] Trainer.eval_epoch: 3013.6 J  (0.83712 Wh)  potencia media 164.7 W
+2026-11-27 06:19:37 [INFO ]   loss           train=0.5322  val=0.9231
+2026-11-27 06:19:37 [INFO ]   f1             train=0.7757  val=0.6212
+2026-11-27 06:19:37 [INFO ]   accuracy       train=0.8077  val=0.6704
+2026-11-27 06:19:37 [INFO ]   precision      val=0.6237
+2026-11-27 06:19:37 [INFO ]   recall         val=0.6225
+2026-11-27 06:19:37 [INFO ]   qwk            val=0.8194
+2026-11-27 06:19:37 [INFO ]   auc            val=0.9147
+2026-11-27 06:20:02 [INFO ]   ETA: 0h 10m  (193s/epoch, best_qwk=0.8297)
+2026-11-27 06:20:02 [INFO ] 
+── Epoch 013/015 ────────────────────────────
+2026-11-27 06:23:15 [INFO ] [energy] Trainer.train_epoch: 35677.9 J  (9.91054 Wh)  potencia media 191.1 W
+2026-11-27 06:23:34 [INFO ] [energy] Trainer.eval_epoch: 3008.2 J  (0.83562 Wh)  potencia media 169.0 W
+2026-11-27 06:23:34 [INFO ]   loss           train=0.4887  val=0.9406
+2026-11-27 06:23:34 [INFO ]   f1             train=0.7925  val=0.6326
+2026-11-27 06:23:34 [INFO ]   accuracy       train=0.8212  val=0.6817
+2026-11-27 06:23:34 [INFO ]   precision      val=0.6369
+2026-11-27 06:23:34 [INFO ]   recall         val=0.6365
+2026-11-27 06:23:34 [INFO ]   qwk            val=0.8241
+2026-11-27 06:23:34 [INFO ]   auc            val=0.9154
+2026-11-27 06:23:59 [INFO ]   ETA: 0h 07m  (193s/epoch, best_qwk=0.8297)
+2026-11-27 06:23:59 [INFO ] 
+── Epoch 014/015 ────────────────────────────
+2026-11-27 06:27:12 [INFO ] [energy] Trainer.train_epoch: 35629.2 J  (9.89701 Wh)  potencia media 191.0 W
+2026-11-27 06:27:30 [INFO ] [energy] Trainer.eval_epoch: 3038.9 J  (0.84415 Wh)  potencia media 172.7 W
+2026-11-27 06:27:30 [INFO ]   loss           train=0.4636  val=0.9297
+2026-11-27 06:27:30 [INFO ]   f1             train=0.8081  val=0.6425
+2026-11-27 06:27:30 [INFO ]   accuracy       train=0.8351  val=0.6874
+2026-11-27 06:27:30 [INFO ]   precision      val=0.6538
+2026-11-27 06:27:30 [INFO ]   recall         val=0.6385
+2026-11-27 06:27:30 [INFO ]   qwk            val=0.8285
+2026-11-27 06:27:30 [INFO ]   auc            val=0.9180
+2026-11-27 06:27:56 [INFO ]   ETA: 0h 03m  (192s/epoch, best_qwk=0.8297)
+2026-11-27 06:27:56 [INFO ] [Early stopping] Sin mejora en 5 epochs consecutivos. Parado en epoch 14. Mejor Val QWK: 0.8297
+2026-11-27 06:27:56 [INFO ] Entrenamiento completado — mejor Val QWK: 0.8297

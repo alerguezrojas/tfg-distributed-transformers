@@ -10,6 +10,8 @@ ejemplo son los del clúster VERODE (ULL); ver [`docs/infraestructura.md`](../do
 | `apptainer/paravit.def` | Imagen con PyTorch cu118 y el proyecto |
 | `benchmark/throughput_sweep.py` | Barrido de throughput del predictor en la GPU del nodo (las campañas de la T4) |
 | `experiments/v100_panda.sh` | Entrenamientos de PANDA en la V100 para validar el predictor |
+| `experiments/v100_panda36.sh`, `experiments/v100_panda36_cola.sh` | Mosaicos de 36/64 tiles en la V100 y la cola nocturna que los siguió (TTA, 1024 px, otras arquitecturas) |
+| `vigia_verode.sh` | Vigilante: sube cada 20 min un `ESTADO.md` a la rama `verode-estado` (se ve sin VPN) |
 
 ## 1. El lanzador `--launcher slurm`
 
@@ -117,4 +119,13 @@ solo proceso de entrenamiento antes de fiarse de los tiempos.
 El barrido escribe `throughput.csv` (campaña, resolución, precisión, modelo, lote, img/s de
 entrenamiento y evaluación, VRAM) y `gpu.txt`; se copia al repositorio en `logs/verode/benchmark/`.
 Los entrenamientos dejan sus artefactos en `logs/verode/panda/single/<modelo>/`.
+
+**Dejar trabajo largo sin conexión.** Cada cola va en su sesión `tmux` del nodo de login, que espera
+a que acabe el trabajo anterior (`while squeue ... | grep -q <nombre>; do sleep 60; done; srun ...`),
+y `vigia_verode.sh` corre en otra. El vigilante escribe en `ESTADO.md` uno de cinco diagnósticos
+(`EN_MARCHA`, `EN_MARCHA_CON_FALLOS`, `BLOQUEO`, `PARADO`, `TERMINADO`) y lo sube a la rama huérfana
+`verode-estado`, que no dispara la CI; se lee en GitHub sin VPN. Si la hora de `ESTADO.md` tiene más
+de una hora, ha caído el vigilante o el nodo de login. Un script de bash que se está ejecutando no se
+edita ni se actualiza con `git pull` (bash lo lee a trozos): para código nuevo, un *worktree* aparte
+(`git worktree add ~/paravit_wt <commit>`) con el `.venv` del repositorio principal.
 

@@ -1,0 +1,68 @@
+{
+  "v": 1,
+  "type": "run_manifest",
+  "source": "training",
+  "run_id": "26112026_214254",
+  "dataset": "panda",
+  "task": "multiclass",
+  "classes": [
+    "ISUP 0",
+    "ISUP 1",
+    "ISUP 2",
+    "ISUP 3",
+    "ISUP 4",
+    "ISUP 5"
+  ],
+  "model": "swin_tiny_patch4_window7_224",
+  "mode": "single",
+  "world_size": 1,
+  "select_metric": "qwk",
+  "ordinal": true,
+  "config": {
+    "data": {
+      "name": "panda",
+      "root": "/home/bejeque/alu0101317038/datasets/panda",
+      "image_size": 512,
+      "num_workers": 24
+    },
+    "model": {
+      "name": "swin_tiny_patch4_window7_224",
+      "pretrained": true,
+      "dropout": 0.1,
+      "img_size": 512
+    },
+    "training": {
+      "epochs": 15,
+      "batch_size": 16,
+      "lr": 0.0001,
+      "lr_min": 1e-06,
+      "weight_decay": 0.05,
+      "warmup_epochs": 1,
+      "llrd_decay": 0.75,
+      "grad_clip": 1.0,
+      "early_stopping_patience": 5,
+      "log_batch_every": 10,
+      "seed": 42,
+      "select_by": "qwk",
+      "precision": "amp"
+    },
+    "checkpoint": {
+      "dir": "/home/bejeque/alu0101317038/paravit_runs/swin16_s42/ckpt"
+    },
+    "output": {
+      "env": "verode"
+    }
+  },
+  "env": {
+    "host": "verode21",
+    "python": "3.12.13",
+    "torch": "2.7.1+cu118",
+    "timm": "1.0.26",
+    "git_commit": "9cf59a1",
+    "devices": [
+      "Tesla V100-PCIE-32GB"
+    ]
+  },
+  "epochs": 15,
+  "command": "train_single_gpu.py --config configs/train_panda.yaml --model swin_tiny_patch4_window7_224 --seed 42 --precision amp --set data.num_workers=24 --set checkpoint.dir=/home/bejeque/alu0101317038/paravit_runs/swin16_s42/ckpt --trace simple --fn energy"
+}
