@@ -1,6 +1,6 @@
 # Estado de VERODE
 
-**Diagnóstico: EN_MARCHA** — actualizado el 27/11/2026 a las 11:15 (hora de Canarias).
+**Diagnóstico: EN_MARCHA** — actualizado el 27/11/2026 a las 11:35 (hora de Canarias).
 
 Se actualiza cada 20 minutos. Si esta hora tiene más de una hora, el vigilante o el
 nodo de login de VERODE han caído. Diagnósticos: EN_MARCHA, EN_MARCHA_CON_FALLOS (algún
@@ -9,7 +9,7 @@ run falló y la cola siguió), BLOQUEO (hay trabajo pero nada escribe desde hace
 
 ## Trabajos en Slurm
 ```
-13306 v100cola RUNNING 10:56:25 verode21
+13306 v100cola RUNNING 11:16:29 verode21
 ```
 ## v100_panda36_26112026.out
 ```
@@ -46,12 +46,12 @@ swin36_1024_s44 tta8:   QWK (cuadrático)  : 0.8451
 === vitb36_s42 (configs/train_panda_36.yaml, semilla 42, ) 27/11 10:44
 ```
 ## Último entrenamiento
-`/home/bejeque/alu0101317038/paravit_wt/logs/verode/panda/single/vit_base_patch16_224.augreg2_in21k_ft_in1k/epoch_metrics_27112026_104510.csv` (modificado: 27/11 11:07)
+`/home/bejeque/alu0101317038/paravit_wt/logs/verode/panda/single/vit_base_patch16_224.augreg2_in21k_ft_in1k/epoch_metrics_27112026_104510.csv` (modificado: 27/11 11:27)
 ```
 época, s/época, QWK val
-epoch, epoch_time_s, val_qwk
-1, 479.36, 0.657207
 2, 476.47, 0.726861
+3, 475.83, 0.795815
+4, 476.36, 0.779152
 ```
 ## QWK de test por run (eval normal y TTA x8)
 ```
