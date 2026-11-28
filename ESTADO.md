@@ -1,6 +1,6 @@
 # Estado de VERODE
 
-**Diagnóstico: EN_MARCHA** — actualizado el 28/11/2026 a las 06:29 (hora de Canarias).
+**Diagnóstico: EN_MARCHA** — actualizado el 28/11/2026 a las 06:49 (hora de Canarias).
 
 Se actualiza cada 20 minutos. Si esta hora tiene más de una hora, el vigilante o el
 nodo de login de VERODE han caído. Diagnósticos: EN_MARCHA, EN_MARCHA_CON_FALLOS (algún
@@ -9,7 +9,7 @@ run falló y la cola siguió), BLOQUEO (hay trabajo pero nada escribe desde hace
 
 ## Trabajos en Slurm
 ```
-13307 v100conf RUNNING 7:22:23 verode21
+13307 v100conf RUNNING 7:42:27 verode21
 ```
 ## queue_confirm_27112026.out
 ```
@@ -20,14 +20,16 @@ vitb36_s43 tta8:   QWK (cuadrático)  : 0.8545
 vitb36_s44 tta1:   QWK (cuadrático)  : 0.8594
 vitb36_s44 tta8:   QWK (cuadrático)  : 0.8506
 === swinv2_36_s43 (configs/train_panda_36.yaml, semilla 43, ) 28/11 05:13
+swinv2_36_s43 tta1:   QWK (cuadrático)  : 0.8515
+swinv2_36_s43 tta8:   QWK (cuadrático)  : 0.8555
+=== swinv2_36_s44 (configs/train_panda_36.yaml, semilla 44, ) 28/11 06:40
 ```
 ## Último entrenamiento
-`/home/bejeque/alu0101317038/tfg-distributed-transformers/logs/verode/panda/single/swinv2_tiny_window8_256/epoch_metrics_28112026_051404.csv` (modificado: 28/11 06:28)
+`/home/bejeque/alu0101317038/tfg-distributed-transformers/logs/verode/panda/single/swinv2_tiny_window8_256/epoch_metrics_28112026_064017.csv` (modificado: 28/11 06:46)
 ```
 época, s/época, QWK val
-13, 253.19, 0.832536
-14, 252.65, 0.829722
-15, 251.78, 0.828205
+epoch, epoch_time_s, val_qwk
+1, 257.06, 0.567606
 ```
 ## QWK de test por run (eval normal y TTA x8)
 ```
@@ -53,7 +55,8 @@ swin64_s44         eval_test.out          0.8142
 swin64_s44         eval_test_tta8.out     0.8172
 swinv2_36_s42      eval_test.out          0.8475
 swinv2_36_s42      eval_test_tta8.out     0.8491
-swinv2_36_s43      eval_test.out          
+swinv2_36_s43      eval_test.out          0.8515
+swinv2_36_s43      eval_test_tta8.out     0.8555
 vitb36_s42         eval_test.out          0.8409
 vitb36_s42         eval_test_tta8.out     0.8508
 vitb36_s43         eval_test.out          0.8506
